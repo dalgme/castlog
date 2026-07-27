@@ -5,158 +5,163 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CASTLOG 캐스트로그 — 프로젝트 관리부터 전자결재까지, 한 번에.</title>
 <meta name="description" content="창업교육·창업컨설팅 기업을 위한 통합 플랫폼 캐스트로그. 프로젝트 생성부터 전문가 섭외, 전자결재, 지급, 보고서 관리까지 21단계 워크플로우로 체계적으로 관리하세요." />
-<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50 11 L16.6 30.3 L16.6 69.7" fill="none" stroke="%23246BFF" stroke-width="15" stroke-linejoin="round"/><path d="M16.6 69.7 L50 89" fill="none" stroke="%230B1D3A" stroke-width="15"/><path d="M83.4 30.3 L50 11" fill="none" stroke="%236CA8FF" stroke-width="15"/><path d="M50 89 L83.4 69.7" fill="none" stroke="%23FFB000" stroke-width="15"/></svg>' />
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 127"><polygon points="51.5,0 0,33.2 0,89.8 51.5,123 51.5,94.1 25.2,76.3 25.2,46.7 51.5,29.5" fill="%231A68F0"/><polygon points="25.2,46.7 0,59 0,86 19,92.3 41.7,116.9 51.5,123 51.5,94.1 25.2,76.3" fill="%230A429F"/><polygon points="51.5,0 100,33.2 100,41.8 89,52.9 76.5,52.9 76.5,46.7 51.5,29.5" fill="%236CA8FF"/><polygon points="51.5,123 100,89.8 100,81.2 89,70.1 76.5,70.1 76.5,76.3 51.5,94.1" fill="%23FFB000"/></svg>' />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&display=swap" />
 <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
 
+<!-- 로고 심볼 정의 (페이지 전체에서 <use>로 재사용) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="clgBody" x1="0.15" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#1A68F0" />
+      <stop offset="1" stop-color="#0A55DA" />
+    </linearGradient>
+    <linearGradient id="clgTop" x1="0.2" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#7CB1FD" />
+      <stop offset="1" stop-color="#5A98FB" />
+    </linearGradient>
+    <linearGradient id="clgAmber" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#FFBE1A" />
+      <stop offset="1" stop-color="#F9AB00" />
+    </linearGradient>
+    <g id="clgSym" stroke-linejoin="round" stroke-width="4">
+      <polygon points="51.5,0 0,33.2 0,89.8 51.5,123 51.5,94.1 25.2,76.3 25.2,46.7 51.5,29.5" fill="url(#clgBody)" stroke="url(#clgBody)" />
+      <polygon points="25.2,46.7 0,59 0,86 19,92.3 41.7,116.9 51.5,123 51.5,94.1 25.2,76.3" fill="#0A429F" stroke="#0A429F" stroke-width="1.5" />
+      <polygon points="51.5,0 100,33.2 100,41.8 89,52.9 76.5,52.9 76.5,46.7 51.5,29.5" fill="url(#clgTop)" stroke="url(#clgTop)" />
+      <polygon points="51.5,123 100,89.8 100,81.2 89,70.1 76.5,70.1 76.5,76.3 51.5,94.1" fill="url(#clgAmber)" stroke="url(#clgAmber)" />
+    </g>
+  </defs>
+</svg>
+
 <!-- ===================== Header ===================== -->
 <header class="site-header">
   <div class="container header-inner">
-    <a class="brand" href="#" aria-label="CASTLOG 캐스트로그 홈">
-      <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
-        <path d="M50 11 L16.6 30.3 L16.6 69.7" fill="none" stroke="#246BFF" stroke-width="15" stroke-linejoin="round"/>
-        <path d="M16.6 69.7 L50 89" fill="none" stroke="#0B1D3A" stroke-width="15"/>
-        <path d="M83.4 30.3 L50 11" fill="none" stroke="#6CA8FF" stroke-width="15"/>
-        <path d="M50 89 L83.4 69.7" fill="none" stroke="#FFB000" stroke-width="15"/>
-      </svg>
+    <a class="brand" href="#product" aria-label="CASTLOG 캐스트로그 홈">
+      <svg class="brand-mark" width="30" height="37" viewBox="-2 -2 104 127" aria-hidden="true"><use href="#clgSym" /></svg>
       <span class="brand-text">
-        <span class="brand-name">CAST<span class="lg-l">L</span><span class="lg-o">O</span><span class="lg-g">G</span></span>
+        <span class="brand-name"><i class="c-navy">CAST</i><i class="c-blue">L</i><i class="c-amber">O</i><i class="c-blue">G</i></span>
         <span class="brand-sub">캐스트로그</span>
       </span>
     </a>
 
     <nav class="gnb" aria-label="주 메뉴">
-      <a href="#hero">제품</a>
-      <a href="#values">기능</a>
-      <a href="#solution">전자결재</a>
-      <a href="#workflow">전문가 관리</a>
-      <a href="#cta">요금 안내</a>
-      <a href="#footer">고객지원</a>
+      <a href="#product">제품</a>
+      <a href="#features">기능</a>
+      <a href="#approval">전자결재</a>
+      <a href="#experts">전문가 관리</a>
+      <a href="#pricing">요금 안내</a>
+      <a href="#support">고객지원</a>
     </nav>
 
     <div class="header-actions">
-      <a class="btn btn-outline-blue btn-sm" href="#cta">로그인</a>
-      <a class="btn btn-amber btn-sm" href="#cta">무료 체험 신청</a>
+      <a class="btn-login" href="#login">로그인</a>
+      <a class="btn-trial" href="#trial">무료 체험 신청</a>
     </div>
   </div>
 </header>
 
 <!-- ===================== Hero ===================== -->
-<section class="hero" id="hero">
+<section class="hero" id="product">
   <div class="container hero-inner">
     <div class="hero-copy">
       <span class="hero-badge">창업교육·창업컨설팅 기업을 위한 통합 플랫폼</span>
-      <h1 class="hero-title">
-        프로젝트 관리부터<br />
-        <em>전자결재</em>까지<br />
-        한 번에, 완벽하게
-      </h1>
-      <p class="hero-desc">
-        프로젝트 생성부터 전문가 섭외, 결재, 지급, 보고서 관리까지<br />
-        21단계 워크플로우로 체계적으로 관리하고<br />
-        의사결정을 빠르고 안전하게 진행하세요.
-      </p>
+      <h1 class="hero-title">프로젝트 관리부터<br /><em>전자결재</em>까지<br />한 번에, 완벽하게</h1>
+      <p class="hero-desc">프로젝트 생성부터 전문가 섭외, 결재, 지급, 보고서 관리까지<br />21단계 워크플로우로 체계적으로 관리하고<br />의사결정을 빠르고 안전하게 진행하세요.</p>
       <div class="hero-cta">
-        <a class="btn btn-blue btn-lg" href="#cta">무료 체험 시작</a>
-        <a class="btn btn-outline-blue btn-lg" href="#cta">제품 소개 다운로드
-          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <a class="btn-primary" href="#trial">무료 체험 시작</a>
+        <a class="btn-secondary" href="#download">제품 소개 다운로드
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>
         </a>
       </div>
-      <ul class="hero-checks">
-        <li><span class="chk chk-blue"></span>30일 무료 체험</li>
-        <li><span class="chk chk-green"></span>카드 등록 없이 사용</li>
-        <li><span class="chk chk-blue"></span>전문가 온보딩 지원</li>
-      </ul>
+      <div class="hero-checks">
+        <span class="hero-check"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#246BFF" /><path d="M7.5 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>30일 무료 체험</span>
+        <span class="hero-check"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#246BFF" /><path d="M7.5 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>카드 등록 없이 사용</span>
+        <span class="hero-check"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#246BFF" /><path d="M7.5 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>전문가 온보딩 지원</span>
+      </div>
     </div>
 
     <!-- ---------- Dashboard mockup ---------- -->
-    <div class="hero-visual" aria-hidden="true">
-      <div class="mock">
-        <aside class="mock-side">
-          <div class="mock-side-brand">
-            <svg class="mock-side-mark" viewBox="0 0 100 100">
-              <path d="M50 11 L16.6 30.3 L16.6 69.7" fill="none" stroke="#6CA8FF" stroke-width="15" stroke-linejoin="round"/>
-              <path d="M16.6 69.7 L50 89" fill="none" stroke="#246BFF" stroke-width="15"/>
-              <path d="M83.4 30.3 L50 11" fill="none" stroke="#6CA8FF" stroke-width="15"/>
-              <path d="M50 89 L83.4 69.7" fill="none" stroke="#FFB000" stroke-width="15"/>
-            </svg>
-            <span>CASTLOG</span>
-          </div>
-          <nav class="mock-menu">
-            <span class="mm active"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>대시보드</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6h6M5 9h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>프로젝트</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><path d="M4 2.5h8v11H4z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 6h4M6 8.5h4M6 11h2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>전자결재</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13c.6-2.4 2.4-3.5 4.5-3.5s3.9 1.1 4.5 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>전문가</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><rect x="2.5" y="4" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 4V2.5M10.5 4V2.5M2.5 7h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>비용·지급</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><rect x="3" y="2.5" width="10" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 6.5h5M5.5 9h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>보고서</span>
-            <span class="mm"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.8 3.8l1.4 1.4M10.8 10.8l1.4 1.4M12.2 3.8l-1.4 1.4M5.2 10.8l-1.4 1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>설정</span>
-          </nav>
-        </aside>
+    <div class="mock" aria-hidden="true">
+      <aside class="mock-side">
+        <div class="mock-side-brand">
+          <svg width="20" height="25" viewBox="-2 -2 104 127"><use href="#clgSym" /></svg>
+          <span class="mock-side-word"><i class="w-white">CAST</i><i class="w-sky">L</i><i class="w-amber">O</i><i class="w-sky">G</i></span>
+        </div>
+        <nav class="mock-menu">
+          <span class="mm active"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1z" /></svg>대시보드</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 9h8M8 13h5" /></svg>프로젝트</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z" /><path d="M9 13l2 2 4-4" /></svg>전자결재</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4" /><path d="M5 20c1.6-3.6 4-5.4 7-5.4s5.4 1.8 7 5.4" /></svg>전문가</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V9M10 19V5M16 19v-6M4 19h16" /></svg>비용·지급</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>보고서</span>
+          <span class="mm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8.5" /></svg>설정</span>
+        </nav>
+      </aside>
 
-        <div class="mock-main">
-          <div class="mock-topbar">
-            <strong>대시보드</strong>
-            <div class="mock-top-right">
-              <span class="mock-tenant">(주)넥스트랩 <svg viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="mock-bell"><svg viewBox="0 0 16 16"><path d="M8 2a4 4 0 0 0-4 4v2.5L2.8 11h10.4L12 8.5V6a4 4 0 0 0-4-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.7 13a1.4 1.4 0 0 0 2.6 0" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
-              <span class="mock-avatar"></span>
-            </div>
+      <div class="mock-main">
+        <div class="mock-topbar">
+          <span class="mock-topbar-title">대시보드</span>
+          <div class="mock-top-right">
+            <span class="mock-tenant">(주)넥스트랩
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6" /></svg>
+            </span>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7A879C" stroke-width="1.8"><path d="M18 15v-4a6 6 0 10-12 0v4l-1.5 3h15z" /><path d="M10 20h4" /></svg>
+            <span class="mock-avatar">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#7A879C"><circle cx="12" cy="9" r="3.4" /><path d="M5.5 20c1.5-3.4 3.9-5 6.5-5s5 1.6 6.5 5z" /></svg>
+            </span>
           </div>
+        </div>
 
+        <div class="mock-body">
           <div class="mock-stats">
-            <div class="stat"><span class="stat-label">진행 중 프로젝트</span><span class="stat-value">24</span><span class="stat-delta up">↑ 12%</span></div>
-            <div class="stat"><span class="stat-label">전자결재 대기</span><span class="stat-value">7건</span><span class="stat-delta up">↑ 3건</span></div>
-            <div class="stat"><span class="stat-label">이번 달 지급</span><span class="stat-value">38,450,000<small>원</small></span><span class="stat-delta up">↑ 8.2%</span></div>
-            <div class="stat"><span class="stat-label">전문가 Pool</span><span class="stat-value">256명</span><span class="stat-delta up">↑ 18명</span></div>
+            <div class="stat"><span class="stat-label">진행 중 프로젝트</span><span class="stat-value">24</span><span class="stat-delta">↑ 12%</span></div>
+            <div class="stat"><span class="stat-label">전자결재 대기</span><span class="stat-value">7건</span><span class="stat-delta">↑ 3건</span></div>
+            <div class="stat"><span class="stat-label">이번 달 지급</span><span class="stat-value stat-value-sm">38,450,000<small>원</small></span><span class="stat-delta">↑ 8.2%</span></div>
+            <div class="stat"><span class="stat-label">전문가 Pool</span><span class="stat-value">256명</span><span class="stat-delta">↑ 18명</span></div>
           </div>
 
           <div class="mock-mid">
             <div class="mock-card mock-projects">
-              <h4>최근 프로젝트 현황</h4>
-              <div class="mp-row"><span class="mp-name">2024 창업중심대학 예비창업자 모집</span><span class="tag tag-blue">진행 중</span><span class="mp-pct">65%</span></div>
-              <div class="mp-row"><span class="mp-name">2024 예비창업패키지 멘토링</span><span class="tag tag-blue">진행 중</span><span class="mp-pct">40%</span></div>
-              <div class="mp-row"><span class="mp-name">창업교육 워크숍 (7월)</span><span class="tag tag-gray">기획 중</span><span class="mp-pct">20%</span></div>
-              <div class="mp-row"><span class="mp-name">2024 초기창업패키지 IR 데모데이</span><span class="tag tag-done">완료</span><span class="mp-pct">100%</span></div>
-              <span class="mp-more">전체 프로젝트 보기 →</span>
+              <div class="mock-card-title">최근 프로젝트 현황</div>
+              <div class="mp-row"><span class="mp-name">2024 창업중심대학 예비창업자 모집</span><span class="mp-right"><span class="tag tag-blue">진행 중</span><span class="mp-pct">65%</span></span></div>
+              <div class="mp-row"><span class="mp-name">2024 예비창업패키지 멘토링</span><span class="mp-right"><span class="tag tag-blue">진행 중</span><span class="mp-pct">40%</span></span></div>
+              <div class="mp-row"><span class="mp-name">창업교육 워크숍 (7월)</span><span class="mp-right"><span class="tag tag-amber">기획 중</span><span class="mp-pct">20%</span></span></div>
+              <div class="mp-row"><span class="mp-name">2024 초기창업패키지 IR 데모데이</span><span class="mp-right"><span class="tag tag-gray">완료</span><span class="mp-pct">100%</span></span></div>
+              <a class="mp-more" href="#projects">전체 프로젝트 보기 →</a>
             </div>
 
             <div class="mock-card mock-approval">
-              <h4>전자결재 현황</h4>
+              <div class="mock-card-title">전자결재 현황</div>
               <div class="donut-wrap">
                 <div class="donut">
-                  <svg viewBox="0 0 42 42">
-                    <circle class="donut-ring" cx="21" cy="21" r="15.9" fill="none" stroke="#E8EDF5" stroke-width="6"/>
-                    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#0B1D3A" stroke-width="6"
-                      stroke-dasharray="21.9 78.1" stroke-dashoffset="25"/>
-                    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#246BFF" stroke-width="6"
-                      stroke-dasharray="46.9 53.1" stroke-dashoffset="3.1"/>
-                    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#6CA8FF" stroke-width="6"
-                      stroke-dasharray="31.2 68.8" stroke-dashoffset="-43.8"/>
-                  </svg>
                   <div class="donut-center"><small>총</small><strong>32건</strong></div>
                 </div>
-                <ul class="donut-legend">
-                  <li><i style="background:#0B1D3A"></i>결재 대기 <b>7건</b></li>
-                  <li><i style="background:#246BFF"></i>진행 중 <b>15건</b></li>
-                  <li><i style="background:#6CA8FF"></i>완료 <b>10건</b></li>
-                </ul>
+                <div class="donut-legend">
+                  <span><i style="background:#C9DBFF"></i>결재 대기<b>7건</b></span>
+                  <span><i style="background:#6CA8FF"></i>진행 중<b>15건</b></span>
+                  <span><i style="background:#1D4FD8"></i>완료<b>10건</b></span>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="mock-card mock-chart">
-            <h4>이번 달 지급 추이</h4>
+            <div class="mock-card-title">이번 달 지급 추이</div>
             <div class="chart">
               <div class="chart-y"><span>30M</span><span>20M</span><span>10M</span><span>0</span></div>
               <div class="chart-bars">
-                <div class="cb" style="--h:42%"><i></i><span>1주</span></div>
-                <div class="cb" style="--h:60%"><i></i><span>2주</span></div>
-                <div class="cb" style="--h:70%"><i></i><span>3주</span></div>
-                <div class="cb" style="--h:95%"><i></i><span>4주</span></div>
-                <div class="cb" style="--h:62%"><i></i><span>5주</span></div>
+                <div class="cb"><i style="height:42px"></i></div>
+                <div class="cb"><i style="height:62px"></i></div>
+                <div class="cb"><i style="height:74px"></i></div>
+                <div class="cb"><i style="height:96px;background:#1D4FD8"></i></div>
+                <div class="cb"><i style="height:56px"></i></div>
               </div>
+              <div></div>
+              <div class="chart-x"><span>1주</span><span>2주</span><span>3주</span><span>4주</span><span>5주</span></div>
             </div>
           </div>
         </div>
@@ -166,217 +171,202 @@
 </section>
 
 <!-- ===================== Core values ===================== -->
-<section class="values" id="values">
+<section class="values" id="features">
   <div class="container">
-    <p class="values-eyebrow">CASTLOG 핵심 가치</p>
-    <ul class="values-grid">
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><path d="M12 3l7 2.6v5.2c0 4.4-2.9 8.2-7 9.7-4.1-1.5-7-5.3-7-9.7V5.6L12 3z" fill="none" stroke="#0B1D3A" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 11.8l2.1 2.1L15.4 9.5" fill="none" stroke="#0B1D3A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <strong>10계층 보안</strong>
-        <span class="vd">민감정보 안전 관리</span>
-      </li>
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" fill="none" stroke="#246BFF" stroke-width="1.7"/><path d="M5 20c.9-3.6 3.6-5.3 7-5.3s6.1 1.7 7 5.3" fill="none" stroke="#246BFF" stroke-width="1.7" stroke-linecap="round"/><path d="M18.5 8.5a2.4 2.4 0 1 0-3.4-3.4" fill="none" stroke="#246BFF" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-        <strong>전문가 신원 관리</strong>
-        <span class="vd">공유 신원 모델</span>
-      </li>
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><path d="M6 3.5h9l3 3v14H6z" fill="none" stroke="#0B1D3A" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 10h6M9 13h6" stroke="#0B1D3A" stroke-width="1.6" stroke-linecap="round"/><path d="M9.5 16.6l1.6 1.6 3.2-3.2" fill="none" stroke="#246BFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <strong>전자결재 엔진</strong>
-        <span class="vd">조건부 라우팅 · 대결 · 병렬합의</span>
-      </li>
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="#FFB000" stroke-width="1.7"/><path d="M8.2 8.5l1.5 6 2.3-5 2.3 5 1.5-6" fill="none" stroke="#FFB000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <strong>비용·지급 관리</strong>
-        <span class="vd">지급유형 분기 · 일정 관리</span>
-      </li>
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l1.6 2H20.5v10h-17z" fill="none" stroke="#246BFF" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 11.5v4M10.2 13.7L12 15.5l1.8-1.8" fill="none" stroke="#246BFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <strong>서류 자동 관리</strong>
-        <span class="vd">암호화 저장 · 자동 파기</span>
-      </li>
-      <li>
-        <span class="vi"><svg viewBox="0 0 24 24"><path d="M7 17.5a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 8.6a4.2 4.2 0 0 1 .3 8.4z" fill="none" stroke="#0B1D3A" stroke-width="1.7" stroke-linejoin="round"/></svg></span>
-        <strong>멀티테넌트 SaaS</strong>
-        <span class="vd">화이트라벨 지원</span>
-      </li>
-    </ul>
+    <div class="values-eyebrow">CASTLOG 핵심 가치</div>
+    <div class="values-grid">
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.3-2.9 7.9-7 9.5-4.1-1.6-7-5.2-7-9.5V6z" /><path d="M9 12l2 2 4-4" stroke-linecap="round" /></svg>
+        <div class="value-title">10계층 보안</div>
+        <div class="value-desc">민감정보 안전 관리</div>
+      </div>
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5"><circle cx="9" cy="8" r="3.2" /><path d="M3 19c1.3-3.2 3.4-4.8 6-4.8s4.7 1.6 6 4.8" stroke-linecap="round" /><circle cx="17.5" cy="7" r="2.4" /><path d="M15.5 13.6c2.4-.5 4.3.9 5.5 4.4" stroke-linecap="round" /></svg>
+        <div class="value-title">전문가 신원 관리</div>
+        <div class="value-desc">공유 신원 모델</div>
+      </div>
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5" stroke-linejoin="round"><path d="M5 3h9l4 4v13H5z" /><path d="M8 9h6M8 12.5h4" stroke-linecap="round" /><circle cx="17" cy="17" r="4.2" fill="#FFB000" stroke="none" /><path d="M15.2 17.1l1.3 1.3 2.4-2.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round" /></svg>
+        <div class="value-title">전자결재 엔진</div>
+        <div class="value-desc">조건부 라우팅 · 대결 · 병렬합의</div>
+      </div>
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5"><circle cx="12" cy="12" r="9" /><path d="M8 8l2.2 4M16 8l-2.2 4M12 12v4M9.5 14h5M9.5 16.4h5" stroke-linecap="round" /></svg>
+        <div class="value-title">비용·지급 관리</div>
+        <div class="value-desc">지급유형 분기 · 일정 관리</div>
+      </div>
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5" stroke-linejoin="round"><path d="M3 7a1 1 0 011-1h5l2 2.4h9a1 1 0 011 1V18a1 1 0 01-1 1H4a1 1 0 01-1-1z" /><path d="M3 11h18" /></svg>
+        <div class="value-title">서류 자동 관리</div>
+        <div class="value-desc">암호화 저장 · 자동 파기</div>
+      </div>
+      <div class="value">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#12294D" stroke-width="1.5" stroke-linejoin="round"><path d="M7.5 18.5a4.5 4.5 0 01-.6-8.96 5.5 5.5 0 0110.5-1.2A4.25 4.25 0 0117.5 18.5z" /></svg>
+        <div class="value-title">멀티테넌트 SaaS</div>
+        <div class="value-desc">화이트라벨 지원</div>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- ===================== Problem / Solution ===================== -->
-<section class="solution" id="solution">
+<section class="solution" id="approval">
   <div class="container solution-inner">
     <div class="prob-card">
-      <h3>아직도 이런 문제로 힘드신가요?</h3>
-      <ul class="prob-list">
-        <li><span class="mark mark-red">!</span>프로젝트마다 엑셀, 메신저, 이메일로 관리되어 비효율적</li>
-        <li><span class="mark mark-red">!</span>외부 전문가 섭외·계약·지급·보고가 분산되어 추적이 어려움</li>
-        <li><span class="mark mark-red">!</span>전자결재가 없어 의사결정이 느리고 문서 관리가 복잡함</li>
-        <li><span class="mark mark-red">!</span>세무·계약을 위한 관리가 번거롭고 실수가 빈번해요</li>
-        <li><span class="mark mark-red">!</span>반복 사업인데 매번 처음부터 다시 만들어야 해요</li>
-      </ul>
+      <div class="ps-title">아직도 이런 문제로 힘드신가요?</div>
+      <div class="ps-list">
+        <div class="ps-item"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#EF4B3C" /><path d="M12 7v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" /><circle cx="12" cy="16.6" r="1.25" fill="#fff" /></svg>프로젝트마다 엑셀, 메신저, 이메일로 관리되어 비효율적</div>
+        <div class="ps-item"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#EF4B3C" /><path d="M12 7v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" /><circle cx="12" cy="16.6" r="1.25" fill="#fff" /></svg>외부 전문가 섭외·계약·지급·보고가 분산되어 추적이 어려움</div>
+        <div class="ps-item"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#EF4B3C" /><path d="M12 7v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" /><circle cx="12" cy="16.6" r="1.25" fill="#fff" /></svg>전자결재가 없어 의사결정이 느리고 문서 관리가 복잡함</div>
+        <div class="ps-item"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#EF4B3C" /><path d="M12 7v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" /><circle cx="12" cy="16.6" r="1.25" fill="#fff" /></svg>세무·계약을 위한 관리가 번거롭고 실수가 발생해요</div>
+        <div class="ps-item"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#EF4B3C" /><path d="M12 7v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" /><circle cx="12" cy="16.6" r="1.25" fill="#fff" /></svg>반복 사업인데 매번 처음부터 다시 만들어야 해요</div>
+      </div>
     </div>
 
     <div class="solution-center" aria-hidden="true">
-      <svg class="arrows arrows-left" viewBox="0 0 80 120">
-        <g fill="none" stroke="#246BFF" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round">
-          <path d="M4 20 H60"/><path d="M4 60 H60"/><path d="M4 100 H60"/>
-        </g>
-        <g fill="#246BFF"><path d="M60 15l10 5-10 5z"/><path d="M60 55l10 5-10 5z"/><path d="M60 95l10 5-10 5z"/></g>
-      </svg>
-      <div class="solution-logo">
-        <svg viewBox="0 0 100 100">
-          <path d="M50 11 L16.6 30.3 L16.6 69.7" fill="none" stroke="#246BFF" stroke-width="15" stroke-linejoin="round"/>
-          <path d="M16.6 69.7 L50 89" fill="none" stroke="#0B1D3A" stroke-width="15"/>
-          <path d="M83.4 30.3 L50 11" fill="none" stroke="#6CA8FF" stroke-width="15"/>
-          <path d="M50 89 L83.4 69.7" fill="none" stroke="#FFB000" stroke-width="15"/>
-        </svg>
-        <span>CASTLOG</span>
+      <div class="sc-arrow">
+        <svg width="100%" height="10" viewBox="0 0 60 10" preserveAspectRatio="none"><path d="M0 5h48" stroke="#9CC0FF" stroke-width="2" stroke-dasharray="6 5" fill="none" /><path d="M48 1l8 4-8 4z" fill="#9CC0FF" /></svg>
       </div>
-      <svg class="arrows arrows-right" viewBox="0 0 80 120">
-        <g fill="none" stroke="#246BFF" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round">
-          <path d="M4 20 H60"/><path d="M4 60 H60"/><path d="M4 100 H60"/>
-        </g>
-        <g fill="#246BFF"><path d="M60 15l10 5-10 5z"/><path d="M60 55l10 5-10 5z"/><path d="M60 95l10 5-10 5z"/></g>
-      </svg>
+      <div class="solution-logo">
+        <svg width="38" height="47" viewBox="-2 -2 104 127"><use href="#clgSym" /></svg>
+        <span class="solution-logo-word"><i class="c-navy">CAST</i><i class="c-blue">L</i><i class="c-amber">O</i><i class="c-blue">G</i></span>
+      </div>
+      <div class="sc-arrow">
+        <svg width="100%" height="10" viewBox="0 0 60 10" preserveAspectRatio="none"><path d="M0 5h48" stroke="#9CC0FF" stroke-width="2" stroke-dasharray="6 5" fill="none" /><path d="M48 1l8 4-8 4z" fill="#9CC0FF" /></svg>
+      </div>
     </div>
 
     <div class="sol-card">
-      <h3>캐스트로그가 해결합니다!</h3>
-      <ul class="sol-list">
-        <li><span class="mark mark-blue">✓</span>21단계 프로젝트 워크플로우로 체계적인 관리</li>
-        <li><span class="mark mark-blue">✓</span>전문가 신원·서류 통합 관리로 중복 업무 제거</li>
-        <li><span class="mark mark-blue">✓</span>전자결재로 모든 의사결정을 빠르고 안전하게</li>
-        <li><span class="mark mark-blue">✓</span>세무·비용·증빙까지 자동화된 통합 관리</li>
-        <li><span class="mark mark-blue">✓</span>프로젝트 복제로 시간 80% 절약</li>
-      </ul>
+      <div class="ps-title ps-title-blue">캐스트로그가 해결합니다!</div>
+      <div class="ps-list">
+        <div class="ps-item ps-item-sol"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1D4FD8" /><path d="M7.6 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>21단계 프로젝트 워크플로우로 체계적인 관리</div>
+        <div class="ps-item ps-item-sol"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1D4FD8" /><path d="M7.6 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>전문가 신원·서류 통합 관리로 중복 업무 제거</div>
+        <div class="ps-item ps-item-sol"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1D4FD8" /><path d="M7.6 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>전자결재로 모든 의사결정을 빠르고 안전하게</div>
+        <div class="ps-item ps-item-sol"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1D4FD8" /><path d="M7.6 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>세무·비용·증빙까지 자동화된 통합 관리</div>
+        <div class="ps-item ps-item-sol"><svg width="19" height="19" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1D4FD8" /><path d="M7.6 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>프로젝트 복제로 시간 80% 절약</div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- ===================== 21-step workflow ===================== -->
-<section class="workflow" id="workflow">
-  <div class="container workflow-inner">
-    <div class="wf-copy">
-      <span class="wf-eyebrow">21단계 워크플로우</span>
-      <h2>모든 프로젝트를<br />체계적으로 관리하세요</h2>
-      <ul class="wf-checks">
-        <li><span class="chk chk-green"></span>기획부터 완료까지 전 과정을 단계별 관리</li>
-        <li><span class="chk chk-green"></span>담당자·기한 설정으로 지연 업무 자동 알림</li>
-        <li><span class="chk chk-green"></span>AI 보조 검수로 문서 품질 향상</li>
-        <li><span class="chk chk-green"></span>프로젝트 복제로 반복 업무 시간 80% 절약</li>
-      </ul>
-      <a class="btn btn-outline-navy" href="#cta">자세히 보기 →</a>
-    </div>
-
-    <div class="wf-orbit" aria-hidden="true">
-      <div class="orbit-ring"></div>
-      <div class="orbit-core"><strong>21</strong><span>단계</span></div>
-      <span class="orbit-chip" style="top:6%;left:8%"><b>01</b>기초정보</span>
-      <span class="orbit-chip" style="top:0%;right:2%"><b>02</b>공고정보</span>
-      <span class="orbit-chip" style="top:30%;right:-6%"><b>03</b>견적서</span>
-      <span class="orbit-chip" style="top:56%;right:-4%"><b>04</b>계약서</span>
-      <span class="orbit-chip orbit-dots" style="top:32%;left:-2%">···</span>
-      <span class="orbit-chip" style="bottom:8%;left:2%"><b>21</b>완수보고서</span>
-      <span class="orbit-chip" style="bottom:-2%;right:6%"><b>20</b>방명록 자동생성</span>
-      <span class="orbit-chip orbit-dots" style="bottom:-8%;left:44%">···</span>
-    </div>
-
-    <div class="wf-example">
-      <p class="wfe-label">프로젝트 진행 현황 예시</p>
-      <h4>2024 창업교육 워크숍</h4>
-      <div class="wfe-progress">
-        <span>진행률 65%</span>
-        <div class="wfe-bar"><i style="width:65%"></i></div>
-        <em>65%</em>
+<section class="workflow" id="experts">
+  <div class="container">
+    <div class="wf-card">
+      <div class="wf-copy">
+        <div class="wf-eyebrow">21단계 워크플로우</div>
+        <h2 class="wf-title">모든 프로젝트를<br />체계적으로 관리하세요</h2>
+        <div class="wf-checks">
+          <div class="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" stroke-width="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>기획부터 완료까지 전 과정을 단계별 관리</div>
+          <div class="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" stroke-width="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>담당자·기한 설정으로 지연 업무 자동 알림</div>
+          <div class="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" stroke-width="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>AI 보조 검수로 문서 품질 향상</div>
+          <div class="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" stroke-width="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>프로젝트 복제로 반복 업무 시간 80% 절약</div>
+        </div>
+        <a class="wf-btn" href="#workflow">자세히 보기 →</a>
       </div>
-      <ul class="wfe-steps">
-        <li><span class="wfe-no">01</span>기초정보<span class="tag tag-done">완료</span></li>
-        <li><span class="wfe-no">02</span>공고정보<span class="tag tag-done">완료</span></li>
-        <li><span class="wfe-no">03</span>견적서<span class="tag tag-blue">진행 중</span></li>
-        <li><span class="wfe-no">04</span>계약서<span class="tag tag-gray">대기</span></li>
-        <li><span class="wfe-no">05</span>체크리스트 발행<span class="tag tag-gray">대기</span></li>
-      </ul>
-      <a class="btn btn-outline-navy btn-block" href="#cta">전체 단계 보기</a>
+
+      <div class="wf-orbit" aria-hidden="true">
+        <div class="orbit-core"><strong>21</strong><span>단계</span></div>
+        <div class="orbit-chip" style="top:22px;left:6%"><b>01</b><span>기초정보</span></div>
+        <div class="orbit-chip" style="top:0;right:8%"><b>02</b><span>공고정보</span></div>
+        <div class="orbit-chip" style="top:82px;right:-4%"><b>03</b><span>견적서</span></div>
+        <div class="orbit-chip" style="bottom:82px;right:-2%"><b>04</b><span>계약서</span></div>
+        <div class="orbit-chip" style="bottom:6px;right:4%"><b>20</b><span>방명록 자동생성</span></div>
+        <div class="orbit-chip" style="bottom:34px;left:2%"><b class="b-gray">21</b><span>완수보고서</span></div>
+        <div class="orbit-dots" style="top:128px;left:-6%">···</div>
+        <div class="orbit-dots" style="bottom:0;left:34%">···</div>
+      </div>
+
+      <div class="wf-example">
+        <div class="wfe-label">프로젝트 진행 현황 예시</div>
+        <div class="wfe-title">2024 창업교육 워크숍</div>
+        <div class="wfe-progress">
+          <div class="wfe-progress-labels"><span>진행률 65%</span><em>65%</em></div>
+          <div class="wfe-bar"><i style="width:65%"></i></div>
+        </div>
+        <div class="wfe-steps">
+          <div class="wfe-step"><span class="wfe-name"><b>01</b>기초정보</span><span class="tag tag-gray">완료</span></div>
+          <div class="wfe-step"><span class="wfe-name"><b>02</b>공고정보</span><span class="tag tag-gray">완료</span></div>
+          <div class="wfe-step"><span class="wfe-name"><b>03</b>견적서</span><span class="tag tag-blue">진행 중</span></div>
+          <div class="wfe-step"><span class="wfe-name"><b>04</b>계약서</span><span class="tag tag-wait">대기</span></div>
+          <div class="wfe-step"><span class="wfe-name"><b>05</b>체크리스트 발행</span><span class="tag tag-wait">대기</span></div>
+        </div>
+        <a class="wfe-btn" href="#workflow">전체 단계 보기</a>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- ===================== CTA ===================== -->
-<section class="cta" id="cta">
-  <div class="container cta-inner">
-    <div class="cta-copy">
-      <h2>지금 바로 캐스트로그를 경험해보세요</h2>
-      <p>30일 무료 체험으로 모든 기능을 제한 없이 사용해보세요!</p>
-      <div class="cta-actions">
-        <a class="btn btn-white" href="#">무료 체험 시작하기</a>
-        <a class="btn btn-outline-white" href="#">전문가에게 문의하기</a>
+<section class="cta" id="pricing">
+  <div class="container">
+    <div class="cta-inner">
+      <div class="cta-copy">
+        <div class="cta-title">지금 바로 캐스트로그를 경험해보세요</div>
+        <div class="cta-sub">30일 무료 체험으로 모든 기능을 제한 없이 사용해보세요!</div>
+        <div class="cta-actions">
+          <a class="cta-btn-white" href="#trial">무료 체험 시작하기</a>
+          <a class="cta-btn-line" href="#contact">전문가에게 문의하기</a>
+        </div>
       </div>
-    </div>
-    <div class="cta-contact">
-      <span class="cta-headset">
-        <svg viewBox="0 0 24 24"><path d="M4.5 13v-2a7.5 7.5 0 0 1 15 0v2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="3" y="12" width="4" height="6" rx="1.6" fill="currentColor"/><rect x="17" y="12" width="4" height="6" rx="1.6" fill="currentColor"/><path d="M19 18v1a3 3 0 0 1-3 3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-      </span>
-      <div class="cta-contact-body">
-        <strong>도입 상담이 필요하신가요?</strong>
-        <span>전문가가 직접 도와드립니다.</span>
-        <a href="tel:0212345678"><svg viewBox="0 0 16 16"><path d="M3.2 2.5h2.4l1 2.8-1.4 1.1a9.5 9.5 0 0 0 4.4 4.4l1.1-1.4 2.8 1v2.4a1.3 1.3 0 0 1-1.4 1.3A11.8 11.8 0 0 1 1.9 3.9a1.3 1.3 0 0 1 1.3-1.4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>02-1234-5678</a>
-        <a href="mailto:hello@castlog.kr"><svg viewBox="0 0 16 16"><rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 4.5L8 8.8l5.5-4.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>hello@castlog.kr</a>
+      <div class="cta-contact">
+        <svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.3" stroke-linejoin="round"><path d="M4 13v-1a8 8 0 0116 0v1" /><rect x="2.5" y="13" width="4.5" height="7" rx="2" /><rect x="17" y="13" width="4.5" height="7" rx="2" /><path d="M19 20v.5a2.5 2.5 0 01-2.5 2.5H13" stroke-linecap="round" /></svg>
+        <div class="cta-contact-body">
+          <div class="cta-contact-title">도입 상담이 필요하신가요?</div>
+          <div class="cta-contact-sub">전문가가 직접 도와드립니다.</div>
+          <a class="cta-contact-link cta-contact-tel" href="tel:0212345678">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#BFD5FF" stroke-width="1.8"><path d="M4.5 5.5c0 8 6 14 14 14l1.5-3-4-2-2 2c-2.2-1.2-4.3-3.3-5.5-5.5l2-2-2-4z" stroke-linejoin="round" /></svg>02-1234-5678</a>
+          <a class="cta-contact-link" href="mailto:hello@castlog.kr">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#BFD5FF" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3.5 6.5L12 13l8.5-6.5" /></svg>hello@castlog.kr</a>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- ===================== Footer ===================== -->
-<footer class="site-footer" id="footer">
+<footer class="site-footer" id="support">
   <div class="container footer-inner">
     <div class="footer-brand">
-      <a class="brand brand-invert" href="#" aria-label="CASTLOG 캐스트로그">
-        <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
-          <path d="M50 11 L16.6 30.3 L16.6 69.7" fill="none" stroke="#6CA8FF" stroke-width="15" stroke-linejoin="round"/>
-          <path d="M16.6 69.7 L50 89" fill="none" stroke="#246BFF" stroke-width="15"/>
-          <path d="M83.4 30.3 L50 11" fill="none" stroke="#6CA8FF" stroke-width="15"/>
-          <path d="M50 89 L83.4 69.7" fill="none" stroke="#FFB000" stroke-width="15"/>
-        </svg>
+      <a class="brand" href="#product" aria-label="CASTLOG 캐스트로그">
+        <svg width="26" height="32" viewBox="-2 -2 104 127" aria-hidden="true"><use href="#clgSym" /></svg>
         <span class="brand-text">
-          <span class="brand-name">CAST<span class="lg-l">L</span><span class="lg-o">O</span><span class="lg-g">G</span></span>
-          <span class="brand-sub">캐스트로그</span>
+          <span class="brand-name brand-name-sm"><i class="c-navy">CAST</i><i class="c-blue">L</i><i class="c-amber">O</i><i class="c-blue">G</i></span>
+          <span class="brand-sub brand-sub-sm">캐스트로그</span>
         </span>
       </a>
       <p>창업교육·창업컨설팅 기업의 성공적인<br />프로젝트 수행을 위한 통합 플랫폼</p>
-      <small>© 2024 NextLab(StartMate). All rights reserved.</small>
     </div>
-
-    <nav class="footer-cols" aria-label="푸터 메뉴">
-      <div>
-        <strong>제품</strong>
-        <a href="#values">기능 소개</a>
-        <a href="#solution">솔루션</a>
-        <a href="#cta">요금 안내</a>
-        <a href="#">업데이트</a>
-      </div>
-      <div>
-        <strong>고객지원</strong>
-        <a href="#">고객센터</a>
-        <a href="#">사용 가이드</a>
-        <a href="#">FAQ</a>
-        <a href="#cta">문의하기</a>
-      </div>
-      <div>
-        <strong>회사</strong>
-        <a href="#">회사소개</a>
-        <a href="#">블로그</a>
-        <a href="#">채용 정보</a>
-        <a href="#">제휴 문의</a>
-      </div>
-      <div>
-        <strong>법적 고지</strong>
-        <a href="#">개인정보처리방침</a>
-        <a href="#">이용약관</a>
-        <a href="#">전자금융거래 약관</a>
-      </div>
-    </nav>
+    <div class="footer-col">
+      <div class="footer-head">제품</div>
+      <a href="#features">기능 소개</a>
+      <a href="#product">솔루션</a>
+      <a href="#pricing">요금 안내</a>
+      <a href="#updates">업데이트</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-head">고객지원</div>
+      <a href="#support">고객센터</a>
+      <a href="#guide">사용 가이드</a>
+      <a href="#faq">FAQ</a>
+      <a href="#contact">문의하기</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-head">회사</div>
+      <a href="#about">회사소개</a>
+      <a href="#blog">블로그</a>
+      <a href="#careers">채용 정보</a>
+      <a href="#partners">제휴 문의</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-head">법적 고지</div>
+      <a href="#privacy">개인정보처리방침</a>
+      <a href="#terms">이용약관</a>
+      <a href="#efin">전자금융거래 약관</a>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <div class="footer-copyright">© 2024 NextLab(StartMate). All rights reserved.</div>
   </div>
 </footer>
 
