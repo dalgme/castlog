@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * CASTLOG 디자인 토큰
+ * --brand-* 는 테넌트 화이트라벨 런타임 주입 대상 (기본값 = CASTLOG 브랜드).
+ * shadcn/ui 시맨틱 토큰(--primary 등)은 브랜드 토큰을 참조한다.
+ * 색상 하드코딩 금지 — 반드시 이 변수를 통해 사용할 것.
+ */
+@layer base {
+  :root {
+    /* 브랜드 원색 (화이트라벨 주입 지점) */
+    --brand: 221 100% 57%; /* #246BFF */
+    --brand-navy: 217 68% 14%; /* #0B1D3A */
+    --brand-sky: 216 100% 71%; /* #6CA8FF */
+    --brand-amber: 41 100% 50%; /* #FFB000 */
+
+    /* shadcn/ui 시맨틱 토큰 */
+    --background: 0 0% 100%;
+    --foreground: 217 68% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 68% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 68% 14%;
+    --primary: var(--brand);
+    --primary-foreground: 0 0% 100%;
+    --secondary: 216 33% 96%;
+    --secondary-foreground: 217 68% 14%;
+    --muted: 216 33% 96%;
+    --muted-foreground: 217 14% 45%;
+    --accent: 216 33% 96%;
+    --accent-foreground: 217 68% 14%;
+    --destructive: 4 84% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 216 24% 91%;
+    --input: 216 24% 87%;
+    --ring: var(--brand);
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 217 68% 8%;
+    --foreground: 210 40% 98%;
+    --card: 217 60% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 217 60% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: var(--brand);
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 4 63% 40%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: var(--brand);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    word-break: keep-all;
+    -webkit-font-smoothing: antialiased;
+  }
+}
