@@ -24,6 +24,10 @@ npm run dev
 
 DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 리전)에 순서대로 적용한다.
 
+전문가 휴대폰 OTP 로그인은 Supabase 대시보드에서 Phone 인증 활성화와
+SMS Hook(알리고/NHN Cloud 연동, 단계 14) 설정이 필요하다. 신규 전문가 가입은
+등록 링크(`/j`)로만 이뤄지며 로그인 OTP는 기존 계정에만 발송된다(`shouldCreateUser=false`).
+
 ## 라우팅 구조
 
 | 경로 | 대상 |
@@ -43,8 +47,8 @@ DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 �
 - [x] 단계 1 — 프로젝트 초기화 (TS strict, shadcn/ui, Pretendard)
 - [x] 단계 2 — Supabase 클라이언트 3종 + tenant_id 주입 구조
 - [x] 단계 3 — 라우팅 셸 + 공개 경로 + 슬러그 검증 + 디자인 토큰 + 랜딩 포팅
-- [x] 단계 4 — DB 1차 마이그레이션 + RLS (로컬 PG16에서 격리 검증 완료)
-- [ ] 단계 5 — 인증 흐름 (직원 이메일 / 전문가 휴대폰)
+- [x] 단계 4 — DB 1차 마이그레이션 + RLS (로컬 PG16에서 격리 검증 완료, 원격 적용 완료)
+- [x] 단계 5 — 인증 흐름 (직원 이메일 `/login` · 전문가 휴대폰 OTP `/expert/login` · 미들웨어+레이아웃 이중 가드)
 - [ ] 단계 6 — 전문가 소유 신원 모델
 - [ ] 단계 7 — 서류 업로드·암호화·자동파기
 - [ ] 단계 8~19 — 실행계획서 참조

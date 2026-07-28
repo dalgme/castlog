@@ -1,10 +1,12 @@
+import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 
 export const metadata = { title: "기업 관리" };
 
 /** 기업총괄관리자 셸 — 결재라인·전결규정·직원 계정 관리(단계 8·10) */
-export default function OrgAdminPage() {
+export default async function OrgAdminPage() {
+  await requireRole(["org_admin", "platform_admin"]);
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader title="기업 관리" />

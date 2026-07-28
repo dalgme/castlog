@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth/session";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 
@@ -8,7 +9,8 @@ export const metadata = { title: "전문가 포털" };
  * 전문가는 여러 기업에 연결될 수 있으므로 화면 안에서 기업별로 구분해 보여준다.
  * 모바일 완전 대응 대상 (설계문서 8.1 최우선).
  */
-export default function ExpertPortalPage() {
+export default async function ExpertPortalPage() {
+  await requireUser("/expert/login");
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader title="전문가 포털" />

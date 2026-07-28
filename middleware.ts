@@ -10,6 +10,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/login",
   "/signup",
   "/auth",
+  "/expert/login",
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -19,9 +20,18 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+function isUnderPath(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
 export async function middleware(request: NextRequest) {
   // 1) 세션 갱신 (만료 토큰 리프레시)
-  const { response, user } = await updateSession(request);
+  const { response, user, configured } = await updateSession(request);
+
+  // 환경변수 미설정(프리뷰 배포) — 인증 게이트 비활성, 안전 통과
+  if (!configured) {
+    return response;
+  }
 
   const { pathname } = request.nextUrl;
 
@@ -30,16 +40,34 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 3) URL 슬러그 ↔ 세션 테넌트 불일치 검사
+  // 3) 인증 게이트 — 미로그인 시 대상별 로그인 페이지로 (레이아웃 가드와 이중 방어)
+  if (!user) {
+    const url = request.nextUrl.clone();
+    url.pathname = isUnderPath(pathname, "/expert") ? "/expert/login" : "/login";
+    url.search = "";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // 4) 플랫폼관리자 전역 경로 — 역할 불일치 시 홈으로
+  if (isUnderPath(pathname, "/platform-admin")) {
+    if (user.app_metadata?.role !== "platform_admin") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // 5) URL 슬러그 ↔ 세션 테넌트 불일치 검사
   //    슬러그는 표시용일 뿐이다. 권한 판정은 항상 JWT의 tenant_id로 하며(설계문서 3.6),
   //    여기서는 혼란 방지를 위해 올바른 슬러그 경로로 리다이렉트만 수행한다.
   const segments = pathname.split("/").filter(Boolean);
   const first = segments[0];
 
   if (first && isTenantSlugSegment(first)) {
-    const sessionSlug = user?.app_metadata?.tenant_slug;
+    const sessionSlug = user.app_metadata?.tenant_slug;
     if (
-      user &&
       typeof sessionSlug === "string" &&
       sessionSlug.length > 0 &&
       sessionSlug !== first

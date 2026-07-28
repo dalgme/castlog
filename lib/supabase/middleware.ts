@@ -4,7 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * 미들웨어용 Supabase 세션 갱신.
  * 만료된 액세스 토큰을 리프레시하고 요청·응답 쿠키를 동기화한다.
- * 반환값: { response, user } — 이후 미들웨어 단계(권한·슬러그 검사)에서 사용.
+ * 반환값: { response, user, configured } — 이후 미들웨어 단계(인증·슬러그 검사)에서 사용.
+ * configured=false는 환경변수 미설정(프리뷰 배포) 상태 — 인증 게이트를 건너뛴다.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -14,7 +15,7 @@ export async function updateSession(request: NextRequest) {
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   ) {
-    return { response: supabaseResponse, user: null };
+    return { response: supabaseResponse, user: null, configured: false };
   }
 
   const supabase = createServerClient(
@@ -43,5 +44,5 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  return { response: supabaseResponse, user };
+  return { response: supabaseResponse, user, configured: true };
 }
