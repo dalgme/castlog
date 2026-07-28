@@ -2,6 +2,8 @@ import "server-only";
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import type { Database } from "./database.types";
+
 /**
  * service_role 관리자 클라이언트 — 서버 전용 (CLAUDE.md 11-9: 클라이언트 노출 절대 금지).
  *
@@ -19,7 +21,7 @@ export function createAdminClient() {
     );
   }
 
-  return createSupabaseClient(url, serviceRoleKey, {
+  return createSupabaseClient<Database>(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

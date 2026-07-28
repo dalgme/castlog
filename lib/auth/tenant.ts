@@ -53,7 +53,7 @@ export function roleFromUser(user: User | null): UserRole | null {
  *  1) 요청 사용자가 대상 테넌트에 실제로 연결되어 있는가 (expert_tenant_links)
  *  2) 연결 상태가 활성인가
  *
- * 구현은 단계 6(전문가 소유 신원 모델)에서 진행한다 — 지금은 시그니처만 확정.
+ * 구현: lib/auth/switch-tenant.ts (단계 6)
  */
 export type SwitchActiveTenantResult =
   | { ok: true; tenantId: string }

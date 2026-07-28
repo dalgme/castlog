@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import type { Database } from "./database.types";
+
 /**
  * 서버 컴포넌트·서버 액션·라우트 핸들러용 Supabase 클라이언트.
  * Server Component에서는 쿠키 쓰기가 불가능하므로 setAll 실패를 무시한다
@@ -9,7 +11,7 @@ import { cookies } from "next/headers";
 export function createClient() {
   const cookieStore = cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {

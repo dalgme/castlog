@@ -1,0 +1,175 @@
+import { requireRole } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { formatKrMobile } from "@/lib/auth/phone";
+import { PageHeader } from "@/components/layout/header";
+import { EmptyState } from "@/components/layout/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import { InviteExpertDialog } from "./invite-dialog";
+import { RevokeInvitationButton } from "./revoke-button";
+
+export const metadata = { title: "전문가" };
+
+/** 연결 상태 표기 */
+const LINK_STATUS_LABEL: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
+  active: { label: "연결됨", variant: "default" },
+  pending: { label: "대기중", variant: "secondary" },
+  revoked: { label: "해제됨", variant: "destructive" },
+};
+
+/**
+ * 기업 전문가 목록 — 연결(expert_tenant_links)이 있는 전문가만 보인다 (RLS,
+ * 플랫폼 전체 풀 검색 금지 — 설계문서 3.2). 섭외이력·비용은 테넌트 격리 데이터로
+ * 이후 단계에서 이 화면에 연결된다.
+ *
+ * TODO(단계 13): 목록 엑셀 내보내기 (CLAUDE.md Always 6)
+ */
+export default async function TenantExpertsPage() {
+  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+
+  if (!hasSupabaseEnv()) {
+    return (
+      <div>
+        <PageHeader title="전문가" />
+        <main className="p-5">
+          <EmptyState
+            title="서버 설정 대기 중"
+            description="Supabase 환경변수가 설정되면 전문가 목록이 표시됩니다."
+          />
+        </main>
+      </div>
+    );
+  }
+
+  const supabase = createClient();
+
+  const [{ data: links }, { data: invitations }] = await Promise.all([
+    supabase
+      .from("expert_tenant_links")
+      .select(
+        "id, status, accepted_at, requested_at, experts (id, name, phone, email, specialty, region, career_years)"
+      )
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("expert_invitations")
+      .select("id, invited_name, invited_phone, status, expires_at, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const linkRows = links ?? [];
+  const pendingInvitations = invitations ?? [];
+
+  return (
+    <div>
+      <PageHeader title="전문가" actions={<InviteExpertDialog />} />
+      <main className="space-y-5 p-5">
+        {pendingInvitations.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">
+                대기중 등록 요청 ({pendingInvitations.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>이름</TableHead>
+                      <TableHead>휴대폰</TableHead>
+                      <TableHead>만료일</TableHead>
+                      <TableHead className="w-20" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingInvitations.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell>{inv.invited_name ?? "-"}</TableCell>
+                        <TableCell>
+                          {inv.invited_phone
+                            ? formatKrMobile(inv.invited_phone)
+                            : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(inv.expires_at).toLocaleDateString("ko-KR")}
+                        </TableCell>
+                        <TableCell>
+                          <RevokeInvitationButton invitationId={inv.id} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {linkRows.length === 0 ? (
+          <EmptyState
+            title="아직 연결된 전문가가 없습니다"
+            description="우측 상단 ‘전문가 등록 요청’으로 등록 링크를 만들어 전문가에게 전달하세요."
+          />
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>이름</TableHead>
+                      <TableHead>휴대폰</TableHead>
+                      <TableHead>전문분야</TableHead>
+                      <TableHead>지역</TableHead>
+                      <TableHead>경력</TableHead>
+                      <TableHead>상태</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {linkRows.map((link) => {
+                      const expert = link.experts;
+                      if (!expert) return null;
+                      const status = LINK_STATUS_LABEL[link.status] ?? {
+                        label: "대기중",
+                        variant: "secondary" as const,
+                      };
+                      return (
+                        <TableRow key={link.id}>
+                          <TableCell className="font-medium">
+                            {expert.name}
+                          </TableCell>
+                          <TableCell>{formatKrMobile(expert.phone)}</TableCell>
+                          <TableCell>{expert.specialty ?? "-"}</TableCell>
+                          <TableCell>{expert.region ?? "-"}</TableCell>
+                          <TableCell>
+                            {expert.career_years != null
+                              ? `${expert.career_years}년`
+                              : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </main>
+    </div>
+  );
+}
