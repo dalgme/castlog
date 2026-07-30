@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireRole } from "@/lib/auth/session";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
@@ -35,7 +37,11 @@ const LINK_STATUS_LABEL: Record<string, { label: string; variant: "default" | "s
  *
  * TODO(단계 13): 목록 엑셀 내보내기 (CLAUDE.md Always 6)
  */
-export default async function TenantExpertsPage() {
+export default async function TenantExpertsPage({
+  params,
+}: {
+  params: { tenantSlug: string };
+}) {
   await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
 
@@ -136,6 +142,7 @@ export default async function TenantExpertsPage() {
                       <TableHead>지역</TableHead>
                       <TableHead>경력</TableHead>
                       <TableHead>상태</TableHead>
+                      <TableHead className="w-20" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -161,6 +168,14 @@ export default async function TenantExpertsPage() {
                           </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Link
+                              href={`/${params.tenantSlug}/experts/${expert.id}/documents`}
+                              className="text-sm font-medium text-brand underline-offset-4 hover:underline"
+                            >
+                              서류
+                            </Link>
                           </TableCell>
                         </TableRow>
                       );

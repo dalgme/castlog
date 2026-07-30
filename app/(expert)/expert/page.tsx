@@ -93,9 +93,14 @@ export default async function ExpertPortalPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-sm">내 프로필</CardTitle>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/expert/profile">수정</Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/expert/documents">서류함</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/expert/profile">수정</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
             <p className="text-base font-bold">{expert.name}</p>
@@ -146,8 +151,8 @@ export default async function ExpertPortalPage() {
         </Card>
 
         <EmptyState
-          title="서류함·지급 현황 준비 중"
-          description="서류 업로드(단계 7), 섭외·지급 현황(단계 11~12)이 여기에 연결됩니다."
+          title="섭외·지급 현황 준비 중"
+          description="섭외 요청 응답(단계 11)과 지급 현황(단계 12)이 여기에 연결됩니다."
         />
       </main>
     </div>
