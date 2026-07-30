@@ -13,6 +13,7 @@ import {
   type InviteCreateInput,
 } from "@/lib/experts/schemas";
 import { INVITATION_EXPIRES_DAYS } from "@/lib/experts/invitations";
+import { getTenantModules } from "@/lib/modules/server";
 
 export type CreateInvitationResult =
   | { ok: true; url: string }
@@ -48,6 +49,12 @@ export async function createExpertInvitation(
   const role = roleFromUser(user);
   if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
     return { ok: false, error: "등록 요청 생성 권한이 없습니다." };
+  }
+
+  // 모듈 게이트 — 네비 숨김만으로는 불충분 (CLAUDE.md 1-2)
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
   }
 
   const token = generateLinkToken();

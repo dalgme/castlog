@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth/session";
+import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
@@ -36,6 +37,7 @@ const LINK_STATUS_LABEL: Record<string, { label: string; variant: "default" | "s
  */
 export default async function TenantExpertsPage() {
   await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  await requireModule("experts");
 
   if (!hasSupabaseEnv()) {
     return (

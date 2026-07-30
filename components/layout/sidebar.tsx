@@ -16,20 +16,36 @@ import {
 import { cn } from "@/lib/utils";
 import { LogoMark, Wordmark } from "@/components/brand/logo";
 import { buildTenantPath } from "@/lib/routing/links";
+import type { ModuleFlags, ModuleKey } from "@/lib/modules/modules";
 
-const NAV_ITEMS = [
-  { label: "대시보드", path: "dashboard", icon: LayoutDashboard },
-  { label: "프로젝트", path: "projects", icon: FolderKanban },
-  { label: "전자결재", path: "approvals", icon: FileCheck },
-  { label: "전문가", path: "experts", icon: Users },
-  { label: "비용·지급", path: "payments", icon: Wallet },
-  { label: "보고서", path: "reports", icon: FileText },
-  { label: "설정", path: "settings", icon: Settings },
-] as const;
+/** module: null = 공통 기반(항상 노출), 그 외 = 해당 모듈 활성 시에만 노출 (CLAUDE.md 1-2) */
+const NAV_ITEMS: readonly {
+  label: string;
+  path: string;
+  icon: typeof LayoutDashboard;
+  module: ModuleKey | null;
+}[] = [
+  { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
+  { label: "프로젝트", path: "projects", icon: FolderKanban, module: "operations" },
+  { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
+  { label: "전문가", path: "experts", icon: Users, module: "experts" },
+  { label: "비용·지급", path: "payments", icon: Wallet, module: "experts" },
+  { label: "보고서", path: "reports", icon: FileText, module: "operations" },
+  { label: "설정", path: "settings", icon: Settings, module: null },
+];
 
 /** 테넌트 대시보드 공통 사이드바 (모바일: 조회 수준 대응 — 좁은 화면에서 아이콘만) */
-export function Sidebar({ tenantSlug }: { tenantSlug: string }) {
+export function Sidebar({
+  tenantSlug,
+  modules,
+}: {
+  tenantSlug: string;
+  modules: ModuleFlags;
+}) {
   const pathname = usePathname();
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => item.module === null || modules[item.module]
+  );
 
   return (
     <aside className="flex h-full w-14 shrink-0 flex-col bg-brand-navy text-white/70 md:w-52">
@@ -41,7 +57,7 @@ export function Sidebar({ tenantSlug }: { tenantSlug: string }) {
         <Wordmark invert className="hidden text-sm md:inline" />
       </Link>
       <nav className="flex flex-col gap-1 px-2">
-        {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
+        {visibleItems.map(({ label, path, icon: Icon }) => {
           const href = buildTenantPath(tenantSlug, path);
           const active = pathname.startsWith(href);
           return (
