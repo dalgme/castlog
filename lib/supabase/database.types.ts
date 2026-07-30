@@ -61,6 +61,346 @@ export type Database = {
           },
         ]
       }
+      approval_delegations: {
+        Row: {
+          created_at: string
+          delegate_user_id: string
+          delegator_user_id: string
+          ends_on: string
+          id: string
+          is_active: boolean
+          reason: string | null
+          starts_on: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delegate_user_id: string
+          delegator_user_id: string
+          ends_on: string
+          id?: string
+          is_active?: boolean
+          reason?: string | null
+          starts_on: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delegate_user_id?: string
+          delegator_user_id?: string
+          ends_on?: string
+          id?: string
+          is_active?: boolean
+          reason?: string | null
+          starts_on?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_delegations_delegate_user_id_fkey"
+            columns: ["delegate_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_delegations_delegator_user_id_fkey"
+            columns: ["delegator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_delegations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_rule_steps: {
+        Row: {
+          approver_user_id: string
+          created_at: string
+          id: string
+          rule_id: string
+          step_kind: string
+          step_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approver_user_id: string
+          created_at?: string
+          id?: string
+          rule_id: string
+          step_kind?: string
+          step_order: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approver_user_id?: string
+          created_at?: string
+          id?: string
+          rule_id?: string
+          step_kind?: string
+          step_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rule_steps_approver_user_id_fkey"
+            columns: ["approver_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_rule_steps_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_rule_steps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_rules: {
+        Row: {
+          approval_type: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          max_amount: number | null
+          min_amount: number | null
+          name: string
+          priority: number
+          superseded_by_id: string | null
+          tenant_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          approval_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number | null
+          name: string
+          priority?: number
+          superseded_by_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          approval_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number | null
+          name?: string
+          priority?: number
+          superseded_by_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rules_superseded_by_id_fkey"
+            columns: ["superseded_by_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_steps: {
+        Row: {
+          acted_at: string | null
+          acted_by_user_id: string | null
+          approval_id: string
+          approver_user_id: string
+          comment: string | null
+          created_at: string
+          id: string
+          status: string
+          step_kind: string
+          step_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          acted_at?: string | null
+          acted_by_user_id?: string | null
+          approval_id: string
+          approver_user_id: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          step_kind?: string
+          step_order: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          acted_at?: string | null
+          acted_by_user_id?: string | null
+          approval_id?: string
+          approver_user_id?: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          step_kind?: string
+          step_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_steps_acted_by_user_id_fkey"
+            columns: ["acted_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_steps_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_steps_approver_user_id_fkey"
+            columns: ["approver_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_steps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approvals: {
+        Row: {
+          amount: number | null
+          applied_rule_id: string | null
+          approval_type: string
+          body: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          project_id: string | null
+          requester_user_id: string
+          resubmitted_from_id: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          applied_rule_id?: string | null
+          approval_type?: string
+          body?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          project_id?: string | null
+          requester_user_id: string
+          resubmitted_from_id?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          applied_rule_id?: string | null
+          approval_type?: string
+          body?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          project_id?: string | null
+          requester_user_id?: string
+          resubmitted_from_id?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approvals_applied_rule_id_fkey"
+            columns: ["applied_rule_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approvals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approvals_requester_user_id_fkey"
+            columns: ["requester_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approvals_resubmitted_from_id_fkey"
+            columns: ["resubmitted_from_id"]
+            isOneToOne: false
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approvals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
