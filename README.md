@@ -24,9 +24,16 @@ npm run dev
 
 DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 리전)에 순서대로 적용한다.
 
-전문가 휴대폰 OTP 로그인은 Supabase 대시보드에서 Phone 인증 활성화와
-SMS Hook(알리고/NHN Cloud 연동, 단계 14) 설정이 필요하다. 신규 전문가 가입은
-등록 링크(`/j`)로만 이뤄지며 로그인 OTP는 기존 계정에만 발송된다(`shouldCreateUser=false`).
+### SMS 구조 (CLAUDE.md 5-2 — 플랫폼 일괄 공급 안 함)
+
+- **업무·광고 SMS**: 테넌트별 BYO 공급자 — 각 테넌트가 공급자(솔라피/알리고/NHN 등)와
+  자사 API 키·발신번호를 등록해 발송 (어댑터 + `tenant_sms_configs`, 단계 14).
+- **인증 OTP**(전문가 로그인·등록): 전역 발송 — Supabase Send SMS Hook
+  (`supabase/functions/send-sms-hook`) → 플랫폼 운영사(넥스트랩) 솔라피 계정.
+  현재는 개발용 스텁이 배포되어 있으며 단계 14에서 실연동으로 교체한다.
+  개발·테스트는 대시보드 Test Phone Numbers로 진행한다(Hook 미경유).
+- 신규 전문가 가입은 등록 링크(`/j`)로만 이뤄지며 로그인 OTP는 기존 계정에만
+  발송된다(`shouldCreateUser=false`).
 
 ## 라우팅 구조
 
