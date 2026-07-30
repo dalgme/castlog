@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
-import { requireModule } from "@/lib/modules/server";
+import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
@@ -17,6 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 
 import { InviteExpertDialog } from "./invite-dialog";
 import { RevokeInvitationButton } from "./revoke-button";
@@ -60,6 +62,7 @@ export default async function TenantExpertsPage({
   }
 
   const supabase = createClient();
+  const modules = await getTenantModules();
 
   const [{ data: links }, { data: invitations }] = await Promise.all([
     supabase
@@ -78,9 +81,33 @@ export default async function TenantExpertsPage({
   const linkRows = links ?? [];
   const pendingInvitations = invitations ?? [];
 
+  const activeExpertOptions = linkRows
+    .filter((l) => l.status === "active" && l.experts)
+    .map((l) => ({ id: l.experts!.id, name: l.experts!.name }));
+
+  // 프로젝트 연결 옵션은 operations 모듈 활성 시에만 (CLAUDE.md 1-2-6)
+  const { data: projects } = modules.operations
+    ? await supabase
+        .from("projects")
+        .select("id, name")
+        .in("status", ["planned", "active"])
+        .order("created_at", { ascending: false })
+    : { data: null };
+
   return (
     <div>
-      <PageHeader title="전문가" actions={<InviteExpertDialog />} />
+      <PageHeader
+        title="전문가"
+        actions={
+          <div className="flex items-center gap-2">
+            <EngagementDialog
+              experts={activeExpertOptions}
+              projects={projects}
+            />
+            <InviteExpertDialog />
+          </div>
+        }
+      />
       <main className="space-y-5 p-5">
         {pendingInvitations.length > 0 && (
           <Card>

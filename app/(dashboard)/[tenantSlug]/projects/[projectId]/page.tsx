@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { requireModule } from "@/lib/modules/server";
+import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -10,11 +10,15 @@ import {
   STEP_TYPE_LABELS,
   type StepType,
 } from "@/lib/operations/steps";
+import { formatKrw } from "@/lib/approvals/constants";
+import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EngagementDialog } from "@/components/integrations/engagement-dialog";
+import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
 
 import { StepStatusSelect } from "./step-status-select";
 
@@ -67,15 +71,40 @@ export default async function ProjectDetailPage({
 
   if (!project) notFound();
 
-  const { data: steps } = await supabase
-    .from("project_lifecycle_steps")
-    .select(
-      "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
-    )
-    .eq("project_id", project.id)
-    .order("step_no", { ascending: true });
+  const modules = await getTenantModules();
+
+  const [{ data: steps }, engagementsResult, expertsResult] = await Promise.all([
+    supabase
+      .from("project_lifecycle_steps")
+      .select(
+        "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
+      )
+      .eq("project_id", project.id)
+      .order("step_no", { ascending: true }),
+    // 섭외 연동은 experts 모듈 활성 시에만 (CLAUDE.md 1-2-6)
+    modules.experts
+      ? supabase
+          .from("expert_engagements")
+          .select(
+            "id, role_description, fee_amount, status, created_at, experts (name)"
+          )
+          .eq("project_id", project.id)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: null }),
+    modules.experts
+      ? supabase
+          .from("expert_tenant_links")
+          .select("expert_id, status, experts (id, name)")
+          .eq("status", "active")
+      : Promise.resolve({ data: null }),
+  ]);
 
   const stepRows = steps ?? [];
+  const engagements = engagementsResult.data ?? [];
+  const connectedExperts = (expertsResult.data ?? [])
+    .map((l) => l.experts)
+    .filter((e): e is NonNullable<typeof e> => e !== null)
+    .map((e) => ({ id: e.id, name: e.name }));
   const done = stepRows.filter(
     (s) => s.status === "completed" || s.status === "skipped"
   ).length;
@@ -123,6 +152,66 @@ export default async function ProjectDetailPage({
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               {project.description}
+            </CardContent>
+          </Card>
+        )}
+
+        {modules.experts && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">
+                전문가 섭외 ({engagements.length})
+              </CardTitle>
+              <EngagementDialog
+                experts={connectedExperts}
+                projects={null}
+                defaultProjectId={project.id}
+              />
+            </CardHeader>
+            <CardContent>
+              {engagements.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  이 프로젝트에 섭외된 전문가가 없습니다. ‘섭외 요청’으로 동의
+                  링크를 만들어 전달하세요.
+                </p>
+              ) : (
+                <ul className="divide-y">
+                  {engagements.map((engagement) => (
+                    <li
+                      key={engagement.id}
+                      className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
+                    >
+                      <span className="font-medium">
+                        {engagement.experts?.name ?? "-"}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {engagement.role_description}
+                      </span>
+                      {engagement.fee_amount !== null && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatKrw(engagement.fee_amount)}
+                        </span>
+                      )}
+                      <Badge
+                        className="ml-auto"
+                        variant={
+                          engagement.status === "accepted"
+                            ? "default"
+                            : engagement.status === "declined"
+                              ? "destructive"
+                              : "secondary"
+                        }
+                      >
+                        {ENGAGEMENT_STATUS_LABELS[engagement.status] ??
+                          engagement.status}
+                      </Badge>
+                      {engagement.status === "requested" && (
+                        <EngagementCancelButton engagementId={engagement.id} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
         )}

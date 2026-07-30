@@ -620,6 +620,95 @@ export type Database = {
           },
         ]
       }
+      expert_engagements: {
+        Row: {
+          created_at: string
+          ends_on: string | null
+          expert_id: string
+          fee_amount: number | null
+          id: string
+          message: string | null
+          project_id: string | null
+          requested_by: string | null
+          responded_at: string | null
+          response_note: string | null
+          role_description: string
+          starts_on: string | null
+          status: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_on?: string | null
+          expert_id: string
+          fee_amount?: number | null
+          id?: string
+          message?: string | null
+          project_id?: string | null
+          requested_by?: string | null
+          responded_at?: string | null
+          response_note?: string | null
+          role_description: string
+          starts_on?: string | null
+          status?: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_on?: string | null
+          expert_id?: string
+          fee_amount?: number | null
+          id?: string
+          message?: string | null
+          project_id?: string | null
+          requested_by?: string | null
+          responded_at?: string | null
+          response_note?: string | null
+          role_description?: string
+          starts_on?: string | null
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_engagements_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_engagements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_engagements_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_engagements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_invitations: {
         Row: {
           completed_at: string | null

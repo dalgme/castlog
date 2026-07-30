@@ -95,6 +95,9 @@ export default async function ExpertPortalPage() {
             <CardTitle className="text-sm">내 프로필</CardTitle>
             <div className="flex gap-2">
               <Button asChild variant="outline" size="sm">
+                <Link href="/expert/engagements">섭외 요청</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
                 <Link href="/expert/documents">서류함</Link>
               </Button>
               <Button asChild variant="outline" size="sm">
