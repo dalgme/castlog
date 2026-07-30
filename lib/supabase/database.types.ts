@@ -503,6 +503,129 @@ export type Database = {
           },
         ]
       }
+      project_lifecycle_steps: {
+        Row: {
+          assignee_user_id: string | null
+          completed_at: string | null
+          created_at: string
+          due_on: string | null
+          id: string
+          project_id: string
+          status: string
+          step_no: number
+          step_type: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_user_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          due_on?: string | null
+          id?: string
+          project_id: string
+          status?: string
+          step_no: number
+          step_type: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_user_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          due_on?: string | null
+          id?: string
+          project_id?: string
+          status?: string
+          step_no?: number
+          step_type?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_lifecycle_steps_assignee_user_id_fkey"
+            columns: ["assignee_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_lifecycle_steps_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_lifecycle_steps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          business_year: number
+          client_name: string | null
+          code: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          ends_on: string | null
+          id: string
+          name: string
+          starts_on: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_year: number
+          client_name?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          ends_on?: string | null
+          id?: string
+          name: string
+          starts_on?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_year?: number
+          client_name?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          ends_on?: string | null
+          id?: string
+          name?: string
+          starts_on?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       retention_policies: {
         Row: {
           created_at: string
@@ -578,6 +701,13 @@ export type Database = {
             columns: ["expert_id"]
             isOneToOne: false
             referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_project_grants_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
