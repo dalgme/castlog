@@ -35,6 +35,22 @@ DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 �
 - 신규 전문가 가입은 등록 링크(`/j`)로만 이뤄지며 로그인 OTP는 기존 계정에만
   발송된다(`shouldCreateUser=false`).
 
+### 최초 플랫폼관리자 부트스트랩 (1회)
+
+직원·관리자 계정은 셀프 가입이 없다. 첫 플랫폼관리자만 수동으로 만든다:
+
+1. Supabase 대시보드 → Authentication → Users → **Add user** (이메일·비밀번호)
+2. SQL Editor에서 역할 스탬핑:
+   ```sql
+   update auth.users
+   set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb)
+     || '{"role":"platform_admin"}'::jsonb
+   where email = '관리자이메일';
+   ```
+3. `/login` 로그인 → `/platform-admin`에서 테넌트 생성 시작
+
+이후 테넌트·기업총괄관리자·직원 계정은 전부 화면에서 생성한다.
+
 ## 기능 모듈 구조 (테넌트별 선택 사용)
 
 플랫폼 기능은 "공통 기반 + 선택 모듈 3축"으로 나뉘며, 각 테넌트는 모듈을
@@ -74,7 +90,8 @@ DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 �
 - [x] 단계 6 — 전문가 소유 신원 모델 (등록 링크 `/j/{token}` · 기업 전문가 목록 · 전문가 포털 프로필/연결 · 활성 테넌트 전환)
 - [x] 단계 6.5 — 기능 모듈 구조 (테넌트별 experts/approvals/operations 선택 사용, `lib/modules`)
 - [x] 단계 7 — 서류함 (비공개 버킷·만료 서명 URL·기업별 열람 허용·전 건 열람 로그. 자동파기 스케줄러는 단계 16)
-- [ ] 단계 8~19 — 실행계획서 참조
+- [x] 단계 8 — 테넌트 생성(모듈 조합 선택)·직원 계정·직급 관리 (임시 비밀번호 1회 표시, 초대 메일은 단계 14)
+- [ ] 단계 9~19 — 실행계획서 참조
 
 ## 브랜드 디자인 토큰
 
