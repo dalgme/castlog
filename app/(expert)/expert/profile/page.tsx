@@ -8,9 +8,10 @@ import { formatKrMobile } from "@/lib/auth/phone";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ExpertProfileForm } from "./profile-form";
+import { TaxTypeForm } from "./tax-type-form";
 
 export const metadata = { title: "프로필 수정" };
 
@@ -41,13 +42,19 @@ export default async function ExpertProfilePage() {
   const supabase = createClient();
   const { data: expert } = await supabase
     .from("experts")
-    .select("name, phone, email, specialty, region, career_years, bio")
+    .select("id, name, phone, email, specialty, region, career_years, bio")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
   if (!expert) {
     redirect("/expert");
   }
+
+  const { data: taxProfile } = await supabase
+    .from("expert_tax_profiles")
+    .select("payment_type, business_registration_number")
+    .eq("expert_id", expert.id)
+    .maybeSingle();
 
   return (
     <div className="min-h-screen bg-secondary/50">
@@ -69,6 +76,18 @@ export default async function ExpertProfilePage() {
                   expert.career_years != null ? String(expert.career_years) : "",
                 bio: expert.bio ?? "",
               }}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">소득유형 (지급·세무)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TaxTypeForm
+              currentType={taxProfile?.payment_type ?? null}
+              currentBizNumber={taxProfile?.business_registration_number ?? null}
             />
           </CardContent>
         </Card>

@@ -14,9 +14,14 @@ import {
   type ApprovalActInput,
   type ApprovalSubmitInput,
   type DelegationInput,
-  type LineStepInput,
   type RuleSaveInput,
 } from "@/lib/approvals/schemas";
+import {
+  createApprovalWithSteps,
+  matchApprovalRule,
+  type EngineLineStep,
+} from "@/lib/approvals/engine";
+import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 
 type Session = {
   userId: string;
@@ -48,7 +53,7 @@ async function requireApprovalsSession(): Promise<
 
 /** 결재라인 입력 정합성 검사 + 결재자 테넌트 소속 확인 */
 async function validateLineSteps(
-  steps: LineStepInput[],
+  steps: { approverUserId: string }[],
   tenantId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (steps.length === 0) {
@@ -104,44 +109,20 @@ export async function submitApproval(
     projectId = data.projectId;
   }
 
-  const supabase = createClient();
+  // 1) 전결규정 매칭 (공용 엔진) — 규정 우선, 없으면 수동 라인
+  const matched = await matchApprovalRule(data.approvalType, amount);
 
-  // 1) 전결규정 매칭 — priority 높은 순, 유형·금액 구간 일치
-  const { data: rules } = await supabase
-    .from("approval_rules")
-    .select("id, approval_type, min_amount, max_amount, priority")
-    .eq("is_active", true)
-    .order("priority", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  const matchedRule = (rules ?? []).find((rule) => {
-    if (rule.approval_type && rule.approval_type !== data.approvalType) {
-      return false;
-    }
-    if (rule.min_amount !== null && (amount === null || amount < rule.min_amount)) {
-      return false;
-    }
-    if (rule.max_amount !== null && (amount === null || amount > rule.max_amount)) {
-      return false;
-    }
-    return true;
-  });
-
-  // 2) 결재라인 확정 — 규정 우선, 없으면 수동 라인
-  let line: LineStepInput[] = [];
-  if (matchedRule) {
-    const { data: ruleSteps } = await supabase
-      .from("approval_rule_steps")
-      .select("step_order, step_kind, approver_user_id")
-      .eq("rule_id", matchedRule.id)
-      .order("step_order", { ascending: true });
-    line = (ruleSteps ?? []).map((s) => ({
-      stepOrder: String(s.step_order),
-      stepKind: s.step_kind === "agreement" ? "agreement" : "approval",
-      approverUserId: s.approver_user_id,
-    }));
+  let appliedRuleId: string | null = null;
+  let engineSteps: EngineLineStep[];
+  if (matched) {
+    appliedRuleId = matched.ruleId;
+    engineSteps = matched.steps;
   } else if (data.manualSteps && data.manualSteps.length > 0) {
-    line = data.manualSteps;
+    engineSteps = data.manualSteps.map((s) => ({
+      stepOrder: parseInt(s.stepOrder, 10),
+      stepKind: s.stepKind,
+      approverUserId: s.approverUserId,
+    }));
   } else {
     return {
       ok: false,
@@ -151,63 +132,40 @@ export async function submitApproval(
   }
 
   // 본인이 결재자에 포함되면 제외하지 않고 그대로 둔다(자기결재 방지는 규정 설계 몫)
-  const lineCheck = await validateLineSteps(line, session.tenantId);
+  const lineCheck = await validateLineSteps(engineSteps, session.tenantId);
   if (!lineCheck.ok) return lineCheck;
 
-  // 3) 결재건 + 라인 생성
-  const { data: approval, error: approvalError } = await supabase
-    .from("approvals")
-    .insert({
-      tenant_id: session.tenantId,
-      title: data.title,
-      body: data.body || null,
-      approval_type: data.approvalType,
-      amount,
-      project_id: projectId,
-      requester_user_id: session.userId,
-      applied_rule_id: matchedRule?.id ?? null,
-    })
-    .select("id")
-    .single();
+  // 2) 결재건 + 라인 생성 (공용 엔진)
+  const created = await createApprovalWithSteps({
+    tenantId: session.tenantId,
+    requesterUserId: session.userId,
+    title: data.title,
+    body: data.body || null,
+    approvalType: data.approvalType,
+    amount,
+    projectId,
+    appliedRuleId,
+    steps: engineSteps,
+  });
+  if (!created.ok) return created;
 
-  if (approvalError || !approval) {
-    return { ok: false, error: "상신에 실패했습니다. 다시 시도해 주세요." };
-  }
-
-  const { error: stepsError } = await supabase.from("approval_steps").insert(
-    line.map((s) => ({
-      tenant_id: session.tenantId,
-      approval_id: approval.id,
-      step_order: parseInt(s.stepOrder, 10),
-      step_kind: s.stepKind,
-      approver_user_id: s.approverUserId,
-    }))
-  );
-
-  if (stepsError) {
-    await supabase
-      .from("approvals")
-      .update({ status: "canceled", completed_at: new Date().toISOString() })
-      .eq("id", approval.id);
-    return { ok: false, error: "결재라인 생성에 실패했습니다. 다시 시도해 주세요." };
-  }
-
+  const supabase = createClient();
   await supabase.from("audit_logs").insert({
     tenant_id: session.tenantId,
     actor_auth_user_id: session.userId,
     actor_role: session.role,
     action: "approval.submit",
     resource_type: "approval",
-    resource_id: approval.id,
+    resource_id: created.approvalId,
     after_data: {
       approval_type: data.approvalType,
       amount,
-      applied_rule_id: matchedRule?.id ?? null,
+      applied_rule_id: appliedRuleId,
     },
   });
 
   revalidatePath("/[tenantSlug]/approvals", "page");
-  return { ok: true, approvalId: approval.id };
+  return { ok: true, approvalId: created.approvalId };
 }
 
 export type ActResult = { ok: true } | { ok: false; error: string };
@@ -303,12 +261,13 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     return { ok: false, error: "처리에 실패했습니다. 다시 시도해 주세요." };
   }
 
-  // 결재건 상태 전이
+  // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리)
   if (decision === "reject") {
     await supabase
       .from("approvals")
       .update({ status: "rejected", completed_at: nowIso })
       .eq("id", approvalId);
+    await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -319,6 +278,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
         .from("approvals")
         .update({ status: "approved", completed_at: nowIso })
         .eq("id", approvalId);
+      await onPaymentApprovalResolved(approvalId, "approved", null);
     }
   }
 

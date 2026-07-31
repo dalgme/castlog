@@ -769,6 +769,160 @@ export type Database = {
           },
         ]
       }
+      expert_payment_batches: {
+        Row: {
+          approval_id: string | null
+          confirmed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          last_rejection_note: string | null
+          paid_at: string | null
+          project_id: string | null
+          status: string
+          tenant_id: string
+          title: string
+          total_gross: number
+          total_net: number
+          total_withholding: number
+          updated_at: string
+        }
+        Insert: {
+          approval_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_rejection_note?: string | null
+          paid_at?: string | null
+          project_id?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          total_gross?: number
+          total_net?: number
+          total_withholding?: number
+          updated_at?: string
+        }
+        Update: {
+          approval_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_rejection_note?: string | null
+          paid_at?: string | null
+          project_id?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          total_gross?: number
+          total_net?: number
+          total_withholding?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_payment_batches_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_batches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_batches_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_batches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expert_payment_items: {
+        Row: {
+          batch_id: string
+          created_at: string
+          engagement_id: string
+          expert_id: string
+          gross_amount: number
+          id: string
+          net_amount: number
+          payment_type: string
+          tenant_id: string
+          updated_at: string
+          withholding_amount: number
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          engagement_id: string
+          expert_id: string
+          gross_amount: number
+          id?: string
+          net_amount: number
+          payment_type: string
+          tenant_id: string
+          updated_at?: string
+          withholding_amount: number
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          engagement_id?: string
+          expert_id?: string
+          gross_amount?: number
+          id?: string
+          net_amount?: number
+          payment_type?: string
+          tenant_id?: string
+          updated_at?: string
+          withholding_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_payment_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "expert_payment_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_items_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_items_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_payment_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_tax_profiles: {
         Row: {
           business_registration_number: string | null
