@@ -8,6 +8,7 @@ import { formatKrMobile } from "@/lib/auth/phone";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -37,7 +38,6 @@ const LINK_STATUS_LABEL: Record<string, { label: string; variant: "default" | "s
  * 플랫폼 전체 풀 검색 금지 — 설계문서 3.2). 섭외이력·비용은 테넌트 격리 데이터로
  * 이후 단계에서 이 화면에 연결된다.
  *
- * TODO(단계 13): 목록 엑셀 내보내기 (CLAUDE.md Always 6)
  */
 export default async function TenantExpertsPage({
   params,
@@ -100,6 +100,9 @@ export default async function TenantExpertsPage({
         title="전문가"
         actions={
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/experts/export`}>엑셀</a>
+            </Button>
             <EngagementDialog
               experts={activeExpertOptions}
               projects={projects}

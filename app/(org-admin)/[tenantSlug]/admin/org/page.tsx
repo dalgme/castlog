@@ -4,6 +4,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -29,10 +30,12 @@ const ROLE_LABELS: Record<string, string> = {
 /**
  * 기업총괄관리자 — 직원 계정·직급 관리 (실행계획서 단계 8, 공통 기반).
  * 결재라인·전결규정은 approvals 모듈 화면(단계 10)에서 다룬다.
- *
- * TODO(단계 13): 직원 목록 엑셀 내보내기 (CLAUDE.md Always 6)
  */
-export default async function OrgAdminPage() {
+export default async function OrgAdminPage({
+  params,
+}: {
+  params: { tenantSlug: string };
+}) {
   await requireRole(["org_admin", "platform_admin"]);
 
   if (!hasSupabaseEnv()) {
@@ -72,7 +75,14 @@ export default async function OrgAdminPage() {
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
         title="기업 관리"
-        actions={<CreateStaffDialog positions={positionRows} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/admin/org/export`}>엑셀</a>
+            </Button>
+            <CreateStaffDialog positions={positionRows} />
+          </div>
+        }
       />
       <main className="space-y-5 p-5">
         <Card>

@@ -9,6 +9,7 @@ import { calculateWithholding, isPaymentType } from "@/lib/payments/tax";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { BatchCreator, type PayableRow } from "./batch-creator";
@@ -34,7 +35,6 @@ const BATCH_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructiv
 
 /**
  * 비용·지급 (experts ↔ approvals 연동 — 기획 확정: 프로젝트별 일괄 리스트·일괄 품의)
- * TODO(단계 13): 엑셀 내보내기 (CLAUDE.md Always 6)
  */
 export default async function PaymentsPage({
   params,
@@ -144,7 +144,14 @@ export default async function PaymentsPage({
 
   return (
     <div>
-      <PageHeader title="비용·지급" />
+      <PageHeader
+        title="비용·지급"
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <a href={`/${params.tenantSlug}/payments/export`}>엑셀</a>
+          </Button>
+        }
+      />
       <main className="space-y-5 p-5">
         {groups.size === 0 ? (
           <EmptyState

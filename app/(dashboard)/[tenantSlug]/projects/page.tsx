@@ -8,6 +8,7 @@ import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -32,7 +33,6 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 
 /**
  * 프로젝트 목록 (operations 모듈) — 사업연도 축 정렬.
- * TODO(단계 13): 엑셀 내보내기 (CLAUDE.md Always 6)
  */
 export default async function ProjectsPage({
   params,
@@ -71,7 +71,14 @@ export default async function ProjectsPage({
     <div>
       <PageHeader
         title="프로젝트"
-        actions={<CreateProjectDialog tenantSlug={params.tenantSlug} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/projects/export`}>엑셀</a>
+            </Button>
+            <CreateProjectDialog tenantSlug={params.tenantSlug} />
+          </div>
+        }
       />
       <main className="p-5">
         {rows.length === 0 ? (

@@ -65,7 +65,6 @@ function currentPendingApprovers(approval: ApprovalRow): Set<string> {
 
 /**
  * 전자결재 목록 (approvals 모듈) — 결재 승인·반려는 모바일 완전 대응 대상.
- * TODO(단계 13): 엑셀 내보내기 (CLAUDE.md Always 6)
  */
 export default async function ApprovalsPage({
   params,
@@ -192,6 +191,9 @@ export default async function ApprovalsPage({
         title="전자결재"
         actions={
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/approvals/export`}>엑셀</a>
+            </Button>
             <Button asChild variant="ghost" size="sm">
               <Link href={`/${params.tenantSlug}/approvals/delegations`}>대결 설정</Link>
             </Button>
