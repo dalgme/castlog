@@ -30,7 +30,8 @@ DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 �
   자사 API 키·발신번호를 등록해 발송 (어댑터 + `tenant_sms_configs`, 단계 14).
 - **인증 OTP**(전문가 로그인·등록): 전역 발송 — Supabase Send SMS Hook
   (`supabase/functions/send-sms-hook`) → 플랫폼 운영사(넥스트랩) 솔라피 계정.
-  현재는 개발용 스텁이 배포되어 있으며 단계 14에서 실연동으로 교체한다.
+  솔라피 실연동 배포 완료 — Function Secrets(SOLAPI_API_KEY/SECRET/SENDER,
+  SEND_SMS_HOOK_SECRET) 설정 시 실발송, 미설정 시 명시적 오류.
   개발·테스트는 대시보드 Test Phone Numbers로 진행한다(Hook 미경유).
 - 신규 전문가 가입은 등록 링크(`/j`)로만 이뤄지며 로그인 OTP는 기존 계정에만
   발송된다(`shouldCreateUser=false`).
@@ -96,7 +97,8 @@ DB 스키마는 `supabase/migrations/`의 SQL을 Supabase 프로젝트(서울 �
 - [x] 단계 11 — 전문가 섭외 (experts↔operations 연동 — 전용 연결 테이블·공개 /e 동의 링크·포털 섭외함·수락=계약 성립)
 - [x] 단계 12 — 일괄 지급·지급 품의 (experts↔approvals 연동 — 소득유형별 원천징수 참고 계산·프로젝트별 일괄 품의·승인→확정 동기화)
 - [x] 단계 13 — 엑셀 내보내기(전문가·직원·프로젝트·결재·지급 5종, SheetJS) + 대시보드 통계(사업연도 축·모듈별 카드)
-- [ ] 단계 14~19 — 실행계획서 참조
+- [x] 단계 14 — 발송 인프라 (BYO 공급자 어댑터·API 키 암호화·유형 분리 서버 강제·수신거부 `/u`·OTP Hook 솔라피 실연동·Resend. 예약 발송은 단계 16 스케줄러와 함께)
+- [ ] 단계 15~19 — 실행계획서 참조
 
 ## 브랜드 디자인 토큰
 

@@ -61,6 +61,51 @@ export type Database = {
           },
         ]
       }
+      ad_unsubscribes: {
+        Row: {
+          channel: string
+          created_at: string
+          email: string | null
+          expert_id: string | null
+          id: string
+          phone: string | null
+          tenant_id: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          email?: string | null
+          expert_id?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          email?: string | null
+          expert_id?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_unsubscribes_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_unsubscribes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approval_delegations: {
         Row: {
           created_at: string
@@ -481,6 +526,66 @@ export type Database = {
           {
             foreignKeyName: "consents_target_tenant_id_fkey"
             columns: ["target_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_logs: {
+        Row: {
+          batch_id: string | null
+          body: string
+          created_at: string
+          error_message: string | null
+          id: string
+          message_type: string
+          recipient_email: string
+          recipient_expert_id: string | null
+          sent_by: string | null
+          status: string
+          subject: string
+          tenant_id: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          body: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type: string
+          recipient_email: string
+          recipient_expert_id?: string | null
+          sent_by?: string | null
+          status: string
+          subject: string
+          tenant_id?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          body?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type?: string
+          recipient_email?: string
+          recipient_expert_id?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_recipient_expert_id_fkey"
+            columns: ["recipient_expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
@@ -1244,6 +1349,66 @@ export type Database = {
           },
         ]
       }
+      sms_logs: {
+        Row: {
+          batch_id: string | null
+          body: string
+          created_at: string
+          error_message: string | null
+          id: string
+          message_type: string
+          provider: string | null
+          recipient_expert_id: string | null
+          recipient_phone: string
+          sent_by: string | null
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          body: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type: string
+          provider?: string | null
+          recipient_expert_id?: string | null
+          recipient_phone: string
+          sent_by?: string | null
+          status: string
+          tenant_id?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          body?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type?: string
+          provider?: string | null
+          recipient_expert_id?: string | null
+          recipient_phone?: string
+          sent_by?: string | null
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_logs_recipient_expert_id_fkey"
+            columns: ["recipient_expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tax_project_grants: {
         Row: {
           created_at: string
@@ -1297,6 +1462,50 @@ export type Database = {
             foreignKeyName: "tax_project_grants_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_sms_configs: {
+        Row: {
+          api_key_encrypted: string
+          api_secret_encrypted: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          provider: string
+          sender_number: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_encrypted: string
+          api_secret_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          provider: string
+          sender_number: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_encrypted?: string
+          api_secret_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          provider?: string
+          sender_number?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sms_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -1396,6 +1605,54 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      unsubscribe_tokens: {
+        Row: {
+          channel: string
+          created_at: string
+          email: string | null
+          expert_id: string | null
+          id: string
+          phone: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          email?: string | null
+          expert_id?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          email?: string | null
+          expert_id?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unsubscribe_tokens_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unsubscribe_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
