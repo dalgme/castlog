@@ -78,13 +78,28 @@ export default async function ExpertPortalPage() {
     );
   }
 
-  const { data: links } = await supabase
-    .from("expert_tenant_links")
-    .select("id, status, accepted_at, tenants (name)")
-    .eq("expert_id", expert.id)
-    .order("created_at", { ascending: false });
+  const [{ data: links }, { data: paymentItems }] = await Promise.all([
+    supabase
+      .from("expert_tenant_links")
+      .select("id, status, accepted_at, tenants (name)")
+      .eq("expert_id", expert.id)
+      .order("created_at", { ascending: false }),
+    // 확정·완료된 지급만 보인다 (배치 RLS — 결재 중 내부 문서는 비노출)
+    supabase
+      .from("expert_payment_items")
+      .select(
+        `id, gross_amount, withholding_amount, net_amount, created_at,
+         expert_payment_batches!inner (status, paid_at, confirmed_at, tenants (name))`
+      )
+      .eq("expert_id", expert.id)
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
 
   const linkRows = links ?? [];
+  const paymentRows = (paymentItems ?? []).filter(
+    (item) => item.expert_payment_batches !== null
+  );
 
   return (
     <div className="min-h-screen bg-secondary/50">
@@ -153,10 +168,63 @@ export default async function ExpertPortalPage() {
           </CardContent>
         </Card>
 
-        <EmptyState
-          title="섭외·지급 현황 준비 중"
-          description="섭외 요청 응답(단계 11)과 지급 현황(단계 12)이 여기에 연결됩니다."
-        />
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">지급 내역 ({paymentRows.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {paymentRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                확정된 지급 내역이 없습니다. 지급이 확정되면 여기에 표시됩니다.
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {paymentRows.map((item) => {
+                  const batch = item.expert_payment_batches;
+                  const paid = batch?.status === "paid";
+                  return (
+                    <li key={item.id} className="py-2.5 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">
+                          {batch?.tenants?.name ?? "(기업)"}
+                        </span>
+                        <Badge
+                          className="ml-auto"
+                          variant={paid ? "secondary" : "default"}
+                        >
+                          {paid ? "지급 완료" : "지급 확정"}
+                        </Badge>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>
+                          실지급{" "}
+                          <span className="font-semibold text-foreground">
+                            {item.net_amount.toLocaleString("ko-KR")}원
+                          </span>
+                        </span>
+                        <span>계약 {item.gross_amount.toLocaleString("ko-KR")}원</span>
+                        <span>
+                          원천징수 {item.withholding_amount.toLocaleString("ko-KR")}원
+                        </span>
+                        {(batch?.paid_at ?? batch?.confirmed_at) && (
+                          <span>
+                            {new Date(
+                              (batch?.paid_at ?? batch?.confirmed_at)!
+                            ).toLocaleDateString("ko-KR")}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              원천징수액은 참고 계산이며 실제 세액은 지급 기업의 신고 기준을
+              따릅니다.
+            </p>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

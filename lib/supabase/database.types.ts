@@ -532,6 +532,66 @@ export type Database = {
           },
         ]
       }
+      document_requests: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          expert_id: string
+          id: string
+          message: string | null
+          requested_by: string | null
+          requested_types: string[]
+          status: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          expert_id: string
+          id?: string
+          message?: string | null
+          requested_by?: string | null
+          requested_types: string[]
+          status?: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          expert_id?: string
+          id?: string
+          message?: string | null
+          requested_by?: string | null
+          requested_types?: string[]
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_requests_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_logs: {
         Row: {
           batch_id: string | null

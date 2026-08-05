@@ -67,30 +67,81 @@ export default async function ExpertDocumentsPage() {
     );
   }
 
-  const [{ data: documents }, { data: links }] = await Promise.all([
-    supabase
-      .from("expert_documents")
-      .select("id, document_type, file_name, status, created_at")
-      .eq("expert_id", expert.id)
-      .eq("status", "active"),
-    supabase
-      .from("expert_tenant_links")
-      .select(
-        "id, status, tenants (name), expert_document_grants (document_type, revoked_at)"
-      )
-      .eq("expert_id", expert.id)
-      .eq("status", "active"),
-  ]);
+  const [{ data: documents }, { data: links }, { data: docRequests }] =
+    await Promise.all([
+      supabase
+        .from("expert_documents")
+        .select("id, document_type, file_name, status, created_at")
+        .eq("expert_id", expert.id)
+        .eq("status", "active"),
+      supabase
+        .from("expert_tenant_links")
+        .select(
+          "id, status, tenants (name), expert_document_grants (document_type, revoked_at)"
+        )
+        .eq("expert_id", expert.id)
+        .eq("status", "active"),
+      supabase
+        .from("document_requests")
+        .select("id, requested_types, message, created_at, token_expires_at, tenants (name)")
+        .eq("expert_id", expert.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false }),
+    ]);
 
   const activeDocs = new Map(
     (documents ?? []).map((d) => [d.document_type, d] as const)
   );
   const activeLinks = links ?? [];
+  const now = Date.now();
+  const pendingRequests = (docRequests ?? []).filter(
+    (r) => new Date(r.token_expires_at).getTime() >= now
+  );
 
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader title="서류함" actions={headerActions} />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+        {pendingRequests.map((request) => {
+          const satisfied = request.requested_types.filter((type) => {
+            const doc = activeDocs.get(type);
+            return doc && doc.created_at >= request.created_at;
+          });
+          return (
+            <Card key={request.id} className="border-brand/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">
+                  {request.tenants?.name ?? "기업"}의 서류 제출 요청
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1.5 text-sm">
+                <p>
+                  요청 서류:{" "}
+                  {request.requested_types.map((type) => {
+                    const done = satisfied.includes(type);
+                    return (
+                      <Badge
+                        key={type}
+                        variant={done ? "secondary" : "default"}
+                        className="mr-1 text-[10px]"
+                      >
+                        {DOCUMENT_TYPE_LABELS[type] ?? type}
+                        {done ? " ✓" : ""}
+                      </Badge>
+                    );
+                  })}
+                </p>
+                {request.message && (
+                  <p className="text-xs text-muted-foreground">{request.message}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  아래에서 해당 서류를 업로드하면 제출로 처리됩니다.
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">내 서류</CardTitle>
