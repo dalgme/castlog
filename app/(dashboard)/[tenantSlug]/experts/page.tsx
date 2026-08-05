@@ -103,6 +103,9 @@ export default async function TenantExpertsPage({
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/experts/export`}>엑셀</a>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/${params.tenantSlug}/experts/import`}>일괄 등록</Link>
+            </Button>
             <EngagementDialog
               experts={activeExpertOptions}
               projects={projects}
