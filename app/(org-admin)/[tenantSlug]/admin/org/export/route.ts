@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { xlsxResponse } from "@/lib/exports/xlsx";
+import { logAudit } from "@/lib/audit/log";
 
 const ROLE_LABELS: Record<string, string> = {
   org_admin: "기업총괄관리자",
@@ -16,7 +17,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  await requireRole(["org_admin", "platform_admin"]);
+  const user = await requireRole(["org_admin", "platform_admin"]);
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
       new URL(`/${params.tenantSlug}/admin/org`, request.url)
@@ -38,6 +39,12 @@ export async function GET(
     상태: member.is_active ? "활성" : "비활성",
     등록일: member.created_at.slice(0, 10),
   }));
+
+  await logAudit(supabase, user, {
+    action: "export.staff",
+    resourceType: "export",
+    afterData: { rows: rows.length },
+  });
 
   return xlsxResponse("직원목록", [["직원", rows]]);
 }

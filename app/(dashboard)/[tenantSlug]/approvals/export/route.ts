@@ -9,13 +9,14 @@ import {
   APPROVAL_TYPE_LABELS,
 } from "@/lib/approvals/constants";
 import { xlsxResponse } from "@/lib/exports/xlsx";
+import { logAudit } from "@/lib/audit/log";
 
 /** 결재 목록 엑셀 내보내기 — RLS 범위(상신자·결재 참여·총괄관리자) */
 export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("approvals");
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
@@ -42,6 +43,12 @@ export async function GET(
     상신일: approval.created_at.slice(0, 10),
     종결일: approval.completed_at ? approval.completed_at.slice(0, 10) : "",
   }));
+
+  await logAudit(supabase, user, {
+    action: "export.approvals",
+    resourceType: "export",
+    afterData: { rows: rows.length },
+  });
 
   return xlsxResponse("결재목록", [["결재", rows]]);
 }

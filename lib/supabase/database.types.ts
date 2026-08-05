@@ -584,6 +584,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "document_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "document_requests_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -1776,7 +1783,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      snapshot_tenant_usage: { Args: { target_date?: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never

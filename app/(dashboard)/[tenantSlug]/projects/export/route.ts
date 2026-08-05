@@ -6,13 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
 import { xlsxResponse } from "@/lib/exports/xlsx";
+import { logAudit } from "@/lib/audit/log";
 
 /** 프로젝트 목록 엑셀 내보내기 — 사업연도 축 포함 (CLAUDE.md 12-7) */
 export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("operations");
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
@@ -44,6 +45,12 @@ export async function GET(
       상태: PROJECT_STATUS_LABELS[project.status] ?? project.status,
       스텝진행: steps.length > 0 ? `${done}/${steps.length}` : "",
     };
+  });
+
+  await logAudit(supabase, user, {
+    action: "export.projects",
+    resourceType: "export",
+    afterData: { rows: rows.length },
   });
 
   return xlsxResponse("프로젝트목록", [["프로젝트", rows]]);

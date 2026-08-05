@@ -36,6 +36,9 @@ export default async function PlatformAdminPage() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
+      <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/usage">사용 현황</a>
+      </Button>
       <CreateTenantDialog />
       <form method="post" action="/auth/logout">
         <Button type="submit" variant="ghost" size="sm">

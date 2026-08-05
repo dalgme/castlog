@@ -80,6 +80,9 @@ export default async function OrgAdminPage({
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/admin/org/export`}>엑셀</a>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/admin/org/audit`}>감사로그</a>
+            </Button>
             <CreateStaffDialog positions={positionRows} />
           </div>
         }

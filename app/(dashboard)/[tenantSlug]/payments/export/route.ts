@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PAYMENT_TYPE_LABELS } from "@/lib/payments/tax";
 import { xlsxResponse } from "@/lib/exports/xlsx";
+import { logAudit } from "@/lib/audit/log";
 
 const BATCH_STATUS: Record<string, string> = {
   pending: "결재 대기",
@@ -23,7 +24,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
@@ -77,6 +78,12 @@ export async function GET(
       item.expert_payment_batches?.status ??
       "",
   }));
+
+  await logAudit(supabase, user, {
+    action: "export.payments",
+    resourceType: "export",
+    afterData: { rows: batchRows.length + itemRows.length },
+  });
 
   return xlsxResponse("지급내역", [
     ["지급건", batchRows],

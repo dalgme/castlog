@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
 import { xlsxResponse } from "@/lib/exports/xlsx";
+import { logAudit } from "@/lib/audit/log";
 
 const LINK_STATUS: Record<string, string> = {
   active: "연결됨",
@@ -18,7 +19,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
@@ -46,6 +47,12 @@ export async function GET(
       연결상태: LINK_STATUS[link.status] ?? link.status,
       연결일: link.accepted_at ? link.accepted_at.slice(0, 10) : "",
     }));
+
+  await logAudit(supabase, user, {
+    action: "export.experts",
+    resourceType: "export",
+    afterData: { rows: rows.length },
+  });
 
   return xlsxResponse("전문가목록", [["전문가", rows]]);
 }
