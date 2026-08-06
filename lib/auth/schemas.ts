@@ -36,6 +36,12 @@ export type ExpertOtpInput = z.infer<typeof expertOtpSchema>;
  */
 export function sanitizeNextPath(next: unknown): string | null {
   if (typeof next !== "string") return null;
+  // 역슬래시는 브라우저가 '/'로 정규화 → '/\evil.com' 우회를 차단한다.
+  // 제어문자(공백 미만)·역슬래시가 있으면 거부.
+  for (let i = 0; i < next.length; i++) {
+    const code = next.charCodeAt(i);
+    if (code < 0x20 || code === 0x5c) return null;
+  }
   if (!next.startsWith("/") || next.startsWith("//") || next.includes("://")) {
     return null;
   }

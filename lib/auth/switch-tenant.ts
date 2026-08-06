@@ -31,6 +31,13 @@ export async function switchActiveTenant(
 
   const admin = createAdminClient();
 
+  // 0) 기업 직원 역할 계정은 테넌트 전환 대상이 아니다.
+  //    직원은 단일 테넌트 소속이며, 전환은 여러 기업에 연결되는 전문가 전용이다.
+  const currentRole = user.app_metadata?.role;
+  if (currentRole && currentRole !== "expert") {
+    return { ok: false, error: "unauthorized" };
+  }
+
   // 1) 요청 사용자가 전문가 계정인지
   const { data: expert } = await admin
     .from("experts")
@@ -67,6 +74,7 @@ export async function switchActiveTenant(
   const { error: updateError } = await admin.auth.admin.updateUserById(user.id, {
     app_metadata: {
       ...user.app_metadata,
+      role: "expert", // 전환 계정의 역할을 전문가로 명시 고정 (권한 승격 방지)
       tenant_id: targetTenantId,
       tenant_slug: tenant?.slug ?? null,
     },

@@ -21,7 +21,9 @@ type HookPayload = {
 
 function verifySignature(req: Request, payload: string): boolean {
   const secretRaw = Deno.env.get("SEND_SMS_HOOK_SECRET");
-  if (!secretRaw) return true; // 시크릿 미설정 시 검증 생략 (개발 단계)
+  // 시크릿 미설정 시 검증을 거부한다(fail-closed). 열어두면 훅 URL을 아는
+  // 제3자가 운영사 발신번호로 임의 문자를 무제한 발송할 수 있다.
+  if (!secretRaw) return false;
 
   const secretB64 = secretRaw.replace(/^v1,whsec_/, "").replace(/^whsec_/, "");
   const msgId = req.headers.get("webhook-id") ?? "";

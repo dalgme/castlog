@@ -84,22 +84,19 @@ export default async function ExpertPortalPage() {
       .select("id, status, accepted_at, tenants (name)")
       .eq("expert_id", expert.id)
       .order("created_at", { ascending: false }),
-    // 확정·완료된 지급만 보인다 (배치 RLS — 결재 중 내부 문서는 비노출)
+    // 확정·완료된 지급만 보인다. 안전 컬럼 전용 뷰로 조회 —
+    // 배치 원본에는 타 전문가 합계·내부 반려사유가 있어 직접 노출하지 않는다.
     supabase
-      .from("expert_payment_items")
+      .from("expert_portal_payments")
       .select(
-        `id, gross_amount, withholding_amount, net_amount, created_at,
-         expert_payment_batches!inner (status, paid_at, confirmed_at, tenants (name))`
+        "id, gross_amount, withholding_amount, net_amount, created_at, status, paid_at, confirmed_at, tenant_name"
       )
-      .eq("expert_id", expert.id)
       .order("created_at", { ascending: false })
       .limit(10),
   ]);
 
   const linkRows = links ?? [];
-  const paymentRows = (paymentItems ?? []).filter(
-    (item) => item.expert_payment_batches !== null
-  );
+  const paymentRows = paymentItems ?? [];
 
   return (
     <div className="min-h-screen bg-secondary/50">
@@ -180,13 +177,13 @@ export default async function ExpertPortalPage() {
             ) : (
               <ul className="divide-y">
                 {paymentRows.map((item) => {
-                  const batch = item.expert_payment_batches;
-                  const paid = batch?.status === "paid";
+                  const paid = item.status === "paid";
+                  const when = item.paid_at ?? item.confirmed_at;
                   return (
                     <li key={item.id} className="py-2.5 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">
-                          {batch?.tenants?.name ?? "(기업)"}
+                          {item.tenant_name ?? "(기업)"}
                         </span>
                         <Badge
                           className="ml-auto"
@@ -199,18 +196,16 @@ export default async function ExpertPortalPage() {
                         <span>
                           실지급{" "}
                           <span className="font-semibold text-foreground">
-                            {item.net_amount.toLocaleString("ko-KR")}원
+                            {(item.net_amount ?? 0).toLocaleString("ko-KR")}원
                           </span>
                         </span>
-                        <span>계약 {item.gross_amount.toLocaleString("ko-KR")}원</span>
+                        <span>계약 {(item.gross_amount ?? 0).toLocaleString("ko-KR")}원</span>
                         <span>
-                          원천징수 {item.withholding_amount.toLocaleString("ko-KR")}원
+                          원천징수 {(item.withholding_amount ?? 0).toLocaleString("ko-KR")}원
                         </span>
-                        {(batch?.paid_at ?? batch?.confirmed_at) && (
+                        {when && (
                           <span>
-                            {new Date(
-                              (batch?.paid_at ?? batch?.confirmed_at)!
-                            ).toLocaleDateString("ko-KR")}
+                            {new Date(when).toLocaleDateString("ko-KR")}
                           </span>
                         )}
                       </div>

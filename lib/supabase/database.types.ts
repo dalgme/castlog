@@ -1780,7 +1780,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      expert_portal_payments: {
+        Row: {
+          confirmed_at: string | null
+          created_at: string | null
+          gross_amount: number | null
+          id: string | null
+          net_amount: number | null
+          paid_at: string | null
+          status: string | null
+          tenant_name: string | null
+          withholding_amount: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       snapshot_tenant_usage: { Args: { target_date?: string }; Returns: number }

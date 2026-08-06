@@ -51,13 +51,19 @@ async function requireApprovalsSession(): Promise<
   return { ok: true, session: { userId: user.id, tenantId, role } };
 }
 
-/** 결재라인 입력 정합성 검사 + 결재자 테넌트 소속 확인 */
+/** 결재라인 입력 정합성 검사 + 결재자 테넌트 소속 확인 + 자기결재 차단 */
 async function validateLineSteps(
   steps: { approverUserId: string }[],
-  tenantId: string
+  tenantId: string,
+  requesterUserId?: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (steps.length === 0) {
     return { ok: false, error: "결재라인을 1단계 이상 구성하세요." };
+  }
+  // 자기결재 방지 — 상신자는 자신을 결재자로 지정할 수 없다(상신 시점에만 검사).
+  // 전결규정 정의 시점에는 상신자 맥락이 없어 건너뛴다(매칭 상신 시 여기서 걸린다).
+  if (requesterUserId && steps.some((s) => s.approverUserId === requesterUserId)) {
+    return { ok: false, error: "상신자 본인은 결재자로 지정할 수 없습니다." };
   }
   const approverIds = Array.from(new Set(steps.map((s) => s.approverUserId)));
   const supabase = createClient();
@@ -131,8 +137,11 @@ export async function submitApproval(
     };
   }
 
-  // 본인이 결재자에 포함되면 제외하지 않고 그대로 둔다(자기결재 방지는 규정 설계 몫)
-  const lineCheck = await validateLineSteps(engineSteps, session.tenantId);
+  const lineCheck = await validateLineSteps(
+    engineSteps,
+    session.tenantId,
+    session.userId
+  );
   if (!lineCheck.ok) return lineCheck;
 
   // 2) 결재건 + 라인 생성 (공용 엔진)

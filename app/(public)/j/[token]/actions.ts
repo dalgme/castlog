@@ -162,6 +162,17 @@ export async function completeExpertRegistration(
     return { error: "이 링크는 지정된 휴대폰 번호로만 등록할 수 있습니다." };
   }
 
+  // 이미 기업 소속(직원) 역할을 가진 계정으로는 전문가 등록을 막는다.
+  // 직원 계정에 전문가 링크가 붙으면 role은 그대로 둔 채 타 테넌트 접근이
+  // 열리는 권한 혼선이 생긴다 — 전문가는 별도 계정으로 등록해야 한다.
+  const existingRole = user.app_metadata?.role;
+  if (existingRole && existingRole !== "expert") {
+    return {
+      error:
+        "이미 기업 직원 계정으로 로그인되어 있습니다. 전문가 등록은 별도 계정(다른 휴대폰)으로 진행해 주세요.",
+    };
+  }
+
   const admin = createAdminClient();
 
   // 1) 전문가 계정 — 휴대폰 기준 1인 1계정 (기존 계정이 있으면 연결만)
