@@ -1,3 +1,4 @@
+import Link from "next/link";
 import "./landing.css";
 
 export const metadata = {
@@ -57,8 +58,8 @@ export default function LandingPage() {
           </nav>
       
           <div className="header-actions">
-            <a className="btn-login" href="#login">로그인</a>
-            <a className="btn-trial" href="#trial">무료 체험 신청</a>
+            <Link className="btn-login" href="/login">로그인</Link>
+            <a className="btn-trial" href="#pricing">무료 체험 신청</a>
           </div>
         </div>
       </header>
@@ -71,8 +72,8 @@ export default function LandingPage() {
             <h1 className="hero-title">프로젝트 관리부터<br /><em>전자결재</em>까지<br />한 번에, 완벽하게</h1>
             <p className="hero-desc">프로젝트 생성부터 전문가 섭외, 결재, 지급, 보고서 관리까지<br />21단계 워크플로우로 체계적으로 관리하고<br />의사결정을 빠르고 안전하게 진행하세요.</p>
             <div className="hero-cta">
-              <a className="btn-primary" href="#trial">무료 체험 시작</a>
-              <a className="btn-secondary" href="#download">제품 소개 다운로드
+              <a className="btn-primary" href="#pricing">무료 체험 시작</a>
+              <a className="btn-secondary" href="mailto:hello@castlog.kr?subject=%EC%BA%90%EC%8A%A4%ED%8A%B8%EB%A1%9C%EA%B7%B8%20%EC%A0%9C%ED%92%88%20%EC%86%8C%EA%B0%9C%EC%84%9C%20%EC%9A%94%EC%B2%AD">제품 소개 다운로드
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>
               </a>
             </div>
@@ -261,7 +262,7 @@ export default function LandingPage() {
                 <div className="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" strokeWidth="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>AI 보조 검수로 문서 품질 향상</div>
                 <div className="wf-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="#F0A400" strokeWidth="1.6" /><path d="M8 12.4l2.8 2.8L16.3 9.4" stroke="#F0A400" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>프로젝트 복제로 반복 업무 시간 80% 절약</div>
               </div>
-              <a className="wf-btn" href="#workflow">자세히 보기 →</a>
+              <a className="wf-btn" href="#pricing">자세히 보기 →</a>
             </div>
       
             <div className="wf-orbit" aria-hidden="true">
@@ -290,7 +291,7 @@ export default function LandingPage() {
                 <div className="wfe-step"><span className="wfe-name"><b>04</b>계약서</span><span className="tag tag-wait">대기</span></div>
                 <div className="wfe-step"><span className="wfe-name"><b>05</b>체크리스트 발행</span><span className="tag tag-wait">대기</span></div>
               </div>
-              <a className="wfe-btn" href="#workflow">전체 단계 보기</a>
+              <a className="wfe-btn" href="#pricing">전체 단계 보기</a>
             </div>
           </div>
         </div>
@@ -304,8 +305,8 @@ export default function LandingPage() {
               <div className="cta-title">지금 바로 캐스트로그를 경험해보세요</div>
               <div className="cta-sub">30일 무료 체험으로 모든 기능을 제한 없이 사용해보세요!</div>
               <div className="cta-actions">
-                <a className="cta-btn-white" href="#trial">무료 체험 시작하기</a>
-                <a className="cta-btn-line" href="#contact">전문가에게 문의하기</a>
+                <a className="cta-btn-white" href="mailto:hello@castlog.kr?subject=%EC%BA%90%EC%8A%A4%ED%8A%B8%EB%A1%9C%EA%B7%B8%20%EB%AC%B4%EB%A3%8C%20%EC%B2%B4%ED%97%98%20%EC%8B%A0%EC%B2%AD">무료 체험 시작하기</a>
+                <a className="cta-btn-line" href="mailto:hello@castlog.kr?subject=%EC%BA%90%EC%8A%A4%ED%8A%B8%EB%A1%9C%EA%B7%B8%20%EB%8F%84%EC%9E%85%20%EC%83%81%EB%8B%B4%20%EB%AC%B8%EC%9D%98">전문가에게 문의하기</a>
               </div>
             </div>
             <div className="cta-contact">
