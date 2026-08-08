@@ -22,6 +22,8 @@ export const SYSTEM_RESERVED_SLUGS: readonly string[] = [
   "login",
   "logout",
   "signup",
+  "forgot-password",
+  "reset-password",
   "static",
   "assets",
   "public",

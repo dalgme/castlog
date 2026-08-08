@@ -22,6 +22,12 @@ export default function ContactPage({
   const initialType = resolveType(searchParams?.type);
   const source =
     typeof searchParams?.source === "string" ? searchParams.source : undefined;
+  const isExpert = source === "expert-signup";
+
+  const heading = isExpert ? "전문가 관심 등록" : "도입 문의 · 무료 체험 신청";
+  const intro = isExpert
+    ? "전문가로 활동하고 싶으신가요? 관심 등록을 남겨주시면 담당자가 연락드립니다. 실제 등록은 소속 기업이 보내는 초대 링크로 진행됩니다."
+    : "신청서를 남겨주시면 담당자가 직접 연락드려 30일 무료 체험 계정을 안내해 드립니다. 카드 등록·결제 없이 시작할 수 있습니다.";
 
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-12 sm:py-16">
@@ -49,12 +55,9 @@ export default function ContactPage({
         <div className="rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
           <div className="mb-6 space-y-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              도입 문의 · 무료 체험 신청
+              {heading}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              신청서를 남겨주시면 담당자가 직접 연락드려 30일 무료 체험 계정을
-              안내해 드립니다. 카드 등록·결제 없이 시작할 수 있습니다.
-            </p>
+            <p className="text-sm text-muted-foreground">{intro}</p>
           </div>
 
           <InquiryForm initialType={initialType} source={source} />

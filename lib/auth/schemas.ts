@@ -12,6 +12,30 @@ export const staffLoginSchema = z.object({
 });
 export type StaffLoginInput = z.infer<typeof staffLoginSchema>;
 
+/** 비밀번호 재설정 요청 — 이메일 입력 (기업회원) */
+export const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .min(1, "이메일을 입력하세요.")
+    .email("올바른 이메일 형식이 아닙니다."),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+/** 새 비밀번호 설정 — 재설정 링크 착지 후 */
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "비밀번호는 8자 이상이어야 합니다.")
+      .max(72, "비밀번호는 72자 이내여야 합니다."),
+    confirm: z.string().min(1, "비밀번호 확인을 입력하세요."),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: "비밀번호가 일치하지 않습니다.",
+    path: ["confirm"],
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 /** 전문가 휴대폰 OTP 요청 (설계문서 3.2 — 전문가 계정은 휴대폰 인증 기반) */
 export const expertPhoneSchema = z.object({
   phone: z
