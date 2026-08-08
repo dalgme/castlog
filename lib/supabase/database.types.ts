@@ -1223,6 +1223,51 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_inquiries: {
+        Row: {
+          company_name: string
+          contact_name: string
+          created_at: string
+          email: string
+          handled_by: string | null
+          id: string
+          inquiry_type: string
+          message: string | null
+          phone: string | null
+          source: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_name: string
+          contact_name: string
+          created_at?: string
+          email: string
+          handled_by?: string | null
+          id?: string
+          inquiry_type?: string
+          message?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_name?: string
+          contact_name?: string
+          created_at?: string
+          email?: string
+          handled_by?: string | null
+          id?: string
+          inquiry_type?: string
+          message?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           created_at: string

@@ -28,6 +28,7 @@ export const SYSTEM_RESERVED_SLUGS: readonly string[] = [
   "help",
   "support",
   "about",
+  "contact",
   "dashboard",
   "settings",
   "auth",
