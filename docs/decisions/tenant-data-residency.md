@@ -146,7 +146,53 @@
 3. **네이버웍스 공식 문서 재확인** — WOFF/SSO/Bot/Directory/Drive 스코프·에디션·국내 제공.
 4. **C+ MVP 단계화** — "단계 20: 테넌트 데이터 반출(백업)"로 태스크화.
 
-## 7. 출처 (검색 기반 — 공식 문서 직접 열람은 egress 차단으로 불가)
+## 7. 정합성 리뷰 결과 및 필수 조치 (2026-08-09)
+
+설계문서 v1.8 + CLAUDE.md 대조 및 코드베이스 전수 영향조사 결과.
+
+### 7.1 정합성 판정
+- 확정 설계와 **직접 충돌 없음.** 대부분 정합 또는 설계 공백(신규 개념).
+- 지급명세서 마스킹본: **현재 자명하게 성립.** Phase 1은 주민번호를 저장하지
+  않고(`expert_tax_profiles` = payment_type·사업자번호만) 복호화 능력이 코드에
+  없어(Hard NO 4 자동 충족), 현행 지급 export가 이미 마스킹본과 동일. 계좌도
+  구조화 저장 없음(통장=이미지 문서 → 메타만).
+- 화이트라벨/서브도메인 Phase 구분·독립 로그인 원칙: 설계와 완전 정합.
+
+### 7.2 실질 리스크 (결정·처리 필요)
+1. **국외이전(개보법 제28조의8)** — 목적지 저장소가 국외면 설계 14장 "국외이전
+   없음"의 예외(원본파일 외부링크) 범위를 초과. 택일 필요:
+   (a) 목적지 국내 제한(권장·안전) / (b) 국외 허용 + 전문가 고지·동의 + DPA 조항.
+2. **service_role egress 격리** — 백업 잡은 RLS 우회 → 코드가 유일 방벽.
+   단일 tenant_id 스코프 + 포함컬럼 allow-list(deny-list 금지)를 강제.
+3. **봉투/공개키 암호화 신규** — 현재 crypto는 대칭 AES-GCM만. "회사만 복호화"
+   요건 충족하려면 회사 공개키 봉투암호화 구현 필요. 목적지 자격증명 키 분리·회전.
+
+### 7.3 코드로 강제할 전제·구현 게이트
+- 마스킹본 생성 경로는 `tax_*` 복호화를 절대 호출하지 않음(Phase 2 대비 게이트).
+- 백업 포함범위 = allow-list. Phase 2 주민번호/암호문 컬럼이 자동 유입되지 않도록.
+- 모듈 게이트: 백업은 공통 기반 축이나 포함 데이터는 활성 모듈에 따름.
+  service_role 잡이라 `requireModule`(리다이렉트) 무효 → `parseModuleFlags` 코드 게이트.
+- 매니페스트에 `schema_version` 포함. 세무 placeholder 테이블에 강결합 금지.
+
+### 7.4 인증·임베드 영향 (단계 21 선결)
+- 웍스 SSO: IdP 클레임(user_metadata)을 권한에 사용 금지. 서버가 조직→테넌트 검증
+  후 `app_metadata` 스탬핑 + refreshSession. 신규 콜백 라우트. 회사별 client_secret이
+  다르므로 서버측 OIDC 처리(Supabase는 계정 컨테이너), BYO(`tenant_works_configs`).
+- WOFF 임베드: `next.config.mjs` 전역 `X-Frame-Options: DENY` + `frame-ancestors 'none'`
+  이 iframe을 전면 차단. WOFF 렌더 방식 확인 후 해당 경로만 완화 + 세션쿠키
+  `SameSite=None; Secure`(현재 미설정) 필요.
+- 회사 전용 도메인(Phase 2): 경로 기반 슬러그 라우팅 → 호스트명→테넌트 해석 신규.
+- Works Bot 발송: 대상이 임직원(전문가폰 아님)이라 발송 유형·대상 재정의 필요.
+  `works_logs` 신설, `ad_*`·`unsubscribe_tokens`의 channel CHECK에 `'works'` 추가(광고성 지원 시).
+- 범용 위험작업 2단계 확인 프레임워크 부재 → 백업 활성화·목적지 변경용 신규.
+
+### 7.5 재활용 가능한 기존 자산
+`lib/exports/xlsx.ts` · `lib/crypto/secrets.ts` · `lib/audit/log.ts` ·
+`lib/experts/document-view.ts`(서명 URL) · 사용량 upsert(`lib/sms/send.ts`) ·
+export 라우트 5종 골격 · `tenant_sms_configs` BYO 패턴 · app_metadata 스탬핑
+(`lib/auth/switch-tenant.ts`).
+
+## 8. 출처 (검색 기반 — 공식 문서 직접 열람은 egress 차단으로 불가)
 - LINE WORKS APIs 개요 / Bot / Service Account(JWT) / SSO(SP): developers.worksmobile.com
 - WOFF 가이드: developers.worksmobile.com/jp/docs/woff-guide
 - WOFF 정식 제공 보도자료(2023-05-10): line-works.com/pr/20230510
