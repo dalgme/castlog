@@ -125,9 +125,15 @@ export async function createEngagement(
 
 export type EngagementActionResult = { ok: true } | { ok: false; error: string };
 
-/** 섭외 요청 회수 — 응답 전(requested)만 */
+/**
+ * 섭외 취소 (단계 29 — 대표 피드백 ③)
+ *  - 회수(requested): 전문가 응답 전 요청 회수. 사유 선택.
+ *  - 긴급 취소(accepted): 계약 성립 후 취소. 사유 필수 + 전사 긴급 알림 발생.
+ * 두 경우 모두 취소 내역(engagement_cancellations)에 기록한다.
+ */
 export async function cancelEngagement(
-  engagementId: string
+  engagementId: string,
+  reason?: string
 ): Promise<EngagementActionResult> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
@@ -145,33 +151,84 @@ export async function cancelEngagement(
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
   if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "섭외 회수 권한이 없습니다." };
+    return { ok: false, error: "섭외 취소 권한이 없습니다." };
   }
 
+  const { data: engagement } = await supabase
+    .from("expert_engagements")
+    .select("id, status, expert_id, project_id, experts (name)")
+    .eq("id", engagementId)
+    .maybeSingle();
+
+  if (
+    !engagement ||
+    !["requested", "accepted"].includes(engagement.status)
+  ) {
+    return { ok: false, error: "취소할 수 없는 섭외입니다." };
+  }
+
+  const urgent = engagement.status === "accepted";
+  const trimmedReason = reason?.trim() || null;
+  if (urgent && !trimmedReason) {
+    return {
+      ok: false,
+      error: "계약 성립 후 긴급 취소는 사유 입력이 필수입니다.",
+    };
+  }
+
+  // 상태 전환 (경합 방지 — 조회 시점 상태를 그대로 가드)
   const { data: updated, error } = await supabase
     .from("expert_engagements")
     .update({ status: "canceled" })
     .eq("id", engagementId)
-    .eq("status", "requested")
-    .select("id, project_id")
+    .eq("status", engagement.status)
+    .select("id")
     .maybeSingle();
 
   if (error || !updated) {
-    return { ok: false, error: "회수할 수 없는 요청입니다." };
+    return { ok: false, error: "이미 처리되어 취소할 수 없습니다." };
+  }
+
+  // 취소 내역 기록
+  await supabase.from("engagement_cancellations").insert({
+    tenant_id: tenantId,
+    engagement_id: engagementId,
+    expert_id: engagement.expert_id,
+    project_id: engagement.project_id,
+    prior_status: engagement.status,
+    is_urgent: urgent,
+    reason: trimmedReason,
+    canceled_by: user.id,
+  });
+
+  // 긴급 취소 → 전사 알림 (대시보드 배너)
+  if (urgent) {
+    const expertName = engagement.experts?.name ?? "전문가";
+    await supabase.from("tenant_alerts").insert({
+      tenant_id: tenantId,
+      severity: "urgent",
+      category: "engagement_cancel",
+      title: `긴급: 섭외 취소 (${expertName})`,
+      body: `계약 성립된 섭외가 취소되었습니다. 사유: ${trimmedReason}`,
+      resource_type: "expert_engagement",
+      resource_id: engagementId,
+      created_by: user.id,
+    });
   }
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_auth_user_id: user.id,
     actor_role: role,
-    action: "engagement.cancel",
+    action: urgent ? "engagement.urgent_cancel" : "engagement.cancel",
     resource_type: "expert_engagement",
     resource_id: engagementId,
+    after_data: { prior_status: engagement.status, is_urgent: urgent },
   });
 
   revalidatePath("/[tenantSlug]/experts", "page");
-  if (updated.project_id) {
-    revalidatePath(`/[tenantSlug]/projects/${updated.project_id}`, "page");
+  if (engagement.project_id) {
+    revalidatePath(`/[tenantSlug]/projects/${engagement.project_id}`, "page");
   }
   return { ok: true };
 }

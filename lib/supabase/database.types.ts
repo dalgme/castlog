@@ -830,6 +830,84 @@ export type Database = {
           },
         ]
       }
+      engagement_cancellations: {
+        Row: {
+          canceled_at: string
+          canceled_by: string | null
+          created_at: string
+          engagement_id: string
+          expert_id: string
+          id: string
+          is_urgent: boolean
+          prior_status: string
+          project_id: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          canceled_at?: string
+          canceled_by?: string | null
+          created_at?: string
+          engagement_id: string
+          expert_id: string
+          id?: string
+          is_urgent?: boolean
+          prior_status: string
+          project_id?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          canceled_at?: string
+          canceled_by?: string | null
+          created_at?: string
+          engagement_id?: string
+          expert_id?: string
+          id?: string
+          is_urgent?: boolean
+          prior_status?: string
+          project_id?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_cancellations_canceled_by_fkey"
+            columns: ["canceled_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: true
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_documents: {
         Row: {
           created_at: string
@@ -1735,6 +1813,73 @@ export type Database = {
           },
           {
             foreignKeyName: "tax_project_grants_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_alerts: {
+        Row: {
+          body: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          id: string
+          resource_id: string | null
+          resource_type: string | null
+          severity: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          body?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_alerts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_alerts_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_alerts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

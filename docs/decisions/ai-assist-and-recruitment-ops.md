@@ -110,7 +110,13 @@
   - 28-B 자동 서명: `migration 20260810000003 engagement_acceptances`(테넌트+전문가 본인 열람, service_role 생성) · `lib/integrations/acceptance.ts`(수락 시 서명·날인 **스냅샷 복사**, 멱등, 조건 정규화 저장) · `applyEngagementResponse` 훅(공개/포털 공용) · 수락서 열람 페이지 2종(기업·전문가) + 목록 링크.
   - 발송: 현재 **인앱 전달**(기업·전문가 양측 즉시 열람) + audit. 아웃바운드 SMS/이메일 통지는 기존 발송 인프라로 얹는 후속(선택).
   - 빌드·타입체크 통과.
-- **단계 29 · 섭외 실행·수락·취소 워크플로우 + 전사 긴급 취소 알림 + 취소 내역** (experts↔operations) — A-③
+- **단계 29 · 섭외 실행·수락·취소 워크플로우 + 전사 긴급 취소 알림 + 취소 내역** (experts↔operations) — A-③ · **구현 완료**
+  - `migration 20260810000004`: `engagement_cancellations`(테넌트+전문가 본인 열람) · `tenant_alerts`(전사 배너, 관리자만 생성·닫기)
+  - `cancelEngagement(id, reason?)` 확장: 회수(requested, 사유 선택) / **긴급 취소(accepted, 사유 필수)** — 취소 내역 기록 + 긴급 시 전사 알림 발생, 경합 방지 상태 가드
+  - `EngagementUrgentCancel` 다이얼로그(사유 필수) — 프로젝트 상세 accepted 섭외에 노출
+  - `AlertBanner`(테넌트 레이아웃 상단) + `AlertDismissButton` + `dismissTenantAlert`(관리자)
+  - 취소 내역 페이지 `/experts/cancellations`(긴급/회수 구분·사유·취소자) + 전문가 목록 링크
+  - 빌드·타입체크 통과. (아웃바운드 SMS 통지는 기존 발송 인프라로 얹는 후속)
 - **단계 30 · 최초 로그인 비밀번호 강제 변경** (공통 기반/auth) — C-2
 - **단계 25 확장 · AI 개입 포인트 = 파급력 순위/경계 확정 + 프롬프트 버전관리** — B
 

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
+import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 
 import { StepStatusSelect } from "./step-status-select";
 import {
@@ -251,13 +252,19 @@ export default async function ProjectDetailPage({
                         <EngagementCancelButton engagementId={engagement.id} />
                       )}
                       {engagement.status === "accepted" && (
-                        <Button asChild variant="ghost" size="sm">
-                          <Link
-                            href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
-                          >
-                            수락서
-                          </Link>
-                        </Button>
+                        <>
+                          <Button asChild variant="ghost" size="sm">
+                            <Link
+                              href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
+                            >
+                              수락서
+                            </Link>
+                          </Button>
+                          <EngagementUrgentCancel
+                            engagementId={engagement.id}
+                            expertName={engagement.experts?.name ?? "전문가"}
+                          />
+                        </>
                       )}
                     </li>
                   ))}
