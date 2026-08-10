@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ExpertProfileForm } from "./profile-form";
 import { TaxTypeForm } from "./tax-type-form";
+import { SignaturePad } from "./signature-pad";
 
 export const metadata = { title: "프로필 수정" };
 
@@ -56,6 +57,17 @@ export default async function ExpertProfilePage() {
     .eq("expert_id", expert.id)
     .maybeSingle();
 
+  // 서명·날인 등록 여부 (단계 28-A) — 활성 서류만
+  const { data: signatureDocs } = await supabase
+    .from("expert_documents")
+    .select("document_type")
+    .eq("expert_id", expert.id)
+    .eq("status", "active")
+    .in("document_type", ["signature", "seal"]);
+  const registeredTypes = new Set(
+    (signatureDocs ?? []).map((d) => d.document_type)
+  );
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader title="프로필 수정" actions={headerActions} />
@@ -88,6 +100,28 @@ export default async function ExpertProfilePage() {
             <TaxTypeForm
               currentType={taxProfile?.payment_type ?? null}
               currentBizNumber={taxProfile?.business_registration_number ?? null}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">서명·날인 등록</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              등록한 서명·날인은 섭외를 수락할 때 섭외수락서에 자동으로 사용됩니다.
+              이미지는 암호화되어 안전하게 보관되며, 서명된 만료 링크로만 열람됩니다.
+            </p>
+            <SignaturePad
+              kind="signature"
+              label="서명"
+              registered={registeredTypes.has("signature")}
+            />
+            <SignaturePad
+              kind="seal"
+              label="날인(도장)"
+              registered={registeredTypes.has("seal")}
             />
           </CardContent>
         </Card>
