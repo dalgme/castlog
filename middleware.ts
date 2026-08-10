@@ -49,6 +49,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // 3-1) 최초 로그인 비밀번호 강제 변경 (단계 30)
+  //   관리자가 발급한 임시 비밀번호(must_change_password) 사용자는 변경 완료 전까지
+  //   /account/password로 강제 이동한다. 로그아웃(/auth)은 공개 경로라 이미 통과.
+  if (
+    user.app_metadata?.must_change_password === true &&
+    !isUnderPath(pathname, "/account/password")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/account/password";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   // 4) 플랫폼관리자 전역 경로 — 역할 불일치 시 홈으로
   if (isUnderPath(pathname, "/platform-admin")) {
     if (user.app_metadata?.role !== "platform_admin") {

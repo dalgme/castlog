@@ -117,7 +117,12 @@
   - `AlertBanner`(테넌트 레이아웃 상단) + `AlertDismissButton` + `dismissTenantAlert`(관리자)
   - 취소 내역 페이지 `/experts/cancellations`(긴급/회수 구분·사유·취소자) + 전문가 목록 링크
   - 빌드·타입체크 통과. (아웃바운드 SMS 통지는 기존 발송 인프라로 얹는 후속)
-- **단계 30 · 최초 로그인 비밀번호 강제 변경** (공통 기반/auth) — C-2
+- **단계 30 · 최초 로그인 비밀번호 강제 변경** (공통 기반/auth) — C-2 · **구현 완료**
+  - 계정 생성(직원·총괄관리자) 시 `app_metadata.must_change_password=true` 스탬핑
+  - 미들웨어: 플래그 사용자를 `/account/password`로 강제 이동(로그아웃은 통과)
+  - `/account/password` 강제 변경 페이지·폼 + `changeInitialPassword`(새 비번 설정 후
+    service_role로 플래그 해제, audit 기록) · 예약 슬러그에 `account` 추가
+  - 빌드·타입체크 통과.
 - **단계 25 확장 · AI 개입 포인트 = 파급력 순위/경계 확정 + 프롬프트 버전관리** — B
 
 > ⚠︎ 확인 요청: **B의 4~10위는 재구성 초안**입니다. 원본 "10가지" 목록을 주시면 표를 원본에 맞춰 교정하겠습니다.

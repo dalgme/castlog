@@ -34,6 +34,7 @@ export const SYSTEM_RESERVED_SLUGS: readonly string[] = [
   "dashboard",
   "settings",
   "auth",
+  "account",
   "_next",
 ];
 

@@ -87,6 +87,7 @@ export async function createTenant(
       tenant_id: tenant.id,
       tenant_slug: tenant.slug,
       role: "org_admin",
+      must_change_password: true, // 단계 30: 최초 로그인 시 비밀번호 강제 변경
     },
   });
 
