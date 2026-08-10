@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hashLinkToken } from "@/lib/auth/tokens";
 import { parseModuleFlags } from "@/lib/modules/modules";
 import type { Tables } from "@/lib/supabase/database.types";
+import { createEngagementAcceptance } from "./acceptance";
 
 /**
  * 전문가 섭외 연동 로직 (experts ↔ operations — CLAUDE.md 1-2-6)
@@ -122,6 +123,19 @@ export async function applyEngagementResponse(
 
   // Phase 2 훅: decision === 'accepted' 시점에 해당 프로젝트·기업 권한자용
   // 주민번호 키 래핑(tax_project_grants)을 생성한다 (설계문서 4.4).
+
+  // 단계 28-B: 수락 시 등록된 서명·날인으로 섭외수락서 자동 생성 (멱등).
+  //  실패해도 수락 자체는 유지 — 예외를 삼킨다.
+  if (decision === "accepted") {
+    try {
+      await createEngagementAcceptance(
+        updated.id,
+        actorAuthUserId ? "portal" : "public_link"
+      );
+    } catch {
+      // 수락서 생성 실패는 수락 처리를 막지 않는다 (감사로그는 acceptance 내부에서 기록)
+    }
+  }
 
   await admin.from("audit_logs").insert({
     tenant_id: updated.tenant_id,

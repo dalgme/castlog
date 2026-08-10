@@ -1,0 +1,136 @@
+import "server-only";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { EXPERT_DOCUMENT_BUCKET } from "@/lib/experts/documents";
+
+/**
+ * 단계 28-B: 섭외수락서 자동 생성 (대표 피드백 ②)
+ *
+ * 전문가 수락(계약 성립) 시점에 등록된 서명·날인을 스냅샷하여 수락서를 만든다.
+ * - 서명 이미지는 암호화 버킷의 acceptances/ 경로로 복사(불변 스냅샷).
+ * - 생성은 service_role 전용(공개 링크 수락은 세션이 없다).
+ * - engagement_id unique 로 멱등 — 중복 호출은 무시된다.
+ */
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+function letterShortId(uuid: string): string {
+  return uuid.replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
+/** 활성 서명/날인 원본을 수락서 전용 경로로 스냅샷 복사. 없으면 null. */
+async function snapshotSignatureImage(
+  admin: AdminClient,
+  expertId: string,
+  documentType: "signature" | "seal",
+  destPath: string
+): Promise<string | null> {
+  const { data: doc } = await admin
+    .from("expert_documents")
+    .select("storage_path")
+    .eq("expert_id", expertId)
+    .eq("document_type", documentType)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!doc) return null;
+
+  const { data: file, error: downloadError } = await admin.storage
+    .from(EXPERT_DOCUMENT_BUCKET)
+    .download(doc.storage_path);
+  if (downloadError || !file) return null;
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { error: uploadError } = await admin.storage
+    .from(EXPERT_DOCUMENT_BUCKET)
+    .upload(destPath, bytes, { contentType: "image/png", upsert: true });
+  if (uploadError) return null;
+
+  return destPath;
+}
+
+/**
+ * 섭외수락서 생성 (멱등). 수락 처리 훅에서 호출.
+ * 실패해도 수락 자체는 유지되도록 호출부에서 예외를 삼킨다.
+ */
+export async function createEngagementAcceptance(
+  engagementId: string,
+  signedVia: "public_link" | "portal"
+): Promise<void> {
+  const admin = createAdminClient();
+
+  // 멱등 — 이미 생성되었으면 종료
+  const { data: existing } = await admin
+    .from("engagement_acceptances")
+    .select("id")
+    .eq("engagement_id", engagementId)
+    .maybeSingle();
+  if (existing) return;
+
+  const { data: eng } = await admin
+    .from("expert_engagements")
+    .select(
+      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status"
+    )
+    .eq("id", engagementId)
+    .maybeSingle();
+  if (!eng || eng.status !== "accepted") return;
+
+  const [{ data: tenant }, { data: expert }, projectResult] = await Promise.all([
+    admin.from("tenants").select("name").eq("id", eng.tenant_id).maybeSingle(),
+    admin.from("experts").select("name").eq("id", eng.expert_id).maybeSingle(),
+    eng.project_id
+      ? admin
+          .from("projects")
+          .select("name")
+          .eq("id", eng.project_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const base = `acceptances/${eng.tenant_id}/${eng.id}`;
+  const signaturePath = await snapshotSignatureImage(
+    admin,
+    eng.expert_id,
+    "signature",
+    `${base}-signature.png`
+  );
+  const sealPath = await snapshotSignatureImage(
+    admin,
+    eng.expert_id,
+    "seal",
+    `${base}-seal.png`
+  );
+
+  const letterNo = `ACC-${new Date()
+    .toISOString()
+    .slice(0, 10)
+    .replace(/-/g, "")}-${letterShortId(eng.id)}`;
+
+  await admin.from("engagement_acceptances").insert({
+    tenant_id: eng.tenant_id,
+    engagement_id: eng.id,
+    expert_id: eng.expert_id,
+    letter_no: letterNo,
+    role_description: eng.role_description,
+    fee_amount: eng.fee_amount,
+    starts_on: eng.starts_on,
+    ends_on: eng.ends_on,
+    project_name: projectResult.data?.name ?? null,
+    tenant_name: tenant?.name ?? "",
+    expert_name: expert?.name ?? "",
+    signature_path: signaturePath,
+    seal_path: sealPath,
+    has_signature: signaturePath !== null,
+    signed_via: signedVia,
+  });
+
+  await admin.from("audit_logs").insert({
+    tenant_id: eng.tenant_id,
+    actor_auth_user_id: null,
+    actor_role: "expert",
+    action: "engagement_acceptance.create",
+    resource_type: "engagement_acceptance",
+    resource_id: eng.id,
+    after_data: { letter_no: letterNo, has_signature: signaturePath !== null },
+  });
+}

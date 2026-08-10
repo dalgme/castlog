@@ -105,7 +105,11 @@
   - `.../projects/[projectId]/expert-evaluation-form.tsx` + 프로젝트 상세 평가 카드(수락 섭외 전문가별)
   - `app/(dashboard)/[tenantSlug]/payments/actions.ts` `createPaymentBatch` **평가 게이트**(프로젝트 귀속 지급 전원 평가 필수, 미귀속 지급은 예외)
   - 빌드·타입체크 통과. 평판은 단계 25 AI 후보추천의 자사 근거로 활용 예정.
-- **단계 28 · 전문가 서명·날인 등록 + (강사)섭외수락서 자동 서명·발송** (experts) — A-②
+- **단계 28 · 전문가 서명·날인 등록 + (강사)섭외수락서 자동 서명·발송** (experts) — A-② · **구현 완료**
+  - 28-A 등록: `migration 20260810000002`(seal 유형 추가) · `signature-actions.ts registerExpertSignature`(PNG 서버검증·이력·audit) · `signature-pad.tsx`(의존성 없는 canvas, 모바일 pointer) · 전문가 프로필 서명·날인 섹션. 암호화 버킷·서명 URL만.
+  - 28-B 자동 서명: `migration 20260810000003 engagement_acceptances`(테넌트+전문가 본인 열람, service_role 생성) · `lib/integrations/acceptance.ts`(수락 시 서명·날인 **스냅샷 복사**, 멱등, 조건 정규화 저장) · `applyEngagementResponse` 훅(공개/포털 공용) · 수락서 열람 페이지 2종(기업·전문가) + 목록 링크.
+  - 발송: 현재 **인앱 전달**(기업·전문가 양측 즉시 열람) + audit. 아웃바운드 SMS/이메일 통지는 기존 발송 인프라로 얹는 후속(선택).
+  - 빌드·타입체크 통과.
 - **단계 29 · 섭외 실행·수락·취소 워크플로우 + 전사 긴급 취소 알림 + 취소 내역** (experts↔operations) — A-③
 - **단계 30 · 최초 로그인 비밀번호 강제 변경** (공통 기반/auth) — C-2
 - **단계 25 확장 · AI 개입 포인트 = 파급력 순위/경계 확정 + 프롬프트 버전관리** — B

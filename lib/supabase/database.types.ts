@@ -742,6 +742,94 @@ export type Database = {
           },
         ]
       }
+      engagement_acceptances: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          engagement_id: string
+          expert_id: string
+          expert_name: string
+          fee_amount: number | null
+          has_signature: boolean
+          id: string
+          letter_no: string
+          project_name: string | null
+          role_description: string
+          seal_path: string | null
+          signature_path: string | null
+          signed_via: string
+          signer_ip: string | null
+          starts_on: string | null
+          ends_on: string | null
+          tenant_id: string
+          tenant_name: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          engagement_id: string
+          expert_id: string
+          expert_name: string
+          fee_amount?: number | null
+          has_signature?: boolean
+          id?: string
+          letter_no: string
+          project_name?: string | null
+          role_description: string
+          seal_path?: string | null
+          signature_path?: string | null
+          signed_via: string
+          signer_ip?: string | null
+          starts_on?: string | null
+          ends_on?: string | null
+          tenant_id: string
+          tenant_name: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          engagement_id?: string
+          expert_id?: string
+          expert_name?: string
+          fee_amount?: number | null
+          has_signature?: boolean
+          id?: string
+          letter_no?: string
+          project_name?: string | null
+          role_description?: string
+          seal_path?: string | null
+          signature_path?: string | null
+          signed_via?: string
+          signer_ip?: string | null
+          starts_on?: string | null
+          ends_on?: string | null
+          tenant_id?: string
+          tenant_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_acceptances_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: true
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_acceptances_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_acceptances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_documents: {
         Row: {
           created_at: string

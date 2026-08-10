@@ -250,6 +250,15 @@ export default async function ProjectDetailPage({
                       {engagement.status === "requested" && (
                         <EngagementCancelButton engagementId={engagement.id} />
                       )}
+                      {engagement.status === "accepted" && (
+                        <Button asChild variant="ghost" size="sm">
+                          <Link
+                            href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
+                          >
+                            수락서
+                          </Link>
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
