@@ -98,7 +98,13 @@
 
 ## D. 신규/확장 빌드 단계 (초안 번호 — 우선순위는 대표 확인)
 
-- **단계 27 · 전문가 평가·평판 → 지급품의 게이트** (experts↔approvals) — A-①
+- **단계 27 · 전문가 평가·평판 → 지급품의 게이트** (experts↔approvals) — A-① · **구현 완료**
+  - `supabase/migrations/20260810000001_expert_evaluations.sql` — `expert_evaluations`(tenant/project/expert unique) + RLS(테넌트 격리, **전문가 SELECT 없음**)
+  - `lib/experts/schemas.ts` `expertEvaluationSchema`(점수 1–10 필수, 사유 선택)
+  - `app/(dashboard)/[tenantSlug]/projects/[projectId]/evaluation-actions.ts` `upsertExpertEvaluation`(관리자 이상, audit 기록)
+  - `.../projects/[projectId]/expert-evaluation-form.tsx` + 프로젝트 상세 평가 카드(수락 섭외 전문가별)
+  - `app/(dashboard)/[tenantSlug]/payments/actions.ts` `createPaymentBatch` **평가 게이트**(프로젝트 귀속 지급 전원 평가 필수, 미귀속 지급은 예외)
+  - 빌드·타입체크 통과. 평판은 단계 25 AI 후보추천의 자사 근거로 활용 예정.
 - **단계 28 · 전문가 서명·날인 등록 + (강사)섭외수락서 자동 서명·발송** (experts) — A-②
 - **단계 29 · 섭외 실행·수락·취소 워크플로우 + 전사 긴급 취소 알림 + 취소 내역** (experts↔operations) — A-③
 - **단계 30 · 최초 로그인 비밀번호 강제 변경** (공통 기반/auth) — C-2

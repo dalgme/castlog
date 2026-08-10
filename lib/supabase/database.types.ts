@@ -881,6 +881,81 @@ export type Database = {
           },
         ]
       }
+      expert_evaluations: {
+        Row: {
+          created_at: string
+          engagement_id: string | null
+          evaluator_user_id: string | null
+          expert_id: string
+          id: string
+          project_id: string
+          reason: string | null
+          score: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          engagement_id?: string | null
+          evaluator_user_id?: string | null
+          expert_id: string
+          id?: string
+          project_id: string
+          reason?: string | null
+          score: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          engagement_id?: string | null
+          evaluator_user_id?: string | null
+          expert_id?: string
+          id?: string
+          project_id?: string
+          reason?: string | null
+          score?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_evaluations_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_evaluator_user_id_fkey"
+            columns: ["evaluator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_invitations: {
         Row: {
           completed_at: string | null
