@@ -123,6 +123,11 @@
   - `/account/password` 강제 변경 페이지·폼 + `changeInitialPassword`(새 비번 설정 후
     service_role로 플래그 해제, audit 기록) · 예약 슬러그에 `account` 추가
   - 빌드·타입체크 통과.
-- **단계 25 확장 · AI 개입 포인트 = 파급력 순위/경계 확정 + 프롬프트 버전관리** — B
+- **단계 25 · AI 개입 포인트 (경계 준수) — 핵심(피드백① 연결) 구현 완료**
+  - **후보 추천(비-AI, 결정론적)**: `lib/integrations/recommendations.ts` — 자사 평판(`expert_evaluations`, RLS 격리)+프로필로 설명 가능한 순위 계산. 순위/판정은 시스템(경계 14-1).
+  - **섭외 사유 초안(AI, 문장화만)**: `lib/ai/prompts.ts`(버전관리 `v1.0.0`)·`lib/ai/client.ts`(Anthropic Messages API, SDK 없이 fetch, `ANTHROPIC_API_KEY` 미설정 시 우아한 비활성 — 더미 아님). 자사 사실만 주입, 결정·비용은 담당자, AI 호출은 프롬프트 버전과 함께 audit 기록.
+  - UI: 전문가 목록 '후보 추천' 다이얼로그(순위·근거 표시 + AI 사유 초안 생성·복사).
+  - 빌드·타입체크 통과. `ANTHROPIC_API_KEY` 설정 시 초안 활성.
+  - ⚠︎ **남은 범위**: B 표 4~10위(보고서·제안서·품의 사유 등) AI 개입 포인트는 **원본 목록 확정 후** 추가 — 대표 확인 필요.
 
 > ⚠︎ 확인 요청: **B의 4~10위는 재구성 초안**입니다. 원본 "10가지" 목록을 주시면 표를 원본에 맞춰 교정하겠습니다.
