@@ -1611,10 +1611,70 @@ export type Database = {
           },
         ]
       }
+      project_contributions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          percentage: number
+          project_id: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          percentage: number
+          project_id: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          percentage?: number
+          project_id?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_contributions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_contributions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_contributions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           business_year: number
           client_name: string | null
+          closed_at: string | null
+          closing_approval_id: string | null
           code: string | null
           created_at: string
           created_by: string | null
@@ -1630,6 +1690,8 @@ export type Database = {
         Insert: {
           business_year: number
           client_name?: string | null
+          closed_at?: string | null
+          closing_approval_id?: string | null
           code?: string | null
           created_at?: string
           created_by?: string | null
@@ -1645,6 +1707,8 @@ export type Database = {
         Update: {
           business_year?: number
           client_name?: string | null
+          closed_at?: string | null
+          closing_approval_id?: string | null
           code?: string | null
           created_at?: string
           created_by?: string | null
@@ -1658,6 +1722,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "projects_closing_approval_id_fkey"
+            columns: ["closing_approval_id"]
+            isOneToOne: false
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "projects_tenant_id_fkey"
             columns: ["tenant_id"]

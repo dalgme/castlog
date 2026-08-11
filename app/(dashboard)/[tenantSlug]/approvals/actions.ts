@@ -22,6 +22,7 @@ import {
   type EngineLineStep,
 } from "@/lib/approvals/engine";
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
+import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
 
 type Session = {
   userId: string;
@@ -277,6 +278,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       .update({ status: "rejected", completed_at: nowIso })
       .eq("id", approvalId);
     await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
+    await onProjectClosingApprovalResolved(approvalId, "rejected");
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -288,6 +290,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
         .update({ status: "approved", completed_at: nowIso })
         .eq("id", approvalId);
       await onPaymentApprovalResolved(approvalId, "approved", null);
+      await onProjectClosingApprovalResolved(approvalId, "approved");
     }
   }
 

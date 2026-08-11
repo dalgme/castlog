@@ -27,6 +27,7 @@ import {
   ExpertEvaluationForm,
   type ExpertEvaluationRow,
 } from "./expert-evaluation-form";
+import { ProjectClosing } from "./project-closing";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -78,7 +79,7 @@ export default async function ProjectDetailPage({
   const { data: project } = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at"
     )
     .eq("id", params.projectId)
     .maybeSingle();
@@ -87,8 +88,14 @@ export default async function ProjectDetailPage({
 
   const modules = await getTenantModules();
 
-  const [{ data: steps }, engagementsResult, expertsResult, evaluationsResult] =
-    await Promise.all([
+  const [
+    { data: steps },
+    engagementsResult,
+    expertsResult,
+    evaluationsResult,
+    staffResult,
+    contributionsResult,
+  ] = await Promise.all([
       supabase
         .from("project_lifecycle_steps")
         .select(
@@ -119,6 +126,12 @@ export default async function ProjectDetailPage({
             .select("expert_id, score, reason")
             .eq("project_id", project.id)
         : Promise.resolve({ data: null }),
+      // 단계 23: 종료 기여도 대상 직원 + 기존 기여도
+      supabase.from("users").select("id, name").order("name", { ascending: true }),
+      supabase
+        .from("project_contributions")
+        .select("user_id, percentage")
+        .eq("project_id", project.id),
     ]);
 
   const stepRows = steps ?? [];
@@ -151,6 +164,19 @@ export default async function ProjectDetailPage({
     });
   }
   const unevaluatedCount = evaluationRows.filter((r) => r.score === null).length;
+
+  // 단계 23: 종료 기여도 + 종료 상태
+  const staffOptions = (staffResult.data ?? []).map((u) => ({
+    id: u.id,
+    name: u.name,
+  }));
+  const contributionInitial: Record<string, number> = {};
+  for (const c of contributionsResult.data ?? []) {
+    contributionInitial[c.user_id] = c.percentage;
+  }
+  const isClosed = project.status === "completed";
+  const closingInProgress =
+    project.closing_approval_id !== null && !isClosed;
 
   return (
     <div>
@@ -195,6 +221,38 @@ export default async function ProjectDetailPage({
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               {project.description}
+            </CardContent>
+          </Card>
+        )}
+
+        {canEvaluate && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">프로젝트 종료</CardTitle>
+              {isClosed && (
+                <Badge>
+                  종료됨
+                  {project.closed_at
+                    ? ` · ${new Date(project.closed_at).toLocaleDateString("ko-KR")}`
+                    : ""}
+                </Badge>
+              )}
+            </CardHeader>
+            <CardContent>
+              {isClosed ? (
+                <p className="text-sm text-muted-foreground">
+                  이 프로젝트는 종료되었습니다. 참여 기여도는 임원 대시보드 성과
+                  집계에 반영됩니다.
+                </p>
+              ) : (
+                <ProjectClosing
+                  projectId={project.id}
+                  staff={staffOptions}
+                  initial={contributionInitial}
+                  closingInProgress={closingInProgress}
+                  approvalsActive={modules.approvals}
+                />
+              )}
             </CardContent>
           </Card>
         )}
