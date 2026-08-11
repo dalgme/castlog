@@ -25,7 +25,24 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   business_card: "명함",
   business_registration: "사업자등록증",
   signature: "서명",
+  seal: "날인(도장)",
 };
+
+/**
+ * 서명 캔버스로 수집하는 유형 (단계 28-A) — 파일 업로드가 아니라 PNG 캔버스.
+ * 암호화 버킷 저장·서명 URL 열람은 다른 서류와 동일.
+ */
+export const SIGNATURE_CANVAS_TYPES = ["signature", "seal"] as const;
+export type SignatureCanvasType = (typeof SIGNATURE_CANVAS_TYPES)[number];
+
+export function isSignatureCanvasType(
+  value: string
+): value is SignatureCanvasType {
+  return (SIGNATURE_CANVAS_TYPES as readonly string[]).includes(value);
+}
+
+/** 서명·날인 PNG 상한 (캔버스 산출물은 작다 — 넉넉히 2MB) */
+export const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
 
 /** 민감도 표기 — 신분증·통장사본은 열람 로그가 특히 중요 (설계문서 4.4) */
 export const SENSITIVE_DOCUMENT_TYPES: readonly string[] = [

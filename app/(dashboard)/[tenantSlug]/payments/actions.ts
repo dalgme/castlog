@@ -223,6 +223,31 @@ export async function createPaymentBatch(
     }
   }
 
+  // 1.5) 평가 게이트 (단계 27 — 대표 피드백 ①)
+  //   프로젝트 귀속 지급은 참여 전문가 전원의 종료 평가가 완료돼야 상신 가능.
+  //   projectId가 없는 지급(experts 단독 동작 — 프로젝트 비귀속)은 평가 게이트 없음.
+  if (projectId) {
+    const gateExpertIds = Array.from(
+      new Set(engagements.map((e) => e.expert_id))
+    );
+    const { data: evaluations } = await supabase
+      .from("expert_evaluations")
+      .select("expert_id")
+      .eq("project_id", projectId)
+      .in("expert_id", gateExpertIds);
+    const evaluated = new Set((evaluations ?? []).map((e) => e.expert_id));
+    const unevaluated = engagements.filter((e) => !evaluated.has(e.expert_id));
+    if (unevaluated.length > 0) {
+      const names = Array.from(
+        new Set(unevaluated.map((e) => e.experts?.name ?? "(이름 없음)"))
+      ).join(", ");
+      return {
+        ok: false,
+        error: `프로젝트 종료 평가가 완료되지 않은 전문가가 있습니다: ${names}. 프로젝트 화면에서 전문가 평가(점수)를 입력한 뒤 지급 품의를 진행하세요.`,
+      };
+    }
+  }
+
   // 2) 중복 지급 방지 — 취소되지 않은 배치에 이미 포함된 섭외 제외
   const { data: existingItems } = await supabase
     .from("expert_payment_items")

@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
 import { Sidebar } from "@/components/layout/sidebar";
+import { AlertBanner } from "@/components/layout/alert-banner";
 
 /** 테넌트 대시보드 공통 레이아웃 — /{tenant-slug}/... (미들웨어 인증 게이트와 이중 방어) */
 export default async function TenantDashboardLayout({
@@ -17,6 +18,7 @@ export default async function TenantDashboardLayout({
     <div className="flex min-h-screen">
       <Sidebar tenantSlug={params.tenantSlug} modules={modules} />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
+        <AlertBanner />
         {children}
       </div>
     </div>

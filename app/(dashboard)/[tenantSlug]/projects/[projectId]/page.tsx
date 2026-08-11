@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
+import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -19,8 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
+import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 
 import { StepStatusSelect } from "./step-status-select";
+import {
+  ExpertEvaluationForm,
+  type ExpertEvaluationRow,
+} from "./expert-evaluation-form";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -42,8 +48,16 @@ export default async function ProjectDetailPage({
 }: {
   params: { tenantSlug: string; projectId: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
   await requireModule("operations");
+
+  const role = roleFromUser(user);
+  const canEvaluate = role === "org_admin" || role === "manager";
 
   if (!hasSupabaseEnv()) {
     return (
@@ -73,31 +87,39 @@ export default async function ProjectDetailPage({
 
   const modules = await getTenantModules();
 
-  const [{ data: steps }, engagementsResult, expertsResult] = await Promise.all([
-    supabase
-      .from("project_lifecycle_steps")
-      .select(
-        "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
-      )
-      .eq("project_id", project.id)
-      .order("step_no", { ascending: true }),
-    // 섭외 연동은 experts 모듈 활성 시에만 (CLAUDE.md 1-2-6)
-    modules.experts
-      ? supabase
-          .from("expert_engagements")
-          .select(
-            "id, role_description, fee_amount, status, created_at, experts (name)"
-          )
-          .eq("project_id", project.id)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: null }),
-    modules.experts
-      ? supabase
-          .from("expert_tenant_links")
-          .select("expert_id, status, experts (id, name)")
-          .eq("status", "active")
-      : Promise.resolve({ data: null }),
-  ]);
+  const [{ data: steps }, engagementsResult, expertsResult, evaluationsResult] =
+    await Promise.all([
+      supabase
+        .from("project_lifecycle_steps")
+        .select(
+          "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
+        )
+        .eq("project_id", project.id)
+        .order("step_no", { ascending: true }),
+      // 섭외 연동은 experts 모듈 활성 시에만 (CLAUDE.md 1-2-6)
+      modules.experts
+        ? supabase
+            .from("expert_engagements")
+            .select(
+              "id, expert_id, role_description, fee_amount, status, created_at, experts (name)"
+            )
+            .eq("project_id", project.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: null }),
+      modules.experts
+        ? supabase
+            .from("expert_tenant_links")
+            .select("expert_id, status, experts (id, name)")
+            .eq("status", "active")
+        : Promise.resolve({ data: null }),
+      // 단계 27: 프로젝트 종료 평가 (테넌트 격리 — 전문가 비공개)
+      modules.experts
+        ? supabase
+            .from("expert_evaluations")
+            .select("expert_id, score, reason")
+            .eq("project_id", project.id)
+        : Promise.resolve({ data: null }),
+    ]);
 
   const stepRows = steps ?? [];
   const engagements = engagementsResult.data ?? [];
@@ -108,6 +130,27 @@ export default async function ProjectDetailPage({
   const done = stepRows.filter(
     (s) => s.status === "completed" || s.status === "skipped"
   ).length;
+
+  // 단계 27: 수락(계약 성립)된 섭외 = 평가 대상. 전문가별 1건 (중복 제거).
+  const evaluationByExpert = new Map(
+    (evaluationsResult.data ?? []).map((e) => [e.expert_id, e])
+  );
+  const seenExpert = new Set<string>();
+  const evaluationRows: ExpertEvaluationRow[] = [];
+  for (const engagement of engagements) {
+    if (engagement.status !== "accepted") continue;
+    if (seenExpert.has(engagement.expert_id)) continue;
+    seenExpert.add(engagement.expert_id);
+    const existing = evaluationByExpert.get(engagement.expert_id);
+    evaluationRows.push({
+      expertId: engagement.expert_id,
+      engagementId: engagement.id,
+      name: engagement.experts?.name ?? "-",
+      score: existing?.score ?? null,
+      reason: existing?.reason ?? null,
+    });
+  }
+  const unevaluatedCount = evaluationRows.filter((r) => r.score === null).length;
 
   return (
     <div>
@@ -208,6 +251,71 @@ export default async function ProjectDetailPage({
                       {engagement.status === "requested" && (
                         <EngagementCancelButton engagementId={engagement.id} />
                       )}
+                      {engagement.status === "accepted" && (
+                        <>
+                          <Button asChild variant="ghost" size="sm">
+                            <Link
+                              href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
+                            >
+                              수락서
+                            </Link>
+                          </Button>
+                          <EngagementUrgentCancel
+                            engagementId={engagement.id}
+                            expertName={engagement.experts?.name ?? "전문가"}
+                          />
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {modules.experts && evaluationRows.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">
+                전문가 평가 ({evaluationRows.length - unevaluatedCount}/
+                {evaluationRows.length})
+              </CardTitle>
+              {unevaluatedCount > 0 ? (
+                <Badge variant="secondary">미완료 {unevaluatedCount}</Badge>
+              ) : (
+                <Badge>평가 완료</Badge>
+              )}
+            </CardHeader>
+            <CardContent>
+              <p className="mb-2 text-xs text-muted-foreground">
+                프로젝트에 참여한 전문가 전원을 평가해야 수당 지급 품의를 올릴 수
+                있습니다. 평가(점수·사유)는 <strong>전문가에게 공개되지 않으며</strong>{" "}
+                회사 내부 기록으로만 보관됩니다.
+              </p>
+              {canEvaluate ? (
+                <ul className="divide-y">
+                  {evaluationRows.map((row) => (
+                    <ExpertEvaluationForm
+                      key={row.expertId}
+                      projectId={project.id}
+                      row={row}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <ul className="divide-y">
+                  {evaluationRows.map((row) => (
+                    <li
+                      key={row.expertId}
+                      className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
+                    >
+                      <span className="font-medium">{row.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {row.score !== null
+                          ? `평가 완료 · ${row.score}점`
+                          : "평가 미완료"}
+                      </span>
                     </li>
                   ))}
                 </ul>

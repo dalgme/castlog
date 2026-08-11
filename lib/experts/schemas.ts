@@ -53,3 +53,20 @@ export type JoinRegistrationInput = z.infer<typeof joinRegistrationSchema>;
 
 /** 현재 약관 버전 — 약관 개정 시 갱신 */
 export const CURRENT_TERMS_VERSION = "v1.0";
+
+/**
+ * 단계 27: 전문가 프로젝트 종료 평가 (대표 피드백 ①)
+ * 점수 10점 만점 필수 · 사유 선택. 테넌트 격리·전문가 비공개.
+ */
+export const expertEvaluationSchema = z.object({
+  projectId: z.string().uuid("프로젝트를 확인하세요."),
+  expertId: z.string().uuid("전문가를 확인하세요."),
+  engagementId: z.string().uuid().optional(),
+  score: z
+    .number({ invalid_type_error: "평가 점수를 선택하세요." })
+    .int("점수는 1~10 사이 정수입니다.")
+    .min(1, "평가 점수를 선택하세요.")
+    .max(10, "점수는 10점 만점입니다."),
+  reason: z.string().max(1000, "평가 사유는 1000자 이내로 입력하세요.").optional(),
+});
+export type ExpertEvaluationInput = z.infer<typeof expertEvaluationSchema>;

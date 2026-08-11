@@ -22,6 +22,7 @@ import {
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 
 import { InviteExpertDialog } from "./invite-dialog";
+import { ExpertRecommendDialog } from "./recommend-dialog";
 import { RevokeInvitationButton } from "./revoke-button";
 
 export const metadata = { title: "전문가" };
@@ -106,6 +107,12 @@ export default async function TenantExpertsPage({
             <Button asChild variant="outline" size="sm">
               <Link href={`/${params.tenantSlug}/experts/import`}>일괄 등록</Link>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/${params.tenantSlug}/experts/cancellations`}>
+                취소 내역
+              </Link>
+            </Button>
+            <ExpertRecommendDialog />
             <EngagementDialog
               experts={activeExpertOptions}
               projects={projects}

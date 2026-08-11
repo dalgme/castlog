@@ -742,6 +742,172 @@ export type Database = {
           },
         ]
       }
+      engagement_acceptances: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          engagement_id: string
+          expert_id: string
+          expert_name: string
+          fee_amount: number | null
+          has_signature: boolean
+          id: string
+          letter_no: string
+          project_name: string | null
+          role_description: string
+          seal_path: string | null
+          signature_path: string | null
+          signed_via: string
+          signer_ip: string | null
+          starts_on: string | null
+          ends_on: string | null
+          tenant_id: string
+          tenant_name: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          engagement_id: string
+          expert_id: string
+          expert_name: string
+          fee_amount?: number | null
+          has_signature?: boolean
+          id?: string
+          letter_no: string
+          project_name?: string | null
+          role_description: string
+          seal_path?: string | null
+          signature_path?: string | null
+          signed_via: string
+          signer_ip?: string | null
+          starts_on?: string | null
+          ends_on?: string | null
+          tenant_id: string
+          tenant_name: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          engagement_id?: string
+          expert_id?: string
+          expert_name?: string
+          fee_amount?: number | null
+          has_signature?: boolean
+          id?: string
+          letter_no?: string
+          project_name?: string | null
+          role_description?: string
+          seal_path?: string | null
+          signature_path?: string | null
+          signed_via?: string
+          signer_ip?: string | null
+          starts_on?: string | null
+          ends_on?: string | null
+          tenant_id?: string
+          tenant_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_acceptances_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: true
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_acceptances_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_acceptances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      engagement_cancellations: {
+        Row: {
+          canceled_at: string
+          canceled_by: string | null
+          created_at: string
+          engagement_id: string
+          expert_id: string
+          id: string
+          is_urgent: boolean
+          prior_status: string
+          project_id: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          canceled_at?: string
+          canceled_by?: string | null
+          created_at?: string
+          engagement_id: string
+          expert_id: string
+          id?: string
+          is_urgent?: boolean
+          prior_status: string
+          project_id?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          canceled_at?: string
+          canceled_by?: string | null
+          created_at?: string
+          engagement_id?: string
+          expert_id?: string
+          id?: string
+          is_urgent?: boolean
+          prior_status?: string
+          project_id?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_cancellations_canceled_by_fkey"
+            columns: ["canceled_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: true
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_cancellations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_documents: {
         Row: {
           created_at: string
@@ -874,6 +1040,81 @@ export type Database = {
           },
           {
             foreignKeyName: "expert_engagements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expert_evaluations: {
+        Row: {
+          created_at: string
+          engagement_id: string | null
+          evaluator_user_id: string | null
+          expert_id: string
+          id: string
+          project_id: string
+          reason: string | null
+          score: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          engagement_id?: string | null
+          evaluator_user_id?: string | null
+          expert_id: string
+          id?: string
+          project_id: string
+          reason?: string | null
+          score: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          engagement_id?: string | null
+          evaluator_user_id?: string | null
+          expert_id?: string
+          id?: string
+          project_id?: string
+          reason?: string | null
+          score?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_evaluations_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "expert_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_evaluator_user_id_fkey"
+            columns: ["evaluator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_evaluations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1223,6 +1464,51 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_inquiries: {
+        Row: {
+          company_name: string
+          contact_name: string
+          created_at: string
+          email: string
+          handled_by: string | null
+          id: string
+          inquiry_type: string
+          message: string | null
+          phone: string | null
+          source: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_name: string
+          contact_name: string
+          created_at?: string
+          email: string
+          handled_by?: string | null
+          id?: string
+          inquiry_type?: string
+          message?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_name?: string
+          contact_name?: string
+          created_at?: string
+          email?: string
+          handled_by?: string | null
+          id?: string
+          inquiry_type?: string
+          message?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           created_at: string
@@ -1527,6 +1813,73 @@ export type Database = {
           },
           {
             foreignKeyName: "tax_project_grants_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_alerts: {
+        Row: {
+          body: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          id: string
+          resource_id: string | null
+          resource_type: string | null
+          severity: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          body?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_alerts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_alerts_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_alerts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

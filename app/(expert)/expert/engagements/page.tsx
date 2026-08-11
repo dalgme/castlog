@@ -149,6 +149,18 @@ export default async function ExpertEngagementsPage() {
                   {answerable && (
                     <EngagementRespondButtons engagementId={engagement.id} />
                   )}
+                  {engagement.status === "accepted" && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                    >
+                      <Link href={`/expert/engagements/${engagement.id}/acceptance`}>
+                        섭외수락서 보기
+                      </Link>
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );

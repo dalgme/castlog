@@ -1,39 +1,20 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { sanitizeNextPath } from "@/lib/auth/schemas";
-import { getSessionUser, postLoginPath } from "@/lib/auth/session";
-import { AuthCard } from "@/components/auth/auth-card";
-
-import { ExpertLoginForm } from "./login-form";
 
 export const metadata = { title: "전문가 로그인" };
 
-/** 전문가 로그인 — 휴대폰 OTP. 직원은 /login (이메일). */
-export default async function ExpertLoginPage({
+/**
+ * 전문가 로그인은 통합 로그인 화면(/login)의 '전문가' 탭으로 일원화됐다.
+ * 인쇄물·기존 링크 호환을 위해 이 경로는 유지하되 탭 선택 상태로 리다이렉트한다.
+ */
+export default function ExpertLoginRedirect({
   searchParams,
 }: {
   searchParams: { next?: string };
 }) {
-  const user = await getSessionUser();
-  if (user) {
-    redirect(sanitizeNextPath(searchParams.next) ?? postLoginPath(user));
-  }
-
-  return (
-    <AuthCard
-      title="전문가 로그인"
-      description="휴대폰 번호 인증으로 로그인하세요."
-      footer={
-        <p>
-          기업 소속이신가요?{" "}
-          <Link href="/login" className="font-medium text-brand underline-offset-4 hover:underline">
-            이메일로 로그인
-          </Link>
-        </p>
-      }
-    >
-      <ExpertLoginForm next={sanitizeNextPath(searchParams.next)} />
-    </AuthCard>
-  );
+  const next = sanitizeNextPath(searchParams.next);
+  const params = new URLSearchParams({ tab: "expert" });
+  if (next) params.set("next", next);
+  redirect(`/login?${params.toString()}`);
 }

@@ -76,6 +76,7 @@ export async function createStaffUser(
       tenant_id: session.tenantId,
       tenant_slug: session.tenantSlug,
       role: data.role,
+      must_change_password: true, // 단계 30: 최초 로그인 시 비밀번호 강제 변경
     },
   });
 
