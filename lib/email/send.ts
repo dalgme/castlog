@@ -6,15 +6,19 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
+import { resolveEmailProvider } from "./provider";
 
 /**
- * 이메일 발송 (Resend — 플랫폼 공용 계정, 기술 스택 확정)
+ * 이메일 발송 — 발송 정책(광고 필터·수신거부·로그·계측)은 여기, 실제 전송 수단은
+ * lib/email/provider.ts 어댑터 뒤로 격리(BYO SMS 패턴). 기본 제공자는 Resend이며
+ * 국내 데이터레지던시 교체는 EMAIL_PROVIDER 설정으로 처리한다
+ * (docs/decisions/email-residency.md).
  *
  * 광고성 강제 사항 (CLAUDE.md 5-1):
  *  - 제목 "(광고)" 표기 + 본문 수신거부 링크(/u) 자동 삽입
  *  - 광고 수신 미동의(email 채널)·수신거부자 자동 제외
  *  - (야간 제한은 SMS 등 전화 매체 대상 — 이메일은 미적용)
- * RESEND_API_KEY 미설정 시 테스트 모드(status 'test')로 기록만 한다.
+ * 발송 제공자 미설정 시 테스트 모드(status 'test')로 기록만 한다.
  */
 
 export type EmailRecipient = {
@@ -86,9 +90,12 @@ export async function sendTenantEmail(
   const supabase = createClient();
   const admin = createAdminClient();
   const batchId = randomUUID();
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromAddress = process.env.RESEND_FROM ?? "CASTLOG <no-reply@castlog.kr>";
-  const testMode = !apiKey;
+  const provider = resolveEmailProvider();
+  const fromAddress =
+    process.env.EMAIL_FROM ??
+    process.env.RESEND_FROM ??
+    "CASTLOG <no-reply@castlog.kr>";
+  const testMode = !provider;
 
   let targets = params.recipients;
   let excludedCount = 0;
@@ -134,28 +141,16 @@ export async function sendTenantEmail(
     let ok = true;
     let errorMessage: string | null = null;
 
-    if (!testMode) {
-      try {
-        const response = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            from: fromAddress,
-            to: [recipient.email],
-            subject,
-            text: body,
-          }),
-        });
-        if (!response.ok) {
-          ok = false;
-          errorMessage = `resend ${response.status}: ${(await response.text()).slice(0, 200)}`;
-        }
-      } catch (error) {
+    if (provider) {
+      const result = await provider.send({
+        from: fromAddress,
+        to: recipient.email,
+        subject,
+        text: body,
+      });
+      if (!result.ok) {
         ok = false;
-        errorMessage = error instanceof Error ? error.message : "network";
+        errorMessage = result.error;
       }
     }
 
