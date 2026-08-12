@@ -2145,6 +2145,100 @@ export type Database = {
           },
         ]
       }
+      travel_requests: {
+        Row: {
+          approval_id: string | null
+          auto_source: string | null
+          created_at: string
+          destination: string | null
+          distance_km: number
+          fuel_cost: number
+          fuel_efficiency_kmpl: number
+          fuel_price_per_l: number
+          fuel_type: string
+          id: string
+          note: string | null
+          origin: string | null
+          other_cost: number
+          purpose: string
+          requester_user_id: string
+          round_trip: boolean
+          tenant_id: string
+          toll_cost: number
+          total_cost: number
+          travel_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          approval_id?: string | null
+          auto_source?: string | null
+          created_at?: string
+          destination?: string | null
+          distance_km?: number
+          fuel_cost?: number
+          fuel_efficiency_kmpl?: number
+          fuel_price_per_l?: number
+          fuel_type?: string
+          id?: string
+          note?: string | null
+          origin?: string | null
+          other_cost?: number
+          purpose: string
+          requester_user_id: string
+          round_trip?: boolean
+          tenant_id: string
+          toll_cost?: number
+          total_cost?: number
+          travel_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approval_id?: string | null
+          auto_source?: string | null
+          created_at?: string
+          destination?: string | null
+          distance_km?: number
+          fuel_cost?: number
+          fuel_efficiency_kmpl?: number
+          fuel_price_per_l?: number
+          fuel_type?: string
+          id?: string
+          note?: string | null
+          origin?: string | null
+          other_cost?: number
+          purpose?: string
+          requester_user_id?: string
+          round_trip?: boolean
+          tenant_id?: string
+          toll_cost?: number
+          total_cost?: number
+          travel_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_requests_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_requests_requester_user_id_fkey"
+            columns: ["requester_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
