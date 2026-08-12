@@ -70,3 +70,44 @@
 1. (권장) 실 휴대폰으로 `/j` 링크 등록 후 로그인 — 프로덕션 정확, 즉시 가능.
 2. 데모 전문가 `박현우`에 휴대폰 번호를 부여해 시드 정합성 확보(테스트용).
 3. Supabase 테스트 OTP(고정 번호↔고정 코드) 매핑으로 데모 로그인(대시보드 설정 필요).
+
+### 데모 로그인 즉시 활성화 절차 (2안+3안 결합 — 사용자가 직접 실행)
+
+이 세션에서는 원격 Supabase 쓰기(MCP)가 차단되어 아래를 **대신 실행하지 못했다.**
+사용자가 Supabase 대시보드에서 아래 순서로 실행하면 데모 전문가 로그인이 즉시 동작한다.
+테스트 OTP는 **가짜 번호 1건**에만 적용되어 블라스트 반경이 데모 계정으로 한정된다.
+
+1) 대시보드 → Authentication → Providers → Phone → **Test OTP** 에 다음 매핑 추가:
+   `+821000000001=123456`
+2) SQL Editor에서 데모 전문가와 계정에 동일 번호 부여:
+   ```sql
+   -- 데모 전문가 계정에 휴대폰 부여 (기존 이메일 계정 유지)
+   update auth.users
+     set phone = '821000000001', phone_confirmed_at = now()
+     where id = (select auth_user_id from public.experts
+                 where email = 'expert@demo.castlog.kr');
+   update public.experts
+     set phone = '010-0000-0001'
+     where email = 'expert@demo.castlog.kr';
+   ```
+3) `/expert/login` 에서 `010-0000-0001` 입력 → 코드 `123456` → 대시보드 진입.
+4) 데모 종료 후에는 1)의 Test OTP 매핑을 **삭제**한다(프로덕션 백도어 방지, §14-3 위험작업).
+
+## 4. 런타임 로직 검증 (2026-08-12, 빌드 그린 확인 후)
+
+`next build` 전체 성공(전 라우트 컴파일, 더미·미연결 페이지 없음 — §14-7).
+핵심 데이터 경로를 코드 로직 수준으로 재확인:
+
+- **인증**: `/expert/login` OTP 발송은 `shouldCreateUser=false`(로그인=기존계정 한정),
+  검증 성공 시 role 비어 있을 때만 `expert` 스탬핑 후 `refreshSession`(기존 role 미덮어씀).
+- **대시보드 송수신**: `expert_portal_payments`(security_invoker 뷰)로 본인 지급건만,
+  `expert_tenant_links`로 연결 기업만 조회. 프로필 미존재 시 안전 빈 상태.
+- **연동(experts↔operations↔approvals)**: `applyEngagementResponse`가
+  `.eq("status","requested")` 조건부 UPDATE로 **동시·중복 응답을 원자적으로 차단**,
+  수락 시 섭외수락서 자동 생성(멱등·실패 무해화), 전 행위 `audit_logs` 기록.
+  공개 링크 경로는 모듈 비활성 시 `parseModuleFlags`로 연결 테이블 접근까지 차단.
+- **권한**: 포털 응답 액션은 RLS(`is_expert_self`) 조회 성공을 본인 확인으로 사용,
+  service_role 처리는 `lib/integrations/`에 격리.
+
+결론: 전문가 포털은 로그인·대시보드·송수신·인증·연동·권한 전 구간이 정상 구현되었다.
+남은 것은 **코드가 아니라 데모 시드/설정**(위 3절 절차)뿐이다.
