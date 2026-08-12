@@ -200,6 +200,9 @@ export default async function ApprovalsPage({
             <Button asChild variant="ghost" size="sm">
               <Link href={`/${params.tenantSlug}/approvals/rules`}>전결규정</Link>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/${params.tenantSlug}/approvals/travel`}>출장품의</Link>
+            </Button>
             <SubmitApprovalDialog
               tenantSlug={params.tenantSlug}
               users={users ?? []}
