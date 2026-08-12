@@ -1,11 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import {
+  createApprovalWithSteps,
+  matchApprovalRule,
+} from "@/lib/approvals/engine";
 import {
   projectCreateSchema,
   stepStatusSchema,
@@ -164,4 +169,263 @@ export async function updateStepStatus(
 
   revalidatePath(`/[tenantSlug]/projects/${updated.project_id}`, "page");
   return { ok: true };
+}
+
+// ============================================================================
+// 단계 23: 프로젝트 종료 기여도(합 100%) + 종료 품의서 게이트
+// ============================================================================
+
+type ProjectMgrSession = { userId: string; tenantId: string; role: string };
+
+async function requireProjectManager(): Promise<
+  { ok: true; session: ProjectMgrSession } | { ok: false; error: string }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.operations) {
+    return { ok: false, error: "프로젝트 모듈이 비활성화된 테넌트입니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
+    return { ok: false, error: "프로젝트 종료 권한이 없습니다 (관리자 이상)." };
+  }
+  return { ok: true, session: { userId: user.id, tenantId, role } };
+}
+
+const contributionsSchema = z.object({
+  projectId: z.string().uuid("프로젝트를 확인하세요."),
+  rows: z
+    .array(
+      z.object({
+        userId: z.string().uuid(),
+        percentage: z
+          .number({ invalid_type_error: "기여도는 숫자여야 합니다." })
+          .int("기여도는 정수여야 합니다.")
+          .min(0, "기여도는 0 이상이어야 합니다.")
+          .max(100, "기여도는 100 이하여야 합니다."),
+        note: z.string().max(200, "메모는 200자 이내로 입력하세요.").optional(),
+      })
+    )
+    .max(100),
+});
+export type ContributionsInput = z.infer<typeof contributionsSchema>;
+
+export type ProjectActionResult = { ok: true } | { ok: false; error: string };
+
+/** 종료 기여도 저장 (관리자 이상). 자사 직원만, 완료/취소 프로젝트는 불가. */
+export async function saveProjectContributions(
+  input: ContributionsInput
+): Promise<ProjectActionResult> {
+  const auth = await requireProjectManager();
+  if (!auth.ok) return auth;
+  const { session } = auth;
+
+  const parsed = contributionsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+  const data = parsed.data;
+  const supabase = createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, status")
+    .eq("id", data.projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (project.status === "completed" || project.status === "cancelled") {
+    return { ok: false, error: "이미 종료·취소된 프로젝트는 기여도를 수정할 수 없습니다." };
+  }
+
+  // 자사 직원 검증 (RLS로 자사 사용자만 조회됨)
+  const userIds = Array.from(new Set(data.rows.map((r) => r.userId)));
+  const { data: tenantUsers } = userIds.length
+    ? await supabase.from("users").select("id").in("id", userIds)
+    : { data: [] };
+  const validIds = new Set((tenantUsers ?? []).map((u) => u.id));
+  if (userIds.some((id) => !validIds.has(id))) {
+    return { ok: false, error: "자사 직원만 기여도 대상으로 지정할 수 있습니다." };
+  }
+
+  if (data.rows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("project_contributions")
+      .upsert(
+        data.rows.map((r) => ({
+          tenant_id: session.tenantId,
+          project_id: data.projectId,
+          user_id: r.userId,
+          percentage: r.percentage,
+          note: r.note?.trim() || null,
+          created_by: session.userId,
+        })),
+        { onConflict: "project_id,user_id" }
+      );
+    if (upsertError) {
+      return { ok: false, error: "기여도 저장에 실패했습니다. 다시 시도해 주세요." };
+    }
+  }
+
+  // 목록에서 빠진 직원의 기여도는 제거
+  let removeQuery = supabase
+    .from("project_contributions")
+    .delete()
+    .eq("project_id", data.projectId);
+  if (userIds.length > 0) {
+    removeQuery = removeQuery.not(
+      "user_id",
+      "in",
+      `(${userIds.join(",")})`
+    );
+  }
+  await removeQuery;
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.role,
+    action: "project_contributions.save",
+    resource_type: "project",
+    resource_id: data.projectId,
+    after_data: { count: data.rows.length },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+export type ClosingResult =
+  | { ok: true; submitted: boolean }
+  | { ok: false; error: string };
+
+/**
+ * 프로젝트 종료 상신 (관리자 이상).
+ * 기여도 합계 100% 필수. approvals 활성 시 종료 품의(approval_type=project) 상신,
+ * 비활성 시 직접 종료(단독 동작).
+ */
+export async function submitProjectClosing(
+  projectId: string
+): Promise<ClosingResult> {
+  const auth = await requireProjectManager();
+  if (!auth.ok) return auth;
+  const { session } = auth;
+
+  const supabase = createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name, status, closing_approval_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (project.status === "completed") {
+    return { ok: false, error: "이미 종료된 프로젝트입니다." };
+  }
+  if (project.status === "cancelled") {
+    return { ok: false, error: "취소된 프로젝트는 종료할 수 없습니다." };
+  }
+  if (project.closing_approval_id) {
+    return { ok: false, error: "이미 종료 품의가 진행 중입니다." };
+  }
+
+  const { data: contributions } = await supabase
+    .from("project_contributions")
+    .select("user_id, percentage, users (name)")
+    .eq("project_id", projectId);
+  const rows = contributions ?? [];
+  if (rows.length === 0) {
+    return { ok: false, error: "종료 기여도를 먼저 입력하세요 (합계 100%)." };
+  }
+  const total = rows.reduce((s, r) => s + r.percentage, 0);
+  if (total !== 100) {
+    return { ok: false, error: `기여도 합계가 100%가 아닙니다 (현재 ${total}%).` };
+  }
+
+  const modules = await getTenantModules();
+
+  // approvals 비활성 — 결재 없이 직접 종료 (단독 동작 경로)
+  if (!modules.approvals) {
+    const { data: closed, error } = await supabase
+      .from("projects")
+      .update({ status: "completed", closed_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .not("status", "in", "(completed,cancelled)")
+      .select("id")
+      .maybeSingle();
+    if (error || !closed) {
+      return { ok: false, error: "종료 처리에 실패했습니다." };
+    }
+    await supabase.from("audit_logs").insert({
+      tenant_id: session.tenantId,
+      actor_auth_user_id: session.userId,
+      actor_role: session.role,
+      action: "project.close_direct",
+      resource_type: "project",
+      resource_id: projectId,
+    });
+    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+    revalidatePath("/[tenantSlug]/projects", "page");
+    return { ok: true, submitted: false };
+  }
+
+  // approvals 활성 — 종료 품의 상신 (승인 시 hook이 completed로 전이)
+  const matched = await matchApprovalRule("project", 0);
+  if (!matched) {
+    return {
+      ok: false,
+      error:
+        "프로젝트 품의에 적용할 전결규정이 없습니다. 전결규정(유형: 프로젝트 품의)을 등록한 뒤 다시 상신하세요.",
+    };
+  }
+
+  const body = [
+    `프로젝트: ${project.name}`,
+    "",
+    "참여 직원 기여도:",
+    ...rows.map(
+      (r) => `- ${r.users?.name ?? "(직원)"}: ${r.percentage}%`
+    ),
+    `합계: ${total}%`,
+  ].join("\n");
+
+  const created = await createApprovalWithSteps({
+    tenantId: session.tenantId,
+    requesterUserId: session.userId,
+    title: `[프로젝트 종료] ${project.name}`,
+    body,
+    approvalType: "project",
+    amount: 0,
+    projectId,
+    appliedRuleId: matched.ruleId,
+    steps: matched.steps,
+  });
+  if (!created.ok) return created;
+
+  const { error: linkError } = await supabase
+    .from("projects")
+    .update({ closing_approval_id: created.approvalId })
+    .eq("id", projectId)
+    .is("closing_approval_id", null);
+  if (linkError) {
+    return { ok: false, error: "프로젝트와 종료 품의 연결에 실패했습니다." };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.role,
+    action: "project.close_submit",
+    resource_type: "project",
+    resource_id: projectId,
+    after_data: { approval_id: created.approvalId },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, submitted: true };
 }
