@@ -9,6 +9,7 @@ import {
   Users,
   Wallet,
   FileText,
+  BarChart3,
   Send,
   Settings,
   LogOut,
@@ -25,8 +26,16 @@ const NAV_ITEMS: readonly {
   path: string;
   icon: typeof LayoutDashboard;
   module: ModuleKey | null;
+  orgAdminOnly?: boolean;
 }[] = [
   { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
+  {
+    label: "임원 현황",
+    path: "executive",
+    icon: BarChart3,
+    module: "operations",
+    orgAdminOnly: true,
+  },
   { label: "프로젝트", path: "projects", icon: FolderKanban, module: "operations" },
   { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
   { label: "전문가", path: "experts", icon: Users, module: "experts" },
@@ -40,13 +49,17 @@ const NAV_ITEMS: readonly {
 export function Sidebar({
   tenantSlug,
   modules,
+  isOrgAdmin,
 }: {
   tenantSlug: string;
   modules: ModuleFlags;
+  isOrgAdmin: boolean;
 }) {
   const pathname = usePathname();
   const visibleItems = NAV_ITEMS.filter(
-    (item) => item.module === null || modules[item.module]
+    (item) =>
+      (item.module === null || modules[item.module]) &&
+      (!item.orgAdminOnly || isOrgAdmin)
   );
 
   return (
