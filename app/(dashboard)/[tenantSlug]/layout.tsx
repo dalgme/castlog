@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth/session";
+import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AlertBanner } from "@/components/layout/alert-banner";
@@ -11,12 +12,23 @@ export default async function TenantDashboardLayout({
   children: React.ReactNode;
   params: { tenantSlug: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
   const modules = await getTenantModules();
+  const role = roleFromUser(user);
+  const isOrgAdmin = role === "org_admin" || role === "platform_admin";
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar tenantSlug={params.tenantSlug} modules={modules} />
+      <Sidebar
+        tenantSlug={params.tenantSlug}
+        modules={modules}
+        isOrgAdmin={isOrgAdmin}
+      />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
         <AlertBanner />
         {children}
