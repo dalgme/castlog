@@ -30,9 +30,11 @@ function StatTile({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-background p-3">
+    <div className="rounded-lg border bg-secondary p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums">{value}</p>
+      <p className="mt-1 text-lg font-bold tabular-nums text-foreground">
+        {value}
+      </p>
       {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
