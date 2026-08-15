@@ -1502,6 +1502,36 @@ export type Database = {
           },
         ]
       }
+      tax_access_grants: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          id: string
+          revoked_at: string | null
+          role_label: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          revoked_at?: string | null
+          role_label?: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          revoked_at?: string | null
+          role_label?: string | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tax_access_logs: {
         Row: {
           access_type: string
