@@ -30,7 +30,7 @@ export default async function ExpertAcceptancePage({
           </Button>
         }
       />
-      <main className="mx-auto max-w-2xl p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl p-4 sm:p-5">
         <AcceptanceLetter {...view} />
       </main>
     </div>

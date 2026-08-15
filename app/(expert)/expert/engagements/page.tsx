@@ -81,7 +81,7 @@ export default async function ExpertEngagementsPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-2xl space-y-3 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-3 p-4 sm:p-5">
         {rows.length === 0 ? (
           <EmptyState
             title="섭외 요청이 없습니다"
