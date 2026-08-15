@@ -97,3 +97,16 @@ export const ENGAGEMENT_TONE: Record<string, TagTone> = {
   canceled: "gray",
   expired: "wait",
 };
+
+/**
+ * 섭외 상태 라벨 (클라이언트 안전 사본).
+ * lib/integrations/engagements 는 server-only 라 클라이언트 컴포넌트에서
+ * 못 쓰므로, 표시 라벨을 여기에 둔다(값은 동일하게 유지).
+ */
+export const ENGAGEMENT_STATUS_LABELS: Record<string, string> = {
+  requested: "요청됨",
+  accepted: "수락(계약 성립)",
+  declined: "거절",
+  canceled: "회수",
+  expired: "만료",
+};

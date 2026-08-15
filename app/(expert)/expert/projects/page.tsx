@@ -1,21 +1,13 @@
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { PortalHeader } from "@/components/expert/portal-header";
-import { PageIntro, Tag, ENGAGEMENT_TONE } from "@/components/expert/ui";
+import { PageIntro } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+
+import { ProjectsView, type ProjectGroupDTO } from "./projects-view";
 
 export const metadata = { title: "프로젝트별 관리" };
-
-const won = (value: number | null | undefined) =>
-  `${(value ?? 0).toLocaleString("ko-KR")}원`;
 
 type EngagementRow = {
   id: string;
@@ -25,24 +17,21 @@ type EngagementRow = {
   starts_on: string | null;
   ends_on: string | null;
   created_at: string;
+  responded_at: string | null;
   project_id: string | null;
   tenants: { name: string } | null;
   projects: { name: string } | null;
 };
 
-type ProjectGroup = {
-  key: string;
-  projectName: string;
-  tenantName: string;
-  engagements: EngagementRow[];
-  totalFee: number;
-  latestAt: number;
-};
+const minDate = (a: string | null, b: string | null) =>
+  !a ? b : !b ? a : a < b ? a : b;
+const maxDate = (a: string | null, b: string | null) =>
+  !a ? b : !b ? a : a > b ? a : b;
 
 /**
  * 전문가 포털 — 프로젝트별 관리 (설계문서 3.2 전 기업 통합 이력).
- * 섭외 이력을 프로젝트 단위로 묶어 역할·기간·비용·상태를 한눈에 본다.
- * 테넌트 격리: 각 건은 소속 기업이 명시되며 교차 합산하지 않는다.
+ * 섭외 이력을 프로젝트 단위로 묶고, 검색·정렬(날짜·사업·기관) + 섭외승인일·참여기간·
+ * 지급일(섭외↔지급 연계)을 표시. 테넌트 격리: 각 건은 소속 기업이 명시된다.
  */
 export default async function ExpertProjectsPage() {
   const user = await requireUser("/expert/login");
@@ -82,42 +71,82 @@ export default async function ExpertProjectsPage() {
     );
   }
 
-  const { data: engagements } = await supabase
-    .from("expert_engagements")
-    .select(
-      `id, role_description, fee_amount, status, starts_on, ends_on, created_at,
-       project_id, tenants (name), projects (name)`
-    )
-    .eq("expert_id", expert.id)
-    .order("created_at", { ascending: false });
+  const [{ data: engagements }, { data: payments }] = await Promise.all([
+    supabase
+      .from("expert_engagements")
+      .select(
+        `id, role_description, fee_amount, status, starts_on, ends_on, created_at,
+         responded_at, project_id, tenants (name), projects (name)`
+      )
+      .eq("expert_id", expert.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("expert_portal_payments")
+      .select("engagement_id, paid_at, confirmed_at")
+      .limit(1000),
+  ]);
 
   const rows = (engagements ?? []) as EngagementRow[];
 
-  const groups = new Map<string, ProjectGroup>();
+  // 섭외 → 지급일 매핑 (지급/확정 시각)
+  const paidByEngagement = new Map<string, string>();
+  for (const p of payments ?? []) {
+    if (!p.engagement_id) continue;
+    const when = p.paid_at ?? p.confirmed_at;
+    if (!when) continue;
+    const prev = paidByEngagement.get(p.engagement_id);
+    if (!prev || when > prev) paidByEngagement.set(p.engagement_id, when);
+  }
+
+  const groups = new Map<string, ProjectGroupDTO>();
   for (const row of rows) {
-    // 프로젝트 미지정(단독 섭외)은 건별로 분리해 서로 뒤섞지 않는다.
     const key = row.project_id ?? `solo-${row.id}`;
     const createdAt = new Date(row.created_at).getTime();
+    const paidAt = paidByEngagement.get(row.id) ?? null;
+    const approvedAt = row.status === "accepted" ? row.responded_at : null;
+
     const existing = groups.get(key);
     if (existing) {
-      existing.engagements.push(row);
+      existing.engagements.push({
+        id: row.id,
+        role: row.role_description,
+        status: row.status,
+        startsOn: row.starts_on,
+        endsOn: row.ends_on,
+        fee: row.fee_amount,
+      });
       existing.totalFee += row.fee_amount ?? 0;
       existing.latestAt = Math.max(existing.latestAt, createdAt);
+      existing.approvedAt = maxDate(existing.approvedAt, approvedAt);
+      existing.periodStart = minDate(existing.periodStart, row.starts_on);
+      existing.periodEnd = maxDate(existing.periodEnd, row.ends_on);
+      existing.paidAt = maxDate(existing.paidAt, paidAt);
     } else {
       groups.set(key, {
         key,
         projectName: row.projects?.name ?? "단독 섭외",
         tenantName: row.tenants?.name ?? "(기업)",
-        engagements: [row],
         totalFee: row.fee_amount ?? 0,
         latestAt: createdAt,
+        approvedAt,
+        periodStart: row.starts_on,
+        periodEnd: row.ends_on,
+        paidAt,
+        engagements: [
+          {
+            id: row.id,
+            role: row.role_description,
+            status: row.status,
+            startsOn: row.starts_on,
+            endsOn: row.ends_on,
+            fee: row.fee_amount,
+          },
+        ],
       });
     }
   }
 
-  const groupList = Array.from(groups.values()).sort(
-    (a, b) => b.latestAt - a.latestAt
-  );
+  const groupList = Array.from(groups.values());
 
   return (
     <div className="min-h-screen bg-muted">
@@ -126,62 +155,15 @@ export default async function ExpertProjectsPage() {
         <PageIntro
           eyebrow="PROJECTS"
           title="프로젝트별 관리"
-          description="참여한 섭외를 프로젝트 단위로 묶어 역할·기간·비용·상태를 한눈에 확인하세요."
+          description="참여한 섭외를 프로젝트 단위로 묶어 봅니다. 사업·기관·역할로 검색하고 날짜·사업·기관·지급일로 정렬하세요."
         />
-
         {groupList.length === 0 ? (
           <EmptyState
             title="프로젝트 이력이 없습니다"
             description="섭외를 수락하면 프로젝트 단위로 여기에 정리됩니다."
           />
         ) : (
-          groupList.map((group) => (
-            <Card key={group.key} className="shadow-sm">
-              <CardHeader className="pb-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base text-brand-navy">
-                    {group.projectName}
-                  </CardTitle>
-                  <Tag tone="gray">{group.tenantName}</Tag>
-                  {group.totalFee > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      의뢰비용 합계{" "}
-                      <span className="font-bold text-brand-navy">
-                        {won(group.totalFee)}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="divide-y">
-                  {group.engagements.map((e) => (
-                    <li
-                      key={e.id}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
-                    >
-                      <span className="font-medium text-brand-navy">
-                        {e.role_description}
-                      </span>
-                      {(e.starts_on || e.ends_on) && (
-                        <span className="text-xs text-muted-foreground">
-                          {e.starts_on ?? "?"} ~ {e.ends_on ?? "?"}
-                        </span>
-                      )}
-                      {e.fee_amount != null && (
-                        <span className="text-xs text-muted-foreground">
-                          {won(e.fee_amount)}
-                        </span>
-                      )}
-                      <Tag className="ml-auto" tone={ENGAGEMENT_TONE[e.status] ?? "gray"}>
-                        {ENGAGEMENT_STATUS_LABELS[e.status] ?? e.status}
-                      </Tag>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          ))
+          <ProjectsView groups={groupList} />
         )}
       </main>
     </div>
