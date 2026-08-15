@@ -2,14 +2,23 @@ import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PageIntro, Tag, type TagTone } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata = { title: "히스토리" };
 
 const won = (value: number | null | undefined) =>
   `${(value ?? 0).toLocaleString("ko-KR")}원`;
+
+const DOT_COLOR: Record<TagTone, string> = {
+  blue: "bg-brand",
+  amber: "bg-brand-amber",
+  green: "bg-[#1E7E45]",
+  red: "bg-[#C0392B]",
+  gray: "bg-[#9AA6B8]",
+  wait: "bg-[#C5CDD9]",
+};
 
 type TimelineEvent = {
   key: string;
@@ -19,7 +28,7 @@ type TimelineEvent = {
   detail: string;
   tenantName: string;
   badge: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
+  tone: TagTone;
 };
 
 /**
@@ -91,7 +100,6 @@ export default async function ExpertHistoryPage() {
     const context = e.projects?.name
       ? `${e.projects.name} · ${e.role_description}`
       : e.role_description;
-    // 요청 접수 이벤트
     events.push({
       key: `eng-req-${e.id}`,
       at: new Date(e.created_at).getTime(),
@@ -100,9 +108,8 @@ export default async function ExpertHistoryPage() {
       detail: context,
       tenantName,
       badge: "요청",
-      variant: "default",
+      tone: "blue",
     });
-    // 응답(수락/반려/취소) 이벤트
     if (e.responded_at && e.status !== "requested") {
       const accepted = e.status === "accepted";
       events.push({
@@ -119,7 +126,7 @@ export default async function ExpertHistoryPage() {
             : e.status === "canceled"
               ? "취소"
               : e.status,
-        variant: accepted ? "secondary" : "outline",
+        tone: accepted ? "green" : e.status === "declined" ? "red" : "gray",
       });
     }
   }
@@ -136,7 +143,7 @@ export default async function ExpertHistoryPage() {
       detail: `실지급 ${won(p.net_amount)} · 원천징수 ${won(p.withholding_amount)}`,
       tenantName: p.tenant_name ?? "(기업)",
       badge: paid ? "지급완료" : "지급확정",
-      variant: paid ? "secondary" : "default",
+      tone: paid ? "green" : "blue",
     });
   }
 
@@ -145,35 +152,48 @@ export default async function ExpertHistoryPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-4xl space-y-3 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <PageIntro
+          eyebrow="HISTORY"
+          title="히스토리"
+          description="섭외 응답과 지급 내역을 시간순 타임라인으로 모아 봅니다. 전 기업 통합 이력입니다."
+        />
+
         {events.length === 0 ? (
           <EmptyState
             title="활동 이력이 없습니다"
             description="섭외 응답과 지급이 발생하면 시간순으로 기록됩니다."
           />
         ) : (
-          <Card>
-            <CardContent className="pt-4">
-              <ul className="divide-y">
+          <Card className="shadow-sm">
+            <CardContent className="pt-5">
+              <ol className="relative space-y-5 border-l border-dashed border-[#D9DFE9] pl-5">
                 {events.map((ev) => (
-                  <li key={ev.key} className="py-3">
+                  <li key={ev.key} className="relative">
+                    <span
+                      className={`absolute -left-[26px] top-1 h-3 w-3 rounded-full ring-4 ring-background ${DOT_COLOR[ev.tone]}`}
+                      aria-hidden
+                    />
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold">{ev.title}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm font-bold text-brand-navy">
+                        {ev.title}
+                      </span>
+                      <Tag tone={ev.tone}>{ev.badge}</Tag>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {ev.dateLabel}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-[#46536A]">
                         {ev.tenantName}
                       </span>
-                      <Badge className="ml-auto" variant={ev.variant}>
-                        {ev.badge}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                      <span>{ev.dateLabel}</span>
+                      <span>·</span>
                       <span>{ev.detail}</span>
                     </div>
                   </li>
                 ))}
-              </ul>
-              <p className="mt-3 text-xs text-muted-foreground">
+              </ol>
+              <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
                 원천징수액은 참고 계산이며 실제 세액은 지급 기업의 신고 기준을
                 따릅니다.
               </p>

@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PageIntro, Tag, ENGAGEMENT_TONE } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -16,17 +16,6 @@ export const metadata = { title: "프로젝트별 관리" };
 
 const won = (value: number | null | undefined) =>
   `${(value ?? 0).toLocaleString("ko-KR")}원`;
-
-const STATUS_VARIANT: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  requested: "default",
-  accepted: "secondary",
-  declined: "destructive",
-  canceled: "outline",
-  expired: "outline",
-};
 
 type EngagementRow = {
   id: string;
@@ -133,7 +122,13 @@ export default async function ExpertProjectsPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-4xl space-y-3 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <PageIntro
+          eyebrow="PROJECTS"
+          title="프로젝트별 관리"
+          description="참여한 섭외를 프로젝트 단위로 묶어 역할·기간·비용·상태를 한눈에 확인하세요."
+        />
+
         {groupList.length === 0 ? (
           <EmptyState
             title="프로젝트 이력이 없습니다"
@@ -141,17 +136,17 @@ export default async function ExpertProjectsPage() {
           />
         ) : (
           groupList.map((group) => (
-            <Card key={group.key}>
+            <Card key={group.key} className="shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-sm">{group.projectName}</CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {group.tenantName}
-                  </span>
+                  <CardTitle className="text-base text-brand-navy">
+                    {group.projectName}
+                  </CardTitle>
+                  <Tag tone="gray">{group.tenantName}</Tag>
                   {group.totalFee > 0 && (
                     <span className="ml-auto text-xs text-muted-foreground">
                       의뢰비용 합계{" "}
-                      <span className="font-semibold text-foreground">
+                      <span className="font-bold text-brand-navy">
                         {won(group.totalFee)}
                       </span>
                     </span>
@@ -165,7 +160,9 @@ export default async function ExpertProjectsPage() {
                       key={e.id}
                       className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
                     >
-                      <span className="font-medium">{e.role_description}</span>
+                      <span className="font-medium text-brand-navy">
+                        {e.role_description}
+                      </span>
                       {(e.starts_on || e.ends_on) && (
                         <span className="text-xs text-muted-foreground">
                           {e.starts_on ?? "?"} ~ {e.ends_on ?? "?"}
@@ -176,12 +173,9 @@ export default async function ExpertProjectsPage() {
                           {won(e.fee_amount)}
                         </span>
                       )}
-                      <Badge
-                        className="ml-auto"
-                        variant={STATUS_VARIANT[e.status] ?? "secondary"}
-                      >
+                      <Tag className="ml-auto" tone={ENGAGEMENT_TONE[e.status] ?? "gray"}>
                         {ENGAGEMENT_STATUS_LABELS[e.status] ?? e.status}
-                      </Badge>
+                      </Tag>
                     </li>
                   ))}
                 </ul>

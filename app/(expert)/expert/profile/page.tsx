@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PageIntro } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -63,8 +64,13 @@ export default async function ExpertProfilePage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-4xl p-4 sm:p-5">
-        <Card>
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <PageIntro
+          eyebrow="PROFILE"
+          title="내 프로필"
+          description="전문분야·경력·소득유형과 섭외수락서에 쓰이는 서명·날인을 관리합니다."
+        />
+        <Card className="shadow-sm">
           <CardContent className="pt-6">
             <p className="mb-4 text-sm text-muted-foreground">
               휴대폰 번호({formatKrMobile(expert.phone)})는 인증 수단이므로 여기서
@@ -84,7 +90,7 @@ export default async function ExpertProfilePage() {
           </CardContent>
         </Card>
 
-        <Card className="mt-4">
+        <Card className="shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">소득유형 (지급·세무)</CardTitle>
           </CardHeader>
@@ -96,7 +102,7 @@ export default async function ExpertProfilePage() {
           </CardContent>
         </Card>
 
-        <Card className="mt-4">
+        <Card className="shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">서명·날인 등록</CardTitle>
           </CardHeader>

@@ -7,6 +7,7 @@ import {
   UPLOADABLE_DOCUMENT_TYPES,
 } from "@/lib/experts/documents";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PageIntro } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,12 @@ export default async function ExpertDocumentsPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <PageIntro
+          eyebrow="DOCUMENTS"
+          title="서류함"
+          description="서류의 소유자는 전문가 본인입니다. 업로드·교체와 기업별 열람 허용을 여기서 관리하세요."
+        />
         {pendingRequests.map((request) => {
           const satisfied = request.requested_types.filter((type) => {
             const doc = activeDocs.get(type);
