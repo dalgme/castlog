@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { formatKrMobile } from "@/lib/auth/phone";
+import { PortalHeader } from "@/components/expert/portal-header";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -17,30 +17,34 @@ import {
 
 export const metadata = { title: "전문가 포털" };
 
-const LINK_STATUS_LABEL: Record<
-  string,
-  { label: string; variant: "default" | "secondary" | "destructive" }
-> = {
-  active: { label: "연결됨", variant: "default" },
-  pending: { label: "대기중", variant: "secondary" },
-  revoked: { label: "해제됨", variant: "destructive" },
-};
+const won = (value: number | null | undefined) =>
+  `${(value ?? 0).toLocaleString("ko-KR")}원`;
+
+function StatTile({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-bold tabular-nums">{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
 
 /**
- * 전문가 포털 — 테넌트에 종속되지 않는 전역 경로 /expert (설계문서 5.2).
- * 전문가는 자신의 전 기업 통합 이력을 볼 수 있다 (설계문서 3.2).
- * 모바일 완전 대응 대상 (설계문서 8.1 최우선).
+ * 전문가 포털 대시보드 — 로그인 직후 "현재 상태별" 요약 (설계문서 3.2, 8.1).
+ * 가장 급한 대기중 섭외 요청을 최상단에 최대 3건 노출하고, 그 아래 통계를 보여준다.
+ * 전 기업 통합 이력 기준. 모바일 완전 대응 최우선.
  */
 export default async function ExpertPortalPage() {
   const user = await requireUser("/expert/login");
-
-  const headerActions = (
-    <form method="post" action="/auth/logout">
-      <Button type="submit" variant="ghost" size="sm">
-        로그아웃
-      </Button>
-    </form>
-  );
 
   if (!hasSupabaseEnv() || !user) {
     return (
@@ -60,14 +64,14 @@ export default async function ExpertPortalPage() {
 
   const { data: expert } = await supabase
     .from("experts")
-    .select("id, name, phone, email, specialty, region, career_years, bio")
+    .select("id, name, specialty, region, career_years")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
   if (!expert) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="전문가 포털" actions={headerActions} />
+        <PortalHeader showTabs={false} />
         <main className="p-5">
           <EmptyState
             title="전문가 프로필이 없습니다"
@@ -78,146 +82,169 @@ export default async function ExpertPortalPage() {
     );
   }
 
-  const [{ data: links }, { data: paymentItems }] = await Promise.all([
-    supabase
-      .from("expert_tenant_links")
-      .select("id, status, accepted_at, tenants (name)")
-      .eq("expert_id", expert.id)
-      .order("created_at", { ascending: false }),
-    // 확정·완료된 지급만 보인다. 안전 컬럼 전용 뷰로 조회 —
-    // 배치 원본에는 타 전문가 합계·내부 반려사유가 있어 직접 노출하지 않는다.
-    supabase
-      .from("expert_portal_payments")
-      .select(
-        "id, gross_amount, withholding_amount, net_amount, created_at, status, paid_at, confirmed_at, tenant_name"
-      )
-      .order("created_at", { ascending: false })
-      .limit(10),
-  ]);
+  const [{ data: engagements }, { data: payments }, { count: activeLinks }] =
+    await Promise.all([
+      supabase
+        .from("expert_engagements")
+        .select(
+          `id, role_description, fee_amount, status, created_at, responded_at,
+           project_id, token_expires_at, tenants (name), projects (name)`
+        )
+        .eq("expert_id", expert.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("expert_portal_payments")
+        .select("net_amount, withholding_amount")
+        .limit(1000),
+      supabase
+        .from("expert_tenant_links")
+        .select("id", { count: "exact", head: true })
+        .eq("expert_id", expert.id)
+        .eq("status", "active"),
+    ]);
 
-  const linkRows = links ?? [];
-  const paymentRows = paymentItems ?? [];
+  const engagementRows = engagements ?? [];
+  const paymentRows = payments ?? [];
+  const now = Date.now();
+  const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+  const pending = engagementRows.filter(
+    (e) =>
+      e.status === "requested" &&
+      new Date(e.token_expires_at).getTime() >= now
+  );
+  const accepted = engagementRows.filter((e) => e.status === "accepted");
+
+  const projectSet = new Set(
+    accepted.map((e) => e.project_id).filter(Boolean) as string[]
+  );
+  const recentProjectSet = new Set(
+    accepted
+      .filter((e) => new Date(e.responded_at ?? e.created_at).getTime() >= monthAgo)
+      .map((e) => e.project_id)
+      .filter(Boolean) as string[]
+  );
+
+  const totalRevenue = paymentRows.reduce(
+    (sum, p) => sum + (p.net_amount ?? 0),
+    0
+  );
+  const totalTax = paymentRows.reduce(
+    (sum, p) => sum + (p.withholding_amount ?? 0),
+    0
+  );
+  const acceptanceRate =
+    engagementRows.length > 0
+      ? Math.round((accepted.length / engagementRows.length) * 100)
+      : 0;
 
   return (
     <div className="min-h-screen bg-secondary/50">
-      <PageHeader title="전문가 포털" actions={headerActions} />
+      <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+        <div>
+          <p className="text-sm text-muted-foreground">안녕하세요,</p>
+          <h2 className="text-lg font-bold">{expert.name} 전문가님</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {[
+              expert.specialty,
+              expert.region,
+              expert.career_years != null ? `경력 ${expert.career_years}년` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+
+        {/* 가장 급한 것: 대기중 섭외 요청 (최대 3건) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm">내 프로필</CardTitle>
-            <div className="flex gap-2">
-              <Button asChild variant="outline" size="sm">
-                <Link href="/expert/engagements">섭외 요청</Link>
+            <CardTitle className="text-sm">
+              대기중 섭외 요청{" "}
+              <span className="text-primary">({pending.length})</span>
+            </CardTitle>
+            {pending.length > 3 && (
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/expert/engagements">더보기</Link>
               </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/expert/documents">서류함</Link>
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/expert/profile">수정</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-1.5 text-sm">
-            <p className="text-base font-bold">{expert.name}</p>
-            <p className="text-muted-foreground">{formatKrMobile(expert.phone)}</p>
-            {expert.email && <p className="text-muted-foreground">{expert.email}</p>}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-muted-foreground">
-              {expert.specialty && <span>전문분야: {expert.specialty}</span>}
-              {expert.region && <span>지역: {expert.region}</span>}
-              {expert.career_years != null && <span>경력: {expert.career_years}년</span>}
-            </div>
-            {expert.bio && (
-              <p className="pt-2 text-muted-foreground">{expert.bio}</p>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">연결된 기업 ({linkRows.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            {linkRows.length === 0 ? (
+            {pending.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                아직 연결된 기업이 없습니다.
+                지금 응답이 필요한 섭외 요청이 없습니다.
               </p>
             ) : (
               <ul className="divide-y">
-                {linkRows.map((link) => {
-                  const status = LINK_STATUS_LABEL[link.status] ?? {
-                    label: "대기중",
-                    variant: "secondary" as const,
-                  };
-                  return (
-                    <li
-                      key={link.id}
-                      className="flex items-center justify-between py-2.5 text-sm"
+                {pending.slice(0, 3).map((e) => (
+                  <li key={e.id} className="py-2.5">
+                    <Link
+                      href="/expert/engagements"
+                      className="flex flex-wrap items-center gap-2"
                     >
-                      <span className="font-medium">
-                        {link.tenants?.name ?? "(기업 정보 없음)"}
+                      <span className="text-sm font-semibold">
+                        {e.tenants?.name ?? "(기업)"}
                       </span>
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </li>
-                  );
-                })}
+                      {e.projects?.name && (
+                        <span className="text-xs text-muted-foreground">
+                          {e.projects.name}
+                        </span>
+                      )}
+                      <Badge className="ml-auto" variant="default">
+                        응답 필요
+                      </Badge>
+                    </Link>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {e.role_description}
+                      {e.fee_amount != null && ` · ${won(e.fee_amount)}`}
+                    </p>
+                  </li>
+                ))}
               </ul>
+            )}
+            {pending.length > 0 && (
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="mt-3 w-full"
+              >
+                <Link href="/expert/engagements">섭외 요청 전체 보기</Link>
+              </Button>
             )}
           </CardContent>
         </Card>
 
+        {/* 통계 */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">지급 내역 ({paymentRows.length})</CardTitle>
+            <CardTitle className="text-sm">내 활동 통계</CardTitle>
           </CardHeader>
           <CardContent>
-            {paymentRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                확정된 지급 내역이 없습니다. 지급이 확정되면 여기에 표시됩니다.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {paymentRows.map((item) => {
-                  const paid = item.status === "paid";
-                  const when = item.paid_at ?? item.confirmed_at;
-                  return (
-                    <li key={item.id} className="py-2.5 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">
-                          {item.tenant_name ?? "(기업)"}
-                        </span>
-                        <Badge
-                          className="ml-auto"
-                          variant={paid ? "secondary" : "default"}
-                        >
-                          {paid ? "지급 완료" : "지급 확정"}
-                        </Badge>
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                        <span>
-                          실지급{" "}
-                          <span className="font-semibold text-foreground">
-                            {(item.net_amount ?? 0).toLocaleString("ko-KR")}원
-                          </span>
-                        </span>
-                        <span>계약 {(item.gross_amount ?? 0).toLocaleString("ko-KR")}원</span>
-                        <span>
-                          원천징수 {(item.withholding_amount ?? 0).toLocaleString("ko-KR")}원
-                        </span>
-                        {when && (
-                          <span>
-                            {new Date(when).toLocaleDateString("ko-KR")}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              원천징수액은 참고 계산이며 실제 세액은 지급 기업의 신고 기준을
-              따릅니다.
-            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <StatTile
+                label="참여 프로젝트"
+                value={`${projectSet.size}건`}
+                hint={`최근 1개월 ${recentProjectSet.size}건`}
+              />
+              <StatTile label="누적 수익(실지급)" value={won(totalRevenue)} />
+              <StatTile label="원천징수 합계" value={won(totalTax)} />
+              <StatTile label="연결 기업" value={`${activeLinks ?? 0}곳`} />
+              <StatTile
+                label="섭외 수락"
+                value={`${accepted.length}건`}
+                hint={`전체 ${engagementRows.length}건 중`}
+              />
+              <StatTile label="수락률" value={`${acceptanceRate}%`} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/expert/projects">프로젝트별 관리</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/expert/history">히스토리</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </main>
