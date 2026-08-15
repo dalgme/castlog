@@ -21,7 +21,7 @@ export default async function ExpertAcceptancePage({
   if (!view) notFound();
 
   return (
-    <div className="min-h-screen bg-secondary/50">
+    <div className="min-h-screen bg-muted">
       <PageHeader
         title="섭외 수락서"
         actions={

@@ -10,7 +10,7 @@ import { ExpertTabNav } from "./tab-nav";
  */
 export function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
   return (
-    <>
+    <div className="shadow-sm">
       <header className="flex h-14 items-center justify-between border-b bg-background px-5">
         <Link href="/expert" className="text-[15px] font-extrabold">
           전문가 포털
@@ -22,6 +22,6 @@ export function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
         </form>
       </header>
       {showTabs && <ExpertTabNav />}
-    </>
+    </div>
   );
 }
