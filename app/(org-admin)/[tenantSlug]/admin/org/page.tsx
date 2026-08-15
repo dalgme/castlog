@@ -18,6 +18,7 @@ import {
 import { CreateStaffDialog } from "./staff-dialog";
 import { StaffActiveToggle } from "./staff-active-toggle";
 import { PositionsPanel } from "./positions-panel";
+import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 
 export const metadata = { title: "기업 관리" };
 
@@ -55,21 +56,37 @@ export default async function OrgAdminPage({
   const sessionUser = await getSessionUser();
   const supabase = createClient();
 
-  const [{ data: staff }, { data: positions }] = await Promise.all([
-    supabase
-      .from("users")
-      .select(
-        "id, name, email, role, department, is_active, positions (name)"
-      )
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("positions")
-      .select("id, name")
-      .order("sort_order", { ascending: true }),
-  ]);
+  const [{ data: staff }, { data: positions }, { data: grants }] =
+    await Promise.all([
+      supabase
+        .from("users")
+        .select(
+          "id, name, email, role, department, is_active, positions (name)"
+        )
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("positions")
+        .select("id, name")
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("tax_access_grants")
+        .select("id, user_id, role_label")
+        .is("revoked_at", null),
+    ]);
 
   const staffRows = staff ?? [];
   const positionRows = positions ?? [];
+
+  const staffNameById = new Map(staffRows.map((s) => [s.id, s.name]));
+  const grantRows = (grants ?? []).map((g) => ({
+    id: g.id,
+    user_id: g.user_id,
+    role_label: g.role_label,
+    userName: staffNameById.get(g.user_id) ?? "(직원)",
+  }));
+  const staffOptions = staffRows
+    .filter((s) => s.is_active)
+    .map((s) => ({ id: s.id, name: s.name, email: s.email }));
 
   return (
     <div className="min-h-screen bg-secondary/50">
@@ -151,6 +168,17 @@ export default async function OrgAdminPage({
           </CardHeader>
           <CardContent>
             <PositionsPanel positions={positionRows} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">
+              주민등록번호 조회 지정자 (지급명세서·세무)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TaxAccessGrantsPanel staff={staffOptions} grants={grantRows} />
           </CardContent>
         </Card>
       </main>
