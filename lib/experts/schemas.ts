@@ -33,8 +33,35 @@ export const expertProfileSchema = z.object({
     .regex(/^\d{0,2}$/, "경력은 0~99 사이 숫자로 입력하세요.")
     .optional(),
   bio: z.string().max(2000, "소개는 2000자 이내로 입력하세요.").optional(),
+  secondaryPhone: z
+    .string()
+    .optional()
+    .refine(
+      (value) => !value || normalizeKrMobileE164(value) !== null,
+      "올바른 보조 연락처가 아닙니다 (예: 010-1234-5678)."
+    ),
 });
 export type ExpertProfileInput = z.infer<typeof expertProfileSchema>;
+
+/**
+ * 계좌(통장) 정보 — 전문가 본인 직접입력.
+ * 계좌번호는 평문 저장 금지: AES-256-GCM(lib/crypto/secrets)로 암호화하고
+ * 표시용 마지막 4자리(account_last4)만 별도 보관한다.
+ */
+export const bankAccountSchema = z.object({
+  bankName: z.string().max(30, "30자 이내로 입력하세요.").optional().or(z.literal("")),
+  accountHolder: z
+    .string()
+    .max(30, "30자 이내로 입력하세요.")
+    .optional()
+    .or(z.literal("")),
+  accountNumber: z
+    .string()
+    .regex(/^[0-9-]{0,30}$/, "계좌번호는 숫자와 - 기호만 입력하세요.")
+    .optional()
+    .or(z.literal("")),
+});
+export type BankAccountInput = z.infer<typeof bankAccountSchema>;
 
 /** 등록 시 필수 동의 — 항목별 개별 기록 (설계문서 14.6, 하나로 묶지 않는다) */
 export const joinConsentSchema = z.object({

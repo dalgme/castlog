@@ -5,9 +5,13 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { normalizeKrMobileE164 } from "@/lib/auth/phone";
+import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   expertProfileSchema,
   type ExpertProfileInput,
+  bankAccountSchema,
+  type BankAccountInput,
 } from "@/lib/experts/schemas";
 import { taxTypeSchema, type TaxTypeInput } from "@/lib/payments/schemas";
 
@@ -46,6 +50,9 @@ export async function updateExpertProfile(
         ? parseInt(parsed.data.careerYears, 10)
         : null,
       bio: parsed.data.bio || null,
+      secondary_phone: parsed.data.secondaryPhone
+        ? normalizeKrMobileE164(parsed.data.secondaryPhone)
+        : null,
     })
     .eq("auth_user_id", user.id)
     .select("id")
@@ -59,6 +66,88 @@ export async function updateExpertProfile(
 }
 
 export type SetTaxTypeResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 계좌(통장) 정보 저장 — 전문가 본인 (RLS expert_bank_accounts_self_*).
+ * 계좌번호는 평문 저장 금지: AES-256-GCM으로 암호화하고 표시용 마지막 4자리만 보관.
+ * 계좌번호를 비워 저장하면 은행·예금주만 갱신하고 기존 암호화 값은 유지한다.
+ */
+export async function saveBankAccount(
+  input: BankAccountInput
+): Promise<SetTaxTypeResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const parsed = bankAccountSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
+    };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+
+  const { data: expert } = await supabase
+    .from("experts")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (!expert) {
+    return { ok: false, error: "전문가 프로필이 없습니다." };
+  }
+
+  const rawNumber = (parsed.data.accountNumber ?? "").trim();
+  const digits = rawNumber.replace(/\D/g, "");
+
+  let accountNumberEnc: string | null;
+  let accountLast4: string | null;
+
+  if (digits) {
+    if (!hasSecretsKey()) {
+      return {
+        ok: false,
+        error: "계좌 암호화 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
+      };
+    }
+    accountNumberEnc = encryptSecret(rawNumber);
+    accountLast4 = digits.slice(-4);
+  } else {
+    // 계좌번호 미입력 → 기존 암호화 값 보존 (은행·예금주만 갱신)
+    const { data: existing } = await supabase
+      .from("expert_bank_accounts")
+      .select("account_number_enc, account_last4")
+      .eq("expert_id", expert.id)
+      .maybeSingle();
+    accountNumberEnc = existing?.account_number_enc ?? null;
+    accountLast4 = existing?.account_last4 ?? null;
+  }
+
+  const { error } = await supabase.from("expert_bank_accounts").upsert(
+    {
+      expert_id: expert.id,
+      bank_name: parsed.data.bankName || null,
+      account_holder: parsed.data.accountHolder || null,
+      account_number_enc: accountNumberEnc,
+      account_last4: accountLast4,
+    },
+    { onConflict: "expert_id" }
+  );
+
+  if (error) {
+    return { ok: false, error: "계좌 정보 저장에 실패했습니다." };
+  }
+
+  revalidatePath("/expert/profile");
+  return { ok: true };
+}
 
 /**
  * 소득유형 설정 (전문가 본인 — 기획 확정: 사업소득/기타소득/사업자)
