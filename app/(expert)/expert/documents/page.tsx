@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -8,7 +6,7 @@ import {
   SENSITIVE_DOCUMENT_TYPES,
   UPLOADABLE_DOCUMENT_TYPES,
 } from "@/lib/experts/documents";
-import { PageHeader } from "@/components/layout/header";
+import { PortalHeader } from "@/components/expert/portal-header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,16 +24,10 @@ export const metadata = { title: "서류함" };
 export default async function ExpertDocumentsPage() {
   const user = await requireUser("/expert/login");
 
-  const headerActions = (
-    <Button asChild variant="ghost" size="sm">
-      <Link href="/expert">돌아가기</Link>
-    </Button>
-  );
-
   if (!hasSupabaseEnv() || !user) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="서류함" actions={headerActions} />
+        <PortalHeader />
         <main className="p-5">
           <EmptyState
             title="서버 설정 대기 중"
@@ -56,7 +48,7 @@ export default async function ExpertDocumentsPage() {
   if (!expert) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="서류함" actions={headerActions} />
+        <PortalHeader />
         <main className="p-5">
           <EmptyState
             title="전문가 프로필이 없습니다"
@@ -100,7 +92,7 @@ export default async function ExpertDocumentsPage() {
 
   return (
     <div className="min-h-screen bg-secondary/50">
-      <PageHeader title="서류함" actions={headerActions} />
+      <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
         {pendingRequests.map((request) => {
           const satisfied = request.requested_types.filter((type) => {

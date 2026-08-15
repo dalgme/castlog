@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
-import { PageHeader } from "@/components/layout/header";
+import { PortalHeader } from "@/components/expert/portal-header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,16 +30,10 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 export default async function ExpertEngagementsPage() {
   const user = await requireUser("/expert/login");
 
-  const headerActions = (
-    <Button asChild variant="ghost" size="sm">
-      <Link href="/expert">돌아가기</Link>
-    </Button>
-  );
-
   if (!hasSupabaseEnv() || !user) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="섭외 요청" actions={headerActions} />
+        <PortalHeader />
         <main className="p-5">
           <EmptyState
             title="서버 설정 대기 중"
@@ -60,7 +54,7 @@ export default async function ExpertEngagementsPage() {
   if (!expert) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="섭외 요청" actions={headerActions} />
+        <PortalHeader />
         <main className="p-5">
           <EmptyState
             title="전문가 프로필이 없습니다"
@@ -86,7 +80,7 @@ export default async function ExpertEngagementsPage() {
 
   return (
     <div className="min-h-screen bg-secondary/50">
-      <PageHeader title="섭외 요청" actions={headerActions} />
+      <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-3 p-4 sm:p-5">
         {rows.length === 0 ? (
           <EmptyState
