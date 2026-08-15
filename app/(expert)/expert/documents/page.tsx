@@ -26,7 +26,7 @@ export default async function ExpertDocumentsPage() {
 
   if (!hasSupabaseEnv() || !user) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader />
         <main className="p-5">
           <EmptyState
@@ -47,7 +47,7 @@ export default async function ExpertDocumentsPage() {
 
   if (!expert) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader />
         <main className="p-5">
           <EmptyState
@@ -91,7 +91,7 @@ export default async function ExpertDocumentsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-secondary/50">
+    <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
         {pendingRequests.map((request) => {

@@ -20,7 +20,7 @@ export default async function ExpertProfilePage() {
 
   if (!hasSupabaseEnv() || !user) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader />
         <main className="p-5">
           <EmptyState
@@ -61,7 +61,7 @@ export default async function ExpertProfilePage() {
   );
 
   return (
-    <div className="min-h-screen bg-secondary/50">
+    <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-2xl p-4 sm:p-5">
         <Card>

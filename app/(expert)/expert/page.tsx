@@ -50,7 +50,7 @@ export default async function ExpertPortalPage() {
 
   if (!hasSupabaseEnv() || !user) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PageHeader title="전문가 포털" />
         <main className="p-5">
           <EmptyState
@@ -72,7 +72,7 @@ export default async function ExpertPortalPage() {
 
   if (!expert) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader showTabs={false} />
         <main className="p-5">
           <EmptyState
@@ -141,7 +141,7 @@ export default async function ExpertPortalPage() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-secondary/50">
+    <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
         <div>

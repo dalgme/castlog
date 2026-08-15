@@ -32,7 +32,7 @@ export default async function ExpertEngagementsPage() {
 
   if (!hasSupabaseEnv() || !user) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader />
         <main className="p-5">
           <EmptyState
@@ -53,7 +53,7 @@ export default async function ExpertEngagementsPage() {
 
   if (!expert) {
     return (
-      <div className="min-h-screen bg-secondary/50">
+      <div className="min-h-screen bg-muted">
         <PortalHeader />
         <main className="p-5">
           <EmptyState
@@ -79,7 +79,7 @@ export default async function ExpertEngagementsPage() {
   const now = Date.now();
 
   return (
-    <div className="min-h-screen bg-secondary/50">
+    <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-2xl space-y-3 p-4 sm:p-5">
         {rows.length === 0 ? (
