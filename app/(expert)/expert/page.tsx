@@ -6,6 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { LogoMark } from "@/components/brand/logo";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PeriodSelector } from "@/components/expert/period-selector";
+import {
+  resolvePeriod,
+  inRange,
+  type PeriodParams,
+} from "@/lib/experts/stats-period";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -47,8 +53,13 @@ function StatTile({
  * CASTLOG 브랜드 히어로 + 가장 급한 대기중 섭외를 최상단에, 그 아래 활동 통계.
  * 전 기업 통합 이력 기준. 모바일 완전 대응 최우선.
  */
-export default async function ExpertPortalPage() {
+export default async function ExpertPortalPage({
+  searchParams,
+}: {
+  searchParams?: PeriodParams;
+}) {
   const user = await requireUser("/expert/login");
+  const period = resolvePeriod(searchParams ?? {}, Date.now());
 
   if (!hasSupabaseEnv() || !user) {
     return (
@@ -98,7 +109,7 @@ export default async function ExpertPortalPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("expert_portal_payments")
-        .select("net_amount, withholding_amount")
+        .select("net_amount, withholding_amount, status, paid_at, confirmed_at, created_at")
         .limit(1000),
       supabase
         .from("expert_tenant_links")
@@ -110,32 +121,39 @@ export default async function ExpertPortalPage() {
   const engagementRows = engagements ?? [];
   const paymentRows = payments ?? [];
   const now = Date.now();
-  const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
 
+  // 히어로의 "대기중 섭외"는 지금 시점 상태(기간과 무관).
   const pending = engagementRows.filter(
     (e) =>
       e.status === "requested" && new Date(e.token_expires_at).getTime() >= now
   );
-  const accepted = engagementRows.filter((e) => e.status === "accepted");
+
+  // ── 이하 통계는 선택된 기간(period) 기준으로 계산 ──
+  // 섭외는 요청 접수일(created_at) 기준으로 기간 판정.
+  const periodEngagements = engagementRows.filter((e) =>
+    inRange(e.created_at, period)
+  );
+  const periodAccepted = periodEngagements.filter((e) => e.status === "accepted");
 
   const projectSet = new Set(
-    accepted.map((e) => e.project_id).filter(Boolean) as string[]
-  );
-  const recentProjectSet = new Set(
-    accepted
-      .filter((e) => new Date(e.responded_at ?? e.created_at).getTime() >= monthAgo)
-      .map((e) => e.project_id)
-      .filter(Boolean) as string[]
+    periodAccepted.map((e) => e.project_id).filter(Boolean) as string[]
   );
 
-  const totalRevenue = paymentRows.reduce((sum, p) => sum + (p.net_amount ?? 0), 0);
-  const totalTax = paymentRows.reduce(
+  // 지급은 지급/확정 시각(paid_at→confirmed_at→created_at) 기준으로 기간 판정.
+  const periodPayments = paymentRows.filter((p) =>
+    inRange(p.paid_at ?? p.confirmed_at ?? p.created_at, period)
+  );
+  const periodRevenue = periodPayments.reduce(
+    (sum, p) => sum + (p.net_amount ?? 0),
+    0
+  );
+  const periodTax = periodPayments.reduce(
     (sum, p) => sum + (p.withholding_amount ?? 0),
     0
   );
   const acceptanceRate =
-    engagementRows.length > 0
-      ? Math.round((accepted.length / engagementRows.length) * 100)
+    periodEngagements.length > 0
+      ? Math.round((periodAccepted.length / periodEngagements.length) * 100)
       : 0;
 
   const profileLine = [
@@ -254,25 +272,42 @@ export default async function ExpertPortalPage() {
           </CardContent>
         </Card>
 
-        {/* 활동 통계 */}
+        {/* 활동 통계 — 선택 기간 기준 */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">내 활동 통계</CardTitle>
+          <CardHeader className="gap-3 pb-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">내 활동 통계</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-semibold text-brand">{period.label}</span>{" "}
+                  기준
+                </p>
+              </div>
+              <PeriodSelector
+                preset={period.preset}
+                from={period.from}
+                to={period.to}
+              />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               <StatTile
                 label="참여 프로젝트"
                 value={`${projectSet.size}건`}
-                hint={`최근 1개월 ${recentProjectSet.size}건`}
+                hint="기간 내 수락 기준"
               />
-              <StatTile label="누적 수익(실지급)" value={won(totalRevenue)} />
-              <StatTile label="원천징수 합계" value={won(totalTax)} />
-              <StatTile label="연결 기업" value={`${activeLinks ?? 0}곳`} />
+              <StatTile label="수익(실지급)" value={won(periodRevenue)} />
+              <StatTile label="원천징수 합계" value={won(periodTax)} />
+              <StatTile
+                label="연결 기업"
+                value={`${activeLinks ?? 0}곳`}
+                hint="현재 기준"
+              />
               <StatTile
                 label="섭외 수락"
-                value={`${accepted.length}건`}
-                hint={`전체 ${engagementRows.length}건 중`}
+                value={`${periodAccepted.length}건`}
+                hint={`요청 ${periodEngagements.length}건 중`}
               />
               <StatTile label="수락률" value={`${acceptanceRate}%`} />
             </div>
