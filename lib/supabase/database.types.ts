@@ -1433,6 +1433,7 @@ export type Database = {
           name: string
           phone: string
           region: string | null
+          secondary_phone: string | null
           specialty: string | null
           updated_at: string
         }
@@ -1446,6 +1447,7 @@ export type Database = {
           name: string
           phone: string
           region?: string | null
+          secondary_phone?: string | null
           specialty?: string | null
           updated_at?: string
         }
@@ -1459,10 +1461,96 @@ export type Database = {
           name?: string
           phone?: string
           region?: string | null
+          secondary_phone?: string | null
           specialty?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      expert_bank_accounts: {
+        Row: {
+          account_holder: string | null
+          account_last4: string | null
+          account_number_enc: string | null
+          bank_name: string | null
+          expert_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_holder?: string | null
+          account_last4?: string | null
+          account_number_enc?: string | null
+          bank_name?: string | null
+          expert_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_holder?: string | null
+          account_last4?: string | null
+          account_number_enc?: string | null
+          bank_name?: string | null
+          expert_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_bank_accounts_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: true
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_access_logs: {
+        Row: {
+          access_type: string
+          accessed_at: string
+          accessor_label: string | null
+          created_at: string
+          expert_id: string
+          id: string
+          project_id: string | null
+          project_name: string | null
+          reason: string
+          tenant_id: string | null
+          tenant_name: string | null
+        }
+        Insert: {
+          access_type?: string
+          accessed_at?: string
+          accessor_label?: string | null
+          created_at?: string
+          expert_id: string
+          id?: string
+          project_id?: string | null
+          project_name?: string | null
+          reason: string
+          tenant_id?: string | null
+          tenant_name?: string | null
+        }
+        Update: {
+          access_type?: string
+          accessed_at?: string
+          accessor_label?: string | null
+          created_at?: string
+          expert_id?: string
+          id?: string
+          project_id?: string | null
+          project_name?: string | null
+          reason?: string
+          tenant_id?: string | null
+          tenant_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_access_logs_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       platform_inquiries: {
         Row: {
