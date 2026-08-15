@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Inbox, FileSignature } from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -6,22 +7,14 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { PortalHeader } from "@/components/expert/portal-header";
+import { PageIntro, Tag, MetaRow, ENGAGEMENT_TONE } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 import { EngagementRespondButtons } from "./respond-buttons";
 
 export const metadata = { title: "섭외 요청" };
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  requested: "default",
-  accepted: "secondary",
-  declined: "destructive",
-  canceled: "outline",
-  expired: "outline",
-};
 
 /**
  * 전문가 포털 섭외함 — 전 기업 통합 이력 (설계문서 3.2).
@@ -77,11 +70,29 @@ export default async function ExpertEngagementsPage() {
 
   const rows = engagements ?? [];
   const now = Date.now();
+  const pendingCount = rows.filter(
+    (e) =>
+      e.status === "requested" &&
+      new Date(e.token_expires_at).getTime() >= now
+  ).length;
 
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-4xl space-y-3 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <PageIntro
+          eyebrow="ENGAGEMENTS"
+          title="섭외 요청"
+          description="기업이 보낸 섭외 요청을 확인하고 수락·거절로 응답하세요. 수락 시 계약이 성립됩니다."
+          action={
+            pendingCount > 0 ? (
+              <Tag tone="amber" className="px-3 py-1 text-sm">
+                응답 대기 {pendingCount}건
+              </Tag>
+            ) : undefined
+          }
+        />
+
         {rows.length === 0 ? (
           <EmptyState
             title="섭외 요청이 없습니다"
@@ -93,10 +104,12 @@ export default async function ExpertEngagementsPage() {
               engagement.status === "requested" &&
               new Date(engagement.token_expires_at).getTime() >= now;
             return (
-              <Card key={engagement.id}>
+              <Card key={engagement.id} className="overflow-hidden shadow-sm">
+                {answerable && <div className="h-1 bg-brand-amber" />}
                 <CardContent className="pt-5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">
+                    <Inbox className="h-4 w-4 text-brand" aria-hidden />
+                    <span className="font-bold text-brand-navy">
                       {engagement.tenants?.name ?? "(기업)"}
                     </span>
                     {engagement.projects?.name && (
@@ -104,33 +117,29 @@ export default async function ExpertEngagementsPage() {
                         {engagement.projects.name}
                       </span>
                     )}
-                    <Badge
+                    <Tag
                       className="ml-auto"
-                      variant={STATUS_VARIANT[engagement.status] ?? "secondary"}
+                      tone={ENGAGEMENT_TONE[engagement.status] ?? "gray"}
                     >
                       {ENGAGEMENT_STATUS_LABELS[engagement.status] ??
                         engagement.status}
-                    </Badge>
+                    </Tag>
                   </div>
-                  <div className="mt-2 space-y-1 text-sm">
-                    <p>
-                      <span className="text-muted-foreground">역할</span>{" "}
-                      {engagement.role_description}
-                    </p>
+
+                  <div className="mt-3 space-y-1.5">
+                    <MetaRow label="역할">{engagement.role_description}</MetaRow>
                     {(engagement.starts_on || engagement.ends_on) && (
-                      <p>
-                        <span className="text-muted-foreground">기간</span>{" "}
+                      <MetaRow label="기간">
                         {engagement.starts_on ?? "?"} ~ {engagement.ends_on ?? "?"}
-                      </p>
+                      </MetaRow>
                     )}
                     {engagement.fee_amount !== null && (
-                      <p>
-                        <span className="text-muted-foreground">의뢰비용</span>{" "}
+                      <MetaRow label="의뢰비용">
                         {formatKrw(engagement.fee_amount)}
-                      </p>
+                      </MetaRow>
                     )}
                     {engagement.message && (
-                      <p className="whitespace-pre-wrap rounded-md bg-secondary/60 p-2 text-muted-foreground">
+                      <p className="mt-2 whitespace-pre-wrap rounded-lg bg-[#F2F6FF] p-3 text-sm text-[#33405A]">
                         {engagement.message}
                       </p>
                     )}
@@ -140,6 +149,7 @@ export default async function ExpertEngagementsPage() {
                       </p>
                     )}
                   </div>
+
                   {answerable && (
                     <EngagementRespondButtons engagementId={engagement.id} />
                   )}
@@ -151,6 +161,7 @@ export default async function ExpertEngagementsPage() {
                       className="mt-3"
                     >
                       <Link href={`/expert/engagements/${engagement.id}/acceptance`}>
+                        <FileSignature className="mr-1.5 h-4 w-4" aria-hidden />
                         섭외수락서 보기
                       </Link>
                     </Button>
