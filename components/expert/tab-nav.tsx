@@ -9,6 +9,7 @@ import {
   History,
   User,
   FolderArchive,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ const TABS: { href: string; label: string; icon: LucideIcon; exact?: boolean }[]
     { href: "/expert/history", label: "히스토리", icon: History },
     { href: "/expert/profile", label: "내 프로필", icon: User },
     { href: "/expert/documents", label: "서류함", icon: FolderArchive },
+    { href: "/expert/tax-access", label: "조회 이력", icon: ShieldCheck },
   ];
 
 export function ExpertTabNav() {

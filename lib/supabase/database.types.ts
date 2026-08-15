@@ -2420,6 +2420,7 @@ export type Database = {
         Row: {
           confirmed_at: string | null
           created_at: string | null
+          engagement_id: string | null
           gross_amount: number | null
           id: string | null
           net_amount: number | null
