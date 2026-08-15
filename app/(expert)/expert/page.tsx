@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { Inbox, ArrowRight } from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { LogoMark } from "@/components/brand/logo";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -30,9 +32,9 @@ function StatTile({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-secondary p-3">
+    <div className="rounded-xl border bg-secondary/70 p-3.5">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums text-foreground">
+      <p className="mt-1 text-lg font-bold tabular-nums text-brand-navy">
         {value}
       </p>
       {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
@@ -42,7 +44,7 @@ function StatTile({
 
 /**
  * 전문가 포털 대시보드 — 로그인 직후 "현재 상태별" 요약 (설계문서 3.2, 8.1).
- * 가장 급한 대기중 섭외 요청을 최상단에 최대 3건 노출하고, 그 아래 통계를 보여준다.
+ * CASTLOG 브랜드 히어로 + 가장 급한 대기중 섭외를 최상단에, 그 아래 활동 통계.
  * 전 기업 통합 이력 기준. 모바일 완전 대응 최우선.
  */
 export default async function ExpertPortalPage() {
@@ -112,8 +114,7 @@ export default async function ExpertPortalPage() {
 
   const pending = engagementRows.filter(
     (e) =>
-      e.status === "requested" &&
-      new Date(e.token_expires_at).getTime() >= now
+      e.status === "requested" && new Date(e.token_expires_at).getTime() >= now
   );
   const accepted = engagementRows.filter((e) => e.status === "accepted");
 
@@ -127,10 +128,7 @@ export default async function ExpertPortalPage() {
       .filter(Boolean) as string[]
   );
 
-  const totalRevenue = paymentRows.reduce(
-    (sum, p) => sum + (p.net_amount ?? 0),
-    0
-  );
+  const totalRevenue = paymentRows.reduce((sum, p) => sum + (p.net_amount ?? 0), 0);
   const totalTax = paymentRows.reduce(
     (sum, p) => sum + (p.withholding_amount ?? 0),
     0
@@ -140,30 +138,69 @@ export default async function ExpertPortalPage() {
       ? Math.round((accepted.length / engagementRows.length) * 100)
       : 0;
 
+  const profileLine = [
+    expert.specialty,
+    expert.region,
+    expert.career_years != null ? `경력 ${expert.career_years}년` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
-        <div>
-          <p className="text-sm text-muted-foreground">안녕하세요,</p>
-          <h2 className="text-lg font-bold">{expert.name} 전문가님</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {[
-              expert.specialty,
-              expert.region,
-              expert.career_years != null ? `경력 ${expert.career_years}년` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        </div>
+      <main className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+        {/* 브랜드 히어로 — 인사 + 오늘의 섭외 상태 */}
+        <section className="relative overflow-hidden rounded-2xl bg-brand-navy px-6 py-7 text-white sm:px-8">
+          <LogoMark
+            width={190}
+            height={234}
+            className="pointer-events-none absolute -right-8 -top-10 opacity-[0.12]"
+          />
+          <div className="relative">
+            <p className="text-sm text-brand-sky">전문가 섭외 포털</p>
+            <h2 className="mt-1 text-xl font-bold sm:text-2xl">
+              {expert.name} 전문가님, 환영합니다
+            </h2>
+            {profileLine && (
+              <p className="mt-1 text-sm text-white/70">{profileLine}</p>
+            )}
+
+            <div className="mt-5">
+              {pending.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-brand-amber px-3.5 py-1.5 text-sm font-semibold text-brand-navy">
+                    <Inbox className="h-4 w-4" aria-hidden />
+                    응답이 필요한 섭외 {pending.length}건
+                  </span>
+                  <Button
+                    asChild
+                    size="sm"
+                    className="bg-white text-brand-navy hover:bg-white/90"
+                  >
+                    <Link href="/expert/engagements">
+                      지금 확인하기
+                      <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-white/75">
+                  지금 응답이 필요한 섭외 요청이 없습니다. 새 섭외가 오면 여기에서
+                  가장 먼저 알려드립니다.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
 
         {/* 가장 급한 것: 대기중 섭외 요청 (최대 3건) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm">
-              대기중 섭외 요청{" "}
-              <span className="text-primary">({pending.length})</span>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Inbox className="h-4 w-4 text-brand" aria-hidden />
+              대기중 섭외 요청
+              <span className="text-brand">({pending.length})</span>
             </CardTitle>
             {pending.length > 3 && (
               <Button asChild variant="ghost" size="sm">
@@ -173,18 +210,18 @@ export default async function ExpertPortalPage() {
           </CardHeader>
           <CardContent>
             {pending.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="py-2 text-sm text-muted-foreground">
                 지금 응답이 필요한 섭외 요청이 없습니다.
               </p>
             ) : (
               <ul className="divide-y">
                 {pending.slice(0, 3).map((e) => (
-                  <li key={e.id} className="py-2.5">
+                  <li key={e.id} className="py-3">
                     <Link
                       href="/expert/engagements"
                       className="flex flex-wrap items-center gap-2"
                     >
-                      <span className="text-sm font-semibold">
+                      <span className="text-sm font-semibold text-brand-navy">
                         {e.tenants?.name ?? "(기업)"}
                       </span>
                       {e.projects?.name && (
@@ -217,13 +254,13 @@ export default async function ExpertPortalPage() {
           </CardContent>
         </Card>
 
-        {/* 통계 */}
+        {/* 활동 통계 */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">내 활동 통계</CardTitle>
+            <CardTitle className="text-base">내 활동 통계</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               <StatTile
                 label="참여 프로젝트"
                 value={`${projectSet.size}건`}
@@ -239,7 +276,7 @@ export default async function ExpertPortalPage() {
               />
               <StatTile label="수락률" value={`${acceptanceRate}%`} />
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <Button asChild variant="outline" size="sm">
                 <Link href="/expert/projects">프로젝트별 관리</Link>
               </Button>

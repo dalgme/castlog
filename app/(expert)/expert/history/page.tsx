@@ -145,7 +145,7 @@ export default async function ExpertHistoryPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-2xl space-y-3 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-3 p-4 sm:p-5">
         {events.length === 0 ? (
           <EmptyState
             title="활동 이력이 없습니다"

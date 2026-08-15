@@ -93,7 +93,7 @@ export default async function ExpertDocumentsPage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
         {pendingRequests.map((request) => {
           const satisfied = request.requested_types.filter((type) => {
             const doc = activeDocs.get(type);

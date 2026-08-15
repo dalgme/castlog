@@ -63,7 +63,7 @@ export default async function ExpertProfilePage() {
   return (
     <div className="min-h-screen bg-muted">
       <PortalHeader />
-      <main className="mx-auto max-w-2xl p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl p-4 sm:p-5">
         <Card>
           <CardContent className="pt-6">
             <p className="mb-4 text-sm text-muted-foreground">
