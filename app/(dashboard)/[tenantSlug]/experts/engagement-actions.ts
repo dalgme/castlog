@@ -13,6 +13,7 @@ import {
   type EngagementCreateInput,
 } from "@/lib/integrations/schemas";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
+import { notifyExpert } from "@/lib/experts/notifications";
 
 export type CreateEngagementResult =
   | { ok: true; url: string }
@@ -108,6 +109,16 @@ export async function createEngagement(
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     after_data: { expert_id: data.expertId, project_id: projectId },
+  });
+
+  // 통합 알림함 — 전문가에게 섭외 요청 도착 알림
+  await notifyExpert({
+    expertId: data.expertId,
+    category: "engagement_request",
+    title: "새로운 섭외 요청이 도착했습니다",
+    body: data.roleDescription,
+    link: "/expert/engagements",
+    tenantId,
   });
 
   let url: string;
@@ -225,6 +236,18 @@ export async function cancelEngagement(
     resource_type: "expert_engagement",
     resource_id: engagementId,
     after_data: { prior_status: engagement.status, is_urgent: urgent },
+  });
+
+  // 통합 알림함 — 전문가에게 섭외 취소/회수 알림
+  await notifyExpert({
+    expertId: engagement.expert_id,
+    category: "engagement_cancelled",
+    title: urgent
+      ? "계약 성립된 섭외가 취소되었습니다"
+      : "섭외 요청이 회수되었습니다",
+    body: trimmedReason ?? undefined,
+    link: "/expert/engagements",
+    tenantId,
   });
 
   revalidatePath("/[tenantSlug]/experts", "page");

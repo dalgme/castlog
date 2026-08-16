@@ -11,6 +11,7 @@ import {
   FolderArchive,
   ShieldCheck,
   Send,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,19 +21,25 @@ import { cn } from "@/lib/utils";
  * 전문가 포털 상단 탭 네비게이션 (설계문서 8.1 — 모바일 완전 대응 최우선).
  * 홈(대시보드)을 첫 탭으로 두고, 섭외 중심으로 구성. 활성 탭은 현재 경로로 판정.
  */
-const TABS: { href: string; label: string; icon: LucideIcon; exact?: boolean }[] =
-  [
-    { href: "/expert", label: "홈", icon: Home, exact: true },
-    { href: "/expert/engagements", label: "섭외 요청", icon: Inbox },
-    { href: "/expert/projects", label: "프로젝트별 관리", icon: FolderKanban },
-    { href: "/expert/history", label: "히스토리", icon: History },
-    { href: "/expert/profile", label: "내 프로필", icon: User },
-    { href: "/expert/documents", label: "서류함", icon: FolderArchive },
-    { href: "/expert/send", label: "외부 송신", icon: Send },
-    { href: "/expert/tax-access", label: "조회 이력", icon: ShieldCheck },
-  ];
+const TABS: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+  badgeKey?: "notifications";
+}[] = [
+  { href: "/expert", label: "홈", icon: Home, exact: true },
+  { href: "/expert/notifications", label: "알림함", icon: Bell, badgeKey: "notifications" },
+  { href: "/expert/engagements", label: "섭외 요청", icon: Inbox },
+  { href: "/expert/projects", label: "프로젝트별 관리", icon: FolderKanban },
+  { href: "/expert/history", label: "히스토리", icon: History },
+  { href: "/expert/profile", label: "내 프로필", icon: User },
+  { href: "/expert/documents", label: "서류함", icon: FolderArchive },
+  { href: "/expert/send", label: "외부 송신", icon: Send },
+  { href: "/expert/tax-access", label: "조회 이력", icon: ShieldCheck },
+];
 
-export function ExpertTabNav() {
+export function ExpertTabNav({ unreadCount = 0 }: { unreadCount?: number }) {
   const pathname = usePathname();
 
   return (
@@ -43,6 +50,7 @@ export function ExpertTabNav() {
             ? pathname === tab.href
             : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           const Icon = tab.icon;
+          const badge = tab.badgeKey === "notifications" ? unreadCount : 0;
           return (
             <Link
               key={tab.href}
@@ -55,7 +63,14 @@ export function ExpertTabNav() {
                   : "border-transparent text-muted-foreground hover:text-brand-navy"
               )}
             >
-              <Icon className="h-4 w-4" aria-hidden />
+              <span className="relative flex items-center">
+                <Icon className="h-4 w-4" aria-hidden />
+                {badge > 0 && (
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-amber px-1 text-[10px] font-bold leading-none text-white">
+                    {badge > 9 ? "9+" : badge}
+                  </span>
+                )}
+              </span>
               {tab.label}
             </Link>
           );

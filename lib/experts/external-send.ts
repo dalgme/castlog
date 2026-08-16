@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hashLinkToken } from "@/lib/auth/tokens";
 import { EXPERT_DOCUMENT_BUCKET, DOCUMENT_TYPE_LABELS } from "@/lib/experts/documents";
+import { notifyExpert } from "@/lib/experts/notifications";
 
 const DOWNLOAD_URL_EXPIRES_SECONDS = 300;
 
@@ -60,14 +61,29 @@ export async function resolveExternalSend(
   };
 }
 
-/** 최초 열람 기록 (수신 확인). */
+/** 최초 열람 기록 (수신 확인). 최초 1회에 한해 발신 전문가에게 알림. */
 export async function markSendOpened(id: string): Promise<void> {
   const admin = createAdminClient();
-  await admin
+  const { data: updated } = await admin
     .from("expert_external_sends")
     .update({ opened_at: new Date().toISOString() })
     .eq("id", id)
-    .is("opened_at", null);
+    .is("opened_at", null)
+    .select("expert_id, recipient_name, recipient_email, event_name")
+    .maybeSingle();
+
+  // update가 실제로 반영된 경우(최초 열람)에만 알림 — 재방문 시 중복 알림 방지.
+  if (updated) {
+    const who =
+      updated.recipient_name || updated.recipient_email || "수신자";
+    await notifyExpert({
+      expertId: updated.expert_id,
+      category: "external_send_opened",
+      title: "보낸 서류를 수신자가 열람했습니다",
+      body: `${who}${updated.event_name ? ` · ${updated.event_name}` : ""}`,
+      link: "/expert/send",
+    });
+  }
 }
 
 /**
