@@ -41,7 +41,7 @@ export default async function ExpertSendPage() {
           title="외부 송신"
           description="이력서·신분증사본·통장사본을 외부 담당자에게 안전한 만료 다운로드 링크로 보냅니다. 첨부와 달리 만료·회수·열람 확인이 됩니다."
         />
-        <SendForm documents={context.documents} history={context.history} />
+        <SendForm standardDocs={context.standardDocs} history={context.history} />
       </main>
     </div>
   );
