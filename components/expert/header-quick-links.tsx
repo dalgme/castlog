@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, FolderArchive, type LucideIcon } from "lucide-react";
+import { User, FolderArchive, LifeBuoy, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/expert/profile", label: "내 프로필", icon: User },
   { href: "/expert/documents", label: "서류함", icon: FolderArchive },
+  { href: "/expert/support", label: "문의", icon: LifeBuoy },
 ];
 
 /**
