@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { resolveEmailProvider } from "@/lib/email/provider";
 
 export type LockdownState = {
   locked: boolean;
@@ -52,9 +53,33 @@ export async function tripRrnLockdown(params: {
       resource_id: params.honeytokenId ?? null,
       after_data: { reason: params.reason },
     });
+
+    // 운영 경보 — 넥스트랩 운영자에게 즉시 통지(구성 시). 미구성이면 감사로그만.
+    await sendLockdownAlert(params);
   } catch {
-    // 잠금 기록 실패도 조회는 계속 차단되어야 하므로 예외를 삼킨다.
+    // 잠금 기록·경보 실패도 조회는 계속 차단되어야 하므로 예외를 삼킨다.
   }
+}
+
+/** 잠금 발생 경보 이메일 — RRN_ALERT_EMAIL 구성 시 발송(best-effort). */
+async function sendLockdownAlert(params: {
+  reason: string;
+  tenantId?: string | null;
+}): Promise<void> {
+  const to = process.env.RRN_ALERT_EMAIL;
+  const provider = resolveEmailProvider();
+  if (!to || !provider) return;
+  const from = process.env.EMAIL_FROM ?? "CASTLOG <noreply@castlog.kr>";
+  await provider.send({
+    from,
+    to,
+    subject: "[긴급] 주민번호 조회 전체 잠금이 발생했습니다",
+    text:
+      `주민등록번호 조회 서브시스템이 자동 잠금되었습니다.\n\n` +
+      `사유: ${params.reason === "honeytoken" ? "허니토큰 접근 감지(비정상 접근 의심)" : params.reason}\n` +
+      `테넌트: ${params.tenantId ?? "-"}\n\n` +
+      `모든 주민번호 조회가 차단된 상태입니다. 플랫폼 관리 화면에서 원인을 확인하고 해제하세요.\n`,
+  });
 }
 
 /** 잠금 해제 — 플랫폼 운영자만 호출(호출측에서 권한 확인). 미해제 행 전체 해제. */

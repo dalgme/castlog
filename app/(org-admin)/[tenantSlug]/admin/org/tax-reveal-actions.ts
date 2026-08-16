@@ -1,5 +1,7 @@
 "use server";
 
+import { createClient as createSbClient } from "@supabase/supabase-js";
+
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStoreBClient, hasStoreBEnv } from "@/lib/supabase/rrn-store-b";
@@ -14,8 +16,24 @@ import {
 } from "@/lib/integrations/rrn-access";
 
 type Designee =
-  | { ok: true; userId: string; tenantId: string; accessorLabel: string }
+  | { ok: true; userId: string; email: string; tenantId: string; accessorLabel: string }
   | { ok: false; error: string };
+
+/** 재인증(2차 수단) — 계정 비밀번호를 별도 확인. 조회 비밀번호와 구분된 요소. */
+async function verifyAccountPassword(email: string, password: string): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon || !password) return false;
+  try {
+    const client = createSbClient(url, anon, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    return !error;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 조회 주체 검증 — tax_access_grants 지정자(회계담당·대표)만 가능(§5).
@@ -45,6 +63,7 @@ async function requireDesignee(): Promise<Designee> {
   return {
     ok: true,
     userId: user.id,
+    email: user.email ?? "",
     tenantId,
     accessorLabel: grant.role_label ?? "지정자",
   };
@@ -108,6 +127,7 @@ export async function listRevealTargets(): Promise<ListResult> {
 }
 
 export type RevealMaterial = {
+  expertName: string;
   wrappedPrivateKey: string;
   kdfSalt: string;
   wrapIv: string;
@@ -115,6 +135,8 @@ export type RevealMaterial = {
   frontCiphertext: string;
   backCiphertext: string;
 };
+
+export type RevealAccessType = "file_generation" | "screen";
 
 export type RevealResult =
   | { ok: true; material: RevealMaterial }
@@ -128,7 +150,9 @@ export type RevealResult =
  */
 export async function getRevealMaterial(
   grantId: string,
-  reason: RrnAccessReason
+  reason: RrnAccessReason,
+  accountPassword: string,
+  accessType: RevealAccessType = "file_generation"
 ): Promise<RevealResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   if (!hasStoreBEnv()) return { ok: false, error: "보안 저장소 연결이 설정되지 않았습니다." };
@@ -136,6 +160,11 @@ export async function getRevealMaterial(
   if (!d.ok) return d;
   if (!(reason in RRN_ACCESS_REASONS)) {
     return { ok: false, error: "조회 사유를 선택하세요." };
+  }
+
+  // 재인증(2차 수단) — 조회 비밀번호와 별개로 계정 비밀번호를 재확인(§5)
+  if (!(await verifyAccountPassword(d.email, accountPassword))) {
+    return { ok: false, error: "재인증 실패 — 계정 비밀번호가 일치하지 않습니다." };
   }
 
   // 이미 잠금 상태면 즉시 차단
@@ -201,20 +230,22 @@ export async function getRevealMaterial(
     return { ok: false, error: "조회할 수 있는 대상이 아닙니다." };
   }
 
-  const [{ data: tenantKey }, { data: front }, { data: tenant }] = await Promise.all([
-    admin
-      .from("tenant_rrn_keys")
-      .select("wrapped_private_key, kdf_salt, wrap_iv")
-      .eq("tenant_id", d.tenantId)
-      .maybeSingle(),
-    admin
-      .from("rrn_fragments_front")
-      .select("front_ciphertext")
-      .eq("id", grant.front_id)
-      .is("purged_at", null)
-      .maybeSingle(),
-    admin.from("tenants").select("name").eq("id", d.tenantId).maybeSingle(),
-  ]);
+  const [{ data: tenantKey }, { data: front }, { data: tenant }, { data: expert }] =
+    await Promise.all([
+      admin
+        .from("tenant_rrn_keys")
+        .select("wrapped_private_key, kdf_salt, wrap_iv")
+        .eq("tenant_id", d.tenantId)
+        .maybeSingle(),
+      admin
+        .from("rrn_fragments_front")
+        .select("front_ciphertext")
+        .eq("id", grant.front_id)
+        .is("purged_at", null)
+        .maybeSingle(),
+      admin.from("tenants").select("name").eq("id", d.tenantId).maybeSingle(),
+      admin.from("experts").select("name").eq("id", grant.expert_id).maybeSingle(),
+    ]);
   if (!tenantKey || !front) {
     return { ok: false, error: "조회 자료를 확인할 수 없습니다." };
   }
@@ -236,7 +267,7 @@ export async function getRevealMaterial(
     tenant_name: tenant?.name ?? null,
     project_id: grant.project_id,
     reason,
-    access_type: "screen",
+    access_type: accessType,
     accessor_label: d.accessorLabel,
   });
 
@@ -267,6 +298,7 @@ export async function getRevealMaterial(
   return {
     ok: true,
     material: {
+      expertName: expert?.name ?? "전문가",
       wrappedPrivateKey: tenantKey.wrapped_private_key,
       kdfSalt: tenantKey.kdf_salt,
       wrapIv: tenantKey.wrap_iv,
