@@ -5,31 +5,56 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 
-export type BusyItem = {
-  source: "external" | "own_engagement";
-  /** 표시 라벨(외부 일정은 상세 미노출, 자사 섭외는 역할 표시) */
-  label: string;
-  start: string;
-  end: string | null;
-  allDay: boolean;
+/** 자사 섭외(상세 공개) — 요청 테넌트 본인의 섭외 건만. */
+export type OwnConflict = {
+  roleDescription: string | null;
+  startsOn: string;
+  endsOn: string | null;
+  status: string;
 };
 
-export type AvailabilityResult =
-  | { ok: true; items: BusyItem[] }
+export type ScreenResult =
+  | {
+      ok: true;
+      /** 입력 기간과 겹치는 일정이 하나라도 있는지 */
+      hasConflict: boolean;
+      /** 자사 섭외 겹침(상세 공개) */
+      ownConflicts: OwnConflict[];
+      /**
+       * 상세를 공개하지 않는 겹침 건수 —
+       * (1) 다른 회사의 섭외, (2) 전문가가 직접 등록한 일정.
+       * 겹침 여부/건수만 반환하고 기관·제목 등 상세는 절대 포함하지 않는다.
+       */
+      blindConflictCount: number;
+    }
   | { ok: false; error: string };
 
+function overlaps(
+  from: number,
+  to: number,
+  startISO: string,
+  endISO: string | null
+): boolean {
+  const s = new Date(startISO).getTime();
+  const e = endISO ? new Date(endISO).getTime() : s;
+  // 종일/날짜 값은 해당 날짜의 끝까지 겹침으로 본다.
+  const eAdj = e + (endISO ? 0 : 0);
+  return s <= to && eAdj >= from;
+}
+
 /**
- * 섭외 전 가용성 확인 — 연결 기업이 전문가의 '바쁜 날'을 미리 참고한다.
+ * 섭외 전 일정 스크리닝 — 특정 일시 범위에 대해 '겹치는지'만 1차 판독한다.
  *
- * 테넌트 격리(§4): 다른 테넌트의 캐스트로그 섭외 일정은 절대 노출하지 않는다.
- *  - 노출 대상: (1) 전문가가 공유 허용한 외부 일정(상세 미노출), (2) 자사 섭외 일정.
- *  - 활성 연결이 있는 전문가에 한해 조회 가능.
+ * 노출 규칙(§4 테넌트 격리 엄수):
+ *  - 자사(요청 테넌트) 섭외와 겹치면 → 그 내역을 보여준다.
+ *  - 다른 회사의 섭외, 전문가가 직접 등록한 일정과 겹치면 →
+ *    상세는 절대 보여주지 않고 '겹침 여부/건수'만 판독한다.
  */
-export async function getExpertAvailability(
+export async function screenExpertSchedule(
   expertId: string,
   fromISO: string,
   toISO: string
-): Promise<AvailabilityResult> {
+): Promise<ScreenResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
 
   const supabase = createClient();
@@ -39,7 +64,7 @@ export async function getExpertAvailability(
   const tenantId = tenantIdFromUser(user);
   if (!user || !tenantId) return { ok: false, error: "권한이 없습니다." };
 
-  // 활성 연결 확인(RLS + 명시)
+  // 활성 연결 확인
   const { data: link } = await supabase
     .from("expert_tenant_links")
     .select("id, status")
@@ -50,52 +75,54 @@ export async function getExpertAvailability(
     return { ok: false, error: "활성 연결이 있는 전문가만 확인할 수 있습니다." };
   }
 
+  const from = new Date(fromISO).getTime();
+  const to = new Date(toISO).getTime();
+  if (!(from <= to)) return { ok: false, error: "확인할 기간을 올바르게 입력하세요." };
+
   const admin = createAdminClient();
-  const items: BusyItem[] = [];
 
-  // (1) 전문가가 공유 허용한 외부 일정 — 상세는 감추고 '외부 일정'으로만
-  const { data: externals } = await admin
-    .from("expert_external_schedules")
-    .select("starts_at, ends_at, all_day")
-    .eq("expert_id", expertId)
-    .eq("shared_with_tenants", true)
-    .gte("starts_at", fromISO)
-    .lte("starts_at", toISO)
-    .order("starts_at", { ascending: true });
-  for (const e of externals ?? []) {
-    items.push({
-      source: "external",
-      label: "외부 일정",
-      start: e.starts_at,
-      end: e.ends_at,
-      allDay: e.all_day,
-    });
-  }
-
-  // (2) 자사(현재 테넌트) 섭외 일정만 — 다른 테넌트 건은 절대 포함하지 않음
+  // 전문가의 모든 캐스트로그 섭외(전 테넌트) — 겹침 판독용. 상세는 자사 건만 사용.
   const { data: engagements } = await admin
     .from("expert_engagements")
-    .select("role_description, starts_on, ends_on, status")
+    .select("tenant_id, role_description, starts_on, ends_on, status")
     .eq("expert_id", expertId)
-    .eq("tenant_id", tenantId)
     .in("status", ["requested", "accepted"])
-    .not("starts_on", "is", null)
-    .gte("starts_on", fromISO.slice(0, 10))
-    .lte("starts_on", toISO.slice(0, 10))
-    .order("starts_on", { ascending: true });
+    .not("starts_on", "is", null);
+
+  // 전문가가 직접 등록한 일정 — 공유 허용분만 겹침 판독에 포함(상세 미노출).
+  const { data: externals } = await admin
+    .from("expert_external_schedules")
+    .select("starts_at, ends_at")
+    .eq("expert_id", expertId)
+    .eq("shared_with_tenants", true);
+
+  const ownConflicts: OwnConflict[] = [];
+  let blindConflictCount = 0;
+
   for (const g of engagements ?? []) {
     if (!g.starts_on) continue;
-    items.push({
-      source: "own_engagement",
-      label:
-        (g.status === "accepted" ? "자사 섭외(확정)" : "자사 섭외(요청중)") +
-        (g.role_description ? ` · ${g.role_description}` : ""),
-      start: g.starts_on,
-      end: g.ends_on,
-      allDay: true,
-    });
+    if (!overlaps(from, to, g.starts_on, g.ends_on)) continue;
+    if (g.tenant_id === tenantId) {
+      ownConflicts.push({
+        roleDescription: g.role_description,
+        startsOn: g.starts_on,
+        endsOn: g.ends_on,
+        status: g.status,
+      });
+    } else {
+      // 다른 회사의 섭외 — 상세 없이 겹침만
+      blindConflictCount++;
+    }
   }
 
-  items.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-  return { ok: true, items };
+  for (const e of externals ?? []) {
+    if (overlaps(from, to, e.starts_at, e.ends_at)) blindConflictCount++;
+  }
+
+  return {
+    ok: true,
+    hasConflict: ownConflicts.length > 0 || blindConflictCount > 0,
+    ownConflicts,
+    blindConflictCount,
+  };
 }

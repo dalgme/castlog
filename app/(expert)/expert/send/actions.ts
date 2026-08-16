@@ -381,7 +381,14 @@ export async function sendExternalDocuments(input: {
     const fromAddress = baseFrom.includes("<")
       ? baseFrom.slice(baseFrom.indexOf("<"))
       : `<${baseFrom}>`;
-    const displayName = senderName ? `${senderName} (CASTLOG)` : "CASTLOG";
+    // 발신 주소는 인증 도메인(fromAddress)이어야 SPF/DKIM/DMARC를 통과한다.
+    // 전문가 개인 주소를 발신 주소로 쓸 수는 없으므로, 수신자에게 보이는
+    // '표시 이름'에 전문가 이름과 이메일을 넣고 Reply-To를 전문가로 지정한다.
+    const displayName = senderName
+      ? senderEmail
+        ? `${senderName} (${senderEmail})`
+        : senderName
+      : "CASTLOG";
     const from = `${displayName} ${fromAddress}`;
     const result = await provider.send({
       from,
