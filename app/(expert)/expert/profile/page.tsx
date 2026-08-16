@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, Globe } from "lucide-react";
 
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -83,6 +84,15 @@ export default async function ExpertProfilePage() {
           eyebrow="PROFILE"
           title="내 프로필"
           description="전문분야·경력·소득유형과 섭외수락서에 쓰이는 서명·날인을 관리합니다."
+          action={
+            <Link
+              href="/expert/public-profile"
+              className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-brand/5 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand/10"
+            >
+              <Globe className="h-4 w-4" aria-hidden />
+              공개 프로필 · QR
+            </Link>
+          }
         />
         <Card className="shadow-sm">
           <CardContent className="pt-6">

@@ -55,6 +55,7 @@ export const PUBLIC_LINK_PATHS = {
   documentSubmit: "d", // 서류 제출·갱신 (기존 전문가)
   unsubscribe: "u", // 수신거부 — 광고성 발송 시 법적 필수
   externalSend: "x", // 외부 송신 — 전문가가 외부로 보낸 서류 다운로드(만료 링크)
+  publicProfile: "p", // 전문가 공개 프로필 / 미니 이력서 (공유·QR)
 } as const;
 
 export type PublicLinkKind = keyof typeof PUBLIC_LINK_PATHS;
