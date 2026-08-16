@@ -4,7 +4,7 @@ import { useTransition } from "react";
 
 import {
   DOCUMENT_TYPE_LABELS,
-  UPLOADABLE_DOCUMENT_TYPES,
+  STANDARD_UPLOAD_DOCUMENT_TYPES,
 } from "@/lib/experts/documents";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -36,7 +36,7 @@ export function DocumentGrantsPanel({
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {UPLOADABLE_DOCUMENT_TYPES.map((type) => {
+      {STANDARD_UPLOAD_DOCUMENT_TYPES.map((type) => {
         const granted = grantedTypes.includes(type);
         return (
           <label

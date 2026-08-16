@@ -8,13 +8,23 @@
 
 export const EXPERT_DOCUMENT_BUCKET = "expert-documents";
 
-/** 업로드 가능 서류 유형 (signature는 서명 캔버스로 별도 수집 — 단계 11) */
-export const UPLOADABLE_DOCUMENT_TYPES = [
+/** 서류함에 슬롯으로 노출하는 표준 업로드 유형 (signature는 서명 캔버스로 별도 수집) */
+export const STANDARD_UPLOAD_DOCUMENT_TYPES = [
   "resume",
   "bank_account_copy",
   "id_card_copy",
   "business_card",
   "business_registration",
+] as const;
+
+/**
+ * 업로드 가능 서류 유형.
+ * 'attachment'는 외부 송신용 일반 첨부 — 서류함 슬롯에는 노출하지 않지만
+ * 서버 업로드는 허용한다(STANDARD_UPLOAD_DOCUMENT_TYPES와 구분).
+ */
+export const UPLOADABLE_DOCUMENT_TYPES = [
+  ...STANDARD_UPLOAD_DOCUMENT_TYPES,
+  "attachment",
 ] as const;
 export type UploadableDocumentType = (typeof UPLOADABLE_DOCUMENT_TYPES)[number];
 
@@ -26,6 +36,7 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   business_registration: "사업자등록증",
   signature: "서명",
   seal: "날인(도장)",
+  attachment: "첨부파일",
 };
 
 /**

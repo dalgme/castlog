@@ -4,7 +4,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   DOCUMENT_TYPE_LABELS,
   SENSITIVE_DOCUMENT_TYPES,
-  UPLOADABLE_DOCUMENT_TYPES,
+  STANDARD_UPLOAD_DOCUMENT_TYPES,
 } from "@/lib/experts/documents";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro } from "@/components/expert/ui";
@@ -145,7 +145,7 @@ export default async function ExpertDocumentsPage() {
             <CardTitle className="text-sm">내 서류</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {UPLOADABLE_DOCUMENT_TYPES.map((type) => {
+            {STANDARD_UPLOAD_DOCUMENT_TYPES.map((type) => {
               const doc = activeDocs.get(type);
               const sensitive = SENSITIVE_DOCUMENT_TYPES.includes(type);
               return (

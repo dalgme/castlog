@@ -5,7 +5,7 @@ import { FileUp, Copy, Check } from "lucide-react";
 
 import {
   DOCUMENT_TYPE_LABELS,
-  UPLOADABLE_DOCUMENT_TYPES,
+  STANDARD_UPLOAD_DOCUMENT_TYPES,
 } from "@/lib/experts/documents";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -125,7 +125,7 @@ export function DocumentRequestDialog({ expertId }: { expertId: string }) {
               </Alert>
             )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {UPLOADABLE_DOCUMENT_TYPES.map((type) => (
+              {STANDARD_UPLOAD_DOCUMENT_TYPES.map((type) => (
                 <label
                   key={type}
                   className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"

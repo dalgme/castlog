@@ -1,8 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Copy, Check, Send, Paperclip } from "lucide-react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { Copy, Check, Send, Paperclip, FileText, X } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,17 +11,18 @@ import { Tag } from "@/components/expert/ui";
 
 import {
   sendExternalDocuments,
+  uploadSendFile,
   updateSendMemo,
   revokeSend,
   type ExternalDoc,
   type SendHistoryRow,
 } from "./actions";
-import { uploadExpertDocument } from "../documents/actions";
 
-const ATTACHABLE: { type: string; label: string }[] = [
+/** 클릭 한 번으로 이미 올려둔 임시 URL을 전달하는 표준 3종 */
+const STANDARD: { type: string; label: string }[] = [
   { type: "resume", label: "이력서" },
-  { type: "id_card_copy", label: "신분증 사본" },
   { type: "bank_account_copy", label: "통장 사본" },
+  { type: "id_card_copy", label: "신분증 사본" },
 ];
 
 function StatusTag({ row }: { row: SendHistoryRow }) {
@@ -34,31 +34,93 @@ function StatusTag({ row }: { row: SendHistoryRow }) {
 }
 
 export function SendForm({
-  documents,
+  standardDocs,
   history,
 }: {
-  documents: ExternalDoc[];
+  standardDocs: ExternalDoc[];
   history: SendHistoryRow[];
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sentLink, setSentLink] = useState<string | null>(null);
   const [emailed, setEmailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const availableTypes = new Set(documents.map((d) => d.type));
-  const attachable = ATTACHABLE.filter((a) => !availableTypes.has(a.type));
+  // 표준 3종의 최신 문서(업로드하면 갱신). 없으면 undefined.
+  const [docsByType, setDocsByType] = useState<Record<string, ExternalDoc>>(() => {
+    const map: Record<string, ExternalDoc> = {};
+    for (const d of standardDocs) map[d.type] = d;
+    return map;
+  });
+  // 이번 발송에 추가한 일반 첨부들.
+  const [attachments, setAttachments] = useState<ExternalDoc[]>([]);
+  // 선택된 문서 id 집합.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [types, setTypes] = useState<string[]>([]);
   const [eventName, setEventName] = useState("");
   const [orgName, setOrgName] = useState("");
   const [memo, setMemo] = useState("");
 
-  const toggle = (t: string) =>
-    setTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  const attachInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
+
+  const selectedCount = selected.size;
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const upload = (documentType: string, file: File, onDone?: (doc: ExternalDoc) => void) => {
+    setError(null);
+    setUploadingType(documentType);
+    const fd = new FormData();
+    fd.append("documentType", documentType);
+    fd.append("file", file);
+    startTransition(async () => {
+      const result = await uploadSendFile(fd);
+      setUploadingType(null);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onDone?.(result.doc);
+    });
+  };
+
+  const onStandardFile = (type: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    upload(type, file, (doc) => {
+      setDocsByType((prev) => ({ ...prev, [type]: doc }));
+      setSelected((prev) => new Set(prev).add(doc.id));
+    });
+  };
+
+  const onAttachFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    upload("attachment", file, (doc) => {
+      setAttachments((prev) => [...prev, doc]);
+      setSelected((prev) => new Set(prev).add(doc.id));
+    });
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
 
   const onSend = () => {
     setError(null);
@@ -67,7 +129,7 @@ export function SendForm({
       const result = await sendExternalDocuments({
         recipientEmail: email,
         recipientName: name,
-        documentTypes: types,
+        documentIds: Array.from(selected),
         eventName,
         orgName,
         memo,
@@ -78,10 +140,11 @@ export function SendForm({
         setEmailed(result.emailed);
         setEmail("");
         setName("");
-        setTypes([]);
         setEventName("");
         setOrgName("");
         setMemo("");
+        setSelected(new Set());
+        setAttachments([]);
       }
     });
   };
@@ -96,56 +159,77 @@ export function SendForm({
   return (
     <div className="space-y-5">
       {/* 발송 폼 */}
-      <div className="space-y-3 rounded-xl border bg-background p-4 shadow-sm">
+      <div className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
         <p className="text-sm font-bold text-brand-navy">새 외부 송신</p>
 
-        {documents.length > 0 && (
+        {/* 표준 3종 — 이미 올려둔 서류면 클릭 선택, 없으면 클릭 시 업로드 후 선택 */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">보낼 서류 선택</p>
           <div className="flex flex-wrap gap-2">
-            {documents.map((d) => {
-              const on = types.includes(d.type);
-              return (
-                <button
-                  key={d.type}
-                  type="button"
-                  onClick={() => toggle(d.type)}
-                  className={
-                    on
-                      ? "rounded-md border border-brand bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand"
-                      : "rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-brand-navy"
-                  }
-                >
-                  {d.label}
-                </button>
-              );
+            {STANDARD.map(({ type, label }) => {
+              const doc = docsByType[type];
+              const on = doc ? selected.has(doc.id) : false;
+              const busy = pending && uploadingType === type;
+              if (doc) {
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleSelect(doc.id)}
+                    className={
+                      on
+                        ? "inline-flex items-center gap-1.5 rounded-md border border-brand bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand"
+                        : "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-brand-navy"
+                    }
+                  >
+                    {on ? <Check className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                    {label}
+                  </button>
+                );
+              }
+              return <StandardUploadButton key={type} type={type} label={label} busy={busy} onFile={onStandardFile} />;
             })}
           </div>
-        )}
-
-        {/* 서류함에 없는 유형은 여기서 바로 첨부(업로드) */}
-        {attachable.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">직접 첨부:</span>
-            {attachable.map((a) => (
-              <AttachButton
-                key={a.type}
-                type={a.type}
-                label={a.label}
-                onAttached={() => {
-                  setTypes((prev) => (prev.includes(a.type) ? prev : [...prev, a.type]));
-                  router.refresh();
-                }}
-                onError={setError}
-              />
-            ))}
-          </div>
-        )}
-
-        {documents.length === 0 && attachable.length === 0 && (
-          <p className="rounded-lg bg-secondary/60 p-3 text-sm text-muted-foreground">
-            보낼 수 있는 서류가 없습니다. 위 &lsquo;직접 첨부&rsquo;로 올리거나 서류함에서
-            등록해 주세요.
+          <p className="text-[11px] text-muted-foreground">
+            서류함에 올려둔 파일이면 클릭만으로 선택됩니다. 없으면 클릭해서 바로 올릴 수 있어요.
           </p>
-        )}
+        </div>
+
+        {/* 일반 첨부 */}
+        <div className="space-y-1.5">
+          <input
+            ref={attachInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={onAttachFile}
+          />
+          <button
+            type="button"
+            onClick={() => attachInputRef.current?.click()}
+            disabled={pending && uploadingType === "attachment"}
+            className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
+          >
+            <Paperclip className="h-3.5 w-3.5" aria-hidden />
+            {pending && uploadingType === "attachment" ? "업로드 중..." : "파일 첨부"}
+          </button>
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((a) => (
+                <span
+                  key={a.id}
+                  className="inline-flex max-w-[220px] items-center gap-1.5 rounded-md border border-brand bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand"
+                >
+                  <FileText className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{a.fileName}</span>
+                  <button type="button" onClick={() => removeAttachment(a.id)} aria-label="첨부 제거">
+                    <X className="h-3 w-3 shrink-0 hover:text-brand-navy" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Input
@@ -201,9 +285,13 @@ export function SendForm({
           </Alert>
         )}
 
-        <Button onClick={onSend} disabled={pending || documents.length === 0}>
+        <Button onClick={onSend} disabled={pending || selectedCount === 0}>
           <Send className="mr-1.5 h-4 w-4" aria-hidden />
-          {pending ? "발송 중..." : "서류 보내기"}
+          {pending
+            ? "발송 중..."
+            : selectedCount > 0
+              ? `${selectedCount}개 서류 보내기`
+              : "서류 보내기"}
         </Button>
       </div>
 
@@ -226,35 +314,18 @@ export function SendForm({
   );
 }
 
-function AttachButton({
+function StandardUploadButton({
   type,
   label,
-  onAttached,
-  onError,
+  busy,
+  onFile,
 }: {
   type: string;
   label: string;
-  onAttached: () => void;
-  onError: (msg: string) => void;
+  busy: boolean;
+  onFile: (type: string, e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [pending, startTransition] = useTransition();
-
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    onError("");
-    const fd = new FormData();
-    fd.append("documentType", type);
-    fd.append("file", file);
-    startTransition(async () => {
-      const result = await uploadExpertDocument(fd);
-      if (!result.ok) onError(result.error);
-      else onAttached();
-      if (inputRef.current) inputRef.current.value = "";
-    });
-  };
-
   return (
     <>
       <input
@@ -262,16 +333,16 @@ function AttachButton({
         type="file"
         accept="image/*,.pdf"
         className="hidden"
-        onChange={onChange}
+        onChange={(e) => onFile(type, e)}
       />
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        disabled={pending}
-        className="inline-flex items-center gap-1 rounded-md border border-dashed px-2.5 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
       >
         <Paperclip className="h-3.5 w-3.5" aria-hidden />
-        {pending ? "업로드 중..." : `${label} 첨부`}
+        {busy ? "업로드 중..." : `${label} 올리기`}
       </button>
     </>
   );
@@ -283,6 +354,8 @@ function HistoryItem({ row }: { row: SendHistoryRow }) {
   const [eventName, setEventName] = useState(row.eventName ?? "");
   const [orgName, setOrgName] = useState(row.orgName ?? "");
   const [memo, setMemo] = useState(row.memo ?? "");
+
+  const docCount = useMemo(() => row.documentTypes.length, [row.documentTypes]);
 
   const save = () =>
     startTransition(async () => {
@@ -314,7 +387,7 @@ function HistoryItem({ row }: { row: SendHistoryRow }) {
         )}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-        <span>{row.documentTypes.map((t) => t).length}개 서류</span>
+        <span>{docCount}개 서류</span>
         <span>{new Date(row.sentAt).toLocaleString("ko-KR")} 발송</span>
         {row.openedAt && <span>{new Date(row.openedAt).toLocaleString("ko-KR")} 열람</span>}
       </div>
