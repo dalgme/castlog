@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
-import { resolveEmailProvider } from "@/lib/email/provider";
+import { resolveEmailProvider, type EmailAttachment } from "@/lib/email/provider";
 import {
   DOCUMENT_TYPE_LABELS,
   EXPERT_DOCUMENT_BUCKET,
@@ -15,10 +15,11 @@ import {
   validateDocumentFile,
 } from "@/lib/experts/documents";
 import { SEND_EXPIRES_HOURS } from "@/lib/experts/external-send-constants";
+import { SEND_STANDARD_TYPES } from "@/lib/experts/send-body-presets";
 
-/** 외부 송신 버튼으로 다룰 표준 서류 유형(이미 업로드된 임시 URL을 전달) */
-const STANDARD_SEND_TYPES = ["resume", "id_card_copy", "bank_account_copy"] as const;
-/** 외부 송신에서 첨부 가능한 유형(표준 3종 + 일반 첨부) */
+/** 클릭 시 임시 URL로 전달하는 표준 서류 유형(5종) */
+const STANDARD_SEND_TYPES = SEND_STANDARD_TYPES.map((s) => s.type);
+/** 외부 송신에서 다룰 수 있는 유형(표준 5종 + 일반 첨부) */
 const SENDABLE_TYPES: readonly string[] = [...STANDARD_SEND_TYPES, "attachment"];
 
 export type ExternalDoc = { id: string; type: string; label: string; fileName: string };
@@ -36,13 +37,18 @@ export type SendHistoryRow = {
   openedAt: string | null;
   link: string | null;
 };
+export type BodyPresetRow = { id: string; label: string; body: string };
 export type SendContext = {
-  /** 표준 3종(이력서·통장·신분증) 최신 문서 — 없으면 해당 키 없음 */
+  /** 표준 5종(이력서·통장·신분증·명함·사업자등록증) 최신 문서 */
   standardDocs: ExternalDoc[];
   history: SendHistoryRow[];
   /** 보내는 사람 자동 채움값(전문가 본인). 발송 시 수정 가능. */
   senderName: string;
   senderEmail: string;
+  /** 사용자 저장 본문 프리셋 */
+  userPresets: BodyPresetRow[];
+  /** 링크 유효 시간(시간) */
+  expiresHours: number;
 };
 
 async function currentExpertId(): Promise<string | null> {
@@ -65,6 +71,8 @@ export async function getSendContext(): Promise<SendContext> {
     history: [],
     senderName: "",
     senderEmail: "",
+    userPresets: [],
+    expiresHours: SEND_EXPIRES_HOURS,
   };
   if (!hasSupabaseEnv()) return empty;
   const supabase = createClient();
@@ -80,13 +88,13 @@ export async function getSendContext(): Promise<SendContext> {
   if (!expert) return empty;
   const expertId = expert.id;
 
-  const [{ data: docs }, { data: sends }] = await Promise.all([
+  const [{ data: docs }, { data: sends }, { data: presets }] = await Promise.all([
     supabase
       .from("expert_documents")
       .select("id, document_type, file_name, created_at")
       .eq("expert_id", expertId)
       .eq("status", "active")
-      .in("document_type", [...STANDARD_SEND_TYPES])
+      .in("document_type", STANDARD_SEND_TYPES)
       .order("created_at", { ascending: false }),
     supabase
       .from("expert_external_sends")
@@ -96,9 +104,13 @@ export async function getSendContext(): Promise<SendContext> {
       .eq("expert_id", expertId)
       .order("sent_at", { ascending: false })
       .limit(100),
+    supabase
+      .from("expert_send_body_presets")
+      .select("id, label, body")
+      .eq("expert_id", expertId)
+      .order("created_at", { ascending: false }),
   ]);
 
-  // 유형별 최신 1개
   const byType = new Map<string, ExternalDoc>();
   for (const d of docs ?? []) {
     if (!byType.has(d.document_type)) {
@@ -134,6 +146,8 @@ export async function getSendContext(): Promise<SendContext> {
     history,
     senderName: expert.name ?? "",
     senderEmail: expert.email ?? user.email ?? "",
+    userPresets: (presets ?? []).map((p) => ({ id: p.id, label: p.label, body: p.body })),
+    expiresHours: SEND_EXPIRES_HOURS,
   };
 }
 
@@ -142,7 +156,7 @@ export type UploadDocResult =
   | { ok: false; error: string };
 
 /**
- * 외부 송신용 파일 업로드 — 업로드 후 생성된 문서를 반환(즉시 선택 가능).
+ * 외부 송신용 파일 업로드 — 생성된 문서를 반환(즉시 선택 가능).
  * 표준 유형(미등록 시 여기서 업로드)과 일반 첨부(attachment) 모두 처리.
  */
 export async function uploadSendFile(formData: FormData): Promise<UploadDocResult> {
@@ -173,7 +187,6 @@ export async function uploadSendFile(formData: FormData): Promise<UploadDocResul
   if (!expert) return { ok: false, error: "전문가 프로필이 없습니다." };
   const expertId = expert.id;
 
-  // 스토리지 접근은 service_role 전용(암호화 버킷).
   const admin = createAdminClient();
   const storagePath = `${expertId}/${documentType}/${crypto.randomUUID()}.${validation.extension}`;
   const { error: uploadError } = await admin.storage
@@ -184,8 +197,7 @@ export async function uploadSendFile(formData: FormData): Promise<UploadDocResul
     });
   if (uploadError) return { ok: false, error: "파일 업로드에 실패했습니다." };
 
-  // 표준 유형은 기존 활성 서류를 replaced 처리(이력 보존). 일반 첨부는 누적.
-  const isStandard = (STANDARD_SEND_TYPES as readonly string[]).includes(documentType);
+  const isStandard = STANDARD_SEND_TYPES.includes(documentType);
   let previousActive: { id: string }[] = [];
   if (isStandard) {
     const { data } = await supabase
@@ -255,7 +267,7 @@ export async function uploadSendFile(formData: FormData): Promise<UploadDocResul
 }
 
 export type SendResult =
-  | { ok: true; link: string; emailed: boolean }
+  | { ok: true; link: string | null; emailed: boolean; attachmentsSent: number }
   | { ok: false; error: string };
 
 export async function sendExternalDocuments(input: {
@@ -263,7 +275,11 @@ export async function sendExternalDocuments(input: {
   recipientName?: string;
   senderName?: string;
   senderEmail?: string;
+  /** 표준 서류(임시 URL로 전달) */
   documentIds: string[];
+  /** 일반 첨부(실제 이메일 첨부, 만료 없음) */
+  attachmentIds?: string[];
+  body?: string;
   eventName?: string;
   orgName?: string;
   memo?: string;
@@ -279,32 +295,36 @@ export async function sendExternalDocuments(input: {
   if (senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) {
     return { ok: false, error: "보내는 사람 이메일 형식을 확인해 주세요." };
   }
-  const ids = Array.from(new Set((input.documentIds ?? []).filter(Boolean)));
-  if (ids.length === 0) {
-    return { ok: false, error: "보낼 서류를 1개 이상 선택하세요." };
+
+  const docIds = Array.from(new Set((input.documentIds ?? []).filter(Boolean)));
+  const attIds = Array.from(new Set((input.attachmentIds ?? []).filter(Boolean)));
+  if (docIds.length === 0 && attIds.length === 0) {
+    return { ok: false, error: "보낼 서류나 첨부파일을 1개 이상 선택하세요." };
   }
 
   const supabase = createClient();
   const expertId = await currentExpertId();
   if (!expertId) return { ok: false, error: "로그인이 필요합니다." };
 
-  // 선택 문서 검증(본인 소유·활성·전송 가능 유형)
+  // 선택 문서 검증(본인 소유·활성)
+  const allIds = [...docIds, ...attIds];
   const { data: docs } = await supabase
     .from("expert_documents")
-    .select("id, document_type")
+    .select("id, document_type, storage_path, file_name, mime_type")
     .eq("expert_id", expertId)
     .eq("status", "active")
-    .in("id", ids);
-  const found = new Map((docs ?? []).map((d) => [d.id, d.document_type]));
-  const invalid = ids.filter(
-    (id) => !found.has(id) || !SENDABLE_TYPES.includes(found.get(id)!)
-  );
-  if (invalid.length > 0) {
-    return { ok: false, error: "선택한 서류를 확인할 수 없습니다. 다시 시도해 주세요." };
+    .in("id", allIds);
+  const found = new Map((docs ?? []).map((d) => [d.id, d]));
+  if (allIds.some((id) => !found.has(id))) {
+    return { ok: false, error: "선택한 파일을 확인할 수 없습니다. 다시 시도해 주세요." };
   }
 
-  const orderedIds = ids;
-  const types = orderedIds.map((id) => found.get(id)!);
+  const provider = resolveEmailProvider();
+  const emailOn = Boolean(provider);
+
+  // 이메일이 꺼져 있으면 첨부도 링크로 폴백(유실 방지). 켜져 있으면 실제 첨부로 전송.
+  const linkIds = emailOn ? docIds : [...docIds, ...attIds];
+  const linkTypes = linkIds.map((id) => found.get(id)!.document_type);
 
   const token = generateLinkToken();
   const expiresAt = new Date(Date.now() + SEND_EXPIRES_HOURS * 3600 * 1000);
@@ -314,8 +334,8 @@ export async function sendExternalDocuments(input: {
     token_hash: hashLinkToken(token),
     recipient_email: email,
     recipient_name: input.recipientName?.trim() || null,
-    document_ids: orderedIds,
-    document_types: types,
+    document_ids: linkIds,
+    document_types: linkTypes,
     event_name: input.eventName?.trim() || null,
     org_name: input.orgName?.trim() || null,
     memo: input.memo?.trim() || null,
@@ -323,17 +343,39 @@ export async function sendExternalDocuments(input: {
   });
   if (error) return { ok: false, error: "발송 기록 생성에 실패했습니다." };
 
-  const link = buildPublicLink("externalSend", token);
-  const typeLabels = types.map((t) => DOCUMENT_TYPE_LABELS[t] ?? t).join(", ");
+  const link = linkIds.length > 0 ? buildPublicLink("externalSend", token) : null;
 
-  // 이메일 발송(플랫폼 경로). 미구성(테스트 모드)이면 링크만 반환.
-  //
-  // 발신 도메인은 인증된 도메인(EMAIL_FROM)이어야 SPF/DKIM/DMARC를 통과한다.
-  // 전문가 개인 메일에서 "직접" 발송할 수는 없으므로(위장 발송으로 차단됨),
-  // From 표시명에 전문가 이름을 넣고 Reply-To를 전문가 메일로 지정해
-  // "전문가가 보낸 메일"로 보이게 하고 회신이 전문가에게 가도록 한다.
+  // 실제 첨부 준비(이메일 켜진 경우만)
+  let attachments: EmailAttachment[] = [];
+  if (emailOn && attIds.length > 0) {
+    const admin = createAdminClient();
+    const built = await Promise.all(
+      attIds.map(async (id) => {
+        const d = found.get(id)!;
+        const { data: blob } = await admin.storage
+          .from(EXPERT_DOCUMENT_BUCKET)
+          .download(d.storage_path);
+        if (!blob) return null;
+        const buf = Buffer.from(await blob.arrayBuffer());
+        return {
+          filename: d.file_name,
+          content: buf.toString("base64"),
+          contentType: d.mime_type ?? undefined,
+        } as EmailAttachment;
+      })
+    );
+    attachments = built.filter((a): a is EmailAttachment => Boolean(a));
+  }
+
+  // 본문 구성: 사용자 본문 + 시스템이 실제 링크를 덧붙임
+  const userBody = (input.body ?? "").trim();
+  const linkBlock = link
+    ? `\n\n▶ 다운로드 링크\n${link}\n(위 링크는 ${SEND_EXPIRES_HOURS}시간 후 만료됩니다.)`
+    : "";
+  const text =
+    (userBody ? userBody : "요청하신 서류를 보내드립니다.") + linkBlock + "\n";
+
   let emailed = false;
-  const provider = resolveEmailProvider();
   if (provider) {
     const baseFrom = process.env.EMAIL_FROM ?? "CASTLOG <noreply@castlog.kr>";
     const fromAddress = baseFrom.includes("<")
@@ -348,24 +390,54 @@ export async function sendExternalDocuments(input: {
       subject: `[서류 전달] ${input.eventName ? `${input.eventName} · ` : ""}${
         senderName ? `${senderName}님이 보낸 ` : ""
       }요청하신 서류입니다`,
-      text:
-        `안녕하세요${input.recipientName ? ` ${input.recipientName}님` : ""},\n\n` +
-        `${senderName ? `${senderName}님이 ` : ""}요청하신 서류(${typeLabels})를 ` +
-        `안전한 다운로드 링크로 보내드립니다.\n\n` +
-        `▶ 다운로드 링크\n${link}\n\n` +
-        `⚠️ 이 링크는 발송 시각으로부터 ${SEND_EXPIRES_HOURS}시간 동안만 유효한 임시 URL입니다.\n` +
-        `   ${SEND_EXPIRES_HOURS}시간이 지나면 자동으로 만료되어 다운로드할 수 없으니, 그 전에 내려받아 주세요.\n` +
-        `   (보안을 위해 발신자가 링크를 회수할 수도 있습니다.)\n\n` +
-        `${senderEmail ? `문의는 이 메일에 회신하시면 ${senderName || "발신자"}에게 전달됩니다.\n` : ""}`,
+      text,
+      attachments: attachments.length ? attachments : undefined,
     });
     emailed = result.ok;
   }
 
   revalidatePath("/expert/send");
-  return { ok: true, link, emailed };
+  return { ok: true, link, emailed, attachmentsSent: emailed ? attachments.length : 0 };
 }
 
 export type SimpleResult = { ok: true } | { ok: false; error: string };
+
+/** 사용자 본문 프리셋 저장('사용자 옵션') */
+export async function saveBodyPreset(
+  label: string,
+  body: string
+): Promise<{ ok: true; preset: BodyPresetRow } | { ok: false; error: string }> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const trimmedBody = (body ?? "").trim();
+  if (!trimmedBody) return { ok: false, error: "저장할 본문 내용을 입력하세요." };
+  const trimmedLabel = (label ?? "").trim().slice(0, 40) || "사용자 옵션";
+
+  const supabase = createClient();
+  const expertId = await currentExpertId();
+  if (!expertId) return { ok: false, error: "로그인이 필요합니다." };
+
+  const { data, error } = await supabase
+    .from("expert_send_body_presets")
+    .insert({ expert_id: expertId, label: trimmedLabel, body: trimmedBody })
+    .select("id, label, body")
+    .single();
+  if (error || !data) return { ok: false, error: "저장에 실패했습니다." };
+
+  revalidatePath("/expert/send");
+  return { ok: true, preset: { id: data.id, label: data.label, body: data.body } };
+}
+
+export async function deleteBodyPreset(id: string): Promise<SimpleResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("expert_send_body_presets")
+    .delete()
+    .eq("id", id);
+  if (error) return { ok: false, error: "삭제에 실패했습니다." };
+  revalidatePath("/expert/send");
+  return { ok: true };
+}
 
 export async function updateSendMemo(
   id: string,

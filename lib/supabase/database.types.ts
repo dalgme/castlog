@@ -1595,6 +1595,30 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_send_body_presets: {
+        Row: {
+          body: string
+          created_at: string
+          expert_id: string
+          id: string
+          label: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          expert_id: string
+          id?: string
+          label: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          expert_id?: string
+          id?: string
+          label?: string
+        }
+        Relationships: []
+      }
       expert_public_profiles: {
         Row: {
           created_at: string

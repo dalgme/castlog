@@ -14,6 +14,13 @@ import "server-only";
  * 지정하면 resolveEmailProvider가 null(테스트 모드 — 기록만)을 반환한다.
  */
 
+export type EmailAttachment = {
+  filename: string;
+  /** base64로 인코딩한 파일 내용 */
+  content: string;
+  contentType?: string;
+};
+
 export type EmailMessage = {
   from: string;
   to: string;
@@ -21,6 +28,8 @@ export type EmailMessage = {
   text: string;
   /** 답장 주소 — 발신 도메인은 인증된 도메인이어야 하므로, 전문가 회신은 여기로 받는다. */
   replyTo?: string;
+  /** 실제 첨부파일(만료 없음, 수신자 메일 정책 영향). */
+  attachments?: EmailAttachment[];
 };
 
 export type EmailProviderResult = { ok: true } | { ok: false; error: string };
@@ -53,6 +62,14 @@ class ResendProvider implements EmailProvider {
           subject: message.subject,
           text: message.text,
           ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+          ...(message.attachments && message.attachments.length
+            ? {
+                attachments: message.attachments.map((a) => ({
+                  filename: a.filename,
+                  content: a.content,
+                })),
+              }
+            : {}),
         }),
       });
       if (!response.ok) {

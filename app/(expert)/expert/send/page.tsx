@@ -39,13 +39,15 @@ export default async function ExpertSendPage() {
         <PageIntro
           eyebrow="SEND"
           title="외부 송신"
-          description="이력서·신분증사본·통장사본을 외부 담당자에게 안전한 만료 다운로드 링크로 보냅니다. 첨부와 달리 만료·회수·열람 확인이 됩니다."
+          description="이력서·통장사본·신분증사본·명함·사업자등록증을 외부 담당자에게 만료 다운로드 링크로 보냅니다. 링크는 만료·회수·열람 확인이 되고, 일반 파일은 메일에 직접 첨부할 수 있습니다."
         />
         <SendForm
           standardDocs={context.standardDocs}
           history={context.history}
           senderName={context.senderName}
           senderEmail={context.senderEmail}
+          userPresets={context.userPresets}
+          expiresHours={context.expiresHours}
         />
       </main>
     </div>
