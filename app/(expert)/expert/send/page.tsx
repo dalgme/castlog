@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/session";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro } from "@/components/expert/ui";
+import { MarkReadOnView } from "@/components/expert/mark-read-on-view";
 import { EmptyState } from "@/components/layout/empty-state";
 
 import { getSendContext } from "./actions";
@@ -36,6 +37,7 @@ export default async function ExpertSendPage() {
     <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <MarkReadOnView categories={["external_send_opened"]} />
         <PageIntro
           eyebrow="SEND"
           title="외부 송신"

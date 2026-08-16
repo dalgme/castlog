@@ -2,9 +2,10 @@ import Link from "next/link";
 
 import { LogoMark, Wordmark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
-import { getExpertUnreadCount } from "@/lib/experts/notifications";
+import { getExpertUnreadByTab } from "@/lib/experts/notifications";
 
 import { ExpertTabNav } from "./tab-nav";
+import { HeaderQuickLinks } from "./header-quick-links";
 
 /**
  * 전문가 포털 공통 앱바 — CASTLOG 브랜드(로고·워드마크) + "전문가 섭외 포털" 정체성
@@ -12,7 +13,7 @@ import { ExpertTabNav } from "./tab-nav";
  * 인증된 포털 화면 전반에서 동일 노출(로그인 화면 제외). 모바일 완전 대응.
  */
 export async function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
-  const unreadCount = showTabs ? await getExpertUnreadCount() : 0;
+  const badges = showTabs ? await getExpertUnreadByTab() : {};
   return (
     <div className="sticky top-0 z-20 bg-background shadow-sm">
       <div className="border-b">
@@ -26,14 +27,17 @@ export async function PortalHeader({ showTabs = true }: { showTabs?: boolean }) 
               </span>
             </span>
           </Link>
-          <form method="post" action="/auth/logout">
-            <Button type="submit" variant="ghost" size="sm">
-              로그아웃
-            </Button>
-          </form>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {showTabs && <HeaderQuickLinks badges={badges} />}
+            <form method="post" action="/auth/logout">
+              <Button type="submit" variant="outline" size="sm">
+                로그아웃
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
-      {showTabs && <ExpertTabNav unreadCount={unreadCount} />}
+      {showTabs && <ExpertTabNav badges={badges} />}
     </div>
   );
 }

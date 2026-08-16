@@ -8,6 +8,7 @@ import {
 } from "@/lib/experts/documents";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro } from "@/components/expert/ui";
+import { MarkReadOnView } from "@/components/expert/mark-read-on-view";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ export default async function ExpertDocumentsPage() {
     <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <MarkReadOnView categories={["document_request"]} />
         <PageIntro
           eyebrow="DOCUMENTS"
           title="서류함"

@@ -1595,6 +1595,51 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_external_schedules: {
+        Row: {
+          all_day: boolean
+          created_at: string
+          ends_at: string | null
+          expert_id: string
+          id: string
+          location: string | null
+          memo: string | null
+          org_name: string | null
+          shared_with_tenants: boolean
+          starts_at: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          all_day?: boolean
+          created_at?: string
+          ends_at?: string | null
+          expert_id: string
+          id?: string
+          location?: string | null
+          memo?: string | null
+          org_name?: string | null
+          shared_with_tenants?: boolean
+          starts_at: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          all_day?: boolean
+          created_at?: string
+          ends_at?: string | null
+          expert_id?: string
+          id?: string
+          location?: string | null
+          memo?: string | null
+          org_name?: string | null
+          shared_with_tenants?: boolean
+          starts_at?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expert_send_body_presets: {
         Row: {
           body: string

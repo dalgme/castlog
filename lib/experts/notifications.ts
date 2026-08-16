@@ -110,3 +110,31 @@ export async function getExpertUnreadCount(): Promise<number> {
     .is("read_at", null);
   return count ?? 0;
 }
+
+/**
+ * 카테고리 → 해당 탭 경로 매핑.
+ * 알림함을 없애고, 각 이벤트는 원래 다루는 메뉴에서 뱃지로 표시·소진한다.
+ */
+export const NOTIFICATION_TAB_HREF: Record<string, string> = {
+  engagement_request: "/expert/engagements",
+  engagement_cancelled: "/expert/engagements",
+  document_request: "/expert/documents",
+  external_send_opened: "/expert/send",
+  rrn_access: "/expert/tax-access",
+};
+
+/** 탭 경로별 안 읽은 알림 수(RLS). 탭 뱃지용. */
+export async function getExpertUnreadByTab(): Promise<Record<string, number>> {
+  const byTab: Record<string, number> = {};
+  if (!hasSupabaseEnv()) return byTab;
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("expert_notifications")
+    .select("category")
+    .is("read_at", null);
+  for (const row of data ?? []) {
+    const href = NOTIFICATION_TAB_HREF[row.category];
+    if (href) byTab[href] = (byTab[href] ?? 0) + 1;
+  }
+  return byTab;
+}
