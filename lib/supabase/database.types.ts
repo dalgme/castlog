@@ -2386,36 +2386,48 @@ export type Database = {
       tax_project_grants: {
         Row: {
           created_at: string
+          engagement_id: string | null
           expert_id: string
           expires_at: string | null
+          front_id: string | null
           id: string
           project_id: string | null
           remaining_view_count: number | null
           status: string
           tenant_id: string
           updated_at: string
+          wrap_alg: string | null
+          wrapped_dek_for_tenant: string | null
         }
         Insert: {
           created_at?: string
+          engagement_id?: string | null
           expert_id: string
           expires_at?: string | null
+          front_id?: string | null
           id?: string
           project_id?: string | null
           remaining_view_count?: number | null
           status?: string
           tenant_id: string
           updated_at?: string
+          wrap_alg?: string | null
+          wrapped_dek_for_tenant?: string | null
         }
         Update: {
           created_at?: string
+          engagement_id?: string | null
           expert_id?: string
           expires_at?: string | null
+          front_id?: string | null
           id?: string
           project_id?: string | null
           remaining_view_count?: number | null
           status?: string
           tenant_id?: string
           updated_at?: string
+          wrap_alg?: string | null
+          wrapped_dek_for_tenant?: string | null
         }
         Relationships: [
           {

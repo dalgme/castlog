@@ -25,6 +25,12 @@ function toB64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
   return btoa(s);
 }
+function fromB64(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b as Uint8Array<ArrayBuffer>;
+}
 function randomBytes(n: number): Uint8Array<ArrayBuffer> {
   const b = new Uint8Array(n);
   globalThis.crypto.getRandomValues(b);
@@ -163,4 +169,56 @@ export async function encryptRrnEnvelope(
     backCiphertext: back,
     wrappedDek: toB64(new Uint8Array(wrappedDek)),
   };
+}
+
+/**
+ * 재래핑 (섭외 승인 시 — 브라우저) — §2.2.
+ * 전문가 보관 비밀번호로 개인키를 언래핑 → DEK만 풀어 → 테넌트 공개키로 다시 래핑.
+ * **평문 주민번호는 전혀 다루지 않는다**(DEK만 이동). 실패(비밀번호 오류)는 예외.
+ */
+export async function rewrapDekToTenant(params: {
+  wrappedPrivateKey: string; // 전문가 개인키(보관 비밀번호로 래핑)
+  kdfSalt: string;
+  wrapIv: string;
+  passphrase: string;
+  wrappedDek: string; // RSA-OAEP(전문가 공개키, DEK)
+  tenantPublicKeyJwk: JsonWebKey;
+}): Promise<string> {
+  const s = subtle();
+  const salt = fromB64(params.kdfSalt);
+  const wrapKey = await deriveWrapKey(params.passphrase, salt);
+
+  let privJson: ArrayBuffer;
+  try {
+    privJson = await s.decrypt(
+      { name: "AES-GCM", iv: fromB64(params.wrapIv) },
+      wrapKey,
+      fromB64(params.wrappedPrivateKey)
+    );
+  } catch {
+    throw new Error("보관 비밀번호가 올바르지 않습니다.");
+  }
+  const privateKeyJwk = JSON.parse(new TextDecoder().decode(privJson)) as JsonWebKey;
+  const privKey = await s.importKey(
+    "jwk",
+    privateKeyJwk,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["decrypt"]
+  );
+  const rawDek = await s.decrypt(
+    { name: "RSA-OAEP" },
+    privKey,
+    fromB64(params.wrappedDek)
+  );
+
+  const tenantPub = await s.importKey(
+    "jwk",
+    params.tenantPublicKeyJwk,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["encrypt"]
+  );
+  const newWrapped = await s.encrypt({ name: "RSA-OAEP" }, tenantPub, rawDek);
+  return toB64(new Uint8Array(newWrapped));
 }
