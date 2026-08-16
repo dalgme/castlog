@@ -2383,6 +2383,36 @@ export type Database = {
           },
         ]
       }
+      tax_rate_limits: {
+        Row: {
+          count: number
+          created_at: string
+          id: string
+          locked_until: string | null
+          subject_id: string
+          subject_type: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          id?: string
+          locked_until?: string | null
+          subject_id: string
+          subject_type: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          id?: string
+          locked_until?: string | null
+          subject_id?: string
+          subject_type?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       tax_project_grants: {
         Row: {
           created_at: string

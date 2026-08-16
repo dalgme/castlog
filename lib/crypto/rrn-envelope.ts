@@ -222,3 +222,59 @@ export async function rewrapDekToTenant(params: {
   const newWrapped = await s.encrypt({ name: "RSA-OAEP" }, tenantPub, rawDek);
   return toB64(new Uint8Array(newWrapped));
 }
+
+async function gcmOpen(key: CryptoKey, b64: string): Promise<string> {
+  const joined = fromB64(b64);
+  const iv = joined.slice(0, 12);
+  const ct = joined.slice(12);
+  const pt = await subtle().decrypt({ name: "AES-GCM", iv }, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
+/**
+ * 복호화 (회계담당·대표 조회 — 브라우저) — §2.3.
+ * 조회 비밀번호로 테넌트 개인키 언래핑 → DEK 언래핑 → 앞/뒤조각 결합 복호화.
+ * 서버는 이 과정을 수행하지 않는다(암호문만 전달). 평문은 이 브라우저 메모리에만.
+ */
+export async function decryptRrnEnvelope(params: {
+  wrappedPrivateKey: string; // 테넌트 개인키(조회 비밀번호로 래핑)
+  kdfSalt: string;
+  wrapIv: string;
+  lookupPassword: string;
+  wrappedDekForTenant: string; // RSA-OAEP(테넌트 공개키, DEK)
+  frontCiphertext: string; // AES-GCM(iv|ct) 앞 6자리
+  backCiphertext: string; // AES-GCM(iv|ct) 뒤 7자리
+}): Promise<string> {
+  const s = subtle();
+  const salt = fromB64(params.kdfSalt);
+  const wrapKey = await deriveWrapKey(params.lookupPassword, salt);
+
+  let privJson: ArrayBuffer;
+  try {
+    privJson = await s.decrypt(
+      { name: "AES-GCM", iv: fromB64(params.wrapIv) },
+      wrapKey,
+      fromB64(params.wrappedPrivateKey)
+    );
+  } catch {
+    throw new Error("조회 비밀번호가 올바르지 않습니다.");
+  }
+  const privateKeyJwk = JSON.parse(new TextDecoder().decode(privJson)) as JsonWebKey;
+  const privKey = await s.importKey(
+    "jwk",
+    privateKeyJwk,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["decrypt"]
+  );
+  const rawDek = await s.decrypt(
+    { name: "RSA-OAEP" },
+    privKey,
+    fromB64(params.wrappedDekForTenant)
+  );
+  const dek = await s.importKey("raw", rawDek, { name: "AES-GCM" }, false, ["decrypt"]);
+
+  const front = await gcmOpen(dek, params.frontCiphertext);
+  const back = await gcmOpen(dek, params.backCiphertext);
+  return front + back;
+}

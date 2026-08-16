@@ -23,6 +23,7 @@ import { StaffActiveToggle } from "./staff-active-toggle";
 import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
+import { RrnRevealPanel } from "./rrn-reveal-panel";
 
 export const metadata = { title: "기업 관리" };
 
@@ -206,6 +207,15 @@ export default async function OrgAdminPage({
           </CardHeader>
           <CardContent>
             <RrnKeySetupPanel alreadySet={rrnKeySet} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">주민등록번호 조회 (지급명세서)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RrnRevealPanel accessorHint={sessionUser?.email ?? "조회자"} />
           </CardContent>
         </Card>
       </main>
