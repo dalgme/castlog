@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { getRrnLockdown } from "@/lib/integrations/rrn-lockdown";
 import { MODULE_KEYS, MODULE_LABELS, parseModuleFlags } from "@/lib/modules/modules";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -18,6 +19,7 @@ import {
 
 import { CreateTenantDialog } from "./create-tenant-dialog";
 import { TenantModulesDialog } from "./modules-dialog";
+import { LockdownPanel } from "./lockdown-panel";
 
 export const metadata = { title: "플랫폼 관리" };
 
@@ -33,6 +35,8 @@ const TENANT_STATUS_LABEL: Record<string, string> = {
  */
 export default async function PlatformAdminPage() {
   await requireRole(["platform_admin"]);
+
+  const lockdown = await getRrnLockdown();
 
   const headerActions = (
     <div className="flex items-center gap-2">
@@ -76,7 +80,12 @@ export default async function PlatformAdminPage() {
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader title="플랫폼 관리" actions={headerActions} />
-      <main className="p-5">
+      <main className="space-y-4 p-5">
+        <LockdownPanel
+          locked={lockdown.locked}
+          reason={lockdown.reason}
+          triggeredAt={lockdown.triggeredAt}
+        />
         {rows.length === 0 ? (
           <EmptyState
             title="테넌트가 없습니다"

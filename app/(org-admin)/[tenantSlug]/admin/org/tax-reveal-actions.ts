@@ -6,6 +6,7 @@ import { createStoreBClient, hasStoreBEnv } from "@/lib/supabase/rrn-store-b";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { notifyExpert } from "@/lib/experts/notifications";
+import { getRrnLockdown, tripRrnLockdown } from "@/lib/integrations/rrn-lockdown";
 import {
   RRN_ACCESS_REASONS,
   isRateLimited,
@@ -65,12 +66,18 @@ export async function listRevealTargets(): Promise<ListResult> {
   const d = await requireDesignee();
   if (!d.ok) return d;
 
+  const lock = await getRrnLockdown();
+  if (lock.locked) {
+    return { ok: false, error: "보안 점검으로 주민번호 조회가 일시 잠금되었습니다. 운영자에게 문의하세요." };
+  }
+
   const admin = createAdminClient();
   const { data: grants } = await admin
     .from("tax_project_grants")
     .select("id, expert_id, created_at")
     .eq("tenant_id", d.tenantId)
     .eq("status", "active")
+    .eq("is_honeytoken", false) // 미끼는 목록에 절대 노출하지 않음
     .not("wrapped_dek_for_tenant", "is", null)
     .order("created_at", { ascending: false });
 
@@ -131,7 +138,34 @@ export async function getRevealMaterial(
     return { ok: false, error: "조회 사유를 선택하세요." };
   }
 
+  // 이미 잠금 상태면 즉시 차단
+  const lock = await getRrnLockdown();
+  if (lock.locked) {
+    return { ok: false, error: "보안 점검으로 주민번호 조회가 일시 잠금되었습니다. 운영자에게 문의하세요." };
+  }
+
   const admin = createAdminClient();
+
+  // === 허니토큰 함정 ===
+  // 미끼 grant에 대한 요청 = 정상 경로(listRevealTargets)를 벗어난 접근.
+  // 즉시 전체 잠금 + 경보 후, 미끼임을 드러내지 않는 일반 오류로 응답.
+  {
+    const { data: probe } = await admin
+      .from("tax_project_grants")
+      .select("id, is_honeytoken, honeytoken_id")
+      .eq("id", grantId)
+      .eq("tenant_id", d.tenantId)
+      .maybeSingle();
+    if (probe?.is_honeytoken) {
+      await tripRrnLockdown({
+        reason: "honeytoken",
+        honeytokenId: probe.honeytoken_id,
+        userId: d.userId,
+        tenantId: d.tenantId,
+      });
+      return { ok: false, error: "조회할 수 있는 대상이 아닙니다." };
+    }
+  }
 
   // 시간당 상한(사용자별) — 초과 시 자동 잠금 + 거부
   const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
