@@ -87,8 +87,9 @@ export async function createEngagement(
       starts_on: data.startsOn || null,
       ends_on: data.endsOn || null,
       token_hash: hashLinkToken(token),
-      token_expires_at: new Date(
-        Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000
+      token_expires_at: (data.responseDeadline
+        ? new Date(data.responseDeadline)
+        : new Date(Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000)
       ).toISOString(),
       requested_by: user.id,
     })

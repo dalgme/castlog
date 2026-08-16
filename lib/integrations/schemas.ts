@@ -24,10 +24,20 @@ export const engagementCreateSchema = z
       .optional()
       .or(z.literal("")),
     message: z.string().max(2000, "요청 내용은 2000자 이내로 입력하세요.").optional(),
+    // 회신 마감일시 (datetime-local: YYYY-MM-DDTHH:mm). 미입력 시 기본 14일.
+    responseDeadline: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+      .optional()
+      .or(z.literal("")),
   })
   .refine(
     (v) => !v.startsOn || !v.endsOn || v.startsOn <= v.endsOn,
     { message: "종료일은 시작일 이후여야 합니다.", path: ["endsOn"] }
+  )
+  .refine(
+    (v) => !v.responseDeadline || new Date(v.responseDeadline).getTime() > Date.now(),
+    { message: "회신 마감일시는 현재 이후로 설정하세요.", path: ["responseDeadline"] }
   );
 export type EngagementCreateInput = z.infer<typeof engagementCreateSchema>;
 

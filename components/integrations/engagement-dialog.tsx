@@ -73,6 +73,7 @@ export function EngagementDialog({
       startsOn: "",
       endsOn: "",
       message: "",
+      responseDeadline: "",
     },
   });
 
@@ -263,6 +264,23 @@ export function EngagementDialog({
                   )}
                 />
               </div>
+              <FormField
+                control={form.control}
+                name="responseDeadline"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>회신 마감일시 (선택)</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" {...field} />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      미입력 시 기본 14일 후로 설정됩니다. 이 시각까지 전문가가 회신할
+                      수 있습니다.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="message"

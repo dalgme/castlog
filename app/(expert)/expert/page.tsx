@@ -103,7 +103,8 @@ export default async function ExpertPortalPage({
         .from("expert_engagements")
         .select(
           `id, role_description, fee_amount, status, created_at, responded_at,
-           project_id, token_expires_at, tenants (name), projects (name)`
+           starts_on, ends_on, project_id, token_expires_at,
+           tenants (name), projects (name)`
         )
         .eq("expert_id", expert.id)
         .order("created_at", { ascending: false }),
@@ -255,6 +256,20 @@ export default async function ExpertPortalPage({
                       {e.role_description}
                       {e.fee_amount != null && ` · ${won(e.fee_amount)}`}
                     </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {(e.starts_on || e.ends_on) && (
+                        <span className="rounded bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                          활동 {e.starts_on ?? "?"}
+                          {e.ends_on ? ` ~ ${e.ends_on}` : ""}
+                        </span>
+                      )}
+                      <span className="rounded bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        요청 {new Date(e.created_at).toLocaleString("ko-KR")}
+                      </span>
+                      <span className="rounded bg-[#FFF3D6] px-1.5 py-0.5 text-[11px] font-semibold text-[#8A6A00]">
+                        회신마감 {new Date(e.token_expires_at).toLocaleString("ko-KR")}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
