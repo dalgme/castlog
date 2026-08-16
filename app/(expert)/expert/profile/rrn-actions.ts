@@ -9,9 +9,9 @@ import { hasStoreBEnv, createStoreBClient } from "@/lib/supabase/rrn-store-b";
 
 export type RrnCollectionContext = {
   storeReady: boolean; // 저장소 B 연결(env) 설정 여부
-  serviceReady: boolean; // 플랫폼 서비스 공개키 존재 여부
+  hasKey: boolean; // 전문가 본인 키페어(보관 비밀번호) 설정 여부
   alreadyOnFile: boolean; // 이미 등록된 주민번호가 있는지
-  servicePublicKey: unknown | null; // 봉투 암호용 공개키(비밀 아님)
+  expertPublicKey: unknown | null; // 전문가 봉투 암호용 공개키(비밀 아님)
 };
 
 async function currentExpertId(): Promise<string | null> {
@@ -30,24 +30,30 @@ async function currentExpertId(): Promise<string | null> {
 
 /**
  * 수집 화면 컨텍스트 — 주민번호는 기업과 무관한 전문가 소유 데이터다.
- * 플랫폼 복호화 서비스의 공개키로 봉투 암호화하며, 어떤 기업과도 무관하게 미리
- * 등록할 수 있다(설계문서 §4·§5). 공개키는 비밀이 아니므로 그대로 반환한다.
+ * **전문가 본인 키페어**로 봉투 암호화한다(재래핑 설계 §2.1). 개인키는 전문가
+ * 보관 비밀번호(passphrase)로 래핑되어 플랫폼은 풀 수단이 없다(마스터키 없음, §11-4).
+ * 공개키는 비밀이 아니므로 그대로 반환한다.
  */
 export async function getRrnCollectionContext(): Promise<RrnCollectionContext> {
   const empty: RrnCollectionContext = {
     storeReady: hasStoreBEnv(),
-    serviceReady: false,
+    hasKey: false,
     alreadyOnFile: false,
-    servicePublicKey: null,
+    expertPublicKey: null,
   };
   if (!hasSupabaseEnv()) return empty;
+  const supabase = createClient();
   const expertId = await currentExpertId();
   if (!expertId) return empty;
 
-  const admin = createAdminClient();
-  const [{ data: serviceKey }, onFileRes] = await Promise.all([
-    admin.from("rrn_service_keys").select("public_key_jwk").eq("id", 1).maybeSingle(),
-    admin
+  // 본인 키·본인 프래그먼트만 RLS로 조회(관리자 클라이언트 불필요).
+  const [{ data: keyRow }, onFileRes] = await Promise.all([
+    supabase
+      .from("expert_rrn_keys")
+      .select("public_key_jwk")
+      .eq("expert_id", expertId)
+      .maybeSingle(),
+    supabase
       .from("rrn_fragments_front")
       .select("id", { count: "exact", head: true })
       .eq("expert_id", expertId)
@@ -56,10 +62,54 @@ export async function getRrnCollectionContext(): Promise<RrnCollectionContext> {
 
   return {
     storeReady: hasStoreBEnv(),
-    serviceReady: Boolean(serviceKey?.public_key_jwk),
+    hasKey: Boolean(keyRow?.public_key_jwk),
     alreadyOnFile: (onFileRes.count ?? 0) > 0,
-    servicePublicKey: serviceKey?.public_key_jwk ?? null,
+    expertPublicKey: keyRow?.public_key_jwk ?? null,
   };
+}
+
+export type SetupKeyResult = { ok: true; publicKey: unknown } | { ok: false; error: string };
+
+/**
+ * 전문가 RRN 키페어 최초 등록 — 브라우저에서 생성한 키 자료를 저장한다.
+ * 개인키는 보관 비밀번호로 래핑된 암호문만 저장(비밀번호는 서버로 오지 않음).
+ * 이미 키가 있으면 그대로 반환(교체는 기존 봉투 무효화라 별도 재설정 절차로만).
+ */
+export async function setupExpertRrnKey(material: {
+  publicKeyJwk: unknown;
+  wrappedPrivateKey: string;
+  kdfSalt: string;
+  kdfParams: unknown;
+  wrapIv: string;
+  alg: string;
+}): Promise<SetupKeyResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const supabase = createClient();
+  const expertId = await currentExpertId();
+  if (!expertId) return { ok: false, error: "로그인이 필요합니다." };
+
+  const { data: existing } = await supabase
+    .from("expert_rrn_keys")
+    .select("public_key_jwk")
+    .eq("expert_id", expertId)
+    .maybeSingle();
+  if (existing?.public_key_jwk) {
+    return { ok: true, publicKey: existing.public_key_jwk };
+  }
+
+  const { error } = await supabase.from("expert_rrn_keys").insert({
+    expert_id: expertId,
+    public_key_jwk: material.publicKeyJwk as never,
+    wrapped_private_key: material.wrappedPrivateKey,
+    kdf_salt: material.kdfSalt,
+    kdf_params: material.kdfParams as never,
+    wrap_iv: material.wrapIv,
+    alg: material.alg,
+  });
+  if (error) return { ok: false, error: "보관 키 등록에 실패했습니다." };
+
+  revalidatePath("/expert/profile");
+  return { ok: true, publicKey: material.publicKeyJwk };
 }
 
 export type SubmitRrnResult = { ok: true } | { ok: false; error: string };
