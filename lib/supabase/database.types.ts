@@ -1502,6 +1502,42 @@ export type Database = {
           },
         ]
       }
+      rrn_fragments_front: {
+        Row: {
+          alg: string
+          created_at: string
+          expert_id: string
+          front_ciphertext: string
+          id: string
+          project_id: string | null
+          purged_at: string | null
+          tenant_id: string | null
+          wrapped_dek: string
+        }
+        Insert: {
+          alg?: string
+          created_at?: string
+          expert_id: string
+          front_ciphertext: string
+          id?: string
+          project_id?: string | null
+          purged_at?: string | null
+          tenant_id?: string | null
+          wrapped_dek: string
+        }
+        Update: {
+          alg?: string
+          created_at?: string
+          expert_id?: string
+          front_ciphertext?: string
+          id?: string
+          project_id?: string | null
+          purged_at?: string | null
+          tenant_id?: string | null
+          wrapped_dek?: string
+        }
+        Relationships: []
+      }
       tenant_rrn_keys: {
         Row: {
           alg: string
