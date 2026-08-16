@@ -8,7 +8,11 @@ import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
-import { isUploadableDocumentType } from "@/lib/experts/documents";
+import {
+  isUploadableDocumentType,
+  DOCUMENT_TYPE_LABELS,
+} from "@/lib/experts/documents";
+import { notifyExpert } from "@/lib/experts/notifications";
 
 const REQUEST_EXPIRES_DAYS = 14;
 
@@ -88,6 +92,16 @@ export async function createDocumentRequest(
     resource_type: "document_request",
     resource_id: request.id,
     after_data: { expert_id: expertId, types },
+  });
+
+  // 통합 알림함 — 전문가에게 서류 제출 요청 알림
+  await notifyExpert({
+    expertId,
+    category: "document_request",
+    title: "서류 제출 요청이 도착했습니다",
+    body: `요청 서류: ${types.map((t) => DOCUMENT_TYPE_LABELS[t] ?? t).join(", ")}`,
+    link: "/expert/documents",
+    tenantId,
   });
 
   let url: string;

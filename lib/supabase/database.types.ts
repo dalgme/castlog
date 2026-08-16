@@ -1556,6 +1556,45 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_notifications: {
+        Row: {
+          body: string | null
+          category: string
+          created_at: string
+          expert_id: string
+          id: string
+          link: string | null
+          metadata: Json
+          read_at: string | null
+          tenant_name: string | null
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          category: string
+          created_at?: string
+          expert_id: string
+          id?: string
+          link?: string | null
+          metadata?: Json
+          read_at?: string | null
+          tenant_name?: string | null
+          title: string
+        }
+        Update: {
+          body?: string | null
+          category?: string
+          created_at?: string
+          expert_id?: string
+          id?: string
+          link?: string | null
+          metadata?: Json
+          read_at?: string | null
+          tenant_name?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
       rrn_service_keys: {
         Row: {
           created_at: string

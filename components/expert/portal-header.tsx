@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { LogoMark, Wordmark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { getExpertUnreadCount } from "@/lib/experts/notifications";
 
 import { ExpertTabNav } from "./tab-nav";
 
@@ -10,7 +11,8 @@ import { ExpertTabNav } from "./tab-nav";
  * + 로그아웃 + 상단 탭. 헤더 안쪽 폭을 콘텐츠와 동일 컨테이너로 맞춰 정렬을 통일한다.
  * 인증된 포털 화면 전반에서 동일 노출(로그인 화면 제외). 모바일 완전 대응.
  */
-export function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
+export async function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
+  const unreadCount = showTabs ? await getExpertUnreadCount() : 0;
   return (
     <div className="sticky top-0 z-20 bg-background shadow-sm">
       <div className="border-b">
@@ -31,7 +33,7 @@ export function PortalHeader({ showTabs = true }: { showTabs?: boolean }) {
           </form>
         </div>
       </div>
-      {showTabs && <ExpertTabNav />}
+      {showTabs && <ExpertTabNav unreadCount={unreadCount} />}
     </div>
   );
 }
