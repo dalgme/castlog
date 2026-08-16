@@ -1595,6 +1595,90 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_public_profiles: {
+        Row: {
+          created_at: string
+          expert_id: string
+          handle: string
+          headline: string | null
+          id: string
+          intro: string | null
+          is_public: boolean
+          updated_at: string
+          view_count: number
+          visible_fields: Json
+        }
+        Insert: {
+          created_at?: string
+          expert_id: string
+          handle: string
+          headline?: string | null
+          id?: string
+          intro?: string | null
+          is_public?: boolean
+          updated_at?: string
+          view_count?: number
+          visible_fields?: Json
+        }
+        Update: {
+          created_at?: string
+          expert_id?: string
+          handle?: string
+          headline?: string | null
+          id?: string
+          intro?: string | null
+          is_public?: boolean
+          updated_at?: string
+          view_count?: number
+          visible_fields?: Json
+        }
+        Relationships: []
+      }
+      expert_portfolio_items: {
+        Row: {
+          created_at: string
+          expert_id: string
+          id: string
+          is_public: boolean
+          links: string[]
+          org_name: string | null
+          period: string | null
+          role: string | null
+          sort_order: number
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expert_id: string
+          id?: string
+          is_public?: boolean
+          links?: string[]
+          org_name?: string | null
+          period?: string | null
+          role?: string | null
+          sort_order?: number
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expert_id?: string
+          id?: string
+          is_public?: boolean
+          links?: string[]
+          org_name?: string | null
+          period?: string | null
+          role?: string | null
+          sort_order?: number
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       rrn_service_keys: {
         Row: {
           created_at: string
