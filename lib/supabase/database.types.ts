@@ -2383,6 +2383,42 @@ export type Database = {
           },
         ]
       }
+      tax_lockdown: {
+        Row: {
+          honeytoken_id: string | null
+          id: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_note: string | null
+          triggered_at: string
+          triggered_by_user: string | null
+          triggered_tenant: string | null
+        }
+        Insert: {
+          honeytoken_id?: string | null
+          id?: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_note?: string | null
+          triggered_at?: string
+          triggered_by_user?: string | null
+          triggered_tenant?: string | null
+        }
+        Update: {
+          honeytoken_id?: string | null
+          id?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_note?: string | null
+          triggered_at?: string
+          triggered_by_user?: string | null
+          triggered_tenant?: string | null
+        }
+        Relationships: []
+      }
       tax_rate_limits: {
         Row: {
           count: number
@@ -2420,7 +2456,9 @@ export type Database = {
           expert_id: string
           expires_at: string | null
           front_id: string | null
+          honeytoken_id: string | null
           id: string
+          is_honeytoken: boolean
           project_id: string | null
           remaining_view_count: number | null
           status: string
@@ -2435,7 +2473,9 @@ export type Database = {
           expert_id: string
           expires_at?: string | null
           front_id?: string | null
+          honeytoken_id?: string | null
           id?: string
+          is_honeytoken?: boolean
           project_id?: string | null
           remaining_view_count?: number | null
           status?: string
@@ -2450,7 +2490,9 @@ export type Database = {
           expert_id?: string
           expires_at?: string | null
           front_id?: string | null
+          honeytoken_id?: string | null
           id?: string
+          is_honeytoken?: boolean
           project_id?: string | null
           remaining_view_count?: number | null
           status?: string
