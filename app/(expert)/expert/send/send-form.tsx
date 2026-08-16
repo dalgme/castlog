@@ -1,30 +1,38 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import { Copy, Check, Send, Paperclip, FileText, X, Clock } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import {
+  Copy,
+  Check,
+  Send,
+  Paperclip,
+  FileText,
+  X,
+  Clock,
+  Save,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tag } from "@/components/expert/ui";
-import { SEND_EXPIRES_HOURS } from "@/lib/experts/external-send-constants";
+import {
+  SEND_STANDARD_TYPES,
+  DEFAULT_BODY_PRESETS,
+} from "@/lib/experts/send-body-presets";
 
 import {
   sendExternalDocuments,
   uploadSendFile,
+  saveBodyPreset,
+  deleteBodyPreset,
   updateSendMemo,
   revokeSend,
   type ExternalDoc,
   type SendHistoryRow,
+  type BodyPresetRow,
 } from "./actions";
-
-/** 클릭 한 번으로 이미 올려둔 임시 URL을 전달하는 표준 3종 */
-const STANDARD: { type: string; label: string }[] = [
-  { type: "resume", label: "이력서" },
-  { type: "bank_account_copy", label: "통장 사본" },
-  { type: "id_card_copy", label: "신분증 사본" },
-];
 
 function StatusTag({ row }: { row: SendHistoryRow }) {
   const expired = new Date(row.expiresAt).getTime() < Date.now();
@@ -34,46 +42,61 @@ function StatusTag({ row }: { row: SendHistoryRow }) {
   return <Tag tone="blue">전송됨</Tag>;
 }
 
+function formatDeadline(hours: number): string {
+  const d = new Date(Date.now() + hours * 3600 * 1000);
+  return d.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function SendForm({
   standardDocs,
   history,
   senderName: initialSenderName,
   senderEmail: initialSenderEmail,
+  userPresets: initialUserPresets,
+  expiresHours,
 }: {
   standardDocs: ExternalDoc[];
   history: SendHistoryRow[];
   senderName: string;
   senderEmail: string;
+  userPresets: BodyPresetRow[];
+  expiresHours: number;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [sentLink, setSentLink] = useState<string | null>(null);
-  const [emailed, setEmailed] = useState(false);
+  const [sentInfo, setSentInfo] = useState<
+    { link: string | null; emailed: boolean; attachmentsSent: number } | null
+  >(null);
   const [copied, setCopied] = useState(false);
 
-  // 표준 3종의 최신 문서(업로드하면 갱신). 없으면 undefined.
   const [docsByType, setDocsByType] = useState<Record<string, ExternalDoc>>(() => {
     const map: Record<string, ExternalDoc> = {};
     for (const d of standardDocs) map[d.type] = d;
     return map;
   });
-  // 이번 발송에 추가한 일반 첨부들.
   const [attachments, setAttachments] = useState<ExternalDoc[]>([]);
-  // 선택된 문서 id 집합.
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [senderName, setSenderName] = useState(initialSenderName);
   const [senderEmail, setSenderEmail] = useState(initialSenderEmail);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [eventName, setEventName] = useState("");
   const [orgName, setOrgName] = useState("");
-  const [memo, setMemo] = useState("");
+  const [body, setBody] = useState("");
+  const [userPresets, setUserPresets] = useState<BodyPresetRow[]>(initialUserPresets);
 
   const attachInputRef = useRef<HTMLInputElement>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
 
-  const selectedCount = selected.size;
+  const selectedDocCount = selected.size;
+  const hasSelection = selectedDocCount > 0 || attachments.length > 0;
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
@@ -116,22 +139,38 @@ export function SendForm({
     if (!file) return;
     upload("attachment", file, (doc) => {
       setAttachments((prev) => [...prev, doc]);
-      setSelected((prev) => new Set(prev).add(doc.id));
     });
   };
 
-  const removeAttachment = (id: string) => {
+  const removeAttachment = (id: string) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
+
+  const applyPreset = (presetBody: string) => setBody(presetBody);
+
+  const saveCurrentAsPreset = () => {
+    setError(null);
+    if (!body.trim()) {
+      setError("저장할 본문 내용을 입력하세요.");
+      return;
+    }
+    const label = `사용자 옵션 ${userPresets.length + 1}`;
+    startTransition(async () => {
+      const result = await saveBodyPreset(label, body);
+      if (!result.ok) setError(result.error);
+      else setUserPresets((prev) => [result.preset, ...prev]);
+    });
+  };
+
+  const removePreset = (id: string) => {
+    setUserPresets((prev) => prev.filter((p) => p.id !== id));
+    startTransition(async () => {
+      await deleteBodyPreset(id);
     });
   };
 
   const onSend = () => {
     setError(null);
-    setSentLink(null);
+    setSentInfo(null);
     startTransition(async () => {
       const result = await sendExternalDocuments({
         recipientEmail: email,
@@ -139,22 +178,25 @@ export function SendForm({
         senderName,
         senderEmail,
         documentIds: Array.from(selected),
+        attachmentIds: attachments.map((a) => a.id),
+        body,
         eventName,
         orgName,
-        memo,
       });
       if (!result.ok) setError(result.error);
       else {
-        setSentLink(result.link);
-        setEmailed(result.emailed);
+        setSentInfo({
+          link: result.link,
+          emailed: result.emailed,
+          attachmentsSent: result.attachmentsSent,
+        });
         setEmail("");
         setName("");
         setEventName("");
         setOrgName("");
-        setMemo("");
+        setBody("");
         setSelected(new Set());
         setAttachments([]);
-        // 보내는 사람은 자동 채움값으로 되돌린다(연속 발송 편의).
         setSenderName(initialSenderName);
         setSenderEmail(initialSenderEmail);
       }
@@ -170,15 +212,16 @@ export function SendForm({
 
   return (
     <div className="space-y-5">
-      {/* 발송 폼 */}
       <div className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
         <p className="text-sm font-bold text-brand-navy">새 외부 송신</p>
 
-        {/* 표준 3종 — 이미 올려둔 서류면 클릭 선택, 없으면 클릭 시 업로드 후 선택 */}
+        {/* 표준 5종 — 클릭 시 임시 URL로 전달(없으면 업로드 후 선택) */}
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">보낼 서류 선택</p>
+          <p className="text-xs font-medium text-muted-foreground">
+            보낼 서류 선택 <span className="text-[11px] font-normal">(임시 다운로드 링크로 전달)</span>
+          </p>
           <div className="flex flex-wrap gap-2">
-            {STANDARD.map(({ type, label }) => {
+            {SEND_STANDARD_TYPES.map(({ type, label }) => {
               const doc = docsByType[type];
               const on = doc ? selected.has(doc.id) : false;
               const busy = pending && uploadingType === type;
@@ -199,15 +242,20 @@ export function SendForm({
                   </button>
                 );
               }
-              return <StandardUploadButton key={type} type={type} label={label} busy={busy} onFile={onStandardFile} />;
+              return (
+                <StandardUploadButton
+                  key={type}
+                  type={type}
+                  label={label}
+                  busy={busy}
+                  onFile={onStandardFile}
+                />
+              );
             })}
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            서류함에 올려둔 파일이면 클릭만으로 선택됩니다. 없으면 클릭해서 바로 올릴 수 있어요.
-          </p>
         </div>
 
-        {/* 일반 첨부 */}
+        {/* 일반 첨부 — 실제 메일 첨부(만료 없음) */}
         <div className="space-y-1.5">
           <input
             ref={attachInputRef}
@@ -216,15 +264,20 @@ export function SendForm({
             className="hidden"
             onChange={onAttachFile}
           />
-          <button
-            type="button"
-            onClick={() => attachInputRef.current?.click()}
-            disabled={pending && uploadingType === "attachment"}
-            className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
-          >
-            <Paperclip className="h-3.5 w-3.5" aria-hidden />
-            {pending && uploadingType === "attachment" ? "업로드 중..." : "파일 첨부"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => attachInputRef.current?.click()}
+              disabled={pending && uploadingType === "attachment"}
+              className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
+            >
+              <Paperclip className="h-3.5 w-3.5" aria-hidden />
+              {pending && uploadingType === "attachment" ? "업로드 중..." : "파일 첨부"}
+            </button>
+            <span className="text-[11px] text-muted-foreground">
+              첨부파일은 만료 없이 메일에 그대로 첨부됩니다.
+            </span>
+          </div>
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {attachments.map((a) => (
@@ -232,7 +285,7 @@ export function SendForm({
                   key={a.id}
                   className="inline-flex max-w-[220px] items-center gap-1.5 rounded-md border border-brand bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand"
                 >
-                  <FileText className="h-3 w-3 shrink-0" />
+                  <Paperclip className="h-3 w-3 shrink-0" />
                   <span className="truncate">{a.fileName}</span>
                   <button type="button" onClick={() => removeAttachment(a.id)} aria-label="첨부 제거">
                     <X className="h-3 w-3 shrink-0 hover:text-brand-navy" />
@@ -243,11 +296,24 @@ export function SendForm({
           )}
         </div>
 
-        {/* 보내는 사람 — 자동 채움, 수정 가능 */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">
-            보내는 사람 <span className="text-[11px] font-normal">(자동 입력 · 수정 가능)</span>
-          </p>
+        {/* 예상 접속마감일시 — 링크 서류 선택 시 */}
+        {selectedDocCount > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-brand-amber/40 bg-brand-amber/10 px-3 py-2">
+            <Clock className="h-4 w-4 shrink-0 text-brand-amber" aria-hidden />
+            <p className="text-xs text-brand-navy">
+              예상 접속 마감: <b>{formatDeadline(expiresHours)}</b>{" "}
+              <span className="text-muted-foreground">
+                (링크 서류 {selectedDocCount}건 · 발송 시각 기준 {expiresHours}시간)
+              </span>
+            </p>
+          </div>
+        )}
+
+        {/* 보내는 사람 — 박스 */}
+        <fieldset className="space-y-2 rounded-lg border bg-secondary/30 p-3">
+          <legend className="px-1 text-xs font-bold text-brand-navy">
+            보내는 사람 <span className="font-normal text-muted-foreground">(자동 입력 · 수정 가능)</span>
+          </legend>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Input
               value={senderName}
@@ -261,15 +327,14 @@ export function SendForm({
               placeholder="보내는 사람 이메일 (회신 받을 주소)"
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            메일은 캐스트로그 인증 도메인에서 발송되며, 받는 분이 회신하면 위 이메일로
-            전달됩니다.
+          <p className="px-1 text-[11px] text-muted-foreground">
+            메일은 캐스트로그 인증 도메인에서 발송되며, 받는 분이 회신하면 위 이메일로 전달됩니다.
           </p>
-        </div>
+        </fieldset>
 
-        {/* 받는 사람 */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">받는 사람</p>
+        {/* 받는 사람 — 박스 */}
+        <fieldset className="space-y-2 rounded-lg border bg-secondary/30 p-3">
+          <legend className="px-1 text-xs font-bold text-brand-navy">받는 사람</legend>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Input
               type="email"
@@ -293,21 +358,53 @@ export function SendForm({
               placeholder="의뢰기관/기업 (선택)"
             />
           </div>
-        </div>
-        <Textarea
-          rows={2}
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="메모 (선택)"
-        />
+        </fieldset>
 
-        {/* 72시간 임시 URL 안내 — 눈에 띄게 */}
-        <div className="flex items-start gap-2 rounded-lg border border-brand-amber/40 bg-brand-amber/10 p-3">
-          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-amber" aria-hidden />
-          <p className="text-xs leading-relaxed text-brand-navy">
-            받는 분에게는 <b>파일 첨부가 아니라 다운로드 링크</b>가 전달됩니다. 이 링크는
-            발송 시각부터 <b>{SEND_EXPIRES_HOURS}시간 동안만 유효한 임시 URL</b>로,
-            시간이 지나면 자동 만료됩니다. 필요하면 발송 내역에서 언제든 회수할 수 있습니다.
+        {/* 이메일 본문 */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">이메일 본문</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {DEFAULT_BODY_PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => applyPreset(p.body)}
+                className="rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-brand hover:text-brand"
+              >
+                {p.label}
+              </button>
+            ))}
+            {userPresets.map((p) => (
+              <span
+                key={p.id}
+                className="inline-flex items-center gap-1 rounded-md border border-brand/40 bg-brand/5 px-2.5 py-1 text-xs font-medium text-brand"
+              >
+                <button type="button" onClick={() => applyPreset(p.body)}>
+                  {p.label}
+                </button>
+                <button type="button" onClick={() => removePreset(p.id)} aria-label="삭제">
+                  <X className="h-3 w-3 hover:text-brand-navy" />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={saveCurrentAsPreset}
+              disabled={pending}
+              className="inline-flex items-center gap-1 rounded-md border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-brand hover:text-brand"
+            >
+              <Save className="h-3 w-3" aria-hidden /> 사용자 옵션으로 저장
+            </button>
+          </div>
+          <Textarea
+            rows={7}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="본문 1·2·3을 눌러 추천 문안을 불러오거나 직접 작성하세요. 실제 다운로드 링크는 발송 시 자동으로 덧붙습니다."
+          />
+          <p className="text-[11px] text-muted-foreground">
+            추천 본문에는 링크의 {expiresHours}시간 만료 안내, 직접 첨부파일은 기한 제한이 없다는 안내,
+            수신 메일 서비스 정책(예: 다음 대용량 첨부 다운로드 기한)에 따른 제한 안내가 포함되어 있습니다.
           </p>
         </div>
 
@@ -316,32 +413,32 @@ export function SendForm({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        {sentLink && (
+        {sentInfo && (
           <Alert>
             <AlertDescription>
               <p className="mb-2">
-                발송 링크가 생성되었습니다.{" "}
-                {emailed ? "이메일로도 전송했습니다." : "이메일 발송은 설정되지 않아 아래 링크를 직접 전달해 주세요."}
+                발송이 준비되었습니다.{" "}
+                {sentInfo.emailed
+                  ? `이메일을 전송했습니다${sentInfo.attachmentsSent > 0 ? ` (첨부 ${sentInfo.attachmentsSent}건 포함)` : ""}.`
+                  : "이메일 발송은 설정되지 않아 아래 링크를 직접 전달해 주세요."}
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded bg-secondary/70 px-2 py-1 text-xs">
-                  {sentLink}
-                </code>
-                <Button size="sm" variant="outline" onClick={() => copy(sentLink)}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
+              {sentInfo.link && (
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-secondary/70 px-2 py-1 text-xs">
+                    {sentInfo.link}
+                  </code>
+                  <Button size="sm" variant="outline" onClick={() => copy(sentInfo.link!)}>
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
             </AlertDescription>
           </Alert>
         )}
 
-        <Button onClick={onSend} disabled={pending || selectedCount === 0}>
+        <Button onClick={onSend} disabled={pending || !hasSelection}>
           <Send className="mr-1.5 h-4 w-4" aria-hidden />
-          {pending
-            ? "발송 중..."
-            : selectedCount > 0
-              ? `${selectedCount}개 서류 보내기`
-              : "서류 보내기"}
+          {pending ? "발송 중..." : "서류 보내기"}
         </Button>
       </div>
 
@@ -405,8 +502,6 @@ function HistoryItem({ row }: { row: SendHistoryRow }) {
   const [orgName, setOrgName] = useState(row.orgName ?? "");
   const [memo, setMemo] = useState(row.memo ?? "");
 
-  const docCount = useMemo(() => row.documentTypes.length, [row.documentTypes]);
-
   const save = () =>
     startTransition(async () => {
       await updateSendMemo(row.id, { eventName, orgName, memo });
@@ -437,7 +532,7 @@ function HistoryItem({ row }: { row: SendHistoryRow }) {
         )}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-        <span>{docCount}개 서류</span>
+        <span>{row.documentTypes.length}개 서류</span>
         <span>{new Date(row.sentAt).toLocaleString("ko-KR")} 발송</span>
         {row.openedAt && <span>{new Date(row.openedAt).toLocaleString("ko-KR")} 열람</span>}
       </div>
