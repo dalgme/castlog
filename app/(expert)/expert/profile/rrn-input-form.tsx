@@ -97,7 +97,9 @@ export function RrnInputForm({ context }: { context: RrnCollectionContext }) {
       {!ready && (
         <p className="flex items-center gap-2 rounded-lg border border-amber-300 bg-[#FFF3D6] p-3 text-sm text-[#8A6A00]">
           <Lock className="h-4 w-4 flex-none" aria-hidden />
-          보안 저장소 연결 설정이 완료되면 등록이 활성화됩니다.
+          {!context.serviceReady
+            ? "플랫폼 보안 키 설정이 준비되면 등록이 활성화됩니다."
+            : "보안 저장소 연결 설정(관리자: RRN_STORE_B_SERVICE_KEY)이 완료되면 등록이 활성화됩니다."}
         </p>
       )}
 

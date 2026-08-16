@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Inbox, ArrowRight } from "lucide-react";
 
+import { CheckCircle2, Circle } from "lucide-react";
+
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { LogoMark } from "@/components/brand/logo";
 import { PortalHeader } from "@/components/expert/portal-header";
@@ -79,7 +82,7 @@ export default async function ExpertPortalPage({
 
   const { data: expert } = await supabase
     .from("experts")
-    .select("id, name, specialty, region, career_years")
+    .select("id, name, specialty, region, career_years, email, phone")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -97,8 +100,13 @@ export default async function ExpertPortalPage({
     );
   }
 
-  const [{ data: engagements }, { data: payments }, { count: activeLinks }] =
-    await Promise.all([
+  const [
+    { data: engagements },
+    { data: payments },
+    { count: activeLinks },
+    { data: docs },
+    { count: bankCount },
+  ] = await Promise.all([
       supabase
         .from("expert_engagements")
         .select(
@@ -117,11 +125,39 @@ export default async function ExpertPortalPage({
         .select("id", { count: "exact", head: true })
         .eq("expert_id", expert.id)
         .eq("status", "active"),
+      supabase
+        .from("expert_documents")
+        .select("document_type")
+        .eq("expert_id", expert.id)
+        .eq("status", "active")
+        .in("document_type", ["resume", "bank_account_copy", "id_card_copy"]),
+      supabase
+        .from("expert_bank_accounts")
+        .select("expert_id", { count: "exact", head: true })
+        .eq("expert_id", expert.id),
     ]);
 
   const engagementRows = engagements ?? [];
   const paymentRows = payments ?? [];
   const now = Date.now();
+
+  // 필수 항목(온보딩) 점검 — 주민번호는 deny-all이라 admin으로 존재만 확인.
+  const admin = createAdminClient();
+  const { count: rrnCount } = await admin
+    .from("rrn_fragments_front")
+    .select("id", { count: "exact", head: true })
+    .eq("expert_id", expert.id)
+    .is("purged_at", null);
+
+  const docTypes = new Set((docs ?? []).map((d) => d.document_type));
+  const checklist = [
+    { key: "email", label: "이메일", done: Boolean(expert.email), href: "/expert/profile" },
+    { key: "phone", label: "휴대폰 번호", done: Boolean(expert.phone), href: "/expert/profile" },
+    { key: "resume", label: "이력서", done: docTypes.has("resume"), href: "/expert/documents" },
+    { key: "bank", label: "통장(계좌) 정보", done: (bankCount ?? 0) > 0 || docTypes.has("bank_account_copy"), href: "/expert/profile" },
+    { key: "rrn", label: "주민등록번호", done: (rrnCount ?? 0) > 0, href: "/expert/profile" },
+  ];
+  const missing = checklist.filter((c) => !c.done);
 
   // 히어로의 "대기중 섭외"는 지금 시점 상태(기간과 무관).
   const pending = engagementRows.filter(
@@ -169,6 +205,48 @@ export default async function ExpertPortalPage({
     <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+        {/* 필수 정보 온보딩 — 미기입 항목이 있으면 최상단에 우선 노출 */}
+        {missing.length > 0 && (
+          <Card className="border-brand/50 bg-[#F2F6FF] shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base text-brand-navy">
+                먼저 필수 정보를 등록해 주세요 ({checklist.length - missing.length}/
+                {checklist.length})
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                아래 항목을 모두 등록해야 기업 섭외·지급 등 실제 업무를 진행할 수
+                있습니다.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {checklist.map((c) => (
+                  <li key={c.key}>
+                    <Link
+                      href={c.href}
+                      className={
+                        c.done
+                          ? "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
+                          : "flex items-center gap-2 rounded-md bg-background px-2 py-1.5 text-sm font-medium text-brand-navy hover:bg-white"
+                      }
+                    >
+                      {c.done ? (
+                        <CheckCircle2 className="h-4 w-4 flex-none text-[#1E7E45]" aria-hidden />
+                      ) : (
+                        <Circle className="h-4 w-4 flex-none text-brand" aria-hidden />
+                      )}
+                      <span className={c.done ? "line-through" : ""}>{c.label}</span>
+                      {!c.done && (
+                        <span className="ml-auto text-xs text-brand">등록 →</span>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 브랜드 히어로 — 인사 + 오늘의 섭외 상태 */}
         <section className="relative overflow-hidden rounded-2xl bg-brand-navy px-6 py-7 text-white sm:px-8">
           <LogoMark
