@@ -15,10 +15,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { createAdminClient } from "@/lib/supabase/admin";
+import { tenantIdFromUser } from "@/lib/auth/tenant";
+
 import { CreateStaffDialog } from "./staff-dialog";
 import { StaffActiveToggle } from "./staff-active-toggle";
 import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
+import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
 
 export const metadata = { title: "기업 관리" };
 
@@ -87,6 +91,18 @@ export default async function OrgAdminPage({
   const staffOptions = staffRows
     .filter((s) => s.is_active)
     .map((s) => ({ id: s.id, name: s.name, email: s.email }));
+
+  // 주민번호 열람 키 설정 여부 (deny-all 테이블 — admin client로 존재만 확인)
+  const rrnTenantId = tenantIdFromUser(sessionUser);
+  let rrnKeySet = false;
+  if (rrnTenantId) {
+    const admin = createAdminClient();
+    const { count } = await admin
+      .from("tenant_rrn_keys")
+      .select("tenant_id", { count: "exact", head: true })
+      .eq("tenant_id", rrnTenantId);
+    rrnKeySet = (count ?? 0) > 0;
+  }
 
   return (
     <div className="min-h-screen bg-secondary/50">
@@ -179,6 +195,17 @@ export default async function OrgAdminPage({
           </CardHeader>
           <CardContent>
             <TaxAccessGrantsPanel staff={staffOptions} grants={grantRows} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">
+              주민등록번호 열람 키 (조회 비밀번호)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RrnKeySetupPanel alreadySet={rrnKeySet} />
           </CardContent>
         </Card>
       </main>

@@ -1502,6 +1502,78 @@ export type Database = {
           },
         ]
       }
+      rrn_fragments_front: {
+        Row: {
+          alg: string
+          created_at: string
+          expert_id: string
+          front_ciphertext: string
+          id: string
+          project_id: string | null
+          purged_at: string | null
+          tenant_id: string | null
+          wrapped_dek: string
+        }
+        Insert: {
+          alg?: string
+          created_at?: string
+          expert_id: string
+          front_ciphertext: string
+          id?: string
+          project_id?: string | null
+          purged_at?: string | null
+          tenant_id?: string | null
+          wrapped_dek: string
+        }
+        Update: {
+          alg?: string
+          created_at?: string
+          expert_id?: string
+          front_ciphertext?: string
+          id?: string
+          project_id?: string | null
+          purged_at?: string | null
+          tenant_id?: string | null
+          wrapped_dek?: string
+        }
+        Relationships: []
+      }
+      tenant_rrn_keys: {
+        Row: {
+          alg: string
+          created_at: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          tenant_id: string
+          updated_at: string | null
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Insert: {
+          alg?: string
+          created_at?: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          tenant_id: string
+          updated_at?: string | null
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Update: {
+          alg?: string
+          created_at?: string
+          kdf_params?: Json
+          kdf_salt?: string
+          public_key_jwk?: Json
+          tenant_id?: string
+          updated_at?: string | null
+          wrap_iv?: string
+          wrapped_private_key?: string
+        }
+        Relationships: []
+      }
       tax_access_grants: {
         Row: {
           created_at: string

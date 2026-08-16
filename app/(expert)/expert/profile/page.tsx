@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
@@ -9,13 +8,14 @@ import { formatKrMobile } from "@/lib/auth/phone";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ExpertProfileForm } from "./profile-form";
 import { TaxTypeForm } from "./tax-type-form";
 import { BankAccountForm } from "./bank-account-form";
 import { SignaturePad } from "./signature-pad";
+import { RrnInputForm } from "./rrn-input-form";
+import { getRrnCollectionContext } from "./rrn-actions";
 
 export const metadata = { title: "프로필 수정" };
 
@@ -55,6 +55,8 @@ export default async function ExpertProfilePage() {
     .select("bank_name, account_holder, account_last4")
     .eq("expert_id", expert.id)
     .maybeSingle();
+
+  const rrnContext = await getRrnCollectionContext();
 
   const { data: taxProfile } = await supabase
     .from("expert_tax_profiles")
@@ -139,20 +141,8 @@ export default async function ExpertProfilePage() {
               주민등록번호 (특별 보호 항목)
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm leading-relaxed text-[#33405A]">
-            <p>
-              주민등록번호는 <b>일반 프로필 항목처럼 상시 입력·보관하지 않습니다.</b>{" "}
-              소득세법상 원천징수·지급명세서 제출을 위해, <b>섭외를 수락하여 계약이
-              성립되는 시점</b>에 별도의 보안 절차(분리 저장·전용 복호화)로만 안전하게
-              수집·처리됩니다.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              누가·언제·어떤 사유로 열람했는지는 전문가님께 모두 공개되며 즉시
-              알림이 발송됩니다.
-            </p>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/expert/tax-access">주민등록번호 조회 이력 보기</Link>
-            </Button>
+          <CardContent>
+            <RrnInputForm context={rrnContext} />
           </CardContent>
         </Card>
 
