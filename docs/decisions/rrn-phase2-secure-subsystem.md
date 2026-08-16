@@ -192,3 +192,9 @@ CLAUDE.md §5(민감정보 처리)·§11(Hard NO #3·#4)·설계문서 4.4·8.7�
 > 운영 메모: `rrn-decrypt` 배포 시 저장소 B의 **service_role 키**를 Edge Function
 > 시크릿(`RRN_STORE_B_SERVICE_KEY`)으로 설정해야 한다. 이 키는 MCP로 노출되지 않아
 > 대시보드(castlog-rrn-store-b → Project Settings → API)에서 복사해 등록한다.
+
+### 진행 (2026-08-16)
+- 2.4-① 테넌트 열람 키 설정(기업관리) · 2.4-② 전문가 암호화 입력(프로필) 배포 완료.
+- 저장소 B 앱 env(`RRN_STORE_B_URL`/`RRN_STORE_B_SERVICE_KEY`) 설정됨 → 이 배포부터
+  수집 저장(앞조각=메인, 뒷조각=저장소 B) 활성화.
+- 남은 것: 2.4-③ `rrn-decrypt` 배포 + 개인키 언래핑·지급명세서 생성(복호화 경로).
