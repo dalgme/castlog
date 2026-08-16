@@ -1502,6 +1502,24 @@ export type Database = {
           },
         ]
       }
+      rrn_service_keys: {
+        Row: {
+          created_at: string
+          id: number
+          public_key_jwk: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          public_key_jwk: Json
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          public_key_jwk?: Json
+        }
+        Relationships: []
+      }
       rrn_fragments_front: {
         Row: {
           alg: string
