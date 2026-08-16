@@ -1640,6 +1640,66 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_support_tickets: {
+        Row: {
+          created_at: string
+          expert_id: string
+          id: string
+          status: string
+          subject: string
+          target: string
+          target_tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expert_id: string
+          id?: string
+          status?: string
+          subject: string
+          target?: string
+          target_tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expert_id?: string
+          id?: string
+          status?: string
+          subject?: string
+          target?: string
+          target_tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      expert_support_ticket_messages: {
+        Row: {
+          author_auth_user_id: string | null
+          author_type: string
+          body: string
+          created_at: string
+          id: string
+          ticket_id: string
+        }
+        Insert: {
+          author_auth_user_id?: string | null
+          author_type: string
+          body: string
+          created_at?: string
+          id?: string
+          ticket_id: string
+        }
+        Update: {
+          author_auth_user_id?: string | null
+          author_type?: string
+          body?: string
+          created_at?: string
+          id?: string
+          ticket_id?: string
+        }
+        Relationships: []
+      }
       expert_send_body_presets: {
         Row: {
           body: string
