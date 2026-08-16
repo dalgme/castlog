@@ -138,6 +138,17 @@ export default async function ExpertEngagementsPage() {
                         {formatKrw(engagement.fee_amount)}
                       </MetaRow>
                     )}
+                    <MetaRow label="요청 일시">
+                      {new Date(engagement.created_at).toLocaleString("ko-KR")}
+                    </MetaRow>
+                    {answerable && (
+                      <p className="text-sm">
+                        <span className="mr-2 text-muted-foreground">회신 마감</span>
+                        <span className="font-semibold text-[#8A6A00]">
+                          {new Date(engagement.token_expires_at).toLocaleString("ko-KR")}
+                        </span>
+                      </p>
+                    )}
                     {engagement.message && (
                       <p className="mt-2 whitespace-pre-wrap rounded-lg bg-[#F2F6FF] p-3 text-sm text-[#33405A]">
                         {engagement.message}
