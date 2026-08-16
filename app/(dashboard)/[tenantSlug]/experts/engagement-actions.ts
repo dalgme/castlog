@@ -14,6 +14,10 @@ import {
 } from "@/lib/integrations/schemas";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
+import {
+  getExpertAvailability,
+  type AvailabilityResult,
+} from "@/lib/integrations/expert-availability";
 
 export type CreateEngagementResult =
   | { ok: true; url: string }
@@ -133,6 +137,18 @@ export async function createEngagement(
     revalidatePath(`/[tenantSlug]/projects/${projectId}`, "page");
   }
   return { ok: true, url };
+}
+
+/**
+ * 섭외 요청 전 가용성 사전 확인 — 전문가의 공유 외부 일정 + 자사 섭외만 반환.
+ * 다른 테넌트의 섭외 일정은 노출하지 않는다(§4, lib/integrations/expert-availability).
+ */
+export async function checkExpertAvailability(
+  expertId: string,
+  fromISO: string,
+  toISO: string
+): Promise<AvailabilityResult> {
+  return getExpertAvailability(expertId, fromISO, toISO);
 }
 
 export type EngagementActionResult = { ok: true } | { ok: false; error: string };

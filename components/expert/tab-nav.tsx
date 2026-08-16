@@ -9,6 +9,7 @@ import {
   History,
   ShieldCheck,
   Send,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ const TABS: {
 }[] = [
   { href: "/expert", label: "홈", icon: Home, exact: true },
   { href: "/expert/engagements", label: "섭외 요청", icon: Inbox },
+  { href: "/expert/calendar", label: "활동 캘린더", icon: CalendarDays },
   { href: "/expert/projects", label: "프로젝트별 관리", icon: FolderKanban },
   { href: "/expert/history", label: "히스토리", icon: History },
   { href: "/expert/send", label: "외부 송신", icon: Send },

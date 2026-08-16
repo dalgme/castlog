@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Handshake, Copy, Check } from "lucide-react";
+import { Handshake, Copy, Check, CalendarClock } from "lucide-react";
 
 import {
   engagementCreateSchema,
   type EngagementCreateInput,
 } from "@/lib/integrations/schemas";
+import type { BusyItem } from "@/lib/integrations/expert-availability";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +38,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-import { createEngagement } from "@/app/(dashboard)/[tenantSlug]/experts/engagement-actions";
+import {
+  createEngagement,
+  checkExpertAvailability,
+} from "@/app/(dashboard)/[tenantSlug]/experts/engagement-actions";
 
 type Option = { id: string; name: string };
 
@@ -62,6 +66,11 @@ export function EngagementDialog({
   const [serverError, setServerError] = useState<string | null>(null);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const [availPending, startAvail] = useTransition();
+  const [avail, setAvail] = useState<
+    { items: BusyItem[] } | { error: string } | null
+  >(null);
 
   const form = useForm<EngagementCreateInput>({
     resolver: zodResolver(engagementCreateSchema),
@@ -103,7 +112,29 @@ export function EngagementDialog({
       setServerError(null);
       setCreatedUrl(null);
       setCopied(false);
+      setAvail(null);
     }
+  }
+
+  const expertId = form.watch("expertId");
+
+  function checkAvailability() {
+    if (!expertId) return;
+    setAvail(null);
+    const start = form.getValues("startsOn");
+    const from = start ? new Date(start) : new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 90);
+    startAvail(async () => {
+      const result = await checkExpertAvailability(
+        expertId,
+        from.toISOString(),
+        to.toISOString()
+      );
+      if (result.ok) setAvail({ items: result.items });
+      else setAvail({ error: result.error });
+    });
   }
 
   return (
@@ -178,6 +209,70 @@ export function EngagementDialog({
                   </FormItem>
                 )}
               />
+
+              {/* 섭외 전 가용성 사전 확인 */}
+              {expertId && (
+                <div className="rounded-lg border bg-secondary/30 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-brand-navy">
+                      일정 가능 여부 확인
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={checkAvailability}
+                      disabled={availPending}
+                    >
+                      <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                      {availPending ? "확인 중..." : "향후 90일 확인"}
+                    </Button>
+                  </div>
+                  {avail && "error" in avail && (
+                    <p className="mt-2 text-xs text-destructive">{avail.error}</p>
+                  )}
+                  {avail && "items" in avail && (
+                    <div className="mt-2">
+                      {avail.items.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          공유된 외부 일정·자사 섭외 기준으로 바쁜 날이 없습니다.
+                        </p>
+                      ) : (
+                        <ul className="max-h-40 space-y-1 overflow-y-auto">
+                          {avail.items.map((it, i) => (
+                            <li
+                              key={i}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span
+                                className={
+                                  "h-2 w-2 shrink-0 rounded-full " +
+                                  (it.source === "own_engagement"
+                                    ? "bg-brand"
+                                    : "bg-brand-amber")
+                                }
+                              />
+                              <span className="font-medium text-brand-navy">
+                                {new Date(it.start).toLocaleDateString("ko-KR")}
+                                {it.end && it.end !== it.start
+                                  ? `–${new Date(it.end).toLocaleDateString("ko-KR")}`
+                                  : ""}
+                              </span>
+                              <span className="text-muted-foreground">{it.label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        전문가가 공유한 외부 일정과 자사 섭외만 표시됩니다(타 기업 일정은
+                        표시되지 않음). 참고용이며 실제 가능 여부는 전문가 회신으로
+                        확정됩니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {projects && (
                 <FormField
                   control={form.control}
