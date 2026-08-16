@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { Copy, Check, Send, Paperclip, FileText, X } from "lucide-react";
+import { Copy, Check, Send, Paperclip, FileText, X, Clock } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tag } from "@/components/expert/ui";
+import { SEND_EXPIRES_HOURS } from "@/lib/experts/external-send-constants";
 
 import {
   sendExternalDocuments,
@@ -36,9 +37,13 @@ function StatusTag({ row }: { row: SendHistoryRow }) {
 export function SendForm({
   standardDocs,
   history,
+  senderName: initialSenderName,
+  senderEmail: initialSenderEmail,
 }: {
   standardDocs: ExternalDoc[];
   history: SendHistoryRow[];
+  senderName: string;
+  senderEmail: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +64,8 @@ export function SendForm({
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [senderName, setSenderName] = useState(initialSenderName);
+  const [senderEmail, setSenderEmail] = useState(initialSenderEmail);
   const [eventName, setEventName] = useState("");
   const [orgName, setOrgName] = useState("");
   const [memo, setMemo] = useState("");
@@ -129,6 +136,8 @@ export function SendForm({
       const result = await sendExternalDocuments({
         recipientEmail: email,
         recipientName: name,
+        senderName,
+        senderEmail,
         documentIds: Array.from(selected),
         eventName,
         orgName,
@@ -145,6 +154,9 @@ export function SendForm({
         setMemo("");
         setSelected(new Set());
         setAttachments([]);
+        // 보내는 사람은 자동 채움값으로 되돌린다(연속 발송 편의).
+        setSenderName(initialSenderName);
+        setSenderEmail(initialSenderEmail);
       }
     });
   };
@@ -231,28 +243,56 @@ export function SendForm({
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="받는 사람 이메일"
-          />
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="받는 사람 이름 (선택)"
-          />
-          <Input
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            placeholder="행사명 (선택)"
-          />
-          <Input
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            placeholder="의뢰기관/기업 (선택)"
-          />
+        {/* 보내는 사람 — 자동 채움, 수정 가능 */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">
+            보내는 사람 <span className="text-[11px] font-normal">(자동 입력 · 수정 가능)</span>
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              value={senderName}
+              onChange={(e) => setSenderName(e.target.value)}
+              placeholder="보내는 사람 이름"
+            />
+            <Input
+              type="email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              placeholder="보내는 사람 이메일 (회신 받을 주소)"
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            메일은 캐스트로그 인증 도메인에서 발송되며, 받는 분이 회신하면 위 이메일로
+            전달됩니다.
+          </p>
+        </div>
+
+        {/* 받는 사람 */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">받는 사람</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="받는 사람 이메일"
+            />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="받는 사람 이름 (선택)"
+            />
+            <Input
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="행사명 (선택)"
+            />
+            <Input
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="의뢰기관/기업 (선택)"
+            />
+          </div>
         </div>
         <Textarea
           rows={2}
@@ -260,6 +300,16 @@ export function SendForm({
           onChange={(e) => setMemo(e.target.value)}
           placeholder="메모 (선택)"
         />
+
+        {/* 72시간 임시 URL 안내 — 눈에 띄게 */}
+        <div className="flex items-start gap-2 rounded-lg border border-brand-amber/40 bg-brand-amber/10 p-3">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-amber" aria-hidden />
+          <p className="text-xs leading-relaxed text-brand-navy">
+            받는 분에게는 <b>파일 첨부가 아니라 다운로드 링크</b>가 전달됩니다. 이 링크는
+            발송 시각부터 <b>{SEND_EXPIRES_HOURS}시간 동안만 유효한 임시 URL</b>로,
+            시간이 지나면 자동 만료됩니다. 필요하면 발송 내역에서 언제든 회수할 수 있습니다.
+          </p>
+        </div>
 
         {error && (
           <Alert variant="destructive">

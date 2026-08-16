@@ -14,8 +14,7 @@ import {
   isUploadableDocumentType,
   validateDocumentFile,
 } from "@/lib/experts/documents";
-
-const SEND_EXPIRES_HOURS = 72;
+import { SEND_EXPIRES_HOURS } from "@/lib/experts/external-send-constants";
 
 /** 외부 송신 버튼으로 다룰 표준 서류 유형(이미 업로드된 임시 URL을 전달) */
 const STANDARD_SEND_TYPES = ["resume", "id_card_copy", "bank_account_copy"] as const;
@@ -41,6 +40,9 @@ export type SendContext = {
   /** 표준 3종(이력서·통장·신분증) 최신 문서 — 없으면 해당 키 없음 */
   standardDocs: ExternalDoc[];
   history: SendHistoryRow[];
+  /** 보내는 사람 자동 채움값(전문가 본인). 발송 시 수정 가능. */
+  senderName: string;
+  senderEmail: string;
 };
 
 async function currentExpertId(): Promise<string | null> {
@@ -58,10 +60,25 @@ async function currentExpertId(): Promise<string | null> {
 }
 
 export async function getSendContext(): Promise<SendContext> {
-  if (!hasSupabaseEnv()) return { standardDocs: [], history: [] };
+  const empty: SendContext = {
+    standardDocs: [],
+    history: [],
+    senderName: "",
+    senderEmail: "",
+  };
+  if (!hasSupabaseEnv()) return empty;
   const supabase = createClient();
-  const expertId = await currentExpertId();
-  if (!expertId) return { standardDocs: [], history: [] };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return empty;
+  const { data: expert } = await supabase
+    .from("experts")
+    .select("id, name, email")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (!expert) return empty;
+  const expertId = expert.id;
 
   const [{ data: docs }, { data: sends }] = await Promise.all([
     supabase
@@ -112,7 +129,12 @@ export async function getSendContext(): Promise<SendContext> {
     link: null,
   }));
 
-  return { standardDocs, history };
+  return {
+    standardDocs,
+    history,
+    senderName: expert.name ?? "",
+    senderEmail: expert.email ?? user.email ?? "",
+  };
 }
 
 export type UploadDocResult =
@@ -239,6 +261,8 @@ export type SendResult =
 export async function sendExternalDocuments(input: {
   recipientEmail: string;
   recipientName?: string;
+  senderName?: string;
+  senderEmail?: string;
   documentIds: string[];
   eventName?: string;
   orgName?: string;
@@ -249,6 +273,11 @@ export async function sendExternalDocuments(input: {
   const email = (input.recipientEmail ?? "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "받는 사람 이메일을 정확히 입력하세요." };
+  }
+  const senderName = (input.senderName ?? "").trim();
+  const senderEmail = (input.senderEmail ?? "").trim();
+  if (senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) {
+    return { ok: false, error: "보내는 사람 이메일 형식을 확인해 주세요." };
   }
   const ids = Array.from(new Set((input.documentIds ?? []).filter(Boolean)));
   if (ids.length === 0) {
@@ -298,20 +327,36 @@ export async function sendExternalDocuments(input: {
   const typeLabels = types.map((t) => DOCUMENT_TYPE_LABELS[t] ?? t).join(", ");
 
   // 이메일 발송(플랫폼 경로). 미구성(테스트 모드)이면 링크만 반환.
+  //
+  // 발신 도메인은 인증된 도메인(EMAIL_FROM)이어야 SPF/DKIM/DMARC를 통과한다.
+  // 전문가 개인 메일에서 "직접" 발송할 수는 없으므로(위장 발송으로 차단됨),
+  // From 표시명에 전문가 이름을 넣고 Reply-To를 전문가 메일로 지정해
+  // "전문가가 보낸 메일"로 보이게 하고 회신이 전문가에게 가도록 한다.
   let emailed = false;
   const provider = resolveEmailProvider();
   if (provider) {
-    const from = process.env.EMAIL_FROM ?? "CASTLOG <noreply@castlog.kr>";
+    const baseFrom = process.env.EMAIL_FROM ?? "CASTLOG <noreply@castlog.kr>";
+    const fromAddress = baseFrom.includes("<")
+      ? baseFrom.slice(baseFrom.indexOf("<"))
+      : `<${baseFrom}>`;
+    const displayName = senderName ? `${senderName} (CASTLOG)` : "CASTLOG";
+    const from = `${displayName} ${fromAddress}`;
     const result = await provider.send({
       from,
       to: email,
-      subject: `[서류 전달] ${input.eventName ? `${input.eventName} · ` : ""}요청하신 서류입니다`,
+      replyTo: senderEmail || undefined,
+      subject: `[서류 전달] ${input.eventName ? `${input.eventName} · ` : ""}${
+        senderName ? `${senderName}님이 보낸 ` : ""
+      }요청하신 서류입니다`,
       text:
         `안녕하세요${input.recipientName ? ` ${input.recipientName}님` : ""},\n\n` +
-        `요청하신 서류(${typeLabels})를 안전한 다운로드 링크로 보내드립니다.\n` +
-        `아래 링크에서 ${SEND_EXPIRES_HOURS}시간 이내에 다운로드해 주세요.\n\n` +
-        `${link}\n\n` +
-        `이 링크는 만료 후 사용할 수 없으며, 보안을 위해 발신자가 회수할 수 있습니다.\n`,
+        `${senderName ? `${senderName}님이 ` : ""}요청하신 서류(${typeLabels})를 ` +
+        `안전한 다운로드 링크로 보내드립니다.\n\n` +
+        `▶ 다운로드 링크\n${link}\n\n` +
+        `⚠️ 이 링크는 발송 시각으로부터 ${SEND_EXPIRES_HOURS}시간 동안만 유효한 임시 URL입니다.\n` +
+        `   ${SEND_EXPIRES_HOURS}시간이 지나면 자동으로 만료되어 다운로드할 수 없으니, 그 전에 내려받아 주세요.\n` +
+        `   (보안을 위해 발신자가 링크를 회수할 수도 있습니다.)\n\n` +
+        `${senderEmail ? `문의는 이 메일에 회신하시면 ${senderName || "발신자"}에게 전달됩니다.\n` : ""}`,
     });
     emailed = result.ok;
   }
