@@ -15,8 +15,8 @@ import {
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
 import {
-  getExpertAvailability,
-  type AvailabilityResult,
+  screenExpertSchedule,
+  type ScreenResult,
 } from "@/lib/integrations/expert-availability";
 
 export type CreateEngagementResult =
@@ -140,15 +140,15 @@ export async function createEngagement(
 }
 
 /**
- * 섭외 요청 전 가용성 사전 확인 — 전문가의 공유 외부 일정 + 자사 섭외만 반환.
- * 다른 테넌트의 섭외 일정은 노출하지 않는다(§4, lib/integrations/expert-availability).
+ * 섭외 전 일정 스크리닝 — 특정 일시 범위에 겹치는지만 1차 판독.
+ * 자사 섭외는 내역 공개, 다른 회사 섭외·전문가 직접 등록 일정은 겹침 여부만(§4).
  */
-export async function checkExpertAvailability(
+export async function screenExpertAvailability(
   expertId: string,
   fromISO: string,
   toISO: string
-): Promise<AvailabilityResult> {
-  return getExpertAvailability(expertId, fromISO, toISO);
+): Promise<ScreenResult> {
+  return screenExpertSchedule(expertId, fromISO, toISO);
 }
 
 export type EngagementActionResult = { ok: true } | { ok: false; error: string };

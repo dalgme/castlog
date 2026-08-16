@@ -9,7 +9,7 @@ import {
   engagementCreateSchema,
   type EngagementCreateInput,
 } from "@/lib/integrations/schemas";
-import type { BusyItem } from "@/lib/integrations/expert-availability";
+import type { ScreenResult } from "@/lib/integrations/expert-availability";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import {
   createEngagement,
-  checkExpertAvailability,
+  screenExpertAvailability,
 } from "@/app/(dashboard)/[tenantSlug]/experts/engagement-actions";
 
 type Option = { id: string; name: string };
@@ -68,9 +68,9 @@ export function EngagementDialog({
   const [copied, setCopied] = useState(false);
 
   const [availPending, startAvail] = useTransition();
-  const [avail, setAvail] = useState<
-    { items: BusyItem[] } | { error: string } | null
-  >(null);
+  const [screen, setScreen] = useState<ScreenResult | null>(null);
+  const [screenFrom, setScreenFrom] = useState("");
+  const [screenTo, setScreenTo] = useState("");
 
   const form = useForm<EngagementCreateInput>({
     resolver: zodResolver(engagementCreateSchema),
@@ -112,28 +112,26 @@ export function EngagementDialog({
       setServerError(null);
       setCreatedUrl(null);
       setCopied(false);
-      setAvail(null);
+      setScreen(null);
+      setScreenFrom("");
+      setScreenTo("");
     }
   }
 
   const expertId = form.watch("expertId");
 
-  function checkAvailability() {
-    if (!expertId) return;
-    setAvail(null);
-    const start = form.getValues("startsOn");
-    const from = start ? new Date(start) : new Date();
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(from);
-    to.setDate(to.getDate() + 90);
+  function runScreening() {
+    if (!expertId || !screenFrom) return;
+    setScreen(null);
+    const from = new Date(screenFrom);
+    const to = screenTo ? new Date(screenTo) : new Date(from.getTime() + 60 * 60 * 1000);
     startAvail(async () => {
-      const result = await checkExpertAvailability(
+      const result = await screenExpertAvailability(
         expertId,
         from.toISOString(),
         to.toISOString()
       );
-      if (result.ok) setAvail({ items: result.items });
-      else setAvail({ error: result.error });
+      setScreen(result);
     });
   }
 
@@ -210,63 +208,84 @@ export function EngagementDialog({
                 )}
               />
 
-              {/* 섭외 전 가용성 사전 확인 */}
+              {/* 섭외 전 일정 스크리닝 — 특정 일시 범위의 겹침 여부 1차 확인 */}
               {expertId && (
-                <div className="rounded-lg border bg-secondary/30 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-brand-navy">
-                      일정 가능 여부 확인
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={checkAvailability}
-                      disabled={availPending}
-                    >
-                      <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                      {availPending ? "확인 중..." : "향후 90일 확인"}
-                    </Button>
+                <div className="space-y-2 rounded-lg border bg-secondary/30 p-3">
+                  <p className="text-xs font-semibold text-brand-navy">
+                    일정 스크리닝 (특정 일시 겹침 확인)
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">시작 일시</label>
+                      <Input
+                        type="datetime-local"
+                        value={screenFrom}
+                        onChange={(e) => setScreenFrom(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">종료 일시 (선택)</label>
+                      <Input
+                        type="datetime-local"
+                        value={screenTo}
+                        onChange={(e) => setScreenTo(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  {avail && "error" in avail && (
-                    <p className="mt-2 text-xs text-destructive">{avail.error}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={runScreening}
+                    disabled={availPending || !screenFrom}
+                    className="w-full"
+                  >
+                    <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                    {availPending ? "확인 중..." : "스크리닝"}
+                  </Button>
+
+                  {screen && !screen.ok && (
+                    <p className="text-xs text-destructive">{screen.error}</p>
                   )}
-                  {avail && "items" in avail && (
-                    <div className="mt-2">
-                      {avail.items.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          공유된 외부 일정·자사 섭외 기준으로 바쁜 날이 없습니다.
+                  {screen && screen.ok && (
+                    <div className="space-y-2">
+                      {!screen.hasConflict ? (
+                        <p className="rounded-md bg-green-50 px-2 py-1.5 text-xs font-medium text-green-700">
+                          입력하신 일시에 겹치는 일정이 없습니다.
                         </p>
                       ) : (
-                        <ul className="max-h-40 space-y-1 overflow-y-auto">
-                          {avail.items.map((it, i) => (
-                            <li
-                              key={i}
-                              className="flex items-center gap-2 text-xs"
-                            >
-                              <span
-                                className={
-                                  "h-2 w-2 shrink-0 rounded-full " +
-                                  (it.source === "own_engagement"
-                                    ? "bg-brand"
-                                    : "bg-brand-amber")
-                                }
-                              />
-                              <span className="font-medium text-brand-navy">
-                                {new Date(it.start).toLocaleDateString("ko-KR")}
-                                {it.end && it.end !== it.start
-                                  ? `–${new Date(it.end).toLocaleDateString("ko-KR")}`
-                                  : ""}
-                              </span>
-                              <span className="text-muted-foreground">{it.label}</span>
-                            </li>
-                          ))}
-                        </ul>
+                        <>
+                          {screen.ownConflicts.length > 0 && (
+                            <div className="rounded-md bg-brand/5 p-2">
+                              <p className="mb-1 text-[11px] font-semibold text-brand-navy">
+                                자사 섭외와 겹침
+                              </p>
+                              <ul className="space-y-0.5">
+                                {screen.ownConflicts.map((c, i) => (
+                                  <li key={i} className="text-xs text-brand-navy">
+                                    {new Date(c.startsOn).toLocaleDateString("ko-KR")}
+                                    {c.endsOn
+                                      ? `–${new Date(c.endsOn).toLocaleDateString("ko-KR")}`
+                                      : ""}
+                                    {" · "}
+                                    {c.roleDescription ?? "섭외"}
+                                    {c.status === "accepted" ? " (확정)" : " (요청중)"}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {screen.blindConflictCount > 0 && (
+                            <p className="rounded-md bg-brand-amber/10 px-2 py-1.5 text-xs text-[#8A6A00]">
+                              이 일시에 <b>다른 일정 {screen.blindConflictCount}건</b>과
+                              겹칩니다. (다른 회사 섭외 또는 전문가 개인 일정 — 상세는
+                              공개되지 않습니다)
+                            </p>
+                          )}
+                        </>
                       )}
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        전문가가 공유한 외부 일정과 자사 섭외만 표시됩니다(타 기업 일정은
-                        표시되지 않음). 참고용이며 실제 가능 여부는 전문가 회신으로
-                        확정됩니다.
+                      <p className="text-[11px] text-muted-foreground">
+                        참고용 1차 판독입니다. 실제 가능 여부는 전문가 회신으로 확정됩니다.
                       </p>
                     </div>
                   )}
