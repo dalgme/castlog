@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Copy, Check, Send } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Copy, Check, Send, Paperclip } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,13 @@ import {
   type ExternalDoc,
   type SendHistoryRow,
 } from "./actions";
+import { uploadExpertDocument } from "../documents/actions";
+
+const ATTACHABLE: { type: string; label: string }[] = [
+  { type: "resume", label: "이력서" },
+  { type: "id_card_copy", label: "신분증 사본" },
+  { type: "bank_account_copy", label: "통장 사본" },
+];
 
 function StatusTag({ row }: { row: SendHistoryRow }) {
   const expired = new Date(row.expiresAt).getTime() < Date.now();
@@ -32,11 +40,15 @@ export function SendForm({
   documents: ExternalDoc[];
   history: SendHistoryRow[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sentLink, setSentLink] = useState<string | null>(null);
   const [emailed, setEmailed] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const availableTypes = new Set(documents.map((d) => d.type));
+  const attachable = ATTACHABLE.filter((a) => !availableTypes.has(a.type));
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -87,12 +99,7 @@ export function SendForm({
       <div className="space-y-3 rounded-xl border bg-background p-4 shadow-sm">
         <p className="text-sm font-bold text-brand-navy">새 외부 송신</p>
 
-        {documents.length === 0 ? (
-          <p className="rounded-lg bg-secondary/60 p-3 text-sm text-muted-foreground">
-            보낼 수 있는 서류가 없습니다. 먼저 서류함에서 이력서·신분증사본·통장사본을
-            등록해 주세요.
-          </p>
-        ) : (
+        {documents.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {documents.map((d) => {
               const on = types.includes(d.type);
@@ -112,6 +119,32 @@ export function SendForm({
               );
             })}
           </div>
+        )}
+
+        {/* 서류함에 없는 유형은 여기서 바로 첨부(업로드) */}
+        {attachable.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">직접 첨부:</span>
+            {attachable.map((a) => (
+              <AttachButton
+                key={a.type}
+                type={a.type}
+                label={a.label}
+                onAttached={() => {
+                  setTypes((prev) => (prev.includes(a.type) ? prev : [...prev, a.type]));
+                  router.refresh();
+                }}
+                onError={setError}
+              />
+            ))}
+          </div>
+        )}
+
+        {documents.length === 0 && attachable.length === 0 && (
+          <p className="rounded-lg bg-secondary/60 p-3 text-sm text-muted-foreground">
+            보낼 수 있는 서류가 없습니다. 위 &lsquo;직접 첨부&rsquo;로 올리거나 서류함에서
+            등록해 주세요.
+          </p>
         )}
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -190,6 +223,57 @@ export function SendForm({
         )}
       </div>
     </div>
+  );
+}
+
+function AttachButton({
+  type,
+  label,
+  onAttached,
+  onError,
+}: {
+  type: string;
+  label: string;
+  onAttached: () => void;
+  onError: (msg: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pending, startTransition] = useTransition();
+
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onError("");
+    const fd = new FormData();
+    fd.append("documentType", type);
+    fd.append("file", file);
+    startTransition(async () => {
+      const result = await uploadExpertDocument(fd);
+      if (!result.ok) onError(result.error);
+      else onAttached();
+      if (inputRef.current) inputRef.current.value = "";
+    });
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        onChange={onChange}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={pending}
+        className="inline-flex items-center gap-1 rounded-md border border-dashed px-2.5 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
+      >
+        <Paperclip className="h-3.5 w-3.5" aria-hidden />
+        {pending ? "업로드 중..." : `${label} 첨부`}
+      </button>
+    </>
   );
 }
 
