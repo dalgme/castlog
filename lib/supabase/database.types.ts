@@ -1700,6 +1700,42 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_rrn_keys: {
+        Row: {
+          alg: string
+          created_at: string
+          expert_id: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          updated_at: string
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Insert: {
+          alg?: string
+          created_at?: string
+          expert_id: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          updated_at?: string
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Update: {
+          alg?: string
+          created_at?: string
+          expert_id?: string
+          kdf_params?: Json
+          kdf_salt?: string
+          public_key_jwk?: Json
+          updated_at?: string
+          wrap_iv?: string
+          wrapped_private_key?: string
+        }
+        Relationships: []
+      }
       expert_send_body_presets: {
         Row: {
           body: string
