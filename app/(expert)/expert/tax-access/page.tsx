@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro, Tag, type TagTone } from "@/components/expert/ui";
+import { MarkReadOnView } from "@/components/expert/mark-read-on-view";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,6 +82,7 @@ export default async function ExpertTaxAccessPage() {
     <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <MarkReadOnView categories={["rrn_access"]} />
         <PageIntro
           eyebrow="PRIVACY"
           title="주민등록번호 조회 이력"

@@ -215,44 +215,28 @@ export function SendForm({
       <div className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
         <p className="text-sm font-bold text-brand-navy">새 외부 송신</p>
 
-        {/* 표준 5종 — 클릭 시 임시 URL로 전달(없으면 업로드 후 선택) */}
+        {/* 표준 5종 — 모두 동일한 '임시 URL 송신' 버튼(미등록이면 클릭 시 업로드가 먼저 열림) */}
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">
             보낼 서류 선택 <span className="text-[11px] font-normal">(임시 다운로드 링크로 전달)</span>
           </p>
           <div className="flex flex-wrap gap-2">
-            {SEND_STANDARD_TYPES.map(({ type, label }) => {
-              const doc = docsByType[type];
-              const on = doc ? selected.has(doc.id) : false;
-              const busy = pending && uploadingType === type;
-              if (doc) {
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => toggleSelect(doc.id)}
-                    className={
-                      on
-                        ? "inline-flex items-center gap-1.5 rounded-md border border-brand bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand"
-                        : "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-brand-navy"
-                    }
-                  >
-                    {on ? <Check className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-                    {label}
-                  </button>
-                );
-              }
-              return (
-                <StandardUploadButton
-                  key={type}
-                  type={type}
-                  label={label}
-                  busy={busy}
-                  onFile={onStandardFile}
-                />
-              );
-            })}
+            {SEND_STANDARD_TYPES.map(({ type, label }) => (
+              <DocButton
+                key={type}
+                type={type}
+                label={label}
+                doc={docsByType[type]}
+                selected={docsByType[type] ? selected.has(docsByType[type]!.id) : false}
+                busy={pending && uploadingType === type}
+                onToggle={toggleSelect}
+                onFile={onStandardFile}
+              />
+            ))}
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            아직 올리지 않은 서류는 버튼을 누르면 먼저 파일을 올린 뒤 자동으로 선택됩니다.
+          </p>
         </div>
 
         {/* 일반 첨부 — 실제 메일 첨부(만료 없음) */}
@@ -461,18 +445,33 @@ export function SendForm({
   );
 }
 
-function StandardUploadButton({
+/**
+ * 표준 서류 버튼(5종 공통) — 모두 '임시 URL 송신' 버튼으로 동작을 일치시킨다.
+ * 이미 올려둔 서류면 클릭 = 선택 토글. 아직 없으면 클릭 = 파일 업로드 후 자동 선택.
+ * 겉모습은 5개 모두 동일(라벨은 서류명). 선택 시 브랜드 강조.
+ */
+function DocButton({
   type,
   label,
+  doc,
+  selected,
   busy,
+  onToggle,
   onFile,
 }: {
   type: string;
   label: string;
+  doc: ExternalDoc | undefined;
+  selected: boolean;
   busy: boolean;
+  onToggle: (id: string) => void;
   onFile: (type: string, e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const onClick = () => {
+    if (doc) onToggle(doc.id);
+    else inputRef.current?.click();
+  };
   return (
     <>
       <input
@@ -484,12 +483,21 @@ function StandardUploadButton({
       />
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={onClick}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand"
+        title={doc ? "클릭해서 임시 링크로 보낼 서류를 선택/해제합니다" : "클릭하면 파일을 올린 뒤 임시 링크로 보냅니다"}
+        className={
+          selected
+            ? "inline-flex items-center gap-1.5 rounded-md border border-brand bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand"
+            : "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:border-brand hover:text-brand-navy"
+        }
       >
-        <Paperclip className="h-3.5 w-3.5" aria-hidden />
-        {busy ? "업로드 중..." : `${label} 올리기`}
+        {selected ? (
+          <Check className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <FileText className="h-3.5 w-3.5" aria-hidden />
+        )}
+        {busy ? "업로드 중..." : label}
       </button>
     </>
   );

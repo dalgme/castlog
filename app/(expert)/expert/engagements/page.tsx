@@ -8,6 +8,7 @@ import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro, Tag, MetaRow, ENGAGEMENT_TONE } from "@/components/expert/ui";
+import { MarkReadOnView } from "@/components/expert/mark-read-on-view";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -80,6 +81,7 @@ export default async function ExpertEngagementsPage() {
     <div className="min-h-screen bg-muted">
       <PortalHeader />
       <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+        <MarkReadOnView categories={["engagement_request", "engagement_cancelled"]} />
         <PageIntro
           eyebrow="ENGAGEMENTS"
           title="섭외 요청"
