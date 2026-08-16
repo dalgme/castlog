@@ -1502,6 +1502,42 @@ export type Database = {
           },
         ]
       }
+      tenant_rrn_keys: {
+        Row: {
+          alg: string
+          created_at: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          tenant_id: string
+          updated_at: string | null
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Insert: {
+          alg?: string
+          created_at?: string
+          kdf_params: Json
+          kdf_salt: string
+          public_key_jwk: Json
+          tenant_id: string
+          updated_at?: string | null
+          wrap_iv: string
+          wrapped_private_key: string
+        }
+        Update: {
+          alg?: string
+          created_at?: string
+          kdf_params?: Json
+          kdf_salt?: string
+          public_key_jwk?: Json
+          tenant_id?: string
+          updated_at?: string | null
+          wrap_iv?: string
+          wrapped_private_key?: string
+        }
+        Relationships: []
+      }
       tax_access_grants: {
         Row: {
           created_at: string
