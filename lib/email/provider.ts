@@ -19,6 +19,8 @@ export type EmailMessage = {
   to: string;
   subject: string;
   text: string;
+  /** 답장 주소 — 발신 도메인은 인증된 도메인이어야 하므로, 전문가 회신은 여기로 받는다. */
+  replyTo?: string;
 };
 
 export type EmailProviderResult = { ok: true } | { ok: false; error: string };
@@ -50,6 +52,7 @@ class ResendProvider implements EmailProvider {
           to: [message.to],
           subject: message.subject,
           text: message.text,
+          ...(message.replyTo ? { reply_to: message.replyTo } : {}),
         }),
       });
       if (!response.ok) {

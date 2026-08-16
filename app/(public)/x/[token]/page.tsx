@@ -1,4 +1,4 @@
-import { Download, ShieldCheck } from "lucide-react";
+import { Download, ShieldCheck, Clock } from "lucide-react";
 
 import { resolveExternalSend, markSendOpened } from "@/lib/experts/external-send";
 import { LogoMark, Wordmark } from "@/components/brand/logo";
@@ -49,8 +49,14 @@ export default async function ExternalSendPage({
             아래 서류를 다운로드하세요.
             {send.eventName ? ` (${send.eventName})` : ""}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            만료: {new Date(send.expiresAt).toLocaleString("ko-KR")}
+        </div>
+
+        {/* 임시 URL 안내 — 눈에 띄게 */}
+        <div className="flex items-start gap-2 rounded-lg border border-brand-amber/40 bg-brand-amber/10 p-3">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-amber" aria-hidden />
+          <p className="text-xs leading-relaxed text-brand-navy">
+            이 링크는 <b>임시 다운로드 URL</b>입니다. <b>{new Date(send.expiresAt).toLocaleString("ko-KR")}</b>
+            까지만 내려받을 수 있으며, 이후 자동으로 만료됩니다. 필요한 서류는 지금 저장해 주세요.
           </p>
         </div>
 
