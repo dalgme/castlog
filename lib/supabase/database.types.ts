@@ -1502,6 +1502,60 @@ export type Database = {
           },
         ]
       }
+      expert_external_sends: {
+        Row: {
+          created_at: string
+          document_ids: string[]
+          document_types: string[]
+          event_name: string | null
+          expert_id: string
+          expires_at: string
+          id: string
+          memo: string | null
+          opened_at: string | null
+          org_name: string | null
+          recipient_email: string
+          recipient_name: string | null
+          sent_at: string
+          status: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          document_ids: string[]
+          document_types: string[]
+          event_name?: string | null
+          expert_id: string
+          expires_at: string
+          id?: string
+          memo?: string | null
+          opened_at?: string | null
+          org_name?: string | null
+          recipient_email: string
+          recipient_name?: string | null
+          sent_at?: string
+          status?: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          document_ids?: string[]
+          document_types?: string[]
+          event_name?: string | null
+          expert_id?: string
+          expires_at?: string
+          id?: string
+          memo?: string | null
+          opened_at?: string | null
+          org_name?: string | null
+          recipient_email?: string
+          recipient_name?: string | null
+          sent_at?: string
+          status?: string
+          token_hash?: string
+        }
+        Relationships: []
+      }
       rrn_service_keys: {
         Row: {
           created_at: string
