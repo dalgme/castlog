@@ -207,13 +207,13 @@ export default async function ExpertPortalPage({
       <main className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
         {/* 필수 정보 온보딩 — 미기입 항목이 있으면 최상단에 우선 노출 */}
         {missing.length > 0 && (
-          <Card className="border-brand/50 bg-[#F2F6FF] shadow-sm">
+          <Card className="border-[#F3B9A7] bg-[#FFF2EE] shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-brand-navy">
+              <CardTitle className="text-base text-[#B23A21]">
                 먼저 필수 정보를 등록해 주세요 ({checklist.length - missing.length}/
                 {checklist.length})
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-[#8A5142]">
                 아래 항목을 모두 등록해야 기업 섭외·지급 등 실제 업무를 진행할 수
                 있습니다.
               </p>
@@ -226,18 +226,20 @@ export default async function ExpertPortalPage({
                       href={c.href}
                       className={
                         c.done
-                          ? "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
-                          : "flex items-center gap-2 rounded-md bg-background px-2 py-1.5 text-sm font-medium text-brand-navy hover:bg-white"
+                          ? "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#8A5142]"
+                          : "flex items-center gap-2 rounded-md bg-white px-2 py-1.5 text-sm font-medium text-[#B23A21] hover:bg-[#FFE9E2]"
                       }
                     >
                       {c.done ? (
                         <CheckCircle2 className="h-4 w-4 flex-none text-[#1E7E45]" aria-hidden />
                       ) : (
-                        <Circle className="h-4 w-4 flex-none text-brand" aria-hidden />
+                        <Circle className="h-4 w-4 flex-none text-[#E4572E]" aria-hidden />
                       )}
                       <span className={c.done ? "line-through" : ""}>{c.label}</span>
                       {!c.done && (
-                        <span className="ml-auto text-xs text-brand">등록 →</span>
+                        <span className="ml-auto text-xs font-semibold text-[#E4572E]">
+                          등록 →
+                        </span>
                       )}
                     </Link>
                   </li>
