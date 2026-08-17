@@ -15,6 +15,7 @@ import {
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
   screenExpertSchedule,
   type ScreenResult,
@@ -153,6 +154,36 @@ export async function createEngagement(
   } catch {
     url = `/e/${token}`;
   }
+
+  // 업무연락 메일 — 동의 링크 전달 (이메일 미설정 시 테스트 모드로 기록만)
+  const schedule = formatEventSchedule(
+    data.startsOn || null,
+    data.endsOn || null,
+    data.startsTime || null,
+    data.endsTime || null
+  );
+  await sendEngagementEmail({
+    tenantId,
+    senderUserId: user.id,
+    expertId: data.expertId,
+    subject: `[섭외 요청] ${data.programName?.trim() || data.roleDescription}`,
+    body:
+      `섭외를 요청드립니다.\n\n` +
+      [
+        data.programName?.trim() ? `· 사업명: ${data.programName.trim()}` : null,
+        `· 역할: ${data.roleDescription}`,
+        schedule ? `· 일정: ${schedule}` : null,
+        data.locationName?.trim()
+          ? `· 장소: ${data.locationName.trim()}${
+              data.locationAddress?.trim() ? ` (${data.locationAddress.trim()})` : ""
+            }`
+          : null,
+        data.feeAmount ? `· 의뢰비용: ${Number(data.feeAmount).toLocaleString("ko-KR")}원` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") +
+      `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n`,
+  });
 
   revalidatePath("/[tenantSlug]/experts", "page");
   if (projectId) {
