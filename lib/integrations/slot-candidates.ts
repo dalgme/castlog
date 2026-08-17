@@ -29,6 +29,7 @@ export type SlotContext = {
   startsTime: string | null;
   endsTime: string | null;
   roleType: string;
+  sessionName: string | null;
   roleDescription: string | null;
   feeAmount: number | null;
   locationName: string | null;
@@ -73,7 +74,7 @@ export async function getPositionContext(
   const { data: slot } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, role_description, fee_amount, location_name, location_address"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
@@ -94,6 +95,7 @@ export async function getPositionContext(
     startsTime: slot.starts_time,
     endsTime: slot.ends_time,
     roleType: slot.role_type,
+    sessionName: slot.session_name,
     roleDescription: slot.role_description,
     feeAmount: slot.fee_amount,
     locationName: slot.location_name,

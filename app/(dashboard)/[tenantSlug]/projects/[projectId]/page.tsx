@@ -165,7 +165,7 @@ export default async function ProjectDetailPage({
         ? supabase
             .from("engagement_slots")
             .select(
-              "id, slot_date, starts_time, ends_time, role_type, role_description, required_count, fee_amount, location_name"
+              "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
             )
             .eq("project_id", project.id)
             .order("slot_date", { ascending: true })
@@ -314,6 +314,7 @@ export default async function ProjectDetailPage({
     startsTime: s.starts_time,
     endsTime: s.ends_time,
     roleType: s.role_type,
+    sessionName: s.session_name,
     roleDescription: s.role_description,
     requiredCount: s.required_count,
     feeAmount: s.fee_amount,

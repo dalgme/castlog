@@ -58,7 +58,7 @@ export async function requestEngagementForPosition(input: {
   const { data: slot } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, role_description, fee_amount, location_name, location_address"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
@@ -90,6 +90,8 @@ export async function requestEngagementForPosition(input: {
       role_description:
         slot.role_description || `${position.code} 섭외`,
       role_type: slot.role_type,
+      session_name: slot.session_name,
+      position_code: position.code,
       program_name: input.programName?.trim() || null,
       message: input.message?.trim() || null,
       fee_amount: slot.fee_amount,

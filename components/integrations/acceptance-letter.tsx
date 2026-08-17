@@ -48,7 +48,15 @@ export function AcceptanceLetter({
     <div className="rounded-lg border bg-white p-6 text-sm text-foreground shadow-sm">
       <div className="text-center">
         <h1 className="text-lg font-bold tracking-tight">섭외 수락서</h1>
-        <p className="mt-1 text-xs text-muted-foreground">문서번호 {a.letter_no}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          문서번호 {a.letter_no}
+          {a.position_code && (
+            <>
+              {" · "}
+              <span className="font-mono">{a.position_code}</span>
+            </>
+          )}
+        </p>
       </div>
 
       <dl className="mt-6 space-y-2">
@@ -57,6 +65,7 @@ export function AcceptanceLetter({
         {!a.program_name && a.project_name && (
           <Row label="프로젝트" value={a.project_name} />
         )}
+        {a.session_name && <Row label="세션" value={a.session_name} />}
         <Row label="전문가" value={a.expert_name} />
         <Row
           label="구분"

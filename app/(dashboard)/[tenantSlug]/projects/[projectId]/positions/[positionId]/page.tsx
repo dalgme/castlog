@@ -103,6 +103,12 @@ export default async function PositionPage({
               <span className="text-muted-foreground">프로젝트</span>{" "}
               {ctx.projectName}
             </p>
+            {ctx.sessionName && (
+              <p>
+                <span className="text-muted-foreground">세션</span>{" "}
+                {ctx.sessionName}
+              </p>
+            )}
             {schedule && (
               <p>
                 <span className="text-muted-foreground">일정</span> {schedule}

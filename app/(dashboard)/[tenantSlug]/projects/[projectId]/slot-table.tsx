@@ -35,6 +35,7 @@ export type SlotRow = {
   startsTime: string | null;
   endsTime: string | null;
   roleType: string;
+  sessionName: string | null;
   roleDescription: string | null;
   requiredCount: number;
   feeAmount: number | null;
@@ -47,6 +48,7 @@ const emptyDraft = {
   startsTime: "",
   endsTime: "",
   roleType: "mentor",
+  sessionName: "",
   roleDescription: "",
   requiredCount: "1",
   feeAmount: "",
@@ -87,6 +89,7 @@ export function SlotTable({
         startsTime: d.startsTime,
         endsTime: d.endsTime,
         roleType: d.roleType as "mentor",
+        sessionName: d.sessionName,
         roleDescription: d.roleDescription,
         requiredCount: parseInt(d.requiredCount || "1", 10),
         feeAmount: d.feeAmount,
@@ -142,6 +145,11 @@ export function SlotTable({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold">{s.slotDate}</span>
               <span className="text-sm text-muted-foreground">{timeLabel(s)}</span>
+              {s.sessionName && (
+                <span className="text-sm font-medium text-brand-navy">
+                  {s.sessionName}
+                </span>
+              )}
               <Badge variant="secondary">
                 {ENGAGEMENT_ROLE_TYPES[
                   s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
@@ -280,6 +288,11 @@ export function SlotTable({
               />
             </div>
           </div>
+          <Input
+            value={d.sessionName}
+            onChange={(e) => set("sessionName", e.target.value)}
+            placeholder="세션명 (선택 · 예: 1일차 오전 강의, 데모데이 심사)"
+          />
           <Input
             value={d.roleDescription}
             onChange={(e) => set("roleDescription", e.target.value)}
