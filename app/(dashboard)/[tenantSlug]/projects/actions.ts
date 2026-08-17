@@ -70,6 +70,7 @@ export async function createProject(
       code: data.code || null,
       starts_on: data.startsOn || null,
       ends_on: data.endsOn || null,
+      budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
       description: data.description || null,
       created_by: user.id,
     })

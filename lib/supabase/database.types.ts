@@ -2491,6 +2491,8 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: string
+        
+          budget_amount: number | null
         }
         Insert: {
           business_year: number
@@ -2508,6 +2510,8 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: string
+        
+          budget_amount?: number | null
         }
         Update: {
           business_year?: number
@@ -2525,6 +2529,8 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: string
+        
+          budget_amount?: number | null
         }
         Relationships: [
           {

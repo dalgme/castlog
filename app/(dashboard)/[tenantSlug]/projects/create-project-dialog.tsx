@@ -49,6 +49,7 @@ export function CreateProjectDialog({ tenantSlug }: { tenantSlug: string }) {
       code: "",
       startsOn: "",
       endsOn: "",
+      budgetAmount: "",
       description: "",
     },
   });
@@ -180,6 +181,19 @@ export function CreateProjectDialog({ tenantSlug }: { tenantSlug: string }) {
                 )}
               />
             </div>
+            <FormField
+              control={form.control}
+              name="budgetAmount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>총 예산 (원, 선택)</FormLabel>
+                  <FormControl>
+                    <Input inputMode="numeric" placeholder="50000000" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="description"
