@@ -1,11 +1,15 @@
 import { formatKrw } from "@/lib/approvals/constants";
+import {
+  formatEventSchedule,
+  roleTypeLabel,
+} from "@/lib/integrations/engagement-roles";
 import type { Tables } from "@/lib/supabase/database.types";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-3">
       <dt className="w-20 shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="flex-1 break-words">{value}</dd>
+      <dd className="flex-1 whitespace-pre-wrap break-words">{value}</dd>
     </div>
   );
 }
@@ -25,6 +29,12 @@ export function AcceptanceLetter({
 }) {
   const a = acceptance;
   const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR");
+  const schedule = formatEventSchedule(
+    a.starts_on,
+    a.ends_on,
+    a.starts_time,
+    a.ends_time
+  );
 
   return (
     <div className="rounded-lg border bg-white p-6 text-sm text-foreground shadow-sm">
@@ -35,12 +45,38 @@ export function AcceptanceLetter({
 
       <dl className="mt-6 space-y-2">
         <Row label="기업" value={a.tenant_name} />
-        {a.project_name && <Row label="프로젝트" value={a.project_name} />}
-        <Row label="전문가" value={a.expert_name} />
-        <Row label="역할" value={a.role_description} />
-        {(a.starts_on || a.ends_on) && (
-          <Row label="기간" value={`${a.starts_on ?? "?"} ~ ${a.ends_on ?? "?"}`} />
+        {a.program_name && <Row label="사업명" value={a.program_name} />}
+        {!a.program_name && a.project_name && (
+          <Row label="프로젝트" value={a.project_name} />
         )}
+        <Row label="전문가" value={a.expert_name} />
+        <Row
+          label="구분"
+          value={
+            [roleTypeLabel(a.role_type), a.role_description]
+              .filter(Boolean)
+              .join(" · ") || a.role_description
+          }
+        />
+        {schedule ? (
+          <Row label="일정" value={schedule} />
+        ) : (
+          (a.starts_on || a.ends_on) && (
+            <Row label="일정" value={`${a.starts_on ?? "?"} ~ ${a.ends_on ?? "?"}`} />
+          )
+        )}
+        {a.location_name && (
+          <Row
+            label="장소"
+            value={
+              a.location_address
+                ? `${a.location_name} (${a.location_address})`
+                : a.location_name
+            }
+          />
+        )}
+        {a.event_summary && <Row label="주제" value={a.event_summary} />}
+        {a.special_notes && <Row label="특기사항" value={a.special_notes} />}
         {a.fee_amount !== null && (
           <Row label="의뢰비용" value={formatKrw(a.fee_amount)} />
         )}

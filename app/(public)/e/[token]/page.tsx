@@ -9,6 +9,10 @@ import {
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { lookupEngagementByToken } from "@/lib/integrations/engagements";
+import {
+  formatEventSchedule,
+  roleTypeLabel,
+} from "@/lib/integrations/engagement-roles";
 
 import { EngagementRespondForm } from "./respond-form";
 
@@ -70,6 +74,12 @@ export default async function EngagementConsentPage({
   }
 
   const { engagement, tenantName, projectName, expertName } = lookup;
+  const schedule = formatEventSchedule(
+    engagement.starts_on,
+    engagement.ends_on,
+    engagement.starts_time,
+    engagement.ends_time
+  );
 
   return shell(
     <Card className="w-full max-w-md">
@@ -82,7 +92,13 @@ export default async function EngagementConsentPage({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5 rounded-md border p-3 text-sm">
-          {projectName && (
+          {engagement.program_name && (
+            <p>
+              <span className="text-muted-foreground">사업명</span>{" "}
+              <span className="font-medium">{engagement.program_name}</span>
+            </p>
+          )}
+          {!engagement.program_name && projectName && (
             <p>
               <span className="text-muted-foreground">프로젝트</span>{" "}
               <span className="font-medium">{projectName}</span>
@@ -90,18 +106,52 @@ export default async function EngagementConsentPage({
           )}
           <p>
             <span className="text-muted-foreground">요청 역할</span>{" "}
-            <span className="font-medium">{engagement.role_description}</span>
+            <span className="font-medium">
+              {[roleTypeLabel(engagement.role_type), engagement.role_description]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
           </p>
-          {(engagement.starts_on || engagement.ends_on) && (
+          {schedule ? (
             <p>
-              <span className="text-muted-foreground">기간</span>{" "}
-              {engagement.starts_on ?? "?"} ~ {engagement.ends_on ?? "?"}
+              <span className="text-muted-foreground">일정</span>{" "}
+              <span className="font-medium">{schedule}</span>
+            </p>
+          ) : (
+            (engagement.starts_on || engagement.ends_on) && (
+              <p>
+                <span className="text-muted-foreground">일정</span>{" "}
+                {engagement.starts_on ?? "?"} ~ {engagement.ends_on ?? "?"}
+              </p>
+            )
+          )}
+          {engagement.location_name && (
+            <p>
+              <span className="text-muted-foreground">장소</span>{" "}
+              <span className="font-medium">{engagement.location_name}</span>
+              {engagement.location_address && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  ({engagement.location_address})
+                </span>
+              )}
             </p>
           )}
           {engagement.fee_amount !== null && (
             <p>
               <span className="text-muted-foreground">의뢰비용</span>{" "}
               <span className="font-medium">{formatKrw(engagement.fee_amount)}</span>
+            </p>
+          )}
+          {engagement.event_summary && (
+            <p className="whitespace-pre-wrap border-t pt-2">
+              <span className="text-muted-foreground">주제</span>{" "}
+              {engagement.event_summary}
+            </p>
+          )}
+          {engagement.special_notes && (
+            <p className="whitespace-pre-wrap text-muted-foreground">
+              {engagement.special_notes}
             </p>
           )}
           {engagement.message && (
