@@ -118,21 +118,31 @@ async function issueUnsubscribeLink(
 
 export type TenantSmsSendParams = {
   tenantId: string;
-  senderUserId: string;
+  senderUserId: string | null;
   messageType: "transactional" | "advertising";
   body: string;
   recipients: SmsRecipient[];
+  /**
+   * 세션이 없는 실행 경로(예약 발송 크론)에서 true. 설정 조회·로그 기록을
+   * service_role로 수행한다. 화면에서 호출할 때는 지정하지 않는다.
+   */
+  systemContext?: boolean;
 };
 
 /** 테넌트 설정 조회 + 복호화 */
-async function loadCredentials(): Promise<
+async function loadCredentials(
+  tenantId: string,
+  systemContext: boolean
+): Promise<
   | { ok: true; creds: SmsCredentials; senderNumber: string }
   | { ok: false; error: string }
 > {
-  const supabase = createClient();
+  // service_role은 RLS가 걸리지 않으므로 tenant_id를 반드시 명시한다
+  const supabase = systemContext ? createAdminClient() : createClient();
   const { data: config } = await supabase
     .from("tenant_sms_configs")
     .select("provider, api_key_encrypted, api_secret_encrypted, sender_number, is_active")
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (!config || !config.is_active) {
@@ -167,7 +177,8 @@ async function loadCredentials(): Promise<
 export async function sendTenantSms(
   params: TenantSmsSendParams
 ): Promise<{ ok: true; summary: SendSummary } | { ok: false; error: string }> {
-  const supabase = createClient();
+  const systemContext = params.systemContext === true;
+  const supabase = systemContext ? createAdminClient() : createClient();
   const batchId = randomUUID();
   const testMode = isSmsTestMode();
 
@@ -199,7 +210,7 @@ export async function sendTenantSms(
 
   const credsResult = testMode
     ? null // 테스트 모드는 공급자 설정 없이도 동작
-    : await loadCredentials();
+    : await loadCredentials(params.tenantId, systemContext);
   if (credsResult && !credsResult.ok) return credsResult;
 
   let sent = 0;

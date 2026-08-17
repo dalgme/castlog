@@ -874,6 +874,7 @@ export type Database = {
           starts_time: string | null
           tenant_id: string
           updated_at: string
+          session_name: string | null
         }
         Insert: {
           created_at?: string
@@ -892,6 +893,7 @@ export type Database = {
           starts_time?: string | null
           tenant_id: string
           updated_at?: string
+          session_name?: string | null
         }
         Update: {
           created_at?: string
@@ -910,6 +912,7 @@ export type Database = {
           starts_time?: string | null
           tenant_id?: string
           updated_at?: string
+          session_name?: string | null
         }
         Relationships: []
       }
@@ -1033,6 +1036,8 @@ export type Database = {
           payment_due_note: string | null
           payment_type: string | null
           submission_docs: string | null
+          session_name: string | null
+          position_code: string | null
         }
         Insert: {
           accepted_at?: string
@@ -1078,6 +1083,8 @@ export type Database = {
           payment_due_note?: string | null
           payment_type?: string | null
           submission_docs?: string | null
+          session_name?: string | null
+          position_code?: string | null
         }
         Update: {
           accepted_at?: string
@@ -1123,6 +1130,8 @@ export type Database = {
           payment_due_note?: string | null
           payment_type?: string | null
           submission_docs?: string | null
+          session_name?: string | null
+          position_code?: string | null
         }
         Relationships: [
           {
@@ -1303,6 +1312,8 @@ export type Database = {
           token_expires_at: string
           token_hash: string
           updated_at: string
+          session_name: string | null
+          position_code: string | null
         }
         Insert: {
           created_at?: string
@@ -1330,6 +1341,8 @@ export type Database = {
           token_expires_at: string
           token_hash: string
           updated_at?: string
+          session_name?: string | null
+          position_code?: string | null
         }
         Update: {
           created_at?: string
@@ -1357,6 +1370,8 @@ export type Database = {
           token_expires_at?: string
           token_hash?: string
           updated_at?: string
+          session_name?: string | null
+          position_code?: string | null
         }
         Relationships: [
           {
@@ -2700,6 +2715,105 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      session_notice_templates: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          body: string
+          is_active: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          body: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          name?: string
+          body?: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      session_notices: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          template_id: string | null
+          body_template: string
+          status: string
+          scheduled_at: string | null
+          sent_at: string | null
+          batch_id: string | null
+          recipient_count: number
+          sent_count: number
+          failed_count: number
+          last_error: string | null
+          created_by: string | null
+          canceled_by: string | null
+          canceled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          template_id?: string | null
+          body_template: string
+          status?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          batch_id?: string | null
+          recipient_count?: number
+          sent_count?: number
+          failed_count?: number
+          last_error?: string | null
+          created_by?: string | null
+          canceled_by?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          slot_id?: string
+          template_id?: string | null
+          body_template?: string
+          status?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          batch_id?: string | null
+          recipient_count?: number
+          sent_count?: number
+          failed_count?: number
+          last_error?: string | null
+          created_by?: string | null
+          canceled_by?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       sms_logs: {
         Row: {

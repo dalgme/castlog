@@ -69,7 +69,7 @@ export async function createEngagementAcceptance(
   const { data: eng } = await admin
     .from("expert_engagements")
     .select(
-      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, starts_time, ends_time, location_name, location_address, event_summary, special_notes"
+      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes"
     )
     .eq("id", engagementId)
     .maybeSingle();
@@ -134,6 +134,9 @@ export async function createEngagementAcceptance(
     // 행사 상세 스냅샷 (Phase A-2 — 수락서 양식)
     program_name: eng.program_name,
     role_type: eng.role_type,
+    // 어느 세션·어느 넘버링코드 건인지 식별 (수락서 자동 구성의 핵심 키)
+    session_name: eng.session_name,
+    position_code: eng.position_code,
     starts_time: eng.starts_time,
     ends_time: eng.ends_time,
     location_name: eng.location_name,

@@ -11,6 +11,8 @@ const PUBLIC_PATH_PREFIXES = [
   "/signup",
   "/auth",
   "/expert/login",
+  // 크론 실행기 — 세션이 없다. 자체 시크릿(CRON_SECRET)으로 인증한다.
+  "/api/cron/",
 ];
 
 function isPublicPath(pathname: string): boolean {

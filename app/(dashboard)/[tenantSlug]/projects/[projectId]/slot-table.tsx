@@ -20,6 +20,11 @@ import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
 
 import { createSlot, deleteSlot, adjustSlotCount } from "./slot-actions";
+import {
+  SessionNoticeDialog,
+  type NoticeTemplateOption,
+  type SessionNoticeRow,
+} from "./session-notice-dialog";
 
 export type SlotPositionRow = {
   id: string;
@@ -29,17 +34,25 @@ export type SlotPositionRow = {
   expertName: string | null;
 };
 
+export type SlotNoticeData = {
+  targets: { name: string; code: string }[];
+  notices: SessionNoticeRow[];
+};
+
 export type SlotRow = {
   id: string;
   slotDate: string;
   startsTime: string | null;
   endsTime: string | null;
   roleType: string;
+  sessionName: string | null;
   roleDescription: string | null;
   requiredCount: number;
   feeAmount: number | null;
   locationName: string | null;
   positions: SlotPositionRow[];
+  /** 세션 안내문자 — 확정 전문가 대상·발송 내역 */
+  notice: SlotNoticeData;
 };
 
 const emptyDraft = {
@@ -47,6 +60,7 @@ const emptyDraft = {
   startsTime: "",
   endsTime: "",
   roleType: "mentor",
+  sessionName: "",
   roleDescription: "",
   requiredCount: "1",
   feeAmount: "",
@@ -64,11 +78,15 @@ export function SlotTable({
   tenantSlug,
   slots,
   canManage,
+  noticeTemplates,
+  defaultNoticeBody,
 }: {
   projectId: string;
   tenantSlug: string;
   slots: SlotRow[];
   canManage: boolean;
+  noticeTemplates: NoticeTemplateOption[];
+  defaultNoticeBody: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -87,6 +105,7 @@ export function SlotTable({
         startsTime: d.startsTime,
         endsTime: d.endsTime,
         roleType: d.roleType as "mentor",
+        sessionName: d.sessionName,
         roleDescription: d.roleDescription,
         requiredCount: parseInt(d.requiredCount || "1", 10),
         feeAmount: d.feeAmount,
@@ -142,6 +161,11 @@ export function SlotTable({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold">{s.slotDate}</span>
               <span className="text-sm text-muted-foreground">{timeLabel(s)}</span>
+              {s.sessionName && (
+                <span className="text-sm font-medium text-brand-navy">
+                  {s.sessionName}
+                </span>
+              )}
               <Badge variant="secondary">
                 {ENGAGEMENT_ROLE_TYPES[
                   s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
@@ -161,6 +185,16 @@ export function SlotTable({
               )}
               {canManage && (
                 <span className="ml-auto flex items-center gap-1">
+                  <SessionNoticeDialog
+                    slotId={s.id}
+                    slotLabel={`${s.slotDate} ${timeLabel(s)}${
+                      s.sessionName ? ` · ${s.sessionName}` : ""
+                    }`}
+                    templates={noticeTemplates}
+                    defaultBody={defaultNoticeBody}
+                    targets={s.notice.targets}
+                    notices={s.notice.notices}
+                  />
                   <Input
                     type="number"
                     min={1}
@@ -280,6 +314,11 @@ export function SlotTable({
               />
             </div>
           </div>
+          <Input
+            value={d.sessionName}
+            onChange={(e) => set("sessionName", e.target.value)}
+            placeholder="세션명 (선택 · 예: 1일차 오전 강의, 데모데이 심사)"
+          />
           <Input
             value={d.roleDescription}
             onChange={(e) => set("roleDescription", e.target.value)}
