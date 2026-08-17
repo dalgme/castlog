@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
+import { tagSortWeight } from "./expert-tags";
 
 export type CandidateConflict = {
   /** 자사 섭외와 겹침 — 상세 공개 */
@@ -19,6 +20,9 @@ export type SlotCandidate = {
   region: string | null;
   careerYears: number | null;
   conflict: CandidateConflict;
+  /** 자사 등급 (favorite/vip/caution). 전문가 본인에게는 노출하지 않는다(§4). */
+  tag: string | null;
+  tagNote: string | null;
 };
 
 export type SlotContext = {
@@ -151,6 +155,16 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       .eq("shared_with_tenants", true),
   ]);
 
+  // 자사 등급 태그 — 후보군 정렬·표시에 쓴다 (테넌트 격리)
+  const { data: tags } = await admin
+    .from("expert_tenant_tags")
+    .select("expert_id, tag, note")
+    .eq("tenant_id", tenantId)
+    .in("expert_id", ids);
+  const tagByExpert = new Map(
+    (tags ?? []).map((t) => [t.expert_id, { tag: t.tag, note: t.note }])
+  );
+
   const conflictByExpert = new Map<string, CandidateConflict>();
   const ensure = (id: string) => {
     let c = conflictByExpert.get(id);
@@ -189,12 +203,17 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       region: c.region,
       careerYears: c.career_years,
       conflict: conflictByExpert.get(c.id) ?? { own: [], blindCount: 0 },
+      tag: tagByExpert.get(c.id)?.tag ?? null,
+      tagNote: tagByExpert.get(c.id)?.note ?? null,
     }))
     .sort((a, b) => {
-      // 일정 충돌 없는 후보를 먼저
+      // 1) 일정 충돌 없는 후보 먼저 2) VIP·즐겨찾기 우선, 주의는 뒤로 3) 이름순
       const ac = a.conflict.own.length + a.conflict.blindCount;
       const bc = b.conflict.own.length + b.conflict.blindCount;
       if (ac !== bc) return ac - bc;
+      const aw = tagSortWeight(a.tag);
+      const bw = tagSortWeight(b.tag);
+      if (aw !== bw) return aw - bw;
       return a.name.localeCompare(b.name, "ko");
     });
 }

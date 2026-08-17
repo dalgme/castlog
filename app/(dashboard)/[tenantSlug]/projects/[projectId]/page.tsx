@@ -188,6 +188,18 @@ export default async function ProjectDetailPage({
   const evaluationByExpert = new Map(
     (evaluationsResult.data ?? []).map((e) => [e.expert_id, e])
   );
+
+  // 정성 후기 — 이 프로젝트 건만 (전문가별 전체 이력은 전문가 화면에서 본다)
+  const { data: reviewRows } = modules.experts
+    ? await supabase
+        .from("expert_reviews")
+        .select("id, expert_id, body, created_at, author_user_id")
+        .eq("project_id", project.id)
+        .order("created_at", { ascending: false })
+    : { data: null };
+  const staffNameById = new Map(
+    (staffResult.data ?? []).map((u) => [u.id, u.name])
+  );
   const seenExpert = new Set<string>();
   const evaluationRows: ExpertEvaluationRow[] = [];
   for (const engagement of engagements) {
@@ -201,6 +213,16 @@ export default async function ProjectDetailPage({
       name: engagement.experts?.name ?? "-",
       score: existing?.score ?? null,
       reason: existing?.reason ?? null,
+      reviews: (reviewRows ?? [])
+        .filter((r) => r.expert_id === engagement.expert_id)
+        .map((r) => ({
+          id: r.id,
+          body: r.body,
+          createdAt: r.created_at,
+          authorName: r.author_user_id
+            ? (staffNameById.get(r.author_user_id) ?? null)
+            : null,
+        })),
     });
   }
   const unevaluatedCount = evaluationRows.filter((r) => r.score === null).length;

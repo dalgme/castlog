@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { Send, Copy, Check, AlertTriangle, CircleCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SlotCandidate } from "@/lib/integrations/slot-candidates";
+import { expertTagLabel } from "@/lib/integrations/expert-tags";
 
 import { requestEngagementForPosition } from "./position-actions";
 
@@ -119,6 +121,14 @@ export function CandidatePicker({
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">{c.name}</span>
+                    {expertTagLabel(c.tag) && (
+                      <Badge
+                        variant={c.tag === "caution" ? "destructive" : "secondary"}
+                        className="px-1.5 py-0 text-[10px]"
+                      >
+                        {expertTagLabel(c.tag)}
+                      </Badge>
+                    )}
                     {[c.specialty, c.region, c.careerYears ? `경력 ${c.careerYears}년` : null]
                       .filter(Boolean)
                       .map((t, i) => (
@@ -145,6 +155,11 @@ export function CandidatePicker({
                           {o.startsOn} · {o.label}
                         </p>
                       ))}
+                      {c.tag === "caution" && c.tagNote && (
+                        <p className="text-xs text-destructive">
+                          주의: {c.tagNote}
+                        </p>
+                      )}
                       {c.conflict.blindCount > 0 && (
                         <p className="text-xs text-muted-foreground">
                           다른 일정 {c.conflict.blindCount}건과 겹침 (상세 비공개)

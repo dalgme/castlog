@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { requireRole } from "@/lib/auth/session";
+import { requireRole, getSessionUser } from "@/lib/auth/session";
+import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -24,6 +25,7 @@ import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 import { InviteExpertDialog } from "./invite-dialog";
 import { ExpertRecommendDialog } from "./recommend-dialog";
 import { RevokeInvitationButton } from "./revoke-button";
+import { ExpertTagCell } from "./expert-tag-cell";
 
 export const metadata = { title: "전문가" };
 
@@ -81,6 +83,25 @@ export default async function TenantExpertsPage({
 
   const linkRows = links ?? [];
   const pendingInvitations = invitations ?? [];
+
+  // 자사 등급 태그 (테넌트 격리 — 전문가 본인에게는 노출하지 않는다)
+  const linkedExpertIds = linkRows
+    .map((l) => l.experts?.id)
+    .filter((id): id is string => Boolean(id));
+  const { data: tagRows } = linkedExpertIds.length
+    ? await supabase
+        .from("expert_tenant_tags")
+        .select("expert_id, tag, note")
+        .in("expert_id", linkedExpertIds)
+    : { data: null };
+  const tagByExpert = new Map(
+    (tagRows ?? []).map((t) => [t.expert_id, { tag: t.tag, note: t.note }])
+  );
+
+  const sessionUser = await getSessionUser();
+  const canManageTags = ["org_admin", "manager"].includes(
+    roleFromUser(sessionUser) ?? ""
+  );
 
   const activeExpertOptions = linkRows
     .filter((l) => l.status === "active" && l.experts)
@@ -181,6 +202,7 @@ export default async function TenantExpertsPage({
                       <TableHead>전문분야</TableHead>
                       <TableHead>지역</TableHead>
                       <TableHead>경력</TableHead>
+                      <TableHead>등급</TableHead>
                       <TableHead>상태</TableHead>
                       <TableHead className="w-20" />
                     </TableRow>
@@ -205,6 +227,14 @@ export default async function TenantExpertsPage({
                             {expert.career_years != null
                               ? `${expert.career_years}년`
                               : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <ExpertTagCell
+                              expertId={expert.id}
+                              tag={tagByExpert.get(expert.id)?.tag ?? null}
+                              note={tagByExpert.get(expert.id)?.note ?? null}
+                              canManage={canManageTags}
+                            />
                           </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>
