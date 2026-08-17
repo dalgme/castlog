@@ -14,6 +14,7 @@ import {
 } from "@/lib/integrations/schemas";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
+import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import {
   screenExpertSchedule,
   type ScreenResult,
@@ -91,6 +92,15 @@ export async function createEngagement(
       fee_amount: data.feeAmount ? parseInt(data.feeAmount, 10) : null,
       starts_on: data.startsOn || null,
       ends_on: data.endsOn || null,
+      // 행사 상세 (수락서 양식 대응 — Phase A-2)
+      program_name: data.programName?.trim() || null,
+      role_type: data.roleType || null,
+      starts_time: data.startsTime || null,
+      ends_time: data.endsTime || null,
+      location_name: data.locationName?.trim() || null,
+      location_address: data.locationAddress?.trim() || null,
+      event_summary: data.eventSummary?.trim() || null,
+      special_notes: data.specialNotes?.trim() || null,
       token_hash: hashLinkToken(token),
       token_expires_at: (data.responseDeadline
         ? new Date(data.responseDeadline)
@@ -120,7 +130,19 @@ export async function createEngagement(
     expertId: data.expertId,
     category: "engagement_request",
     title: "새로운 섭외 요청이 도착했습니다",
-    body: data.roleDescription,
+    body: [
+      data.programName?.trim() || null,
+      formatEventSchedule(
+        data.startsOn || null,
+        data.endsOn || null,
+        data.startsTime || null,
+        data.endsTime || null
+      ),
+      data.locationName?.trim() || null,
+      data.roleDescription,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     link: "/expert/engagements",
     tenantId,
   });

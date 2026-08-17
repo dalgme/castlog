@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
+import {
+  formatEventSchedule,
+  roleTypeLabel,
+} from "@/lib/integrations/engagement-roles";
 import { PortalHeader } from "@/components/expert/portal-header";
 import { PageIntro, Tag, MetaRow, ENGAGEMENT_TONE } from "@/components/expert/ui";
 import { MarkReadOnView } from "@/components/expert/mark-read-on-view";
@@ -64,6 +68,8 @@ export default async function ExpertEngagementsPage() {
     .select(
       `id, role_description, message, fee_amount, starts_on, ends_on, status,
        responded_at, response_note, created_at, token_expires_at,
+       program_name, role_type, starts_time, ends_time,
+       location_name, location_address, event_summary,
        tenants (name), projects (name)`
     )
     .eq("expert_id", expert.id)
@@ -129,11 +135,48 @@ export default async function ExpertEngagementsPage() {
                   </div>
 
                   <div className="mt-3 space-y-1.5">
-                    <MetaRow label="역할">{engagement.role_description}</MetaRow>
-                    {(engagement.starts_on || engagement.ends_on) && (
-                      <MetaRow label="기간">
-                        {engagement.starts_on ?? "?"} ~ {engagement.ends_on ?? "?"}
+                    {engagement.program_name && (
+                      <MetaRow label="사업명">{engagement.program_name}</MetaRow>
+                    )}
+                    <MetaRow label="역할">
+                      {[
+                        roleTypeLabel(engagement.role_type),
+                        engagement.role_description,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </MetaRow>
+                    {formatEventSchedule(
+                      engagement.starts_on,
+                      engagement.ends_on,
+                      engagement.starts_time,
+                      engagement.ends_time
+                    ) ? (
+                      <MetaRow label="일정">
+                        {formatEventSchedule(
+                          engagement.starts_on,
+                          engagement.ends_on,
+                          engagement.starts_time,
+                          engagement.ends_time
+                        )}
                       </MetaRow>
+                    ) : (
+                      (engagement.starts_on || engagement.ends_on) && (
+                        <MetaRow label="일정">
+                          {engagement.starts_on ?? "?"} ~ {engagement.ends_on ?? "?"}
+                        </MetaRow>
+                      )
+                    )}
+                    {engagement.location_name && (
+                      <MetaRow label="장소">
+                        {engagement.location_name}
+                        {engagement.location_address
+                          ? ` (${engagement.location_address})`
+                          : ""}
+                      </MetaRow>
+                    )}
+                    {engagement.event_summary && (
+                      <MetaRow label="주제">{engagement.event_summary}</MetaRow>
                     )}
                     {engagement.fee_amount !== null && (
                       <MetaRow label="의뢰비용">

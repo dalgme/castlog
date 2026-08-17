@@ -23,6 +23,35 @@ export const engagementCreateSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional()
       .or(z.literal("")),
+    // 행사 상세 (수락서 양식 대응 — Phase A-2)
+    programName: z
+      .string()
+      .max(150, "사업명은 150자 이내로 입력하세요.")
+      .optional(),
+    roleType: z
+      .enum(["host", "lecturer", "mentor", "judge", "announcer", "assistant", "other"])
+      .optional()
+      .or(z.literal("")),
+    startsTime: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/)
+      .optional()
+      .or(z.literal("")),
+    endsTime: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/)
+      .optional()
+      .or(z.literal("")),
+    locationName: z.string().max(150, "장소는 150자 이내로 입력하세요.").optional(),
+    locationAddress: z.string().max(200, "주소는 200자 이내로 입력하세요.").optional(),
+    eventSummary: z
+      .string()
+      .max(1000, "주제·행사 내용은 1000자 이내로 입력하세요.")
+      .optional(),
+    specialNotes: z
+      .string()
+      .max(2000, "특기사항은 2000자 이내로 입력하세요.")
+      .optional(),
     message: z.string().max(2000, "요청 내용은 2000자 이내로 입력하세요.").optional(),
     // 회신 마감일시 (datetime-local: YYYY-MM-DDTHH:mm). 미입력 시 기본 14일.
     responseDeadline: z
@@ -34,6 +63,14 @@ export const engagementCreateSchema = z
   .refine(
     (v) => !v.startsOn || !v.endsOn || v.startsOn <= v.endsOn,
     { message: "종료일은 시작일 이후여야 합니다.", path: ["endsOn"] }
+  )
+  .refine(
+    (v) =>
+      !v.startsTime ||
+      !v.endsTime ||
+      (v.endsOn && v.startsOn && v.endsOn !== v.startsOn) ||
+      v.startsTime < v.endsTime,
+    { message: "종료 시각은 시작 시각 이후여야 합니다.", path: ["endsTime"] }
   )
   .refine(
     (v) => !v.responseDeadline || new Date(v.responseDeadline).getTime() > Date.now(),

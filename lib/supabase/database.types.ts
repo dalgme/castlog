@@ -763,6 +763,15 @@ export type Database = {
           ends_on: string | null
           tenant_id: string
           tenant_name: string
+        
+          ends_time: string | null
+          event_summary: string | null
+          location_address: string | null
+          location_name: string | null
+          program_name: string | null
+          role_type: string | null
+          special_notes: string | null
+          starts_time: string | null
         }
         Insert: {
           accepted_at?: string
@@ -784,6 +793,15 @@ export type Database = {
           ends_on?: string | null
           tenant_id: string
           tenant_name: string
+        
+          ends_time?: string | null
+          event_summary?: string | null
+          location_address?: string | null
+          location_name?: string | null
+          program_name?: string | null
+          role_type?: string | null
+          special_notes?: string | null
+          starts_time?: string | null
         }
         Update: {
           accepted_at?: string
@@ -805,6 +823,15 @@ export type Database = {
           ends_on?: string | null
           tenant_id?: string
           tenant_name?: string
+        
+          ends_time?: string | null
+          event_summary?: string | null
+          location_address?: string | null
+          location_name?: string | null
+          program_name?: string | null
+          role_type?: string | null
+          special_notes?: string | null
+          starts_time?: string | null
         }
         Relationships: [
           {
@@ -962,16 +989,24 @@ export type Database = {
         Row: {
           created_at: string
           ends_on: string | null
+          ends_time: string | null
+          event_summary: string | null
           expert_id: string
           fee_amount: number | null
           id: string
+          location_address: string | null
+          location_name: string | null
           message: string | null
+          program_name: string | null
           project_id: string | null
           requested_by: string | null
           responded_at: string | null
           response_note: string | null
           role_description: string
+          role_type: string | null
+          special_notes: string | null
           starts_on: string | null
+          starts_time: string | null
           status: string
           tenant_id: string
           token_expires_at: string
@@ -981,16 +1016,24 @@ export type Database = {
         Insert: {
           created_at?: string
           ends_on?: string | null
+          ends_time?: string | null
+          event_summary?: string | null
           expert_id: string
           fee_amount?: number | null
           id?: string
+          location_address?: string | null
+          location_name?: string | null
           message?: string | null
+          program_name?: string | null
           project_id?: string | null
           requested_by?: string | null
           responded_at?: string | null
           response_note?: string | null
           role_description: string
+          role_type?: string | null
+          special_notes?: string | null
           starts_on?: string | null
+          starts_time?: string | null
           status?: string
           tenant_id: string
           token_expires_at: string
@@ -1000,16 +1043,24 @@ export type Database = {
         Update: {
           created_at?: string
           ends_on?: string | null
+          ends_time?: string | null
+          event_summary?: string | null
           expert_id?: string
           fee_amount?: number | null
           id?: string
+          location_address?: string | null
+          location_name?: string | null
           message?: string | null
+          program_name?: string | null
           project_id?: string | null
           requested_by?: string | null
           responded_at?: string | null
           response_note?: string | null
           role_description?: string
+          role_type?: string | null
+          special_notes?: string | null
           starts_on?: string | null
+          starts_time?: string | null
           status?: string
           tenant_id?: string
           token_expires_at?: string

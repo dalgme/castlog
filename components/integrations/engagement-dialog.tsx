@@ -10,6 +10,7 @@ import {
   type EngagementCreateInput,
 } from "@/lib/integrations/schemas";
 import type { ScreenResult } from "@/lib/integrations/expert-availability";
+import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -83,6 +84,14 @@ export function EngagementDialog({
       endsOn: "",
       message: "",
       responseDeadline: "",
+      programName: "",
+      roleType: "",
+      startsTime: "",
+      endsTime: "",
+      locationName: "",
+      locationAddress: "",
+      eventSummary: "",
+      specialNotes: "",
     },
   });
 
@@ -326,17 +335,59 @@ export function EngagementDialog({
               )}
               <FormField
                 control={form.control}
-                name="roleDescription"
+                name="programName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>요청 역할</FormLabel>
+                    <FormLabel>사업명 / 프로그램명</FormLabel>
                     <FormControl>
-                      <Input placeholder="멘토 / 심사위원 / 강사" {...field} />
+                      <Input placeholder="2026 세종 UNION 청년창업캠프" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="roleType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>구분</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || undefined}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
+                            <SelectItem key={k} value={k}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="roleDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>세부 역할</FormLabel>
+                      <FormControl>
+                        <Input placeholder="멘토 / 심사위원 / 강사" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
                 name="feeAmount"
@@ -378,6 +429,94 @@ export function EngagementDialog({
                   )}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="startsTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>시작 시각 (선택)</FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="endsTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>종료 시각 (선택)</FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="locationName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>장소 (선택)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="홍익대학교 국제연수원" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="locationAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>장소 주소 (선택)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="세종 조치원읍 안터길 89" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="eventSummary"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>주제 / 행사 내용 (선택)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={2}
+                        placeholder="[강의] 비즈니스 시뮬레이션 플랫폼 활용"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="specialNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>특기사항 (선택)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={2}
+                        placeholder="대상·진행 방식·도출물 등"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="responseDeadline"
