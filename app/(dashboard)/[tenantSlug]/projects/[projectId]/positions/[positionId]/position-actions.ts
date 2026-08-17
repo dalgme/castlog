@@ -11,6 +11,8 @@ import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
+import { getTenantModules } from "@/lib/modules/server";
 
 export type RequestFromPositionResult =
   | { ok: true; url: string }
@@ -61,6 +63,11 @@ export async function requestEngagementForPosition(input: {
     .eq("id", position.slot_id)
     .maybeSingle();
   if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
+
+  // 섭외계획 품의 게이트 (approvals 모듈 활성 테넌트만)
+  const modules = await getTenantModules();
+  const planGate = await assertEngagementAllowed(slot.project_id, modules.approvals);
+  if (!planGate.ok) return planGate;
 
   // 활성 연결 확인
   const { data: link } = await supabase
