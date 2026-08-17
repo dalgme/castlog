@@ -11,6 +11,10 @@ import {
   validateDocumentFile,
 } from "@/lib/experts/documents";
 import { notifyExpert } from "@/lib/experts/notifications";
+import {
+  sendEngagementEmail,
+  portalUrl,
+} from "@/lib/integrations/engagement-email";
 
 export type AcceptanceActionResult = { ok: true } | { ok: false; error: string };
 
@@ -208,13 +212,29 @@ export async function sendAcceptance(
     .eq("id", acceptanceId);
   if (error) return { ok: false, error: "송부 처리에 실패했습니다." };
 
+  const letterPath = `/expert/engagements/${acceptance.engagement_id}/acceptance`;
+
   await notifyExpert({
     expertId: acceptance.expert_id,
     category: "engagement_request",
     title: "수락서가 도착했습니다 — 확인 및 서명이 필요합니다",
     body: acceptance.program_name ?? acceptance.project_name ?? undefined,
-    link: `/expert/engagements/${acceptance.engagement_id}/acceptance`,
+    link: letterPath,
     tenantId: auth.tenantId,
+  });
+
+  // 업무연락 메일 — 수락서 확인·서명 요청
+  const title = acceptance.program_name ?? acceptance.project_name ?? "섭외";
+  await sendEngagementEmail({
+    tenantId: auth.tenantId,
+    senderUserId: auth.userId,
+    expertId: acceptance.expert_id,
+    subject: `[수락서] ${title} — 확인 및 서명 요청`,
+    body:
+      `${acceptance.tenant_name}에서 수락서를 보내드립니다.\n\n` +
+      `아래 링크에서 내용을 확인하시고 전자서명을 완료해 주세요.\n` +
+      `${portalUrl(letterPath)}\n\n` +
+      `※ 포털 로그인 후 확인하실 수 있습니다.\n`,
   });
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
