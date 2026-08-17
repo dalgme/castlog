@@ -6,6 +6,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { UserPlus, Copy, Check } from "lucide-react";
 
 import { staffCreateSchema, type StaffCreateInput } from "@/lib/admin/schemas";
+import {
+  GRADE_DESCRIPTIONS,
+  GRADE_LABELS,
+  USER_GRADES,
+} from "@/lib/auth/grades";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,12 +40,6 @@ import {
 
 import { createStaffUser } from "./actions";
 
-const ROLE_LABELS: Record<string, string> = {
-  org_admin: "기업총괄관리자",
-  manager: "관리자",
-  staff: "직원",
-};
-
 /** 직원 계정 생성 다이얼로그 — 임시 비밀번호 1회 표시 */
 export function CreateStaffDialog({
   positions,
@@ -61,7 +60,7 @@ export function CreateStaffDialog({
     defaultValues: {
       name: "",
       email: "",
-      role: "staff",
+      grade: "staff",
       department: "",
       positionId: "",
     },
@@ -182,24 +181,27 @@ export function CreateStaffDialog({
               <div className="grid grid-cols-2 gap-3">
                 <FormField
                   control={form.control}
-                  name="role"
+                  name="grade"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>역할</FormLabel>
+                      <FormLabel>권한단계</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="역할 선택" />
+                            <SelectValue placeholder="권한단계 선택" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
+                          {USER_GRADES.map((grade) => (
+                            <SelectItem key={grade} value={grade}>
+                              {GRADE_LABELS[grade]}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {GRADE_DESCRIPTIONS[field.value]}
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}

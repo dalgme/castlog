@@ -3,6 +3,11 @@ import "server-only";
 import type { User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  gradeFromLegacyRole,
+  isUserGrade,
+  type UserGrade,
+} from "@/lib/auth/grades";
 
 /**
  * tenant_id 주입 구조 (설계문서 3.6 — 보안 필수)
@@ -32,18 +37,36 @@ export async function getTenantId(): Promise<string | null> {
   return tenantIdFromUser(user);
 }
 
-/** 세션 사용자 역할 (설계문서 3.1 — 5단계 권한 체계) */
+/**
+ * 세션 사용자 역할 (실행 권한 축).
+ *
+ * users.grade(권한 6단계)에서 DB 트리거가 파생시키는 값이다 — 직접 쓰지 않는다.
+ * 사람이 보는 권한단계는 lib/auth/grades.ts 의 UserGrade 를 쓴다.
+ */
 export type UserRole =
-  | "platform_admin" // 플랫폼관리자
-  | "org_admin" // 기업총괄관리자
-  | "manager" // 관리자
-  | "staff" // 직원
+  | "platform_admin" // 플랫폼관리자 (넥스트랩)
+  | "org_admin" // 대표 (회사 총괄관리자)
+  | "manager" // 이사·팀장
+  | "staff" // 대리·주임·사원
   | "expert"; // 전문가
 
 export function roleFromUser(user: User | null): UserRole | null {
   if (!user) return null;
   const role = user.app_metadata?.role;
   return typeof role === "string" ? (role as UserRole) : null;
+}
+
+/**
+ * JWT app_metadata.grade — 권한 6단계.
+ * 클레임이 아직 없는 기존 세션은 role에서 역산한다(DB app.user_grade와 동일 규칙).
+ */
+export function gradeFromUser(user: User | null): UserGrade | null {
+  if (!user) return null;
+  const grade = user.app_metadata?.grade;
+  if (isUserGrade(grade)) return grade;
+  const role = roleFromUser(user);
+  if (role === "expert" || role === "platform_admin" || !role) return null;
+  return gradeFromLegacyRole(role);
 }
 
 /**

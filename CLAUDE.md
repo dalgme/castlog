@@ -64,6 +64,24 @@
 - 테넌트 데이터 테이블은 전부 tenant_id + RLS. 신규 테이블은 RLS부터 작성.
 - 전문가가 여러 기업에 연결된 경우, 세션의 '활성 테넌트'를 서버에서 검증 후 설정.
 
+## 3-1. 기업 내 권한 체계 (6단계 — 기획 확정)
+- 권한단계: ceo(대표) > director(이사) > team_lead(팀장) > deputy(대리)
+  > senior(주임) > staff(사원). 저장은 users.grade, 판정은 JWT app_metadata.grade.
+- **users.role(org_admin/manager/staff)은 grade에서 DB 트리거가 파생시키는 호환값이다.**
+  코드에서 role을 직접 부여·변경하지 않는다 — 항상 grade를 바꾼다.
+  매핑: ceo→org_admin, director·team_lead→manager, 그 외→staff (app.role_from_grade)
+- 두 축을 분리한다:
+  * 실행 권한(섭외요청·수락서·결재 상신 등) = role 기준 (팀장까지 manager)
+  * 열람 범위(전사 프로젝트) = app.can_view_all_projects() — **대표·이사만 전체**,
+    팀장 이하는 project_assignments에 배정된 프로젝트만. 배정은 권한자(대표·이사)가 한다.
+- 대표는 'CEO 업무기능 + 시스템 설정·관리기능'을 모두 갖는다. 이 중 **설정·관리기능만**
+  스코프 단위로 위임할 수 있다 (tenant_admin_grants: settings/staff/sending/audit).
+  서버 게이트는 requireAdminScope(scope), DB는 app.has_admin_scope(scope).
+- **위임 금지 대상(코드로 강제):**
+  1. 세무(주민등록번호) 조회 지정자 관리 — tax_access_grants는 계속 app.is_org_admin() 전용
+  2. 위임 자체의 부여·회수 — 위임받은 사람은 재위임할 수 없다
+  3. 대표(ceo) 등급 부여 — 대표만 가능
+
 ## 4. 전문가 신원 모델 (v1.2 핵심)
 - experts / expert_documents 는 **전역 테이블** (전문가가 소유)
 - 기업은 expert_tenant_links 가 있는 전문가만 조회 가능

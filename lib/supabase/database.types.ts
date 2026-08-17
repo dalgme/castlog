@@ -3134,6 +3134,42 @@ export type Database = {
           },
         ]
       }
+      tenant_admin_grants: {
+        Row: {
+          id: string
+          tenant_id: string
+          user_id: string
+          scope: string
+          note: string | null
+          granted_by: string | null
+          granted_at: string
+          revoked_by: string | null
+          revoked_at: string | null
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          user_id: string
+          scope: string
+          note?: string | null
+          granted_by?: string | null
+          granted_at?: string
+          revoked_by?: string | null
+          revoked_at?: string | null
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          user_id?: string
+          scope?: string
+          note?: string | null
+          granted_by?: string | null
+          granted_at?: string
+          revoked_by?: string | null
+          revoked_at?: string | null
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string
@@ -3147,6 +3183,7 @@ export type Database = {
           role: string
           tenant_id: string
           updated_at: string
+          grade: string
         }
         Insert: {
           created_at?: string
@@ -3160,6 +3197,7 @@ export type Database = {
           role?: string
           tenant_id: string
           updated_at?: string
+          grade?: string
         }
         Update: {
           created_at?: string
@@ -3173,6 +3211,7 @@ export type Database = {
           role?: string
           tenant_id?: string
           updated_at?: string
+          grade?: string
         }
         Relationships: [
           {

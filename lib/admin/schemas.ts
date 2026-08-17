@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { validateTenantSlug } from "@/lib/routing/slug";
 import { MODULE_KEYS } from "@/lib/modules/modules";
+import { USER_GRADES } from "@/lib/auth/grades";
+import { ADMIN_SCOPES } from "@/lib/auth/admin-scope-keys";
 
 /** 테넌트 생성 (플랫폼관리자 — 설계문서 7.1, 모듈 조합 선택 포함 CLAUDE.md 1-2) */
 export const tenantCreateSchema = z.object({
@@ -44,7 +46,7 @@ export const tenantModulesSchema = z.object({
 });
 export type TenantModulesInput = z.infer<typeof tenantModulesSchema>;
 
-/** 직원 계정 생성 (기업총괄관리자 — 설계문서 3.1) */
+/** 직원 계정 생성 — 권한단계 6단계 (기획 확정) */
 export const staffCreateSchema = z.object({
   name: z
     .string()
@@ -54,13 +56,30 @@ export const staffCreateSchema = z.object({
     .string()
     .min(1, "이메일을 입력하세요.")
     .email("올바른 이메일 형식이 아닙니다."),
-  role: z.enum(["org_admin", "manager", "staff"], {
-    errorMap: () => ({ message: "역할을 선택하세요." }),
+  grade: z.enum(USER_GRADES, {
+    errorMap: () => ({ message: "권한단계를 선택하세요." }),
   }),
   department: z.string().max(50, "50자 이내로 입력하세요.").optional(),
   positionId: z.string().uuid().optional().or(z.literal("")),
 });
 export type StaffCreateInput = z.infer<typeof staffCreateSchema>;
+
+/** 권한단계 변경 */
+export const staffGradeSchema = z.object({
+  userId: z.string().uuid(),
+  grade: z.enum(USER_GRADES, {
+    errorMap: () => ({ message: "권한단계를 선택하세요." }),
+  }),
+});
+export type StaffGradeInput = z.infer<typeof staffGradeSchema>;
+
+/** 관리권한 위임 부여 (CEO 전용) */
+export const adminGrantSchema = z.object({
+  userId: z.string().uuid(),
+  scopes: z.array(z.enum(ADMIN_SCOPES)).min(1, "위임할 기능을 선택하세요."),
+  note: z.string().max(200, "200자 이내로 입력하세요.").optional(),
+});
+export type AdminGrantInput = z.infer<typeof adminGrantSchema>;
 
 /** 직급 생성 */
 export const positionCreateSchema = z.object({

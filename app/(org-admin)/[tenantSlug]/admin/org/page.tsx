@@ -1,4 +1,6 @@
-import { requireRole, getSessionUser } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+import { requireUser, getSessionUser, postLoginPath } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
@@ -16,7 +18,10 @@ import {
 } from "@/components/ui/table";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { tenantIdFromUser } from "@/lib/auth/tenant";
+import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { isUserGrade, type UserGrade } from "@/lib/auth/grades";
+import { isAdminScope } from "@/lib/auth/admin-scope-keys";
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
 
 import { CreateStaffDialog } from "./staff-dialog";
 import { StaffActiveToggle } from "./staff-active-toggle";
@@ -24,14 +29,18 @@ import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
 import { RrnRevealPanel } from "./rrn-reveal-panel";
+import { StaffGradeSelect } from "./staff-grade-select";
+import {
+  AdminDelegationPanel,
+  type DelegationRow,
+} from "./admin-delegation-panel";
 
 export const metadata = { title: "기업 관리" };
 
-const ROLE_LABELS: Record<string, string> = {
-  org_admin: "기업총괄관리자",
-  manager: "관리자",
-  staff: "직원",
-};
+/** DB 문자열 → UserGrade (제약이 걸려 있지만 타입 경계에서 한 번 좁힌다) */
+function gradeOf(value: string): UserGrade {
+  return isUserGrade(value) ? value : "staff";
+}
 
 /**
  * 기업총괄관리자 — 직원 계정·직급 관리 (실행계획서 단계 8, 공통 기반).
@@ -42,7 +51,17 @@ export default async function OrgAdminPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["org_admin", "platform_admin"]);
+  // 대표(org_admin)·플랫폼관리자 또는 관리 스코프를 위임받은 직원만 진입
+  const gateUser = await requireUser();
+  if (gateUser) {
+    const role = roleFromUser(gateUser);
+    const scopes = await getAdminScopes();
+    const allowed =
+      role === "org_admin" ||
+      role === "platform_admin" ||
+      Object.values(scopes).some(Boolean);
+    if (!allowed) redirect(postLoginPath(gateUser));
+  }
 
   if (!hasSupabaseEnv()) {
     return (
@@ -66,7 +85,7 @@ export default async function OrgAdminPage({
       supabase
         .from("users")
         .select(
-          "id, name, email, role, department, is_active, positions (name)"
+          "id, name, email, role, grade, department, is_active, positions (name)"
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -78,6 +97,12 @@ export default async function OrgAdminPage({
         .select("id, user_id, role_label")
         .is("revoked_at", null),
     ]);
+
+  const { data: adminGrants } = await supabase
+    .from("tenant_admin_grants")
+    .select("id, user_id, scope, note, granted_at")
+    .is("revoked_at", null)
+    .order("granted_at", { ascending: true });
 
   const staffRows = staff ?? [];
   const positionRows = positions ?? [];
@@ -92,6 +117,21 @@ export default async function OrgAdminPage({
   const staffOptions = staffRows
     .filter((s) => s.is_active)
     .map((s) => ({ id: s.id, name: s.name, email: s.email }));
+
+  const isCeo = roleFromUser(sessionUser) === "org_admin";
+  const delegationCandidates = staffRows
+    .filter((s) => s.is_active && s.grade !== "ceo")
+    .map((s) => ({ id: s.id, name: s.name, grade: gradeOf(s.grade) }));
+  const delegationRows: DelegationRow[] = (adminGrants ?? [])
+    .filter((g) => isAdminScope(g.scope))
+    .map((g) => ({
+      id: g.id,
+      userId: g.user_id,
+      userName: staffNameById.get(g.user_id) ?? "(직원)",
+      scope: g.scope as DelegationRow["scope"],
+      note: g.note,
+      grantedAt: g.granted_at,
+    }));
 
   // 주민번호 열람 키 설정 여부 (deny-all 테이블 — admin client로 존재만 확인)
   const rrnTenantId = tenantIdFromUser(sessionUser);
@@ -141,7 +181,7 @@ export default async function OrgAdminPage({
                     <TableRow>
                       <TableHead>이름</TableHead>
                       <TableHead>이메일</TableHead>
-                      <TableHead>역할</TableHead>
+                      <TableHead>권한단계</TableHead>
                       <TableHead>부서</TableHead>
                       <TableHead>직급</TableHead>
                       <TableHead>상태</TableHead>
@@ -154,7 +194,12 @@ export default async function OrgAdminPage({
                         <TableCell className="font-medium">{member.name}</TableCell>
                         <TableCell>{member.email}</TableCell>
                         <TableCell>
-                          {ROLE_LABELS[member.role] ?? member.role}
+                          <StaffGradeSelect
+                            userId={member.id}
+                            grade={gradeOf(member.grade)}
+                            disabled={member.id === sessionUser?.id}
+                            disabledReason="본인 권한단계는 변경할 수 없습니다."
+                          />
                         </TableCell>
                         <TableCell>{member.department ?? "-"}</TableCell>
                         <TableCell>{member.positions?.name ?? "-"}</TableCell>
@@ -178,6 +223,12 @@ export default async function OrgAdminPage({
             )}
           </CardContent>
         </Card>
+
+        <AdminDelegationPanel
+          candidates={delegationCandidates}
+          grants={delegationRows}
+          canManage={isCeo}
+        />
 
         <Card>
           <CardHeader className="pb-3">
