@@ -1779,6 +1779,72 @@ export type Database = {
           },
         ]
       }
+      expert_tenant_tags: {
+        Row: {
+          id: string
+          tenant_id: string
+          expert_id: string
+          tag: string
+          note: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          expert_id: string
+          tag: string
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          expert_id?: string
+          tag?: string
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      expert_reviews: {
+        Row: {
+          id: string
+          tenant_id: string
+          expert_id: string
+          project_id: string | null
+          body: string
+          author_user_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          expert_id: string
+          project_id?: string | null
+          body: string
+          author_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          expert_id?: string
+          project_id?: string | null
+          body?: string
+          author_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       experts: {
         Row: {
           auth_user_id: string | null
