@@ -20,6 +20,11 @@ import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
 
 import { createSlot, deleteSlot, adjustSlotCount } from "./slot-actions";
+import {
+  SessionNoticeDialog,
+  type NoticeTemplateOption,
+  type SessionNoticeRow,
+} from "./session-notice-dialog";
 
 export type SlotPositionRow = {
   id: string;
@@ -27,6 +32,11 @@ export type SlotPositionRow = {
   positionNo: number;
   status: string;
   expertName: string | null;
+};
+
+export type SlotNoticeData = {
+  targets: { name: string; code: string }[];
+  notices: SessionNoticeRow[];
 };
 
 export type SlotRow = {
@@ -41,6 +51,8 @@ export type SlotRow = {
   feeAmount: number | null;
   locationName: string | null;
   positions: SlotPositionRow[];
+  /** 세션 안내문자 — 확정 전문가 대상·발송 내역 */
+  notice: SlotNoticeData;
 };
 
 const emptyDraft = {
@@ -66,11 +78,15 @@ export function SlotTable({
   tenantSlug,
   slots,
   canManage,
+  noticeTemplates,
+  defaultNoticeBody,
 }: {
   projectId: string;
   tenantSlug: string;
   slots: SlotRow[];
   canManage: boolean;
+  noticeTemplates: NoticeTemplateOption[];
+  defaultNoticeBody: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -169,6 +185,16 @@ export function SlotTable({
               )}
               {canManage && (
                 <span className="ml-auto flex items-center gap-1">
+                  <SessionNoticeDialog
+                    slotId={s.id}
+                    slotLabel={`${s.slotDate} ${timeLabel(s)}${
+                      s.sessionName ? ` · ${s.sessionName}` : ""
+                    }`}
+                    templates={noticeTemplates}
+                    defaultBody={defaultNoticeBody}
+                    targets={s.notice.targets}
+                    notices={s.notice.notices}
+                  />
                   <Input
                     type="number"
                     min={1}

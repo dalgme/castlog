@@ -9,6 +9,7 @@ import {
   isAssignmentRole,
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
+import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -328,6 +329,27 @@ export default async function ProjectDetailPage({
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
       })),
+    notice: {
+      // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)
+      targets: (positionRecords ?? [])
+        .filter((p) => p.slot_id === s.id && p.status === "filled" && p.expert_id)
+        .map((p) => ({
+          name: expertNameById.get(p.expert_id as string) ?? "-",
+          code: p.code,
+        })),
+      notices: (noticeRows ?? [])
+        .filter((n) => n.slot_id === s.id)
+        .map((n) => ({
+          id: n.id,
+          status: n.status,
+          scheduledAt: n.scheduled_at,
+          sentAt: n.sent_at,
+          recipientCount: n.recipient_count,
+          sentCount: n.sent_count,
+          failedCount: n.failed_count,
+          lastError: n.last_error,
+        })),
+    },
   }));
   const contributionInitial: Record<string, number> = {};
   for (const c of contributionsResult.data ?? []) {
@@ -344,6 +366,32 @@ export default async function ProjectDetailPage({
   const confirmedCost = engagements
     .filter((e) => e.status === "accepted")
     .reduce((sum, e) => sum + (e.fee_amount ?? 0), 0);
+
+  // 세션 안내문자 — 템플릿(테넌트 공용) + 세션별 발송 내역
+  const [{ data: noticeTemplateRows }, { data: noticeRows }] = modules.experts
+    ? await Promise.all([
+        supabase
+          .from("session_notice_templates")
+          .select("id, name, body")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+        slotIds.length
+          ? supabase
+              .from("session_notices")
+              .select(
+                "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error"
+              )
+              .in("slot_id", slotIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: null }),
+      ])
+    : [{ data: null }, { data: null }];
+
+  const noticeTemplates = (noticeTemplateRows ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    body: t.body,
+  }));
 
   const dashboard = await getProjectDashboard(project.id, {
     experts: modules.experts,
@@ -426,6 +474,8 @@ export default async function ProjectDetailPage({
                 tenantSlug={params.tenantSlug}
                 slots={slotRows}
                 canManage={canManage}
+                noticeTemplates={noticeTemplates}
+                defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />
             </CardContent>
           </Card>

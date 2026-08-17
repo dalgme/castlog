@@ -2716,6 +2716,105 @@ export type Database = {
           },
         ]
       }
+      session_notice_templates: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          body: string
+          is_active: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          body: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          name?: string
+          body?: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      session_notices: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          template_id: string | null
+          body_template: string
+          status: string
+          scheduled_at: string | null
+          sent_at: string | null
+          batch_id: string | null
+          recipient_count: number
+          sent_count: number
+          failed_count: number
+          last_error: string | null
+          created_by: string | null
+          canceled_by: string | null
+          canceled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          template_id?: string | null
+          body_template: string
+          status?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          batch_id?: string | null
+          recipient_count?: number
+          sent_count?: number
+          failed_count?: number
+          last_error?: string | null
+          created_by?: string | null
+          canceled_by?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          slot_id?: string
+          template_id?: string | null
+          body_template?: string
+          status?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          batch_id?: string | null
+          recipient_count?: number
+          sent_count?: number
+          failed_count?: number
+          last_error?: string | null
+          created_by?: string | null
+          canceled_by?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sms_logs: {
         Row: {
           batch_id: string | null
