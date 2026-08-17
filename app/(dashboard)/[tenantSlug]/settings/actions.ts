@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import { smsConfigSchema, type SmsConfigInput } from "@/lib/messaging/schemas";
 import { sendTenantSms } from "@/lib/sms/send";
+import { requireAdminScope } from "@/lib/auth/admin-scopes";
 
 export type SaveSmsConfigResult = { ok: true } | { ok: false; error: string };
 
@@ -45,16 +45,12 @@ export async function saveSmsConfig(
     return { ok: false, error: "알리고는 사용자 ID(API Secret 칸)가 필요합니다." };
   }
 
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || role !== "org_admin") {
-    return { ok: false, error: "총괄관리자만 발송 설정을 변경할 수 있습니다." };
-  }
+  // 대표 또는 '발송 설정·템플릿' 위임을 받은 직원 (CLAUDE.md 3-1)
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const { userId, tenantId } = auth;
 
+  const supabase = createClient();
   const { error } = await supabase.from("tenant_sms_configs").upsert(
     {
       tenant_id: tenantId,
@@ -73,8 +69,8 @@ export async function saveSmsConfig(
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenantId,
-    actor_auth_user_id: user.id,
-    actor_role: role,
+    actor_auth_user_id: userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
     action: "sms_config.save",
     resource_type: "tenant_sms_config",
     after_data: { provider: data.provider, sender_number: data.senderNumber },
@@ -100,16 +96,11 @@ export async function testSmsConfig(testPhone: string): Promise<SmsTestResult> {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
 
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || role !== "org_admin") {
-    return { ok: false, error: "총괄관리자만 연결 테스트를 할 수 있습니다." };
-  }
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const { userId, tenantId } = auth;
 
+  const supabase = createClient();
   const digits = testPhone.replace(/\D/g, "");
   if (digits.length < 10 || digits.length > 11) {
     return { ok: false, error: "테스트 수신 휴대폰 번호를 확인하세요." };
@@ -128,7 +119,7 @@ export async function testSmsConfig(testPhone: string): Promise<SmsTestResult> {
 
   const result = await sendTenantSms({
     tenantId,
-    senderUserId: user.id,
+    senderUserId: userId,
     messageType: "transactional",
     body: "[캐스트로그] SMS 발송 설정 연결 테스트입니다. 이 문자를 받으셨다면 정상 연결된 것입니다.",
     recipients: [{ phone: digits, expertId: null, name: "연결 테스트" }],
@@ -145,8 +136,8 @@ export async function testSmsConfig(testPhone: string): Promise<SmsTestResult> {
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenantId,
-    actor_auth_user_id: user.id,
-    actor_role: role,
+    actor_auth_user_id: userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
     action: "sms_config.test",
     resource_type: "tenant_sms_config",
     after_data: { test_mode: result.summary.testMode },
@@ -163,16 +154,11 @@ export async function setSmsConfigActive(
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
 
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || role !== "org_admin") {
-    return { ok: false, error: "총괄관리자만 발송 설정을 변경할 수 있습니다." };
-  }
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const { userId, tenantId } = auth;
 
+  const supabase = createClient();
   const { error } = await supabase
     .from("tenant_sms_configs")
     .update({ is_active: active })
@@ -181,8 +167,8 @@ export async function setSmsConfigActive(
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenantId,
-    actor_auth_user_id: user.id,
-    actor_role: role,
+    actor_auth_user_id: userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
     action: active ? "sms_config.activate" : "sms_config.deactivate",
     resource_type: "tenant_sms_config",
   });

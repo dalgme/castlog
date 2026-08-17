@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-import { requireRole } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+import { requireUser, postLoginPath } from "@/lib/auth/session";
+import { roleFromUser } from "@/lib/auth/tenant";
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
@@ -27,7 +31,16 @@ export default async function SettingsPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["org_admin", "platform_admin"]);
+  // 대표·플랫폼관리자 또는 '발송 설정·템플릿' 위임을 받은 직원 (CLAUDE.md 3-1)
+  const gateUser = await requireUser();
+  let canManageSending = false;
+  if (gateUser) {
+    const role = roleFromUser(gateUser);
+    const scopes = await getAdminScopes();
+    canManageSending =
+      role === "org_admin" || role === "platform_admin" || scopes.sending;
+    if (!canManageSending) redirect(postLoginPath(gateUser));
+  }
 
   if (!hasSupabaseEnv()) {
     return (
@@ -85,6 +98,8 @@ export default async function SettingsPage({
               }
             />
             <p className="mt-3 text-xs text-muted-foreground">
+              대표가 ‘발송 설정·템플릿’ 관리 권한을 위임하면 해당 직원도 이 설정을
+              변경할 수 있습니다 (기업 관리 → 시스템 설정·관리 권한 위임).
               업무·광고 문자는 여기 등록한 자사 공급자 계정으로 발송됩니다.
               전문가 로그인 인증번호는 플랫폼이 발송하므로 별도 설정이 필요
               없습니다.
