@@ -1,4 +1,5 @@
 import { formatKrw } from "@/lib/approvals/constants";
+import { PAYMENT_TYPE_LABELS, type PaymentType } from "@/lib/payments/tax";
 import {
   formatEventSchedule,
   roleTypeLabel,
@@ -86,6 +87,43 @@ export function AcceptanceLetter({
         )}
         <Row label="수락일시" value={acceptedAt} />
       </dl>
+
+      {/* 지급 정보 — 주민등록번호·전체 계좌번호는 표기하지 않는다(§5) */}
+      {(a.payment_type ||
+        a.bank_name ||
+        a.payment_due_note ||
+        a.submission_docs) && (
+        <dl className="mt-5 space-y-2 border-t pt-4">
+          {a.payment_type && (
+            <Row
+              label="소득구분"
+              value={
+                PAYMENT_TYPE_LABELS[a.payment_type as PaymentType] ?? a.payment_type
+              }
+            />
+          )}
+          {a.bank_name && (
+            <Row
+              label="입금계좌"
+              value={[
+                a.bank_name,
+                a.account_last4 ? `****${a.account_last4}` : null,
+                a.account_holder,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            />
+          )}
+          {a.payment_due_note && (
+            <Row label="입금예정" value={a.payment_due_note} />
+          )}
+          {a.submission_docs && <Row label="제출서류" value={a.submission_docs} />}
+          <p className="pt-1 text-xs text-muted-foreground">
+            ※ 지급 시 소득 구분에 따라 원천징수 후 지급됩니다. 주민등록번호는 이 문서에
+            기재되지 않으며, 지급명세서 작성 시점에 별도의 보안 절차로만 확인합니다.
+          </p>
+        </dl>
+      )}
 
       {a.guide_note && (
         <div className="mt-5 rounded-md border bg-muted/30 p-3">

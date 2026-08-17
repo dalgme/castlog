@@ -75,17 +75,30 @@ export async function createEngagementAcceptance(
     .maybeSingle();
   if (!eng || eng.status !== "accepted") return;
 
-  const [{ data: tenant }, { data: expert }, projectResult] = await Promise.all([
-    admin.from("tenants").select("name").eq("id", eng.tenant_id).maybeSingle(),
-    admin.from("experts").select("name").eq("id", eng.expert_id).maybeSingle(),
-    eng.project_id
-      ? admin
-          .from("projects")
-          .select("name")
-          .eq("id", eng.project_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  const [{ data: tenant }, { data: expert }, projectResult, { data: taxProfile }, { data: bank }] =
+    await Promise.all([
+      admin.from("tenants").select("name").eq("id", eng.tenant_id).maybeSingle(),
+      admin.from("experts").select("name").eq("id", eng.expert_id).maybeSingle(),
+      eng.project_id
+        ? admin
+            .from("projects")
+            .select("name")
+            .eq("id", eng.project_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      // 지급 정보 스냅샷 — 소득구분(원천징수 안내)
+      admin
+        .from("expert_tax_profiles")
+        .select("payment_type")
+        .eq("expert_id", eng.expert_id)
+        .maybeSingle(),
+      // 입금 계좌 — 은행·예금주·뒷4자리만. 전체 계좌번호·주민번호는 스냅샷하지 않는다(§5).
+      admin
+        .from("expert_bank_accounts")
+        .select("bank_name, account_holder, account_last4")
+        .eq("expert_id", eng.expert_id)
+        .maybeSingle(),
+    ]);
 
   const base = `acceptances/${eng.tenant_id}/${eng.id}`;
   const signaturePath = await snapshotSignatureImage(
@@ -127,6 +140,11 @@ export async function createEngagementAcceptance(
     location_address: eng.location_address,
     event_summary: eng.event_summary,
     special_notes: eng.special_notes,
+    // 지급 정보 스냅샷 (Phase C-2) — 주민번호·전체 계좌번호는 포함하지 않는다
+    payment_type: taxProfile?.payment_type ?? null,
+    bank_name: bank?.bank_name ?? null,
+    account_holder: bank?.account_holder ?? null,
+    account_last4: bank?.account_last4 ?? null,
     signature_path: signaturePath,
     seal_path: sealPath,
     has_signature: signaturePath !== null,

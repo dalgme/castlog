@@ -912,6 +912,13 @@ export type Database = {
           sent_at: string | null
           signed_at: string | null
           status: string
+        
+          account_holder: string | null
+          account_last4: string | null
+          bank_name: string | null
+          payment_due_note: string | null
+          payment_type: string | null
+          submission_docs: string | null
         }
         Insert: {
           accepted_at?: string
@@ -950,6 +957,13 @@ export type Database = {
           sent_at?: string | null
           signed_at?: string | null
           status?: string
+        
+          account_holder?: string | null
+          account_last4?: string | null
+          bank_name?: string | null
+          payment_due_note?: string | null
+          payment_type?: string | null
+          submission_docs?: string | null
         }
         Update: {
           accepted_at?: string
@@ -988,6 +1002,13 @@ export type Database = {
           sent_at?: string | null
           signed_at?: string | null
           status?: string
+        
+          account_holder?: string | null
+          account_last4?: string | null
+          bank_name?: string | null
+          payment_due_note?: string | null
+          payment_type?: string | null
+          submission_docs?: string | null
         }
         Relationships: [
           {
