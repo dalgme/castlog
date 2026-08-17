@@ -77,6 +77,8 @@
 - 대표는 'CEO 업무기능 + 시스템 설정·관리기능'을 모두 갖는다. 이 중 **설정·관리기능만**
   스코프 단위로 위임할 수 있다 (tenant_admin_grants: settings/staff/sending/audit).
   서버 게이트는 requireAdminScope(scope), DB는 app.has_admin_scope(scope).
+  * sending 스코프는 SMS 자격증명(tenant_sms_configs: API 키·발신번호·활성 여부)까지
+    포함한다. 키는 암호화 저장되고 화면에 재표시되지 않으며, 변경·테스트는 감사로그에 남는다.
 - **위임 금지 대상(코드로 강제):**
   1. 세무(주민등록번호) 조회 지정자 관리 — tax_access_grants는 계속 app.is_org_admin() 전용
   2. 위임 자체의 부여·회수 — 위임받은 사람은 재위임할 수 없다
