@@ -232,3 +232,28 @@ export async function adjustSlotCount(
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
+
+/** 프로젝트 총 예산 설정 (권한자만). */
+export async function updateProjectBudget(
+  projectId: string,
+  budgetAmount: string
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  if (!/^\d*$/.test(budgetAmount)) {
+    return { ok: false, error: "예산은 숫자만 입력하세요 (원 단위)." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      budget_amount: budgetAmount ? parseInt(budgetAmount, 10) : null,
+    })
+    .eq("id", projectId);
+  if (error) return { ok: false, error: "예산 저장에 실패했습니다." };
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}

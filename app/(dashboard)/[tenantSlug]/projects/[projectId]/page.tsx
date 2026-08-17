@@ -30,6 +30,7 @@ import {
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { SlotTable, type SlotRow } from "./slot-table";
+import { BudgetPanel } from "./budget-panel";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -81,7 +82,7 @@ export default async function ProjectDetailPage({
   const { data: project } = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
     )
     .eq("id", params.projectId)
     .maybeSingle();
@@ -250,6 +251,18 @@ export default async function ProjectDetailPage({
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
   }
+  // 예산 대비 섭외비 집계 (Phase C-3)
+  const plannedCost = slotRecords.reduce(
+    (sum, s) => sum + (s.fee_amount ?? 0) * s.required_count,
+    0
+  );
+  const requestedCost = engagements
+    .filter((e) => e.status === "requested")
+    .reduce((sum, e) => sum + (e.fee_amount ?? 0), 0);
+  const confirmedCost = engagements
+    .filter((e) => e.status === "accepted")
+    .reduce((sum, e) => sum + (e.fee_amount ?? 0), 0);
+
   const isClosed = project.status === "completed";
   const closingInProgress =
     project.closing_approval_id !== null && !isClosed;
@@ -275,6 +288,23 @@ export default async function ProjectDetailPage({
                 projectId={project.id}
                 staff={staffForAssign}
                 assigned={assignedMembers}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {modules.experts && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">예산 · 섭외비 현황</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BudgetPanel
+                projectId={project.id}
+                budgetAmount={project.budget_amount}
+                plannedCost={plannedCost}
+                requestedCost={requestedCost}
+                confirmedCost={confirmedCost}
+                canManage={canManage}
               />
             </CardContent>
           </Card>

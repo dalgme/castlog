@@ -23,6 +23,10 @@ export const projectCreateSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식이 올바르지 않습니다.")
     .optional()
     .or(z.literal("")),
+  budgetAmount: z
+    .string()
+    .regex(/^\d*$/, "예산은 숫자만 입력하세요 (원 단위).")
+    .optional(),
   description: z.string().max(2000, "설명은 2000자 이내로 입력하세요.").optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
