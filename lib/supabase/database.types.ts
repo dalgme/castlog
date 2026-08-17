@@ -2569,6 +2569,7 @@ export type Database = {
           project_id: string
           tenant_id: string
           user_id: string
+          assignment_role: string
         }
         Insert: {
           assigned_by?: string | null
@@ -2577,6 +2578,7 @@ export type Database = {
           project_id: string
           tenant_id: string
           user_id: string
+          assignment_role?: string
         }
         Update: {
           assigned_by?: string | null
@@ -2585,6 +2587,7 @@ export type Database = {
           project_id?: string
           tenant_id?: string
           user_id?: string
+          assignment_role?: string
         }
         Relationships: []
       }

@@ -67,6 +67,37 @@ export default async function ProjectsPage({
 
   const rows = projects ?? [];
 
+  // PM·부PM 표기 (RLS가 이미 볼 수 있는 배정만 돌려준다)
+  const { data: assignments } = rows.length
+    ? await supabase
+        .from("project_assignments")
+        .select("project_id, user_id, assignment_role")
+        .in(
+          "project_id",
+          rows.map((r) => r.id)
+        )
+        .in("assignment_role", ["pm", "deputy_pm"])
+    : { data: null };
+
+  // users 임베드는 타입 관계가 잡혀 있지 않아 별도 조회 후 매핑한다
+  const leadUserIds = Array.from(
+    new Set((assignments ?? []).map((a) => a.user_id))
+  );
+  const { data: leadUsers } = leadUserIds.length
+    ? await supabase.from("users").select("id, name").in("id", leadUserIds)
+    : { data: null };
+  const nameById = new Map((leadUsers ?? []).map((u) => [u.id, u.name]));
+
+  const leadByProject = new Map<string, { pm?: string; deputy?: string }>();
+  for (const a of assignments ?? []) {
+    const name = nameById.get(a.user_id);
+    if (!name) continue;
+    const entry = leadByProject.get(a.project_id) ?? {};
+    if (a.assignment_role === "pm") entry.pm = name;
+    else entry.deputy = name;
+    leadByProject.set(a.project_id, entry);
+  }
+
   return (
     <div>
       <PageHeader
@@ -97,6 +128,7 @@ export default async function ProjectsPage({
                       <TableHead>프로젝트명</TableHead>
                       <TableHead>발주처</TableHead>
                       <TableHead>기간</TableHead>
+                      <TableHead>PM · 부PM</TableHead>
                       <TableHead>진행</TableHead>
                       <TableHead>상태</TableHead>
                     </TableRow>
@@ -126,6 +158,27 @@ export default async function ProjectsPage({
                           <TableCell>{project.client_name ?? "-"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {(() => {
+                              const lead = leadByProject.get(project.id);
+                              if (!lead?.pm && !lead?.deputy) {
+                                return (
+                                  <span className="text-muted-foreground">미지정</span>
+                                );
+                              }
+                              return (
+                                <>
+                                  {lead.pm ?? "-"}
+                                  {lead.deputy && (
+                                    <span className="text-muted-foreground">
+                                      {" · "}
+                                      {lead.deputy}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             {steps.length > 0 ? `${done}/${steps.length}` : "-"}

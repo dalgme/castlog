@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import {
+  ASSIGNMENT_ROLE_LABELS,
+  isAssignmentRole,
+  type AssignmentRole,
+} from "@/lib/integrations/assignment-roles";
 
 export type AssignResult = { ok: true } | { ok: false; error: string };
 
@@ -25,10 +30,18 @@ async function requireManager(): Promise<
   return { ok: true, userId: user.id, tenantId };
 }
 
+/** PM·부PM은 프로젝트당 1명 — 부분 유니크 인덱스 위반을 사람이 읽을 문구로 바꾼다. */
+function roleConflictError(role: AssignmentRole): string {
+  return role === "member"
+    ? "배정에 실패했습니다."
+    : `이 프로젝트에는 이미 ${ASSIGNMENT_ROLE_LABELS[role]}이(가) 지정되어 있습니다. 먼저 해제하거나 역할을 바꾸세요.`;
+}
+
 /** 프로젝트에 담당자 배정 (권한자만). */
 export async function assignProjectMember(
   projectId: string,
-  userId: string
+  userId: string,
+  assignmentRole: string = "member"
 ): Promise<AssignResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireManager();
@@ -45,18 +58,66 @@ export async function assignProjectMember(
     return { ok: false, error: "같은 기업의 활성 직원만 배정할 수 있습니다." };
   }
 
+  if (!isAssignmentRole(assignmentRole)) {
+    return { ok: false, error: "담당 역할을 확인하세요." };
+  }
+
   const { error } = await supabase.from("project_assignments").insert({
     tenant_id: auth.tenantId,
     project_id: projectId,
     user_id: userId,
+    assignment_role: assignmentRole,
     assigned_by: auth.userId,
   });
   if (error) {
-    if (error.code === "23505") return { ok: true }; // 이미 배정됨 — 멱등
+    // (project_id, user_id) 중복이면 멱등, PM/부PM 중복이면 안내
+    if (error.code === "23505") {
+      const { data: existing } = await supabase
+        .from("project_assignments")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existing) return { ok: true };
+      return { ok: false, error: roleConflictError(assignmentRole) };
+    }
     return { ok: false, error: "배정에 실패했습니다." };
   }
 
   revalidatePath("/[tenantSlug]/projects", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/** 담당 역할 변경 (PM ↔ 부PM ↔ 담당). 권한자만. */
+export async function setAssignmentRole(
+  projectId: string,
+  userId: string,
+  assignmentRole: string
+): Promise<AssignResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  if (!isAssignmentRole(assignmentRole)) {
+    return { ok: false, error: "담당 역할을 확인하세요." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("project_assignments")
+    .update({ assignment_role: assignmentRole })
+    .eq("project_id", projectId)
+    .eq("user_id", userId);
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: roleConflictError(assignmentRole) };
+    }
+    return { ok: false, error: "역할 변경에 실패했습니다." };
+  }
+
+  revalidatePath("/[tenantSlug]/projects", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
 
@@ -78,5 +139,6 @@ export async function unassignProjectMember(
   if (error) return { ok: false, error: "해제에 실패했습니다." };
 
   revalidatePath("/[tenantSlug]/projects", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }

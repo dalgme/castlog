@@ -13,15 +13,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { assignProjectMember, unassignProjectMember } from "./assignment-actions";
+import {
+  ASSIGNMENT_ROLES,
+  ASSIGNMENT_ROLE_LABELS,
+  type AssignmentRole,
+} from "@/lib/integrations/assignment-roles";
 
-export type StaffOption = { id: string; name: string; role: string; department: string | null };
-export type AssignedMember = { userId: string; name: string; role: string };
+import {
+  assignProjectMember,
+  setAssignmentRole,
+  unassignProjectMember,
+} from "./assignment-actions";
 
-const ROLE_LABEL: Record<string, string> = {
-  org_admin: "대표",
-  manager: "이사/관리자",
-  staff: "담당자",
+export type StaffOption = {
+  id: string;
+  name: string;
+  gradeLabel: string;
+  department: string | null;
+};
+export type AssignedMember = {
+  userId: string;
+  name: string;
+  gradeLabel: string;
+  assignmentRole: AssignmentRole;
 };
 
 /**
@@ -40,6 +54,7 @@ export function ProjectAssignmentPanel({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState("");
+  const [pickRole, setPickRole] = useState<AssignmentRole>("member");
 
   const assignedIds = new Set(assigned.map((a) => a.userId));
   const assignable = staff.filter((s) => !assignedIds.has(s.id));
@@ -48,9 +63,20 @@ export function ProjectAssignmentPanel({
     if (!pick) return;
     setError(null);
     startTransition(async () => {
-      const r = await assignProjectMember(projectId, pick);
+      const r = await assignProjectMember(projectId, pick, pickRole);
       if (!r.ok) setError(r.error);
-      else setPick("");
+      else {
+        setPick("");
+        setPickRole("member");
+      }
+    });
+  };
+
+  const onChangeRole = (userId: string, next: string) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await setAssignmentRole(projectId, userId, next);
+      if (!r.ok) setError(r.error);
     });
   };
 
@@ -66,7 +92,7 @@ export function ProjectAssignmentPanel({
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         배정된 담당자만 이 프로젝트를 볼 수 있습니다. 대표·이사(권한자)는 배정과 무관하게
-        전체 프로젝트를 봅니다.
+        전체 프로젝트를 봅니다. PM·부PM은 프로젝트당 각 1명입니다.
       </p>
 
       {assigned.length === 0 ? (
@@ -81,9 +107,23 @@ export function ProjectAssignmentPanel({
               className="inline-flex items-center gap-1.5 rounded-md border bg-secondary/40 px-2.5 py-1 text-sm text-brand-navy"
             >
               {m.name}
-              <span className="text-[11px] text-muted-foreground">
-                {ROLE_LABEL[m.role] ?? m.role}
-              </span>
+              <span className="text-[11px] text-muted-foreground">{m.gradeLabel}</span>
+              <Select
+                value={m.assignmentRole}
+                onValueChange={(next) => onChangeRole(m.userId, next)}
+                disabled={pending}
+              >
+                <SelectTrigger className="h-6 w-[76px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSIGNMENT_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ASSIGNMENT_ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <button
                 type="button"
                 onClick={() => onRemove(m.userId)}
@@ -118,10 +158,25 @@ export function ProjectAssignmentPanel({
               assignable.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
-                  {s.department ? ` · ${s.department}` : ""} ({ROLE_LABEL[s.role] ?? s.role})
+                  {s.department ? ` · ${s.department}` : ""} ({s.gradeLabel})
                 </SelectItem>
               ))
             )}
+          </SelectContent>
+        </Select>
+        <Select
+          value={pickRole}
+          onValueChange={(v) => setPickRole(v as AssignmentRole)}
+        >
+          <SelectTrigger className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ASSIGNMENT_ROLES.map((r) => (
+              <SelectItem key={r} value={r}>
+                {ASSIGNMENT_ROLE_LABELS[r]}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button size="sm" onClick={onAssign} disabled={pending || !pick}>
