@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AlertBanner } from "@/components/layout/alert-banner";
 
@@ -18,9 +19,16 @@ export default async function TenantDashboardLayout({
     "manager",
     "staff",
   ]);
-  const modules = await getTenantModules();
+  const [modules, adminScopes] = await Promise.all([
+    getTenantModules(),
+    getAdminScopes(),
+  ]);
   const role = roleFromUser(user);
-  const isOrgAdmin = role === "org_admin" || role === "platform_admin";
+  // 대표 외에도 관리 스코프를 위임받은 직원에게 '기업 관리' 메뉴를 연다
+  const isOrgAdmin =
+    role === "org_admin" ||
+    role === "platform_admin" ||
+    Object.values(adminScopes).some(Boolean);
 
   return (
     <div className="flex min-h-screen">
