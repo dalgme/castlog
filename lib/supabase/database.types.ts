@@ -2219,6 +2219,33 @@ export type Database = {
           },
         ]
       }
+      project_assignments: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          id: string
+          project_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          project_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          project_id?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           business_year: number
