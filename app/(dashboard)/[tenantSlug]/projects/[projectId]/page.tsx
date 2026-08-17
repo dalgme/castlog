@@ -29,6 +29,7 @@ import {
 } from "./expert-evaluation-form";
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { SlotTable, type SlotRow } from "./slot-table";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -97,6 +98,7 @@ export default async function ProjectDetailPage({
     staffResult,
     contributionsResult,
     assignmentsResult,
+    slotsResult,
   ] = await Promise.all([
       supabase
         .from("project_lifecycle_steps")
@@ -142,6 +144,17 @@ export default async function ProjectDetailPage({
         .from("project_assignments")
         .select("user_id")
         .eq("project_id", project.id),
+      // Phase B-1: 섭외 테이블(타임테이블 + 넘버링코드 인원)
+      modules.experts
+        ? supabase
+            .from("engagement_slots")
+            .select(
+              "id, slot_date, starts_time, ends_time, role_type, role_description, required_count, fee_amount, location_name"
+            )
+            .eq("project_id", project.id)
+            .order("slot_date", { ascending: true })
+            .order("starts_time", { ascending: true })
+        : Promise.resolve({ data: null }),
     ]);
 
   const stepRows = steps ?? [];
@@ -193,6 +206,46 @@ export default async function ProjectDetailPage({
     const u = staffById.get(a.user_id);
     return { userId: a.user_id, name: u?.name ?? "-", role: u?.role ?? "staff" };
   });
+
+  // Phase B-1: 슬롯별 넘버링코드 인원 조회
+  const slotRecords = slotsResult.data ?? [];
+  const slotIds = slotRecords.map((s) => s.id);
+  const { data: positionRecords } = slotIds.length
+    ? await supabase
+        .from("engagement_slot_positions")
+        .select("id, slot_id, position_no, code, status, expert_id")
+        .in("slot_id", slotIds)
+        .order("position_no", { ascending: true })
+    : { data: [] };
+  const positionExpertIds = Array.from(
+    new Set((positionRecords ?? []).map((p) => p.expert_id).filter(Boolean))
+  ) as string[];
+  const { data: positionExperts } = positionExpertIds.length
+    ? await supabase.from("experts").select("id, name").in("id", positionExpertIds)
+    : { data: [] };
+  const expertNameById = new Map(
+    (positionExperts ?? []).map((e) => [e.id, e.name])
+  );
+  const slotRows: SlotRow[] = slotRecords.map((s) => ({
+    id: s.id,
+    slotDate: s.slot_date,
+    startsTime: s.starts_time,
+    endsTime: s.ends_time,
+    roleType: s.role_type,
+    roleDescription: s.role_description,
+    requiredCount: s.required_count,
+    feeAmount: s.fee_amount,
+    locationName: s.location_name,
+    positions: (positionRecords ?? [])
+      .filter((p) => p.slot_id === s.id)
+      .map((p) => ({
+        id: p.id,
+        code: p.code,
+        positionNo: p.position_no,
+        status: p.status,
+        expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
+      })),
+  }));
   const contributionInitial: Record<string, number> = {};
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
@@ -222,6 +275,21 @@ export default async function ProjectDetailPage({
                 projectId={project.id}
                 staff={staffForAssign}
                 assigned={assignedMembers}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {modules.experts && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">섭외 테이블 (타임테이블 · 넘버링코드)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SlotTable
+                projectId={project.id}
+                tenantSlug={params.tenantSlug}
+                slots={slotRows}
+                canManage={canManage}
               />
             </CardContent>
           </Card>

@@ -742,6 +742,102 @@ export type Database = {
           },
         ]
       }
+      engagement_slots: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ends_time: string | null
+          fee_amount: number | null
+          id: string
+          location_address: string | null
+          location_name: string | null
+          notes: string | null
+          project_id: string
+          required_count: number
+          role_description: string | null
+          role_type: string
+          slot_date: string
+          starts_time: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ends_time?: string | null
+          fee_amount?: number | null
+          id?: string
+          location_address?: string | null
+          location_name?: string | null
+          notes?: string | null
+          project_id: string
+          required_count?: number
+          role_description?: string | null
+          role_type: string
+          slot_date: string
+          starts_time?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ends_time?: string | null
+          fee_amount?: number | null
+          id?: string
+          location_address?: string | null
+          location_name?: string | null
+          notes?: string | null
+          project_id?: string
+          required_count?: number
+          role_description?: string | null
+          role_type?: string
+          slot_date?: string
+          starts_time?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_slot_positions: {
+        Row: {
+          code: string
+          created_at: string
+          engagement_id: string | null
+          expert_id: string | null
+          id: string
+          position_no: number
+          slot_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          engagement_id?: string | null
+          expert_id?: string | null
+          id?: string
+          position_no: number
+          slot_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          engagement_id?: string | null
+          expert_id?: string | null
+          id?: string
+          position_no?: number
+          slot_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       engagement_acceptance_attachments: {
         Row: {
           acceptance_id: string
