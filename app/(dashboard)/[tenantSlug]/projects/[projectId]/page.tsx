@@ -28,6 +28,7 @@ import {
   type ExpertEvaluationRow,
 } from "./expert-evaluation-form";
 import { ProjectClosing } from "./project-closing";
+import { ProjectAssignmentPanel } from "./project-assignment-panel";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -95,6 +96,7 @@ export default async function ProjectDetailPage({
     evaluationsResult,
     staffResult,
     contributionsResult,
+    assignmentsResult,
   ] = await Promise.all([
       supabase
         .from("project_lifecycle_steps")
@@ -127,10 +129,18 @@ export default async function ProjectDetailPage({
             .eq("project_id", project.id)
         : Promise.resolve({ data: null }),
       // 단계 23: 종료 기여도 대상 직원 + 기존 기여도
-      supabase.from("users").select("id, name").order("name", { ascending: true }),
+      supabase
+        .from("users")
+        .select("id, name, role, department")
+        .order("name", { ascending: true }),
       supabase
         .from("project_contributions")
         .select("user_id, percentage")
+        .eq("project_id", project.id),
+      // Phase A-1: 프로젝트 담당자 배정 (권한자 전용 표시)
+      supabase
+        .from("project_assignments")
+        .select("user_id")
         .eq("project_id", project.id),
     ]);
 
@@ -170,6 +180,19 @@ export default async function ProjectDetailPage({
     id: u.id,
     name: u.name,
   }));
+  // Phase A-1: 배정 패널용 (권한자만 렌더)
+  const canManage = role === "org_admin" || role === "manager";
+  const staffForAssign = (staffResult.data ?? []).map((u) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    department: u.department,
+  }));
+  const staffById = new Map(staffForAssign.map((s) => [s.id, s]));
+  const assignedMembers = (assignmentsResult.data ?? []).map((a) => {
+    const u = staffById.get(a.user_id);
+    return { userId: a.user_id, name: u?.name ?? "-", role: u?.role ?? "staff" };
+  });
   const contributionInitial: Record<string, number> = {};
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
@@ -189,6 +212,20 @@ export default async function ProjectDetailPage({
         }
       />
       <main className="space-y-5 p-5">
+        {canManage && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">담당자 배정</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ProjectAssignmentPanel
+                projectId={project.id}
+                staff={staffForAssign}
+                assigned={assignedMembers}
+              />
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 text-sm">
             <span>
