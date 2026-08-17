@@ -285,8 +285,9 @@ export default async function ProjectDetailPage({
     );
   const pmName =
     assignedMembers.find((m) => m.assignmentRole === "pm")?.name ?? null;
-  const deputyPmName =
-    assignedMembers.find((m) => m.assignmentRole === "deputy_pm")?.name ?? null;
+  const deputyPmNames = assignedMembers
+    .filter((m) => m.assignmentRole === "deputy_pm")
+    .map((m) => m.name);
 
   // Phase B-1: 슬롯별 넘버링코드 인원 조회
   const slotRecords = slotsResult.data ?? [];
@@ -369,7 +370,7 @@ export default async function ProjectDetailPage({
           budgetAmount={project.budget_amount}
           committedCost={confirmedCost + requestedCost}
           pmName={pmName}
-          deputyPmName={deputyPmName}
+          deputyPmNames={deputyPmNames}
           modules={{ experts: modules.experts, approvals: modules.approvals }}
         />
         {canManage && (

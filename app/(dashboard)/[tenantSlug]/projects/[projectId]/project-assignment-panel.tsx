@@ -92,7 +92,7 @@ export function ProjectAssignmentPanel({
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         배정된 담당자만 이 프로젝트를 볼 수 있습니다. 대표·이사(권한자)는 배정과 무관하게
-        전체 프로젝트를 봅니다. PM·부PM은 프로젝트당 각 1명입니다.
+        전체 프로젝트를 봅니다. PM은 프로젝트당 1명, 부PM은 인원 제한이 없습니다.
       </p>
 
       {assigned.length === 0 ? (
