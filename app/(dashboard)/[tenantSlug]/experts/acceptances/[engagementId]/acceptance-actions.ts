@@ -31,10 +31,15 @@ async function requireManager(): Promise<
   return { ok: true, userId: user.id, tenantId };
 }
 
-/** 수락서 보완 편집 — 상세 설명(안내문). 조건 스냅샷은 변경하지 않는다. */
+/**
+ * 수락서 보완 편집 — 안내문 + 지급 안내(입금예정·제출서류).
+ * 조건 스냅샷(역할·비용·일정)과 지급 계좌·소득구분 스냅샷은 변경하지 않는다.
+ */
 export async function updateAcceptanceGuide(
   acceptanceId: string,
-  guideNote: string
+  guideNote: string,
+  paymentDueNote?: string,
+  submissionDocs?: string
 ): Promise<AcceptanceActionResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireManager();
@@ -42,11 +47,18 @@ export async function updateAcceptanceGuide(
   if (guideNote.length > 3000) {
     return { ok: false, error: "상세 설명은 3000자 이내로 입력하세요." };
   }
+  if ((paymentDueNote ?? "").length > 200 || (submissionDocs ?? "").length > 500) {
+    return { ok: false, error: "지급 안내 문구가 너무 깁니다." };
+  }
 
   const supabase = createClient();
   const { error } = await supabase
     .from("engagement_acceptances")
-    .update({ guide_note: guideNote.trim() || null })
+    .update({
+      guide_note: guideNote.trim() || null,
+      payment_due_note: paymentDueNote?.trim() || null,
+      submission_docs: submissionDocs?.trim() || null,
+    })
     .eq("id", acceptanceId);
   if (error) return { ok: false, error: "저장에 실패했습니다." };
 

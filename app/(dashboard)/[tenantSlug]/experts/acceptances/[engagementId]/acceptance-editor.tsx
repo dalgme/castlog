@@ -6,6 +6,7 @@ import { Paperclip, Send, Check, MapPin, X } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow";
@@ -27,12 +28,16 @@ export function AcceptanceEditor({
   acceptanceId,
   status,
   guideNote,
+  paymentDueNote,
+  submissionDocs,
   hasMap,
   attachments,
 }: {
   acceptanceId: string;
   status: string;
   guideNote: string;
+  paymentDueNote: string;
+  submissionDocs: string;
   hasMap: boolean;
   attachments: { id: string; fileName: string }[];
 }) {
@@ -41,6 +46,8 @@ export function AcceptanceEditor({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [note, setNote] = useState(guideNote);
+  const [dueNote, setDueNote] = useState(paymentDueNote);
+  const [docs, setDocs] = useState(submissionDocs);
 
   const mapRef = useRef<HTMLInputElement>(null);
   const attRef = useRef<HTMLInputElement>(null);
@@ -104,11 +111,38 @@ export function AcceptanceEditor({
               onChange={(e) => setNote(e.target.value)}
               placeholder="준비물, 진행 순서, 주차 안내 등 전문가에게 전달할 안내를 작성하세요."
             />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <label className="text-[11px] text-muted-foreground">입금예정 안내</label>
+                <Input
+                  value={dueNote}
+                  onChange={(e) => setDueNote(e.target.value)}
+                  placeholder="프로그램 종료 후 30일 이내"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-muted-foreground">제출서류</label>
+                <Input
+                  value={docs}
+                  onChange={(e) => setDocs(e.target.value)}
+                  placeholder="예: 통장사본, 신분증사본"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              소득구분·입금계좌는 전문가 프로필에서 자동 반영됩니다. 주민등록번호와 전체
+              계좌번호는 수락서에 기재되지 않습니다.
+            </p>
             <Button
               size="sm"
               variant="outline"
               disabled={pending}
-              onClick={() => run(() => updateAcceptanceGuide(acceptanceId, note), "저장했습니다.")}
+              onClick={() =>
+                run(
+                  () => updateAcceptanceGuide(acceptanceId, note, dueNote, docs),
+                  "저장했습니다."
+                )
+              }
             >
               안내 사항 저장
             </Button>
