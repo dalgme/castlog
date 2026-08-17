@@ -13,6 +13,7 @@ import {
   Send,
   Settings,
   LogOut,
+  Handshake,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -39,6 +40,12 @@ const NAV_ITEMS: readonly {
   { label: "프로젝트", path: "projects", icon: FolderKanban, module: "operations" },
   { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
   { label: "전문가", path: "experts", icon: Users, module: "experts" },
+  {
+    label: "섭외 현황",
+    path: "experts/engagements",
+    icon: Handshake,
+    module: "experts",
+  },
   { label: "비용·지급", path: "payments", icon: Wallet, module: "experts" },
   { label: "보고서", path: "reports", icon: FileText, module: "operations" },
   { label: "발송", path: "messages", icon: Send, module: null },
