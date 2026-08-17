@@ -742,6 +742,120 @@ export type Database = {
           },
         ]
       }
+      engagement_plans: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          revision: number
+          status: string
+          approval_id: string | null
+          parent_plan_id: string | null
+          slot_count: number
+          position_count: number
+          planned_amount: number
+          plan_signature: string
+          note: string | null
+          last_rejection_note: string | null
+          submitted_by: string | null
+          submitted_at: string | null
+          approved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          revision?: number
+          status?: string
+          approval_id?: string | null
+          parent_plan_id?: string | null
+          slot_count?: number
+          position_count?: number
+          planned_amount?: number
+          plan_signature: string
+          note?: string | null
+          last_rejection_note?: string | null
+          submitted_by?: string | null
+          submitted_at?: string | null
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          revision?: number
+          status?: string
+          approval_id?: string | null
+          parent_plan_id?: string | null
+          slot_count?: number
+          position_count?: number
+          planned_amount?: number
+          plan_signature?: string
+          note?: string | null
+          last_rejection_note?: string | null
+          submitted_by?: string | null
+          submitted_at?: string | null
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_plan_lines: {
+        Row: {
+          id: string
+          tenant_id: string
+          plan_id: string
+          slot_id: string | null
+          slot_date: string
+          starts_time: string | null
+          ends_time: string | null
+          role_type: string
+          role_description: string | null
+          required_count: number
+          fee_amount: number
+          location_name: string | null
+          subtotal: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          plan_id: string
+          slot_id?: string | null
+          slot_date: string
+          starts_time?: string | null
+          ends_time?: string | null
+          role_type: string
+          role_description?: string | null
+          required_count: number
+          fee_amount?: number
+          location_name?: string | null
+          subtotal?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          plan_id?: string
+          slot_id?: string | null
+          slot_date?: string
+          starts_time?: string | null
+          ends_time?: string | null
+          role_type?: string
+          role_description?: string | null
+          required_count?: number
+          fee_amount?: number
+          location_name?: string | null
+          subtotal?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
       engagement_slots: {
         Row: {
           created_at: string

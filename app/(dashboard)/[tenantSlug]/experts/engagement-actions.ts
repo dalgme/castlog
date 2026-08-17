@@ -16,6 +16,7 @@ import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
 import {
   screenExpertSchedule,
   type ScreenResult,
@@ -59,6 +60,10 @@ export async function createEngagement(
     }
     projectId = data.projectId;
   }
+
+  // 섭외계획 품의 게이트 — 승인된 계획이 있어야 프로젝트 섭외요청을 보낼 수 있다
+  const planGate = await assertEngagementAllowed(projectId, modules.approvals);
+  if (!planGate.ok) return planGate;
 
   const supabase = createClient();
   const {

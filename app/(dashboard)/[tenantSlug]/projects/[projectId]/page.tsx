@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
+import { gradeLabel } from "@/lib/auth/grades";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -13,6 +14,10 @@ import {
 } from "@/lib/operations/steps";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
+import {
+  buildPlanSnapshot,
+  evaluatePlanGate,
+} from "@/lib/integrations/engagement-plans";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +36,10 @@ import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
+import {
+  EngagementPlanPanel,
+  type PlanPanelState,
+} from "./engagement-plan-panel";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -134,7 +143,7 @@ export default async function ProjectDetailPage({
       // 단계 23: 종료 기여도 대상 직원 + 기존 기여도
       supabase
         .from("users")
-        .select("id, name, role, department")
+        .select("id, name, role, grade, department, is_active")
         .order("name", { ascending: true }),
       supabase
         .from("project_contributions")
@@ -196,6 +205,54 @@ export default async function ProjectDetailPage({
   }));
   // Phase A-1: 배정 패널용 (권한자만 렌더)
   const canManage = role === "org_admin" || role === "manager";
+
+  // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
+  let planPanel: PlanPanelState | null = null;
+  let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
+  let hasProjectRule = false;
+  if (modules.experts) {
+    const [gate, snapshot] = await Promise.all([
+      evaluatePlanGate(project.id, modules.approvals),
+      buildPlanSnapshot(project.id),
+    ]);
+    planPanel = {
+      required: gate.required,
+      allowed: gate.required ? gate.allowed : true,
+      state: gate.required ? gate.state : "module_off",
+      message: gate.required ? gate.message : "",
+      revision: gate.required ? (gate.plan?.revision ?? null) : null,
+      approvalId: gate.required ? (gate.plan?.approvalId ?? null) : null,
+      plannedAmount:
+        gate.required && gate.plan?.status === "approved"
+          ? gate.plan.plannedAmount
+          : null,
+      positionCount:
+        gate.required && gate.plan?.status === "approved"
+          ? gate.plan.positionCount
+          : null,
+      currentPlannedAmount: snapshot.plannedAmount,
+      currentPositionCount: snapshot.positionCount,
+      currentSlotCount: snapshot.slotCount,
+    };
+
+    // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
+    planApprovers = (staffResult.data ?? [])
+      .filter((u) => u.is_active && u.id !== user?.id)
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        gradeLabel: gradeLabel(u.grade),
+      }));
+
+    if (modules.approvals) {
+      const { count } = await supabase
+        .from("approval_rules")
+        .select("id", { count: "exact", head: true })
+        .eq("is_active", true)
+        .or("approval_type.is.null,approval_type.eq.project");
+      hasProjectRule = (count ?? 0) > 0;
+    }
+  }
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
     name: u.name,
@@ -308,6 +365,16 @@ export default async function ProjectDetailPage({
               />
             </CardContent>
           </Card>
+        )}
+        {modules.experts && planPanel && (
+          <EngagementPlanPanel
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
+            plan={planPanel}
+            canSubmit={canManage}
+            approverOptions={planApprovers}
+            hasProjectRule={hasProjectRule}
+          />
         )}
         {modules.experts && (
           <Card>

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
-import { requireModule } from "@/lib/modules/server";
+import { requireModule, getTenantModules } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import {
@@ -15,6 +15,7 @@ import {
   formatEventSchedule,
 } from "@/lib/integrations/engagement-roles";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
+import { evaluatePlanGate } from "@/lib/integrations/engagement-plans";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,8 @@ export default async function PositionPage({
 
   const role = roleFromUser(user);
   const canManage = role === "org_admin" || role === "manager";
+  const modules = await getTenantModules();
+  const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
   const candidates = canManage && ctx.status === "open" ? await getSlotCandidates(ctx) : [];
 
   const schedule = formatEventSchedule(
@@ -147,6 +150,20 @@ export default async function PositionPage({
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               섭외 요청은 관리자 이상만 보낼 수 있습니다.
+            </CardContent>
+          </Card>
+        ) : planGate.required && !planGate.allowed ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">섭외계획 승인 필요</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">{planGate.message}</p>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/${params.tenantSlug}/projects/${params.projectId}`}>
+                  프로젝트에서 계획 품의 진행
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         ) : (
