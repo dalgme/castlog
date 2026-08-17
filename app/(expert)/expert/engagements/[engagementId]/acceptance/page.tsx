@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { AcceptanceLetter } from "@/components/integrations/acceptance-letter";
 
+import { AcceptanceSignButton } from "./sign-button";
+
 export const metadata = { title: "섭외 수락서" };
 
 /** 전문가 포털 — 자신이 수락한 섭외의 수락서 열람 (전 기업 통합 이력). */
@@ -30,7 +32,12 @@ export default async function ExpertAcceptancePage({
           </Button>
         }
       />
-      <main className="mx-auto max-w-4xl p-4 sm:p-5">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
+        <AcceptanceSignButton
+          acceptanceId={view.acceptance.id}
+          status={view.acceptance.status}
+          signedAt={view.acceptance.signed_at}
+        />
         <AcceptanceLetter {...view} />
       </main>
     </div>

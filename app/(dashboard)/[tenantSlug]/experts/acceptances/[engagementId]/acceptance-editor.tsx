@@ -1,0 +1,213 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Paperclip, Send, Check, MapPin, X } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow";
+
+import {
+  updateAcceptanceGuide,
+  uploadAcceptanceMap,
+  uploadAcceptanceAttachment,
+  deleteAcceptanceAttachment,
+  sendAcceptance,
+  confirmAcceptance,
+} from "./acceptance-actions";
+
+/**
+ * 수락서 보완 편집 + 송부 + 확인 (기업 관리자 이상).
+ * 수락 조건 스냅샷(역할·비용·일정)은 편집하지 않는다 — 안내 정보만 보완한다.
+ */
+export function AcceptanceEditor({
+  acceptanceId,
+  status,
+  guideNote,
+  hasMap,
+  attachments,
+}: {
+  acceptanceId: string;
+  status: string;
+  guideNote: string;
+  hasMap: boolean;
+  attachments: { id: string; fileName: string }[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [note, setNote] = useState(guideNote);
+
+  const mapRef = useRef<HTMLInputElement>(null);
+  const attRef = useRef<HTMLInputElement>(null);
+
+  const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>, ok?: string) => {
+    setError(null);
+    setInfo(null);
+    startTransition(async () => {
+      const r = await fn();
+      if (!r.ok) setError(r.error);
+      else {
+        if (ok) setInfo(ok);
+        router.refresh();
+      }
+    });
+  };
+
+  const onFile = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>,
+    okMsg: string
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("acceptanceId", acceptanceId);
+    fd.append("file", file);
+    run(() => action(fd), okMsg);
+  };
+
+  const editable = status !== "confirmed";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">진행 상태</span>
+        <Badge variant={status === "confirmed" ? "default" : "secondary"}>
+          {ACCEPTANCE_STATUS_LABELS[status] ?? status}
+        </Badge>
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {info && (
+        <Alert>
+          <AlertDescription>{info}</AlertDescription>
+        </Alert>
+      )}
+
+      {editable && (
+        <>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">상세 설명 (안내 사항)</p>
+            <Textarea
+              rows={4}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="준비물, 진행 순서, 주차 안내 등 전문가에게 전달할 안내를 작성하세요."
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => run(() => updateAcceptanceGuide(acceptanceId, note), "저장했습니다.")}
+            >
+              안내 사항 저장
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={mapRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => onFile(e, uploadAcceptanceMap, "약도를 등록했습니다.")}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => mapRef.current?.click()}
+            >
+              <MapPin className="mr-1 h-4 w-4" />
+              {hasMap ? "찾아오는 길 교체" : "찾아오는 길 등록"}
+            </Button>
+
+            <input
+              ref={attRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) =>
+                onFile(e, uploadAcceptanceAttachment, "첨부파일을 등록했습니다.")
+              }
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => attRef.current?.click()}
+            >
+              <Paperclip className="mr-1 h-4 w-4" /> 첨부파일 추가
+            </Button>
+          </div>
+
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((f) => (
+                <span
+                  key={f.id}
+                  className="inline-flex max-w-[240px] items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs"
+                >
+                  <span className="truncate">{f.fileName}</span>
+                  <button
+                    type="button"
+                    aria-label="첨부 삭제"
+                    disabled={pending}
+                    onClick={() =>
+                      run(() => deleteAcceptanceAttachment(f.id), "삭제했습니다.")
+                    }
+                    className="text-muted-foreground hover:text-red-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        {editable && (
+          <Button
+            size="sm"
+            disabled={pending}
+            onClick={() =>
+              run(() => sendAcceptance(acceptanceId), "전문가에게 송부했습니다.")
+            }
+          >
+            <Send className="mr-1 h-4 w-4" />
+            {status === "issued" ? "수락서 송부" : "다시 송부"}
+          </Button>
+        )}
+        {status === "signed" && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() =>
+              run(() => confirmAcceptance(acceptanceId), "확인 처리했습니다.")
+            }
+          >
+            <Check className="mr-1 h-4 w-4" /> 확인 완료 처리
+          </Button>
+        )}
+        {status === "confirmed" && (
+          <p className="text-sm text-muted-foreground">
+            전문가 서명본을 확인 완료했습니다.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

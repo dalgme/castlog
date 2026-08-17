@@ -22,10 +22,14 @@ export function AcceptanceLetter({
   acceptance,
   signatureUrl,
   sealUrl,
+  mapUrl = null,
+  attachments = [],
 }: {
   acceptance: Tables<"engagement_acceptances">;
   signatureUrl: string | null;
   sealUrl: string | null;
+  mapUrl?: string | null;
+  attachments?: { id: string; fileName: string; url: string | null }[];
 }) {
   const a = acceptance;
   const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR");
@@ -83,10 +87,60 @@ export function AcceptanceLetter({
         <Row label="수락일시" value={acceptedAt} />
       </dl>
 
+      {a.guide_note && (
+        <div className="mt-5 rounded-md border bg-muted/30 p-3">
+          <p className="mb-1 text-xs font-semibold text-muted-foreground">안내 사항</p>
+          <p className="whitespace-pre-wrap leading-relaxed">{a.guide_note}</p>
+        </div>
+      )}
+
+      {mapUrl && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs font-semibold text-muted-foreground">
+            찾아오는 길
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={mapUrl}
+            alt="찾아오는 길 약도"
+            className="w-full rounded-md border object-contain"
+          />
+        </div>
+      )}
+
+      {attachments.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs font-semibold text-muted-foreground">첨부 자료</p>
+          <ul className="space-y-1">
+            {attachments.map((f) => (
+              <li key={f.id} className="text-sm">
+                {f.url ? (
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-brand underline"
+                  >
+                    {f.fileName}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">{f.fileName}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <p className="mt-6 leading-relaxed text-muted-foreground">
         본인은 위 조건의 섭외 요청을 확인하고 이를 수락합니다. 아래 서명·날인은
         수락 시점에 등록된 본인의 서명·날인입니다.
       </p>
+      {a.signed_at && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          전자서명 확인: {new Date(a.signed_at).toLocaleString("ko-KR")}
+        </p>
+      )}
 
       <div className="mt-6 flex items-end justify-end gap-8">
         {signatureUrl ? (
