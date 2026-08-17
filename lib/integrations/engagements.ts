@@ -137,6 +137,24 @@ export async function applyEngagementResponse(
     }
   }
 
+  // Phase B: 넘버링코드(포지션)와 연결된 요청이면 상태를 함께 전환한다.
+  //  수락 → filled(확정), 거절 → open(다시 후보 탐색 가능)
+  try {
+    if (decision === "accepted") {
+      await admin
+        .from("engagement_slot_positions")
+        .update({ status: "filled" })
+        .eq("engagement_id", updated.id);
+    } else {
+      await admin
+        .from("engagement_slot_positions")
+        .update({ status: "open", engagement_id: null, expert_id: null })
+        .eq("engagement_id", updated.id);
+    }
+  } catch {
+    // 포지션 동기화 실패가 수락·거절 처리를 막지 않는다.
+  }
+
   await admin.from("audit_logs").insert({
     tenant_id: updated.tenant_id,
     actor_auth_user_id: actorAuthUserId,
