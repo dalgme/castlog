@@ -742,6 +742,42 @@ export type Database = {
           },
         ]
       }
+      engagement_acceptance_attachments: {
+        Row: {
+          acceptance_id: string
+          created_at: string
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          mime_type: string | null
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          acceptance_id: string
+          created_at?: string
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          storage_path: string
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          acceptance_id?: string
+          created_at?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          storage_path?: string
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
       engagement_acceptances: {
         Row: {
           accepted_at: string
@@ -772,6 +808,14 @@ export type Database = {
           role_type: string | null
           special_notes: string | null
           starts_time: string | null
+        
+          confirmed_at: string | null
+          confirmed_by: string | null
+          guide_note: string | null
+          map_image_path: string | null
+          sent_at: string | null
+          signed_at: string | null
+          status: string
         }
         Insert: {
           accepted_at?: string
@@ -802,6 +846,14 @@ export type Database = {
           role_type?: string | null
           special_notes?: string | null
           starts_time?: string | null
+        
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          guide_note?: string | null
+          map_image_path?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
         }
         Update: {
           accepted_at?: string
@@ -832,6 +884,14 @@ export type Database = {
           role_type?: string | null
           special_notes?: string | null
           starts_time?: string | null
+        
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          guide_note?: string | null
+          map_image_path?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
         }
         Relationships: [
           {

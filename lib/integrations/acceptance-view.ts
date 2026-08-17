@@ -9,10 +9,20 @@ import type { Tables } from "@/lib/supabase/database.types";
 
 const SIGNED_URL_EXPIRES_SECONDS = 120;
 
+export type AcceptanceAttachmentView = {
+  id: string;
+  fileName: string;
+  url: string | null;
+};
+
 export type AcceptanceView = {
   acceptance: Tables<"engagement_acceptances">;
   signatureUrl: string | null;
   sealUrl: string | null;
+  /** 찾아오는 길(약도) 이미지 — 서명 만료 URL */
+  mapUrl: string | null;
+  /** 동봉 첨부파일 — 서명 만료 URL */
+  attachments: AcceptanceAttachmentView[];
 };
 
 /**
@@ -47,9 +57,24 @@ export async function getAcceptanceView(
     return data?.signedUrl ?? null;
   }
 
-  const [signatureUrl, sealUrl] = await Promise.all([
+  // 첨부는 service_role로 조회 — 전문가 세션은 tenant RLS 밖이므로 여기서 처리한다.
+  const { data: attachmentRows } = await admin
+    .from("engagement_acceptance_attachments")
+    .select("id, file_name, storage_path")
+    .eq("acceptance_id", acceptance.id)
+    .order("created_at", { ascending: true });
+
+  const [signatureUrl, sealUrl, mapUrl, attachments] = await Promise.all([
     sign(acceptance.signature_path),
     sign(acceptance.seal_path),
+    sign(acceptance.map_image_path),
+    Promise.all(
+      (attachmentRows ?? []).map(async (a) => ({
+        id: a.id,
+        fileName: a.file_name,
+        url: await sign(a.storage_path),
+      }))
+    ),
   ]);
 
   await supabase.from("audit_logs").insert({
@@ -61,5 +86,5 @@ export async function getAcceptanceView(
     resource_id: acceptance.id,
   });
 
-  return { acceptance, signatureUrl, sealUrl };
+  return { acceptance, signatureUrl, sealUrl, mapUrl, attachments };
 }
