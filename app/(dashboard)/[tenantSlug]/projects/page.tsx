@@ -88,13 +88,13 @@ export default async function ProjectsPage({
     : { data: null };
   const nameById = new Map((leadUsers ?? []).map((u) => [u.id, u.name]));
 
-  const leadByProject = new Map<string, { pm?: string; deputy?: string }>();
+  const leadByProject = new Map<string, { pm?: string; deputies: string[] }>();
   for (const a of assignments ?? []) {
     const name = nameById.get(a.user_id);
     if (!name) continue;
-    const entry = leadByProject.get(a.project_id) ?? {};
+    const entry = leadByProject.get(a.project_id) ?? { deputies: [] };
     if (a.assignment_role === "pm") entry.pm = name;
-    else entry.deputy = name;
+    else entry.deputies.push(name);
     leadByProject.set(a.project_id, entry);
   }
 
@@ -162,7 +162,7 @@ export default async function ProjectsPage({
                           <TableCell className="text-xs">
                             {(() => {
                               const lead = leadByProject.get(project.id);
-                              if (!lead?.pm && !lead?.deputy) {
+                              if (!lead?.pm && !lead?.deputies.length) {
                                 return (
                                   <span className="text-muted-foreground">미지정</span>
                                 );
@@ -170,10 +170,10 @@ export default async function ProjectsPage({
                               return (
                                 <>
                                   {lead.pm ?? "-"}
-                                  {lead.deputy && (
+                                  {lead.deputies.length > 0 && (
                                     <span className="text-muted-foreground">
                                       {" · "}
-                                      {lead.deputy}
+                                      {lead.deputies.join(", ")}
                                     </span>
                                   )}
                                 </>

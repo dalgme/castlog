@@ -25,7 +25,7 @@ export function ProjectDashboardCards({
   budgetAmount,
   committedCost,
   pmName,
-  deputyPmName,
+  deputyPmNames,
   modules,
 }: {
   tenantSlug: string;
@@ -34,7 +34,7 @@ export function ProjectDashboardCards({
   /** 확정 + 요청중 섭외비 */
   committedCost: number;
   pmName: string | null;
-  deputyPmName: string | null;
+  deputyPmNames: string[];
   modules: { experts: boolean; approvals: boolean };
 }) {
   const fillRate =
@@ -60,7 +60,9 @@ export function ProjectDashboardCards({
           </p>
           <p className="text-sm">
             <span className="text-muted-foreground">부PM</span>{" "}
-            {deputyPmName ?? (
+            {deputyPmNames.length > 0 ? (
+              deputyPmNames.join(", ")
+            ) : (
               <span className="text-muted-foreground">미지정</span>
             )}
           </p>

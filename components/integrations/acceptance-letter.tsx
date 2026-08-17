@@ -4,7 +4,10 @@ import {
   formatEventSchedule,
   roleTypeLabel,
 } from "@/lib/integrations/engagement-roles";
+import type { AcceptanceAttachmentView } from "@/lib/integrations/acceptance-view";
 import type { Tables } from "@/lib/supabase/database.types";
+
+import { AcceptanceAttachments } from "./acceptance-attachments";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -30,7 +33,7 @@ export function AcceptanceLetter({
   signatureUrl: string | null;
   sealUrl: string | null;
   mapUrl?: string | null;
-  attachments?: { id: string; fileName: string; url: string | null }[];
+  attachments?: AcceptanceAttachmentView[];
 }) {
   const a = acceptance;
   const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR");
@@ -146,29 +149,7 @@ export function AcceptanceLetter({
         </div>
       )}
 
-      {attachments.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-1 text-xs font-semibold text-muted-foreground">첨부 자료</p>
-          <ul className="space-y-1">
-            {attachments.map((f) => (
-              <li key={f.id} className="text-sm">
-                {f.url ? (
-                  <a
-                    href={f.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-brand underline"
-                  >
-                    {f.fileName}
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">{f.fileName}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <AcceptanceAttachments attachments={attachments} />
 
       <p className="mt-6 leading-relaxed text-muted-foreground">
         본인은 위 조건의 섭외 요청을 확인하고 이를 수락합니다. 아래 서명·날인은
