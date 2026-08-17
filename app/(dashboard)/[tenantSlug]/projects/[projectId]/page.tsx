@@ -4,6 +4,11 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { gradeLabel } from "@/lib/auth/grades";
+import {
+  assignmentRoleRank,
+  isAssignmentRole,
+} from "@/lib/integrations/assignment-roles";
+import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -36,6 +41,7 @@ import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
+import { ProjectDashboardCards } from "./project-dashboard-cards";
 import {
   EngagementPlanPanel,
   type PlanPanelState,
@@ -152,7 +158,7 @@ export default async function ProjectDetailPage({
       // Phase A-1: 프로젝트 담당자 배정 (권한자 전용 표시)
       supabase
         .from("project_assignments")
-        .select("user_id")
+        .select("user_id, assignment_role")
         .eq("project_id", project.id),
       // Phase B-1: 섭외 테이블(타임테이블 + 넘버링코드 인원)
       modules.experts
@@ -256,14 +262,31 @@ export default async function ProjectDetailPage({
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
     name: u.name,
-    role: u.role,
+    gradeLabel: gradeLabel(u.grade),
     department: u.department,
   }));
   const staffById = new Map(staffForAssign.map((s) => [s.id, s]));
-  const assignedMembers = (assignmentsResult.data ?? []).map((a) => {
-    const u = staffById.get(a.user_id);
-    return { userId: a.user_id, name: u?.name ?? "-", role: u?.role ?? "staff" };
-  });
+  const assignedMembers = (assignmentsResult.data ?? [])
+    .map((a) => {
+      const u = staffById.get(a.user_id);
+      return {
+        userId: a.user_id,
+        name: u?.name ?? "-",
+        gradeLabel: u?.gradeLabel ?? "-",
+        assignmentRole: isAssignmentRole(a.assignment_role)
+          ? a.assignment_role
+          : ("member" as const),
+      };
+    })
+    .sort(
+      (a, b) =>
+        assignmentRoleRank(a.assignmentRole) -
+        assignmentRoleRank(b.assignmentRole)
+    );
+  const pmName =
+    assignedMembers.find((m) => m.assignmentRole === "pm")?.name ?? null;
+  const deputyPmName =
+    assignedMembers.find((m) => m.assignmentRole === "deputy_pm")?.name ?? null;
 
   // Phase B-1: 슬롯별 넘버링코드 인원 조회
   const slotRecords = slotsResult.data ?? [];
@@ -320,6 +343,11 @@ export default async function ProjectDetailPage({
     .filter((e) => e.status === "accepted")
     .reduce((sum, e) => sum + (e.fee_amount ?? 0), 0);
 
+  const dashboard = await getProjectDashboard(project.id, {
+    experts: modules.experts,
+    approvals: modules.approvals,
+  });
+
   const isClosed = project.status === "completed";
   const closingInProgress =
     project.closing_approval_id !== null && !isClosed;
@@ -335,6 +363,15 @@ export default async function ProjectDetailPage({
         }
       />
       <main className="space-y-5 p-5">
+        <ProjectDashboardCards
+          tenantSlug={params.tenantSlug}
+          data={dashboard}
+          budgetAmount={project.budget_amount}
+          committedCost={confirmedCost + requestedCost}
+          pmName={pmName}
+          deputyPmName={deputyPmName}
+          modules={{ experts: modules.experts, approvals: modules.approvals }}
+        />
         {canManage && (
           <Card>
             <CardHeader className="pb-3">
