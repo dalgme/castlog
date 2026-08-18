@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { practiceFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { PRACTICE_BLOCKED, type PracticeBlockedKey } from "./mode";
+import { ensurePracticeEnvironment } from "./seed";
 
 /** 현재 세션이 연습모드인지 (JWT 기준). */
 export async function isPracticeMode(): Promise<boolean> {
@@ -58,6 +59,13 @@ async function setPracticeClaim(next: boolean): Promise<PracticeSwitchResult> {
   const tenantId = tenantIdFromUser(user);
   if (!tenantId || !role || !["org_admin", "manager", "staff"].includes(role)) {
     return { ok: false, error: "기업 계정만 연습모드를 사용할 수 있습니다." };
+  }
+
+  // 진입 시 연습 환경을 보장한다(멱등). 데이터가 없는 빈 화면으로 들여보내면
+  // 연습할 게 없다 — 가상 전문가·이력·프로젝트가 갖춰진 상태로 시작한다.
+  if (next) {
+    const seeded = await ensurePracticeEnvironment(tenantId);
+    if (!seeded.ok) return { ok: false, error: seeded.error };
   }
 
   if (practiceFromUser(user) === next) {
