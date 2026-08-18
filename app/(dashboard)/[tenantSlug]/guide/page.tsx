@@ -5,7 +5,10 @@ import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, practiceFromUser } from "@/lib/auth/tenant";
 import { GRADE_LABELS, gradeAtLeast } from "@/lib/auth/grades";
 import { getTenantModules } from "@/lib/modules/server";
-import { MODULE_LABELS } from "@/lib/modules/modules";
+import {
+  COMMON_BASELINE_FEATURES,
+  MODULE_LABELS,
+} from "@/lib/modules/modules";
 import {
   ENGAGEMENT_GUIDE_STEPS,
   GUIDE_PERMISSION_NOTES,
@@ -70,6 +73,26 @@ export default async function EngagementGuidePage({
           </CardContent>
         </Card>
 
+        <Card>
+          <CardContent className="space-y-2 pt-6">
+            <h2 className="text-sm font-bold">
+              모듈과 무관하게 항상 쓰는 기능 (공통)
+            </h2>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              어떤 조합을 쓰든 일은 프로젝트를 여는 데서 시작합니다. 아래는 사용
+              모듈과 관계없이 항상 제공됩니다.
+            </p>
+            <ul className="grid gap-1 sm:grid-cols-2">
+              {COMMON_BASELINE_FEATURES.map((feature) => (
+                <li key={feature} className="flex items-start gap-1.5 text-sm">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
         {!practice && (
           <Card className="border-amber-300 bg-amber-50/60">
             <CardContent className="flex flex-wrap items-center gap-3 pt-6">
@@ -114,7 +137,7 @@ export default async function EngagementGuidePage({
                             ? `${missingModules
                                 .map((m) => MODULE_LABELS[m])
                                 .join("·")} 미사용`
-                            : `${GRADE_LABELS[step.minGrade]} 이상`}
+                            : `${GRADE_LABELS[step.minGrade]} 이상 필요`}
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="gap-1 text-[10px]">

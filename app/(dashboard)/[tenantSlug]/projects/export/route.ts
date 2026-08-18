@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireRole } from "@/lib/auth/session";
-import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
@@ -14,7 +13,7 @@ export async function GET(
   { params }: { params: { tenantSlug: string } }
 ) {
   const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
-  await requireModule("operations");
+  // 프로젝트 내보내기는 공통 기반 — 모듈 게이트 없음
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
       new URL(`/${params.tenantSlug}/projects`, request.url)

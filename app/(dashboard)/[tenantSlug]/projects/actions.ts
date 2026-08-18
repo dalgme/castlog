@@ -24,7 +24,9 @@ export type CreateProjectResult =
   | { ok: false; error: string };
 
 /**
- * 프로젝트 생성 + 기본 21스텝 복사 (operations 모듈).
+ * 프로젝트 생성 — **공통 기반** (모듈 조합과 무관하게 항상 제공, CLAUDE.md §1-2).
+ * 어떤 기능을 쓰든 일은 프로젝트를 여는 데서 시작하므로 모듈 게이트를 걸지 않는다.
+ * 21스텝 복사만 operations 모듈 활성 시에 한다.
  * RLS(projects_insert)가 관리자 이상 + 자사 테넌트를 강제한다.
  */
 export async function createProject(
@@ -34,11 +36,7 @@ export async function createProject(
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
 
-  // 모듈 게이트 (CLAUDE.md 1-2-3)
   const modules = await getTenantModules();
-  if (!modules.operations) {
-    return { ok: false, error: "프로젝트 모듈이 비활성화된 테넌트입니다." };
-  }
 
   const parsed = projectCreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -81,23 +79,25 @@ export async function createProject(
     return { ok: false, error: "프로젝트 생성에 실패했습니다." };
   }
 
-  // 기본 21스텝 복사 (구성 정보만 — 실적 데이터 없음)
-  const { error: stepsError } = await supabase
-    .from("project_lifecycle_steps")
-    .insert(
-      DEFAULT_LIFECYCLE_STEPS.map((step) => ({
-        tenant_id: tenantId,
-        project_id: project.id,
-        step_no: step.stepNo,
-        step_type: step.stepType,
-        title: step.title,
-      }))
-    );
+  // 기본 21스텝 복사 — operations 모듈 활성 테넌트만 (구성 정보만, 실적 없음)
+  if (modules.operations) {
+    const { error: stepsError } = await supabase
+      .from("project_lifecycle_steps")
+      .insert(
+        DEFAULT_LIFECYCLE_STEPS.map((step) => ({
+          tenant_id: tenantId,
+          project_id: project.id,
+          step_no: step.stepNo,
+          step_type: step.stepType,
+          title: step.title,
+        }))
+      );
 
-  if (stepsError) {
-    // 스텝 생성 실패 시 프로젝트도 취소 상태로 표시하지 않고 제거 시도는 하지 않는다
-    // (RLS에 delete 정책 없음) — 오류 반환으로 재시도 유도
-    return { ok: false, error: "기본 스텝 생성에 실패했습니다. 다시 시도해 주세요." };
+    if (stepsError) {
+      // 스텝 생성 실패 시 프로젝트도 취소 상태로 표시하지 않고 제거 시도는 하지 않는다
+      // (RLS에 delete 정책 없음) — 오류 반환으로 재시도 유도
+      return { ok: false, error: "기본 스텝 생성에 실패했습니다. 다시 시도해 주세요." };
+    }
   }
 
   await supabase.from("audit_logs").insert({
@@ -184,10 +184,7 @@ async function requireProjectManager(): Promise<
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
-  const modules = await getTenantModules();
-  if (!modules.operations) {
-    return { ok: false, error: "프로젝트 모듈이 비활성화된 테넌트입니다." };
-  }
+  // 종료 기여도·상태 전환은 프로젝트 기초 — 공통 기반이라 모듈 게이트가 없다.
   const supabase = createClient();
   const {
     data: { user },

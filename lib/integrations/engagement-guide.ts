@@ -18,7 +18,7 @@ export type GuideStep = {
   caution?: string;
   /** 이 단계를 실행할 수 있는 최소 등급 */
   minGrade: UserGrade;
-  /** 이 단계에 필요한 모듈 (없으면 공통 기반) */
+  /** 이 단계에 필요한 모듈. 빈 배열 = 공통 기반(모듈 조합과 무관하게 항상 제공) */
   modules: ModuleKey[];
   /** 바로 가기 — 테넌트 경로 뒤에 붙는 상대 경로 */
   href?: string;
@@ -33,7 +33,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     caution:
       "사업연도는 통계 축이라 나중에 바꾸면 지난 집계가 흔들립니다. 개설할 때 확정하세요.",
     minGrade: "team_lead",
-    modules: ["operations"],
+    modules: [],
     href: "projects",
   },
   {
@@ -44,18 +44,18 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     caution:
       "대표·이사는 전사 프로젝트를 모두 보지만, 팀장 이하는 배정된 프로젝트만 보입니다. 배정을 빠뜨리면 담당자 화면이 비어 있습니다.",
     minGrade: "director",
-    modules: ["operations"],
+    modules: [],
     href: "projects",
   },
   {
     no: 3,
-    title: "섭외 테이블 작성 · 넘버링코드 발급",
+    title: "세션 등록 · 전문가 코드넘버 발급",
     summary:
-      "날짜별 세션(시간·역할·필요인원·1인당 예산)을 등록하면 필요인원 1명당 넘버링코드가 자동 발급됩니다. 코드가 이후 모든 집계의 기준 단위입니다.",
+      "날짜별 세션(시간·세션명·역할·필요인원·1인당 예산·장소)을 등록하면 필요인원 1명당 코드넘버가 자동 발급됩니다. 코드가 이후 모든 집계의 기준 단위입니다. 여기까지가 공통 기능이고, 그 자리에 실제 전문가를 붙이는 것부터 전문가 모듈입니다.",
     caution:
       "필요인원을 나중에 줄이면 이미 발급된 코드와 어긋납니다. 인원은 확정 후 입력하세요.",
     minGrade: "team_lead",
-    modules: ["operations", "experts"],
+    modules: [],
     href: "projects",
   },
   {
@@ -66,7 +66,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     caution:
       "전결규정(approval_rules)이 등록돼 있으면 결재선이 자동 결정되고, 없으면 결재자를 직접 고릅니다.",
     minGrade: "staff",
-    modules: ["operations", "approvals"],
+    modules: ["approvals"],
     href: "approvals",
   },
   {
@@ -97,7 +97,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     summary:
       "승인된 계획의 일정·인원·비용이 바뀌면 변경 품의가 필요합니다. 메모·주소 같은 표기 수정은 재승인 대상이 아닙니다.",
     minGrade: "staff",
-    modules: ["operations", "approvals"],
+    modules: ["approvals"],
     href: "approvals",
   },
   {
@@ -137,9 +137,9 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     no: 11,
     title: "프로젝트 종료 기여도 · 종료 품의",
     summary:
-      "참여 직원의 기여도를 합계 100%로 배분하고 종료 품의를 올립니다. 승인되어야 프로젝트가 종료 처리됩니다.",
+      "참여 직원의 기여도를 합계 100%로 배분합니다(공통 기능). 전자결재를 쓰는 회사는 종료 품의가 승인되어야 프로젝트가 종료 처리됩니다.",
     minGrade: "team_lead",
-    modules: ["operations", "approvals"],
+    modules: ["approvals"],
     href: "approvals",
   },
   {
@@ -171,8 +171,18 @@ export const GUIDE_PERMISSION_NOTES: readonly {
       "설정·직원관리·발송설정·감사로그 네 가지 범위로 나눠 임원 등에게 넘길 수 있습니다. 다만 세무(주민등록번호) 조회 지정자 관리, 위임 자체의 부여·회수, 대표 등급 부여는 위임할 수 없습니다.",
   },
   {
+    title: "프로젝트 기초는 모듈이 아닙니다",
+    body:
+      "프로젝트 개설·기본정보·PM/부PM 배정·예산·세션 등록·전문가 코드넘버 발급은 어떤 모듈 조합을 쓰든 항상 제공됩니다. 전문가 모듈 없이도 코드넘버로 필요 인원(TO)을 관리할 수 있습니다.",
+  },
+  {
     title: "쓰지 않는 모듈의 단계는 건너뜁니다",
     body:
       "전자결재를 쓰지 않는 회사라면 품의 단계 없이 바로 섭외·지급 확정으로 이어집니다. 전문가 관리만 쓰는 회사는 프로젝트 없이도 전문가 풀·서류 수집을 운영할 수 있습니다.",
+  },
+  {
+    title: "모듈은 나중에 추가할 수 있고, 기존 데이터에 이어집니다",
+    body:
+      "설정 화면에서 추가를 요청하면 캐스트로그가 승인해 켜 줍니다. 이미 만들어 둔 세션·코드넘버는 그대로 쓰이고, 프로젝트에 연결하지 않고 만든 섭외 건은 나중에 프로젝트에 붙일 수 있습니다.",
   },
 ];
