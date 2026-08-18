@@ -34,8 +34,25 @@ import { Input } from "@/components/ui/input";
 
 import { createTenant } from "./actions";
 
-/** 테넌트 생성 다이얼로그 — 모듈 조합 선택 + 첫 총괄관리자 계정 생성 */
-export function CreateTenantDialog() {
+/**
+ * 테넌트 생성 다이얼로그 — 모듈 조합 선택 + 첫 총괄관리자 계정 생성.
+ *
+ * 도입 문의 화면에서도 쓴다. 그때는 신청서의 기업명·담당자·이메일을 채워 열고
+ * (defaults), 생성에 성공하면 해당 신청을 '테넌트 생성됨'으로 넘긴다(inquiryId).
+ * 슬러그는 채우지 않는다 — 한글 기업명에서 유도할 수 없고, 한번 정하면 인쇄된
+ * QR·발송된 문자에 남으므로 사람이 정해야 한다 (CLAUDE.md §1-1).
+ */
+export function CreateTenantDialog({
+  defaults,
+  inquiryId,
+  triggerLabel = "테넌트 생성",
+  triggerVariant = "default",
+}: {
+  defaults?: { name: string; orgAdminName: string; orgAdminEmail: string };
+  inquiryId?: string;
+  triggerLabel?: string;
+  triggerVariant?: "default" | "outline";
+} = {}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -49,18 +66,18 @@ export function CreateTenantDialog() {
     resolver: zodResolver(tenantCreateSchema),
     defaultValues: {
       slug: "",
-      name: "",
+      name: defaults?.name ?? "",
       planName: "",
       modules: { experts: true, approvals: true, operations: true },
-      orgAdminName: "",
-      orgAdminEmail: "",
+      orgAdminName: defaults?.orgAdminName ?? "",
+      orgAdminEmail: defaults?.orgAdminEmail ?? "",
     },
   });
 
   function onSubmit(values: TenantCreateInput) {
     setServerError(null);
     startTransition(async () => {
-      const res = await createTenant(values);
+      const res = await createTenant(values, inquiryId);
       if (res.ok) {
         setResult({ email: res.orgAdminEmail, tempPassword: res.tempPassword });
       } else {
@@ -89,9 +106,9 @@ export function CreateTenantDialog() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size="sm" variant={triggerVariant}>
           <Building2 className="mr-1.5 h-4 w-4" />
-          테넌트 생성
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
