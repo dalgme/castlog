@@ -11,6 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SlotCandidate } from "@/lib/integrations/slot-candidates";
 import { expertTagLabel } from "@/lib/integrations/expert-tags";
+import {
+  blindConflictTotal,
+  describeBlindConflicts,
+} from "@/lib/integrations/schedule-conflicts";
 
 import { requestEngagementForPosition } from "./position-actions";
 
@@ -96,8 +100,9 @@ export function CandidatePicker({
       )}
 
       <p className="text-xs text-muted-foreground">
-        이 일정과 겹치는 후보는 자동으로 표시됩니다. 타사 섭외·전문가 개인 일정은 상세
-        없이 겹침 건수만 보여집니다.
+        이 일정과 겹치는 후보는 자동으로 표시됩니다. 타사 섭외·전문가 개인 일정은
+        어느 기업의 무슨 일인지는 공개되지 않고, ‘아직 수락 전(진행 중)’인지
+        ‘이미 확정’인지와 건수만 보여집니다.
       </p>
 
       {candidates.length === 0 ? (
@@ -107,7 +112,14 @@ export function CandidatePicker({
       ) : (
         <ul className="max-h-80 space-y-1.5 overflow-y-auto">
           {candidates.map((c) => {
-            const hasConflict = c.conflict.own.length > 0 || c.conflict.blindCount > 0;
+            const blindLines = describeBlindConflicts(c.conflict.blind);
+            const blindTotal = blindConflictTotal(c.conflict.blind);
+            const hasConflict = c.conflict.own.length > 0 || blindTotal > 0;
+            // 미수락 경합만 있는 경우는 '불가'가 아니라 '경합' — 색을 구분한다.
+            const hardConflict =
+              c.conflict.own.length > 0 ||
+              c.conflict.blind.accepted > 0 ||
+              c.conflict.blind.personal > 0;
             const on = selected === c.expertId;
             return (
               <li key={c.expertId}>
@@ -137,9 +149,13 @@ export function CandidatePicker({
                         </span>
                       ))}
                     <span className="ml-auto">
-                      {hasConflict ? (
+                      {hardConflict ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700">
                           <AlertTriangle className="h-3.5 w-3.5" /> 일정 겹침
+                        </span>
+                      ) : hasConflict ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                          <AlertTriangle className="h-3.5 w-3.5" /> 섭외 경합
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
@@ -160,11 +176,11 @@ export function CandidatePicker({
                           주의: {c.tagNote}
                         </p>
                       )}
-                      {c.conflict.blindCount > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          다른 일정 {c.conflict.blindCount}건과 겹침 (상세 비공개)
+                      {blindLines.map((line, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">
+                          {line}
                         </p>
-                      )}
+                      ))}
                     </div>
                   )}
                 </button>

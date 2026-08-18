@@ -9,6 +9,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { getRrnLockdown, tripRrnLockdown } from "@/lib/integrations/rrn-lockdown";
+import { blockInPractice } from "@/lib/practice/server";
 import {
   RRN_ACCESS_REASONS,
   isRateLimited,
@@ -156,6 +157,10 @@ export async function getRevealMaterial(
 ): Promise<RevealResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   if (!hasStoreBEnv()) return { ok: false, error: "보안 저장소 연결이 설정되지 않았습니다." };
+  // 연습모드에서는 주민번호 조회를 흉내조차 내지 않는다 — 연습용 키 위임 체계를
+  // 따로 만들면 그 자체가 새로운 복호화 경로가 된다 (CLAUDE.md §5).
+  const practice = await blockInPractice("taxAccess");
+  if (!practice.ok) return practice;
   const d = await requireDesignee();
   if (!d.ok) return d;
   if (!(reason in RRN_ACCESS_REASONS)) {

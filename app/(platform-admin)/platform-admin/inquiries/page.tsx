@@ -18,7 +18,7 @@ export default async function PlatformInquiriesPage() {
 
   const headerActions = (
     <Button asChild variant="outline" size="sm">
-      <a href="/platform-admin">← 플랫폼 관리</a>
+      <a href="/platform-admin">← 캐스트로그 관리모드</a>
     </Button>
   );
 
