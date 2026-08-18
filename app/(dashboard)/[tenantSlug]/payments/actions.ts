@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { requirePaymentsAccess } from "@/lib/auth/admin-scopes";
 import {
   createApprovalWithSteps,
   matchApprovalRule,
@@ -33,16 +33,18 @@ async function requirePaymentsSession(): Promise<
   if (!modules.experts) {
     return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
   }
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "지급 관리 권한이 없습니다." };
-  }
-  return { ok: true, session: { userId: user.id, tenantId, role } };
+  // 지급은 금액 축이다 — 직급이 아니라 finance 권한으로 가른다.
+  // (대표·이사 기본 포함 + finance 위임자. DB의 app.can_manage_payments()와 동일)
+  const access = await requirePaymentsAccess();
+  if (!access.ok) return { ok: false, error: access.error };
+  return {
+    ok: true,
+    session: {
+      userId: access.userId,
+      tenantId: access.tenantId,
+      role: access.role,
+    },
+  };
 }
 
 /** 지급 품의 본문 자동 구성 — 전문가별 유형·총비용·원천징수·실지급 + 합계 */

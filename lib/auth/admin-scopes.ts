@@ -3,7 +3,8 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
-import { roleFromUser, tenantIdFromUser } from "./tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "./tenant";
+import { gradeAtLeast } from "./grades";
 import {
   ADMIN_SCOPE_LABELS,
   isAdminScope,
@@ -37,6 +38,15 @@ const NONE: AdminScopeSet = {
   staff: false,
   sending: false,
   audit: false,
+  finance: false,
+};
+
+const ALL: AdminScopeSet = {
+  settings: true,
+  staff: true,
+  sending: true,
+  audit: true,
+  finance: true,
 };
 
 /**
@@ -54,13 +64,9 @@ export async function getAdminScopes(): Promise<AdminScopeSet> {
   const role = roleFromUser(user);
 
   if (!user || role === "platform_admin") {
-    return role === "platform_admin"
-      ? { settings: true, staff: true, sending: true, audit: true }
-      : { ...NONE };
+    return role === "platform_admin" ? { ...ALL } : { ...NONE };
   }
-  if (role === "org_admin") {
-    return { settings: true, staff: true, sending: true, audit: true };
-  }
+  if (role === "org_admin") return { ...ALL };
   if (!tenantId) return { ...NONE };
 
   const { data } = await supabase
@@ -147,4 +153,58 @@ export async function requireCeo(): Promise<AdminScopeSession> {
     return { ok: false, error: "대표(회사 총괄관리자) 권한이 필요합니다." };
   }
   return { ok: true, userId: user.id, tenantId, tenantSlug, isCeo: true };
+}
+
+/**
+ * 지급(금액) 권한 — DB의 app.can_manage_payments()와 같은 기준.
+ *
+ * 지급은 직급 축만으로 가를 수 없다. '재무를 맡은 대리'는 금액을 봐야 하고,
+ * '지급과 무관한 팀장'은 볼 이유가 없다. 그래서 대표·이사는 기본 포함하고
+ * 그 밖에는 finance 위임으로 연다.
+ *
+ * 이 권한은 **금액**에 한정된다. 주민등록번호 조회는 포함되지 않는다 —
+ * 그건 tax_access_grants 지정자만 가능하며 위임 대상이 아니다 (CLAUDE.md §5).
+ */
+export async function canManagePayments(): Promise<boolean> {
+  if (!hasSupabaseEnv()) return false;
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const role = roleFromUser(user);
+  if (role === "platform_admin") return true;
+
+  const grade = gradeFromUser(user);
+  if (grade && gradeAtLeast(grade, "director")) return true;
+
+  const scopes = await getAdminScopes();
+  return scopes.finance;
+}
+
+/** 지급 관련 서버 액션의 진입 가드. */
+export async function requirePaymentsAccess(): Promise<
+  { ok: true; userId: string; tenantId: string; role: string } | { ok: false; error: string }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canManagePayments())) {
+    return {
+      ok: false,
+      error:
+        "지급 권한이 없습니다. 대표·이사이거나 ‘지급·정산’ 관리 권한을 위임받아야 합니다.",
+    };
+  }
+  return { ok: true, userId: user.id, tenantId, role };
 }

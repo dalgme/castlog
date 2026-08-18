@@ -29,6 +29,8 @@ const NAV_ITEMS: readonly {
   icon: typeof LayoutDashboard;
   module: ModuleKey | null;
   orgAdminOnly?: boolean;
+  /** 지급(금액) 권한자에게만 — 대표·이사 또는 finance 위임자 */
+  financeOnly?: boolean;
 }[] = [
   { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
   {
@@ -48,7 +50,13 @@ const NAV_ITEMS: readonly {
     icon: Handshake,
     module: "experts",
   },
-  { label: "비용·지급", path: "payments", icon: Wallet, module: "experts" },
+  {
+    label: "비용·지급",
+    path: "payments",
+    icon: Wallet,
+    module: "experts",
+    financeOnly: true,
+  },
   { label: "보고서", path: "reports", icon: FileText, module: "operations" },
   { label: "발송", path: "messages", icon: Send, module: null },
   { label: "섭외 안내", path: "guide", icon: BookOpen, module: "experts" },
@@ -60,16 +68,19 @@ export function Sidebar({
   tenantSlug,
   modules,
   isOrgAdmin,
+  canManagePayments,
 }: {
   tenantSlug: string;
   modules: ModuleFlags;
   isOrgAdmin: boolean;
+  canManagePayments: boolean;
 }) {
   const pathname = usePathname();
   const visibleItems = NAV_ITEMS.filter(
     (item) =>
       (item.module === null || modules[item.module]) &&
-      (!item.orgAdminOnly || isOrgAdmin)
+      (!item.orgAdminOnly || isOrgAdmin) &&
+      (!item.financeOnly || canManagePayments)
   );
 
   return (

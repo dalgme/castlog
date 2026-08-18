@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-import { requireRole } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+import { postLoginPath, requireRole } from "@/lib/auth/session";
+import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -41,8 +44,17 @@ export default async function PaymentsPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const sessionUser = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
   await requireModule("experts");
+  // 지급은 금액 축 — 대표·이사 또는 '지급·정산' 위임자만 (CLAUDE.md §3-1)
+  if (sessionUser && !(await canManagePayments())) {
+    redirect(postLoginPath(sessionUser));
+  }
 
   if (!hasSupabaseEnv()) {
     return (
