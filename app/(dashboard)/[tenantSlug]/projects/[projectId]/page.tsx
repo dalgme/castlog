@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { roleFromUser } from "@/lib/auth/tenant";
-import { gradeLabel } from "@/lib/auth/grades";
+import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
 import {
   assignmentRoleRank,
   isAssignmentRole,
@@ -40,6 +40,10 @@ import {
 } from "./expert-evaluation-form";
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import {
+  ActionRequestPanel,
+  type ActionRequestRow,
+} from "./action-request-panel";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
@@ -312,6 +316,41 @@ export default async function ProjectDetailPage({
         assignmentRoleRank(a.assignmentRole) -
         assignmentRoleRank(b.assignmentRole)
     );
+  // 부PM 실행 → PM 승인 관계 (공통 기반 — approvals 모듈과 무관)
+  const myAssignmentRole =
+    assignedMembers.find((m) => m.userId === user?.id)?.assignmentRole ?? null;
+  const { data: actionRequestRecords } = await supabase
+    .from("project_action_requests")
+    .select(
+      "id, action_type, target_id, request_note, status, requested_by, decided_by, decision_note, consumed_at, created_at"
+    )
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const actionRequests: ActionRequestRow[] = (actionRequestRecords ?? []).map(
+    (r) => ({
+      id: r.id,
+      actionType: r.action_type,
+      targetId: r.target_id,
+      requestNote: r.request_note,
+      status: r.status,
+      requesterName: staffById.get(r.requested_by)?.name ?? "(직원)",
+      deciderName: r.decided_by
+        ? staffById.get(r.decided_by)?.name ?? "(직원)"
+        : null,
+      decisionNote: r.decision_note,
+      consumedAt: r.consumed_at,
+      createdAt: r.created_at,
+    })
+  );
+  // 승인 주체는 PM. 대표·이사는 전사 열람 권한과 함께 승인도 할 수 있다.
+  const canDecideActions =
+    myAssignmentRole === "pm" || canViewAllProjects(gradeFromUser(user));
+  const showActionRequests =
+    actionRequests.length > 0 ||
+    myAssignmentRole === "deputy_pm" ||
+    canDecideActions;
+
   const pmName =
     assignedMembers.find((m) => m.assignmentRole === "pm")?.name ?? null;
   const deputyPmNames = assignedMembers
@@ -471,6 +510,22 @@ export default async function ProjectDetailPage({
                 projectId={project.id}
                 staff={staffForAssign}
                 assigned={assignedMembers}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {showActionRequests && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">PM 승인 (부PM 실행 건)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ActionRequestPanel
+                tenantSlug={params.tenantSlug}
+                projectId={project.id}
+                requests={actionRequests}
+                isDeputy={myAssignmentRole === "deputy_pm"}
+                canDecide={canDecideActions}
               />
             </CardContent>
           </Card>

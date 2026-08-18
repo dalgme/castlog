@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import {
@@ -275,6 +276,16 @@ export async function cancelEngagement(
     !["requested", "accepted"].includes(engagement.status)
   ) {
     return { ok: false, error: "취소할 수 없는 섭외입니다." };
+  }
+
+  // 부PM 실행 게이트 — 프로젝트에 붙은 섭외만 대상(미연결 건은 PM이 없다).
+  if (engagement.project_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId: engagement.project_id,
+      actionType: "engagement.cancel",
+      targetId: engagement.id,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
   }
 
   const urgent = engagement.status === "accepted";

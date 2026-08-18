@@ -2798,6 +2798,68 @@ export type Database = {
           },
         ]
       }
+      project_action_requests: {
+        Row: {
+          action_type: string
+          consumed_at: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          is_practice: boolean
+          project_id: string
+          request_note: string | null
+          requested_by: string
+          status: string
+          target_id: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Insert: {
+          action_type: string
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          is_practice?: boolean
+          project_id: string
+          request_note?: string | null
+          requested_by: string
+          status?: string
+          target_id?: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Update: {
+          action_type?: string
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          is_practice?: boolean
+          project_id?: string
+          request_note?: string | null
+          requested_by?: string
+          status?: string
+          target_id?: string | null
+          target_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_action_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_assignments: {
         Row: {
           assigned_by: string | null

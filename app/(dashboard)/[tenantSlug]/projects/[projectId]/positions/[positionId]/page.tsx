@@ -182,6 +182,8 @@ export default async function PositionPage({
                 positionId={ctx.positionId}
                 candidates={candidates}
                 defaultProgramName={ctx.projectName}
+                tenantSlug={params.tenantSlug}
+                projectId={params.projectId}
               />
             </CardContent>
           </Card>

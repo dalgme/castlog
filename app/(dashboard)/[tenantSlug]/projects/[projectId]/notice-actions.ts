@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import {
   dispatchSessionNotice,
   getSessionNoticeContext,
@@ -68,6 +69,14 @@ export async function createSessionNotice(input: {
         "발송 대상이 없습니다. 섭외가 확정된 전문가가 있어야 하며, 휴대폰 번호가 등록되어 있어야 합니다.",
     };
   }
+
+  // 부PM 실행 게이트 — 외부로 나가는 발송은 회수할 수 없다.
+  const deputyGate = await gateDeputyAction({
+    projectId: context.projectId,
+    actionType: "engagement.session_sms",
+    targetId: context.slotId,
+  });
+  if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
 
   let scheduledAt: string | null = null;
   if (input.scheduledAt) {
