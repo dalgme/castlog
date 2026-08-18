@@ -155,6 +155,9 @@ export default async function OrgAdminPage({
               <a href={`/${params.tenantSlug}/admin/org/export`}>엑셀</a>
             </Button>
             <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/admin/org/security`}>보안 현황</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/admin/org/audit`}>감사로그</a>
             </Button>
             <Button asChild variant="outline" size="sm">

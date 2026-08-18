@@ -70,7 +70,7 @@ export default async function ExpertTaxAccessPage() {
   const { data: logs } = await supabase
     .from("tax_access_logs")
     .select(
-      "id, tenant_name, project_name, reason, access_type, accessor_label, accessed_at"
+      "id, tenant_name, project_name, reason, access_type, accessor_label, accessed_at, is_over_limit, over_limit_reason"
     )
     .eq("expert_id", expert.id)
     .order("accessed_at", { ascending: false })
@@ -157,6 +157,7 @@ export default async function ExpertTaxAccessPage() {
                         <Tag className="ml-auto" tone={reason.tone}>
                           {reason.label}
                         </Tag>
+                        {log.is_over_limit && <Tag tone="red">한도 초과</Tag>}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                         <span>
@@ -169,6 +170,13 @@ export default async function ExpertTaxAccessPage() {
                           <span>조회자 {log.accessor_label}</span>
                         )}
                       </div>
+                      {log.is_over_limit && (
+                        <p className="mt-1 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+                          프로젝트당 2회 한도를 넘어 <b>대표자 승인</b>으로 진행된
+                          조회입니다. 기재된 사유:{" "}
+                          {log.over_limit_reason ?? "(미기재)"}
+                        </p>
+                      )}
                     </li>
                   );
                 })}

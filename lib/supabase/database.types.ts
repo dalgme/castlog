@@ -2411,6 +2411,66 @@ export type Database = {
         }
         Relationships: []
       }
+      tax_access_requests: {
+        Row: {
+          approval_id: string | null
+          consumed_at: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          expert_id: string
+          id: string
+          is_over_limit: boolean
+          over_limit_approved_by: string | null
+          over_limit_reason: string | null
+          project_id: string | null
+          reason: string
+          reauth_at: string | null
+          requested_by: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          approval_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expert_id: string
+          id?: string
+          is_over_limit?: boolean
+          over_limit_approved_by?: string | null
+          over_limit_reason?: string | null
+          project_id?: string | null
+          reason: string
+          reauth_at?: string | null
+          requested_by?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          approval_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expert_id?: string
+          id?: string
+          is_over_limit?: boolean
+          over_limit_approved_by?: string | null
+          over_limit_reason?: string | null
+          project_id?: string | null
+          reason?: string
+          reauth_at?: string | null
+          requested_by?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       tax_access_logs: {
         Row: {
           access_type: string
@@ -2419,6 +2479,8 @@ export type Database = {
           created_at: string
           expert_id: string
           id: string
+          is_over_limit: boolean
+          over_limit_reason: string | null
           project_id: string | null
           project_name: string | null
           reason: string
@@ -2432,6 +2494,8 @@ export type Database = {
           created_at?: string
           expert_id: string
           id?: string
+          is_over_limit?: boolean
+          over_limit_reason?: string | null
           project_id?: string | null
           project_name?: string | null
           reason: string
@@ -2445,6 +2509,8 @@ export type Database = {
           created_at?: string
           expert_id?: string
           id?: string
+          is_over_limit?: boolean
+          over_limit_reason?: string | null
           project_id?: string | null
           project_name?: string | null
           reason?: string

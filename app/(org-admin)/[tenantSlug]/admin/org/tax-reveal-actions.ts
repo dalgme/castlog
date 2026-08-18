@@ -10,8 +10,12 @@ import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { getRrnLockdown, tripRrnLockdown } from "@/lib/integrations/rrn-lockdown";
 import { blockInPractice } from "@/lib/practice/server";
+import { logAudit } from "@/lib/audit/log";
+import { resolveEmailProvider } from "@/lib/email/provider";
 import {
   RRN_ACCESS_REASONS,
+  RRN_PROJECT_LIMIT,
+  isOverProjectLimit,
   isRateLimited,
   type RrnAccessReason,
 } from "@/lib/integrations/rrn-access";
@@ -140,12 +144,33 @@ export type RevealMaterial = {
 export type RevealAccessType = "file_generation" | "screen";
 
 export type RevealResult =
-  | { ok: true; material: RevealMaterial }
-  | { ok: false; error: string };
+  | { ok: true; material: RevealMaterial; overLimit: boolean }
+  | { ok: false; error: string; needsOverLimitApproval?: true; usedCount?: number };
+
+/**
+ * 프로젝트당 조회 횟수 — tax_access_logs가 유일한 사실 원천이다(§5의 2회 한도).
+ * project_id가 없는 grant(프로젝트 미연결)는 전문가 단위로 집계한다.
+ */
+async function countProjectAccess(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  expertId: string,
+  projectId: string | null
+): Promise<number> {
+  let q = admin
+    .from("tax_access_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("expert_id", expertId);
+  q = projectId ? q.eq("project_id", projectId) : q.is("project_id", null);
+  const { count } = await q;
+  return count ?? 0;
+}
 
 /**
  * 조회 자료 발급 + 게이트 강제(§5).
- *  - 지정자만, 시간당 상한, 승인된 지급 목적(사유) 필수.
+ *  - 지정자만, 프로젝트당 2회 한도, 시간당 상한, 승인된 지급 목적(사유) 필수.
+ *  - 한도 초과는 **차단이 아니라** 사유 기재 + 대표 승인 + 전문가 통지로 처리한다.
  *  - 자료(암호문·래핑키)가 서버를 떠나는 시점 = 조회 발생 → tax_access_logs 기록 +
  *    전문가 즉시 통지. 서버는 복호화하지 않는다(브라우저에서만).
  */
@@ -235,6 +260,46 @@ export async function getRevealMaterial(
     return { ok: false, error: "조회할 수 있는 대상이 아닙니다." };
   }
 
+  // === 프로젝트당 2회 한도 (§5) ===
+  // 초과를 차단하지는 않는다. 다만 초과 조회는 사전에 사유가 적히고 대표가 승인한
+  // 건이어야 하며, 승인 1건은 조회 1회로 소진된다.
+  const projectUsedCount = await countProjectAccess(
+    admin,
+    d.tenantId,
+    grant.expert_id,
+    grant.project_id
+  );
+  let overLimitApproval: { id: string; reason: string | null } | null = null;
+  if (isOverProjectLimit(projectUsedCount)) {
+    let approvalQuery = admin
+      .from("tax_access_requests")
+      .select("id, over_limit_reason")
+      .eq("tenant_id", d.tenantId)
+      .eq("expert_id", grant.expert_id)
+      .eq("is_over_limit", true)
+      .eq("status", "approved")
+      .is("consumed_at", null);
+    approvalQuery = grant.project_id
+      ? approvalQuery.eq("project_id", grant.project_id)
+      : approvalQuery.is("project_id", null);
+    const { data: approved } = await approvalQuery
+      .order("decided_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!approved) {
+      return {
+        ok: false,
+        needsOverLimitApproval: true,
+        usedCount: projectUsedCount,
+        error:
+          `이 프로젝트에서 해당 전문가의 주민번호를 이미 ${projectUsedCount}회 조회했습니다(한도 ${RRN_PROJECT_LIMIT}회). ` +
+          "초과 조회는 사유를 기재해 대표 승인을 받은 뒤 진행할 수 있습니다.",
+      };
+    }
+    overLimitApproval = { id: approved.id, reason: approved.over_limit_reason };
+  }
+
   const [{ data: tenantKey }, { data: front }, { data: tenant }, { data: expert }] =
     await Promise.all([
       admin
@@ -251,6 +316,17 @@ export async function getRevealMaterial(
       admin.from("tenants").select("name").eq("id", d.tenantId).maybeSingle(),
       admin.from("experts").select("name").eq("id", grant.expert_id).maybeSingle(),
     ]);
+
+  // 전문가는 타 테넌트 projects를 RLS로 읽지 못한다 — 이력 화면에 쓸 이름을 스냅샷.
+  let projectName: string | null = null;
+  if (grant.project_id) {
+    const { data: project } = await admin
+      .from("projects")
+      .select("name")
+      .eq("id", grant.project_id)
+      .maybeSingle();
+    projectName = project?.name ?? null;
+  }
   if (!tenantKey || !front) {
     return { ok: false, error: "조회 자료를 확인할 수 없습니다." };
   }
@@ -271,16 +347,36 @@ export async function getRevealMaterial(
     tenant_id: d.tenantId,
     tenant_name: tenant?.name ?? null,
     project_id: grant.project_id,
+    project_name: projectName,
     reason,
     access_type: accessType,
     accessor_label: d.accessorLabel,
+    is_over_limit: overLimitApproval !== null,
+    over_limit_reason: overLimitApproval?.reason ?? null,
   });
+
+  // 승인 1건 = 조회 1회. 소진 처리해 같은 승인으로 두 번 조회할 수 없게 한다.
+  if (overLimitApproval) {
+    await admin
+      .from("tax_access_requests")
+      .update({ status: "fulfilled", consumed_at: new Date().toISOString() })
+      .eq("id", overLimitApproval.id)
+      .is("consumed_at", null);
+  }
 
   await notifyExpert({
     expertId: grant.expert_id,
     category: "rrn_access",
-    title: "주민등록번호가 조회되었습니다",
-    body: `${tenant?.name ? `${tenant.name} · ` : ""}${reasonLabel} · 조회자 ${d.accessorLabel}`,
+    title: overLimitApproval
+      ? `주민등록번호가 조회되었습니다 (한도 초과 ${projectUsedCount + 1}회차)`
+      : "주민등록번호가 조회되었습니다",
+    body:
+      `${tenant?.name ? `${tenant.name} · ` : ""}${reasonLabel} · 조회자 ${d.accessorLabel}` +
+      (overLimitApproval
+        ? ` · 프로젝트당 ${RRN_PROJECT_LIMIT}회 한도를 넘긴 조회입니다(대표 승인). 사유: ${
+            overLimitApproval.reason ?? "미기재"
+          }`
+        : ""),
     link: "/expert/tax-access",
     tenantId: d.tenantId,
   });
@@ -302,6 +398,7 @@ export async function getRevealMaterial(
 
   return {
     ok: true,
+    overLimit: overLimitApproval !== null,
     material: {
       expertName: expert?.name ?? "전문가",
       wrappedPrivateKey: tenantKey.wrapped_private_key,
@@ -312,4 +409,132 @@ export async function getRevealMaterial(
       backCiphertext: back.back_ciphertext,
     },
   };
+}
+
+export type OverLimitRequestResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 초과 조회 요청 — 지정자가 사유를 적어 대표 승인을 신청한다(§5).
+ *
+ * 한도 초과를 차단하지 않는 대신 여기에서 사유·요청자를 남긴다. 승인 권한은
+ * 대표 전용이며 위임되지 않는다(승인 액션은 security/actions.ts).
+ */
+export async function requestOverLimitAccess(
+  grantId: string,
+  reason: RrnAccessReason,
+  overLimitReason: string
+): Promise<OverLimitRequestResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const practice = await blockInPractice("taxAccess");
+  if (!practice.ok) return practice;
+  const d = await requireDesignee();
+  if (!d.ok) return d;
+  if (!(reason in RRN_ACCESS_REASONS)) {
+    return { ok: false, error: "조회 사유를 선택하세요." };
+  }
+  const note = overLimitReason.trim();
+  if (note.length < 10) {
+    return {
+      ok: false,
+      error: "초과 조회 사유를 10자 이상 구체적으로 적어 주세요 (예: 국세청 경정청구 대응).",
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data: grant } = await admin
+    .from("tax_project_grants")
+    .select("id, expert_id, project_id")
+    .eq("id", grantId)
+    .eq("tenant_id", d.tenantId)
+    .eq("status", "active")
+    .eq("is_honeytoken", false)
+    .maybeSingle();
+  if (!grant) return { ok: false, error: "조회할 수 있는 대상이 아닙니다." };
+
+  // 같은 대상에 대해 미처리(대기·미소진 승인) 요청이 있으면 중복 신청하지 않는다.
+  let openQuery = admin
+    .from("tax_access_requests")
+    .select("id, status")
+    .eq("tenant_id", d.tenantId)
+    .eq("expert_id", grant.expert_id)
+    .eq("is_over_limit", true)
+    .in("status", ["pending", "approved"])
+    .is("consumed_at", null);
+  openQuery = grant.project_id
+    ? openQuery.eq("project_id", grant.project_id)
+    : openQuery.is("project_id", null);
+  const { data: open } = await openQuery.limit(1).maybeSingle();
+  if (open) {
+    return {
+      ok: false,
+      error:
+        open.status === "approved"
+          ? "이미 승인된 초과 조회 건이 있습니다. 그대로 조회를 진행하세요."
+          : "이미 대표 승인 대기 중인 초과 조회 요청이 있습니다.",
+    };
+  }
+
+  const { error } = await admin.from("tax_access_requests").insert({
+    tenant_id: d.tenantId,
+    project_id: grant.project_id,
+    expert_id: grant.expert_id,
+    reason,
+    status: "pending",
+    requested_by: d.userId,
+    is_over_limit: true,
+    over_limit_reason: note,
+  });
+  if (error) return { ok: false, error: "요청을 저장하지 못했습니다." };
+
+  // 사유 본문은 감사로그가 아니라 요청 레코드에 남긴다(감사로그는 메타데이터만).
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  await logAudit(supabase, user, {
+    action: "rrn.over_limit.request",
+    resourceType: "tax_access_requests",
+    resourceId: grant.expert_id,
+    afterData: { project_id: grant.project_id, reason },
+  });
+
+  await notifyCeoOfOverLimitRequest(d.tenantId, note);
+  return { ok: true };
+}
+
+/** 대표에게 초과 조회 승인 요청 알림(이메일, best-effort). 직원용 알림함은 아직 없다. */
+async function notifyCeoOfOverLimitRequest(
+  tenantId: string,
+  note: string
+): Promise<void> {
+  try {
+    const provider = resolveEmailProvider();
+    if (!provider) return;
+    const admin = createAdminClient();
+    const [{ data: ceos }, { data: tenant }] = await Promise.all([
+      admin
+        .from("users")
+        .select("email")
+        .eq("tenant_id", tenantId)
+        .eq("grade", "ceo")
+        .eq("is_active", true),
+      admin.from("tenants").select("name, slug").eq("id", tenantId).maybeSingle(),
+    ]);
+    const to = (ceos ?? []).map((u) => u.email).filter(Boolean);
+    if (to.length === 0) return;
+    const from = process.env.EMAIL_FROM ?? "CASTLOG <noreply@castlog.kr>";
+    await provider.send({
+      from,
+      to: to.join(","),
+      subject: "[승인 요청] 주민등록번호 초과 조회 승인이 필요합니다",
+      text:
+        `${tenant?.name ?? "귀사"}에서 프로젝트당 조회 한도(${RRN_PROJECT_LIMIT}회)를 넘는\n` +
+        `주민등록번호 조회 요청이 접수되었습니다.\n\n` +
+        `사유: ${note}\n\n` +
+        `승인·반려는 기업 관리 > 보안 현황 화면에서 대표 계정으로 처리할 수 있습니다.\n` +
+        (tenant?.slug ? `/${tenant.slug}/admin/org/security\n` : ""),
+    });
+  } catch {
+    // 알림 실패가 요청 접수를 되돌리지는 않는다. 화면 목록에 그대로 남는다.
+  }
 }

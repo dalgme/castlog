@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { requireRole } from "@/lib/auth/session";
+import { requireUser, postLoginPath } from "@/lib/auth/session";
+import { canViewSecurity } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
@@ -9,6 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  ACTION_CATEGORIES,
+  auditActionLabel,
+  auditRoleLabel,
+} from "@/lib/audit/labels";
 import {
   Table,
   TableBody,
@@ -20,79 +27,8 @@ import {
 
 export const metadata = { title: "감사로그" };
 
-/** 행위 카테고리(action 접두어) 필터 */
-const ACTION_CATEGORIES: Record<string, string> = {
-  approval: "전자결재",
-  approval_rule: "전결규정",
-  approval_delegation: "대결·위임",
-  engagement: "섭외",
-  expert: "전문가",
-  expert_document: "전문가 서류",
-  expert_invitation: "등록 요청",
-  document_request: "서류 제출 요청",
-  payment_batch: "지급",
-  project: "프로젝트",
-  project_step: "프로젝트 스텝",
-  message: "발송",
-  export: "데이터 내보내기",
-  user: "계정",
-  sms_config: "SMS 설정",
-  ad: "수신동의",
-};
-
-/** 대표 행위 한글 표기 (미등록 action은 원문 그대로 노출) */
-const ACTION_LABELS: Record<string, string> = {
-  "approval.submit": "결재 상신",
-  "approval.approve": "결재 승인",
-  "approval.reject": "결재 반려",
-  "approval.cancel": "결재 회수",
-  "approval.resubmit": "재상신",
-  "approval_rule.deactivate": "전결규정 비활성화",
-  "approval_delegation.create": "대결·위임 설정",
-  "approval_delegation.end": "대결·위임 종료",
-  "engagement.request": "섭외 요청",
-  "engagement.cancel": "섭외 취소",
-  "expert.register": "전문가 등록",
-  "expert_document.upload": "서류 업로드",
-  "expert_document.view": "서류 열람",
-  "expert_invitation.create": "등록 요청 생성",
-  "expert_invitation.bulk_create": "등록 요청 일괄 생성",
-  "expert_invitation.revoke": "등록 요청 회수",
-  "document_request.create": "서류 제출 요청",
-  "document_request.cancel": "서류 제출 요청 회수",
-  "payment_batch.create": "지급건 생성",
-  "payment_batch.submit_approval": "지급 품의 상신",
-  "payment_batch.simple_confirm": "지급 확정(결재 생략)",
-  "payment_batch.paid": "지급 완료",
-  "payment_batch.cancel": "지급건 취소",
-  "project.create": "프로젝트 생성",
-  "project_step.status_change": "스텝 상태 변경",
-  "message.send": "발송 실행",
-  "export.experts": "전문가 목록 내보내기",
-  "export.projects": "프로젝트 목록 내보내기",
-  "export.approvals": "결재 목록 내보내기",
-  "export.payments": "지급 현황 내보내기",
-  "export.staff": "직원 목록 내보내기",
-  "user.create": "직원 계정 생성",
-  "user.activate": "계정 활성화",
-  "user.deactivate": "계정 비활성화",
-  "sms_config.save": "SMS 설정 저장",
-  "ad.unsubscribe": "광고 수신거부",
-  "tenant.create": "테넌트 생성",
-  "tenant.update_modules": "모듈 조합 변경",
-  "usage.snapshot": "사용량 수동 집계",
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  platform_admin: "플랫폼관리자",
-  org_admin: "기업총괄관리자",
-  manager: "관리자",
-  staff: "직원",
-  expert: "전문가",
-};
-
 /**
- * 감사로그 조회 — 기업총괄관리자 전용 (설계문서 7.5).
+ * 감사로그 조회 — 대표 또는 audit 위임을 받은 보안책임자 (설계문서 7.5).
  * audit_logs는 INSERT 전용이며 RLS가 자사 범위로 제한한다.
  */
 export default async function AuditLogPage({
@@ -102,7 +38,9 @@ export default async function AuditLogPage({
   params: { tenantSlug: string };
   searchParams: { category?: string; from?: string; to?: string; q?: string };
 }) {
-  await requireRole(["org_admin", "platform_admin"]);
+  const gateUser = await requireUser();
+  if (!gateUser) return null;
+  if (!(await canViewSecurity())) redirect(postLoginPath(gateUser));
 
   if (!hasSupabaseEnv()) {
     return (
@@ -150,9 +88,21 @@ export default async function AuditLogPage({
       <PageHeader
         title="감사로그"
         actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={`/${params.tenantSlug}/admin/org`}>기업 관리로</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={`/${params.tenantSlug}/admin/org/audit/export?category=${category}&from=${from}&to=${to}&q=${encodeURIComponent(q)}`}
+              >
+                엑셀
+              </a>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/${params.tenantSlug}/admin/org/security`}>보안 현황</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/${params.tenantSlug}/admin/org`}>기업 관리로</Link>
+            </Button>
+          </div>
         }
       />
       <main className="space-y-5 p-5">
@@ -244,17 +194,16 @@ export default async function AuditLogPage({
                           <span className="text-sm font-medium">
                             {(log.actor_auth_user_id &&
                               nameByUserId.get(log.actor_auth_user_id)) ??
-                              ROLE_LABELS[log.actor_role ?? ""] ??
-                              "-"}
+                              auditRoleLabel(log.actor_role)}
                           </span>
                           {log.actor_role && (
                             <Badge variant="secondary" className="ml-1.5">
-                              {ROLE_LABELS[log.actor_role] ?? log.actor_role}
+                              {auditRoleLabel(log.actor_role)}
                             </Badge>
                           )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {ACTION_LABELS[log.action] ?? log.action}
+                          {auditActionLabel(log.action)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {log.resource_type}

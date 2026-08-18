@@ -156,6 +156,27 @@ export async function requireCeo(): Promise<AdminScopeSession> {
 }
 
 /**
+ * 보안 기록 열람 권한 — DB의 app.can_view_security()와 같은 기준.
+ *
+ * 대표 또는 audit 위임자(= 기업 보안책임자). 주민번호 '조회' 권한이 아니라
+ * 조회 이력을 '읽는' 권한이다. 두 권한은 별개로 부여된다 (CLAUDE.md §5).
+ */
+export async function canViewSecurity(): Promise<boolean> {
+  if (!hasSupabaseEnv()) return false;
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const role = roleFromUser(user);
+  if (role === "platform_admin" || role === "org_admin") return true;
+
+  const scopes = await getAdminScopes();
+  return scopes.audit;
+}
+
+/**
  * 지급(금액) 권한 — DB의 app.can_manage_payments()와 같은 기준.
  *
  * 지급은 직급 축만으로 가를 수 없다. '재무를 맡은 대리'는 금액을 봐야 하고,
