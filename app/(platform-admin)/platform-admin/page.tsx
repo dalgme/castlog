@@ -38,10 +38,30 @@ export default async function PlatformAdminPage() {
 
   const lockdown = await getRrnLockdown();
 
+  // 미처리 신청 건수 — 랜딩 신청이 조용히 묻히지 않도록 헤더에 노출한다.
+  let newInquiryCount = 0;
+  if (hasSupabaseEnv()) {
+    const { count } = await createClient()
+      .from("platform_inquiries")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "new");
+    newInquiryCount = count ?? 0;
+  }
+
   const headerActions = (
     <div className="flex items-center gap-2">
       <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/usage">사용 현황</a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/inquiries">
+          도입 문의
+          {newInquiryCount > 0 && (
+            <Badge className="ml-1.5 h-5 px-1.5 text-[10px]">
+              {newInquiryCount}
+            </Badge>
+          )}
+        </a>
       </Button>
       <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/support">전문가 문의</a>

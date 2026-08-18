@@ -36,9 +36,13 @@ async function requirePlatformAdminSession(): Promise<
  * 테넌트 생성 (설계문서 7.1 — 셀프 온보딩 없음, 플랫폼관리자 수동 생성)
  * 모듈 조합 선택(CLAUDE.md 1-2-7) + 첫 기업총괄관리자 계정을 함께 만든다.
  * 임시 비밀번호는 1회만 반환하고 저장하지 않는다.
+ *
+ * inquiryId를 넘기면(도입 문의 화면에서 생성한 경우) 해당 신청을
+ * '테넌트 생성됨'으로 전환한다 — 실패해도 테넌트 생성은 되돌리지 않는다.
  */
 export async function createTenant(
-  input: TenantCreateInput
+  input: TenantCreateInput,
+  inquiryId?: string
 ): Promise<CreateTenantResult> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
@@ -86,7 +90,8 @@ export async function createTenant(
     app_metadata: {
       tenant_id: tenant.id,
       tenant_slug: tenant.slug,
-      role: "org_admin",
+      grade: "ceo", // 권한 6단계 — 판정의 원본 (CLAUDE.md 3-1)
+      role: "org_admin", // grade에서 파생된 호환값
       must_change_password: true, // 단계 30: 최초 로그인 시 비밀번호 강제 변경
     },
   });
@@ -108,7 +113,9 @@ export async function createTenant(
     tenant_id: tenant.id,
     name: data.orgAdminName,
     email: data.orgAdminEmail,
-    role: "org_admin",
+    // grade만 지정한다 — role은 DB 트리거(sync_role_from_grade)가 파생시킨다.
+    // role만 넘기면 트리거가 기본 grade('staff') 기준으로 덮어써 대표가 사원이 된다.
+    grade: "ceo",
   });
 
   if (profileError) {
@@ -126,6 +133,15 @@ export async function createTenant(
     resource_id: tenant.id,
     after_data: { slug: tenant.slug, modules: data.modules },
   });
+
+  // 도입 문의에서 이어진 생성이면 신청 상태를 정리한다.
+  if (inquiryId) {
+    await admin
+      .from("platform_inquiries")
+      .update({ status: "converted", handled_by: session.userId })
+      .eq("id", inquiryId);
+    revalidatePath("/platform-admin/inquiries");
+  }
 
   revalidatePath("/platform-admin");
   return { ok: true, tempPassword, orgAdminEmail: data.orgAdminEmail };
