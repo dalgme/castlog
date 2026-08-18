@@ -14,6 +14,7 @@ import {
   Settings,
   LogOut,
   Handshake,
+  BookOpen,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ const NAV_ITEMS: readonly {
   { label: "비용·지급", path: "payments", icon: Wallet, module: "experts" },
   { label: "보고서", path: "reports", icon: FileText, module: "operations" },
   { label: "발송", path: "messages", icon: Send, module: null },
+  { label: "섭외 안내", path: "guide", icon: BookOpen, module: "experts" },
   { label: "설정", path: "settings", icon: Settings, module: null },
 ];
 
