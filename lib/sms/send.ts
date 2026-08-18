@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
+import { isPracticeMode } from "@/lib/practice/server";
 import {
   isSmsTestMode,
   sendSms,
@@ -180,7 +181,10 @@ export async function sendTenantSms(
   const systemContext = params.systemContext === true;
   const supabase = systemContext ? createAdminClient() : createClient();
   const batchId = randomUUID();
-  const testMode = isSmsTestMode();
+  // 연습모드에서는 실제 발송을 하지 않는다. 흐름·이력은 그대로 남기되 공급자
+  // 호출만 건너뛴다 — 발송 연습을 하다 실제 요금·오발송이 나면 안 된다.
+  const practice = systemContext ? false : await isPracticeMode();
+  const testMode = isSmsTestMode() || practice;
 
   // 광고성 — 야간 차단 (서버 강제)
   if (params.messageType === "advertising" && isNightTimeKst()) {

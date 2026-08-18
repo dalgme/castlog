@@ -57,6 +57,14 @@ export function roleFromUser(user: User | null): UserRole | null {
 }
 
 /**
+ * 연습모드 여부 — tenant_id와 같은 원칙으로 **JWT app_metadata에서만** 읽는다.
+ * DB에서는 app.is_practice()가 같은 클레임을 보고 RLS로 강제한다.
+ */
+export function practiceFromUser(user: User | null): boolean {
+  return user?.app_metadata?.practice === true;
+}
+
+/**
  * JWT app_metadata.grade — 권한 6단계.
  * 클레임이 아직 없는 기존 세션은 role에서 역산한다(DB app.user_grade와 동일 규칙).
  */

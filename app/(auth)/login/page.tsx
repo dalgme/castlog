@@ -7,7 +7,7 @@ import { LoginTabs } from "./login-tabs";
 import { AlreadySignedIn } from "./already-signed-in";
 
 const ROLE_LABELS: Record<string, string> = {
-  platform_admin: "플랫폼 관리자",
+  platform_admin: "캐스트로그 관리모드",
   org_admin: "기업 대표",
   manager: "기업 관리자",
   staff: "기업 담당자",

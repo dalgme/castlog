@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
+import { isPracticeMode } from "@/lib/practice/server";
 import { resolveEmailProvider } from "./provider";
 
 /**
@@ -95,7 +96,8 @@ export async function sendTenantEmail(
     process.env.EMAIL_FROM ??
     process.env.RESEND_FROM ??
     "CASTLOG <no-reply@castlog.kr>";
-  const testMode = !provider;
+  // 연습모드에서는 공급자 호출을 건너뛴다 (이력은 그대로 남는다).
+  const testMode = !provider || (await isPracticeMode());
 
   let targets = params.recipients;
   let excludedCount = 0;

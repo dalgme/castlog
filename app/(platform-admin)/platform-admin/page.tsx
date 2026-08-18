@@ -21,7 +21,7 @@ import { CreateTenantDialog } from "./create-tenant-dialog";
 import { TenantModulesDialog } from "./modules-dialog";
 import { LockdownPanel } from "./lockdown-panel";
 
-export const metadata = { title: "플랫폼 관리" };
+export const metadata = { title: "캐스트로그 관리모드" };
 
 const TENANT_STATUS_LABEL: Record<string, string> = {
   active: "활성",
@@ -78,7 +78,7 @@ export default async function PlatformAdminPage() {
   if (!hasSupabaseEnv()) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="플랫폼 관리" />
+        <PageHeader title="캐스트로그 관리모드" />
         <main className="p-5">
           <EmptyState
             title="서버 설정 대기 중"
@@ -99,7 +99,7 @@ export default async function PlatformAdminPage() {
 
   return (
     <div className="min-h-screen bg-secondary/50">
-      <PageHeader title="플랫폼 관리" actions={headerActions} />
+      <PageHeader title="캐스트로그 관리모드" actions={headerActions} />
       <main className="space-y-4 p-5">
         <LockdownPanel
           locked={lockdown.locked}

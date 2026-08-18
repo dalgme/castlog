@@ -361,6 +361,7 @@ export type Database = {
       }
       approvals: {
         Row: {
+          is_practice: boolean
           amount: number | null
           applied_rule_id: string | null
           approval_type: string
@@ -377,6 +378,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           amount?: number | null
           applied_rule_id?: string | null
           approval_type?: string
@@ -393,6 +395,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           amount?: number | null
           applied_rule_id?: string | null
           approval_type?: string
@@ -1287,6 +1290,7 @@ export type Database = {
       }
       expert_engagements: {
         Row: {
+          is_practice: boolean
           created_at: string
           ends_on: string | null
           ends_time: string | null
@@ -1316,6 +1320,7 @@ export type Database = {
           position_code: string | null
         }
         Insert: {
+          is_practice?: boolean
           created_at?: string
           ends_on?: string | null
           ends_time?: string | null
@@ -1345,6 +1350,7 @@ export type Database = {
           position_code?: string | null
         }
         Update: {
+          is_practice?: boolean
           created_at?: string
           ends_on?: string | null
           ends_time?: string | null
@@ -1406,6 +1412,7 @@ export type Database = {
       }
       expert_evaluations: {
         Row: {
+          is_practice: boolean
           created_at: string
           engagement_id: string | null
           evaluator_user_id: string | null
@@ -1418,6 +1425,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           created_at?: string
           engagement_id?: string | null
           evaluator_user_id?: string | null
@@ -1430,6 +1438,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           created_at?: string
           engagement_id?: string | null
           evaluator_user_id?: string | null
@@ -1541,6 +1550,7 @@ export type Database = {
       }
       expert_payment_batches: {
         Row: {
+          is_practice: boolean
           approval_id: string | null
           confirmed_at: string | null
           created_at: string
@@ -1558,6 +1568,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           approval_id?: string | null
           confirmed_at?: string | null
           created_at?: string
@@ -1575,6 +1586,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           approval_id?: string | null
           confirmed_at?: string | null
           created_at?: string
@@ -1730,6 +1742,7 @@ export type Database = {
       }
       expert_tenant_links: {
         Row: {
+          is_practice: boolean
           accepted_at: string | null
           created_at: string
           expert_id: string
@@ -1741,6 +1754,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           accepted_at?: string | null
           created_at?: string
           expert_id: string
@@ -1752,6 +1766,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           accepted_at?: string | null
           created_at?: string
           expert_id?: string
@@ -1781,6 +1796,7 @@ export type Database = {
       }
       expert_tenant_tags: {
         Row: {
+          is_practice: boolean
           id: string
           tenant_id: string
           expert_id: string
@@ -1791,6 +1807,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           id?: string
           tenant_id: string
           expert_id: string
@@ -1801,6 +1818,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           id?: string
           tenant_id?: string
           expert_id?: string
@@ -1814,6 +1832,7 @@ export type Database = {
       }
       expert_reviews: {
         Row: {
+          is_practice: boolean
           id: string
           tenant_id: string
           expert_id: string
@@ -1824,6 +1843,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           id?: string
           tenant_id: string
           expert_id: string
@@ -1834,6 +1854,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           id?: string
           tenant_id?: string
           expert_id?: string
@@ -1847,6 +1868,7 @@ export type Database = {
       }
       experts: {
         Row: {
+          is_practice: boolean
           auth_user_id: string | null
           bio: string | null
           career_years: number | null
@@ -1861,6 +1883,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          is_practice?: boolean
           auth_user_id?: string | null
           bio?: string | null
           career_years?: number | null
@@ -1875,6 +1898,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          is_practice?: boolean
           auth_user_id?: string | null
           bio?: string | null
           career_years?: number | null
@@ -2674,6 +2698,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          is_practice: boolean
           business_year: number
           client_name: string | null
           closed_at: string | null
@@ -2693,6 +2718,7 @@ export type Database = {
           budget_amount: number | null
         }
         Insert: {
+          is_practice?: boolean
           business_year: number
           client_name?: string | null
           closed_at?: string | null
@@ -2712,6 +2738,7 @@ export type Database = {
           budget_amount?: number | null
         }
         Update: {
+          is_practice?: boolean
           business_year?: number
           client_name?: string | null
           closed_at?: string | null

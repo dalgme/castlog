@@ -94,7 +94,7 @@ export default async function PlatformUsagePage() {
           <div className="flex items-center gap-2">
             <SnapshotButton />
             <Button asChild variant="ghost" size="sm">
-              <Link href="/platform-admin">테넌트 관리로</Link>
+              <Link href="/platform-admin">← 캐스트로그 관리모드</Link>
             </Button>
           </div>
         }

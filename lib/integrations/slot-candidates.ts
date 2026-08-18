@@ -5,12 +5,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { tagSortWeight } from "./expert-tags";
+import {
+  blindBucketOf,
+  blindConflictWeight,
+  emptyBlindConflicts,
+  type BlindConflicts,
+} from "./schedule-conflicts";
 
 export type CandidateConflict = {
   /** 자사 섭외와 겹침 — 상세 공개 */
   own: { label: string; startsOn: string }[];
-  /** 타사 섭외·전문가 개인 일정과 겹침 — 건수만(§4 테넌트 격리) */
-  blindCount: number;
+  /**
+   * 타사 섭외·전문가 개인 일정과 겹침 — 상태별 건수만(§4 테넌트 격리).
+   * '섭외 진행 중(미수락)'과 '확정'을 구분해야 담당자가 판단할 수 있다.
+   */
+  blind: BlindConflicts;
 };
 
 export type SlotCandidate = {
@@ -169,7 +178,7 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
   const ensure = (id: string) => {
     let c = conflictByExpert.get(id);
     if (!c) {
-      c = { own: [], blindCount: 0 };
+      c = { own: [], blind: emptyBlindConflicts() };
       conflictByExpert.set(id, c);
     }
     return c;
@@ -187,12 +196,14 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
         startsOn: g.starts_on,
       });
     } else {
-      c.blindCount += 1;
+      // 타사 건 — 어느 기업인지·무슨 일인지는 절대 담지 않고 상태별 건수만 센다.
+      const bucket = blindBucketOf(g.status);
+      if (bucket) c.blind[bucket] += 1;
     }
   }
   for (const e of externals ?? []) {
     if (!overlapsDay(from, to, e.starts_at, e.ends_at)) continue;
-    ensure(e.expert_id).blindCount += 1;
+    ensure(e.expert_id).blind.personal += 1;
   }
 
   return candidates
@@ -202,14 +213,15 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       specialty: c.specialty,
       region: c.region,
       careerYears: c.career_years,
-      conflict: conflictByExpert.get(c.id) ?? { own: [], blindCount: 0 },
+      conflict: conflictByExpert.get(c.id) ?? { own: [], blind: emptyBlindConflicts() },
       tag: tagByExpert.get(c.id)?.tag ?? null,
       tagNote: tagByExpert.get(c.id)?.note ?? null,
     }))
     .sort((a, b) => {
-      // 1) 일정 충돌 없는 후보 먼저 2) VIP·즐겨찾기 우선, 주의는 뒤로 3) 이름순
-      const ac = a.conflict.own.length + a.conflict.blindCount;
-      const bc = b.conflict.own.length + b.conflict.blindCount;
+      // 1) 일정 충돌 적은 후보 먼저 (미수락 경합은 확정보다 가볍게 본다)
+      //    2) VIP·즐겨찾기 우선, 주의는 뒤로 3) 이름순
+      const ac = a.conflict.own.length * 2 + blindConflictWeight(a.conflict.blind);
+      const bc = b.conflict.own.length * 2 + blindConflictWeight(b.conflict.blind);
       if (ac !== bc) return ac - bc;
       const aw = tagSortWeight(a.tag);
       const bw = tagSortWeight(b.tag);

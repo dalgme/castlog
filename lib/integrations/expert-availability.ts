@@ -4,6 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
+import {
+  blindBucketOf,
+  blindConflictTotal,
+  emptyBlindConflicts,
+  type BlindConflicts,
+} from "./schedule-conflicts";
 
 /** 자사 섭외(상세 공개) — 요청 테넌트 본인의 섭외 건만. */
 export type OwnConflict = {
@@ -21,11 +27,11 @@ export type ScreenResult =
       /** 자사 섭외 겹침(상세 공개) */
       ownConflicts: OwnConflict[];
       /**
-       * 상세를 공개하지 않는 겹침 건수 —
-       * (1) 다른 회사의 섭외, (2) 전문가가 직접 등록한 일정.
-       * 겹침 여부/건수만 반환하고 기관·제목 등 상세는 절대 포함하지 않는다.
+       * 상세를 공개하지 않는 겹침 —
+       * (1) 다른 회사의 섭외(미수락/확정 구분), (2) 전문가가 직접 등록한 일정.
+       * 상태별 건수만 반환하고 기관·제목 등 상세는 절대 포함하지 않는다.
        */
-      blindConflictCount: number;
+      blind: BlindConflicts;
     }
   | { ok: false; error: string };
 
@@ -97,7 +103,7 @@ export async function screenExpertSchedule(
     .eq("shared_with_tenants", true);
 
   const ownConflicts: OwnConflict[] = [];
-  let blindConflictCount = 0;
+  const blind = emptyBlindConflicts();
 
   for (const g of engagements ?? []) {
     if (!g.starts_on) continue;
@@ -110,19 +116,20 @@ export async function screenExpertSchedule(
         status: g.status,
       });
     } else {
-      // 다른 회사의 섭외 — 상세 없이 겹침만
-      blindConflictCount++;
+      // 다른 회사의 섭외 — 어느 기업인지는 담지 않고 상태별 건수만
+      const bucket = blindBucketOf(g.status);
+      if (bucket) blind[bucket] += 1;
     }
   }
 
   for (const e of externals ?? []) {
-    if (overlaps(from, to, e.starts_at, e.ends_at)) blindConflictCount++;
+    if (overlaps(from, to, e.starts_at, e.ends_at)) blind.personal += 1;
   }
 
   return {
     ok: true,
-    hasConflict: ownConflicts.length > 0 || blindConflictCount > 0,
+    hasConflict: ownConflicts.length > 0 || blindConflictTotal(blind) > 0,
     ownConflicts,
-    blindConflictCount,
+    blind,
   };
 }

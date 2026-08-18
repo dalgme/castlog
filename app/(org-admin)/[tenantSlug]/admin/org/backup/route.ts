@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireRole } from "@/lib/auth/session";
+import { blockInPractice } from "@/lib/practice/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { xlsxResponse, type SheetRows } from "@/lib/exports/xlsx";
@@ -33,6 +34,12 @@ export async function GET(
     return NextResponse.redirect(
       new URL(`/${params.tenantSlug}/admin/org`, request.url)
     );
+  }
+
+  // 연습모드에서 내려받으면 '자사 데이터 백업'이라 믿고 연습 데이터를 받게 된다.
+  const practice = await blockInPractice("backup");
+  if (!practice.ok) {
+    return NextResponse.json({ error: practice.error }, { status: 409 });
   }
 
   const supabase = createClient();

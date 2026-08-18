@@ -10,6 +10,10 @@ import {
   type EngagementCreateInput,
 } from "@/lib/integrations/schemas";
 import type { ScreenResult } from "@/lib/integrations/expert-availability";
+import {
+  blindConflictTotal,
+  describeBlindConflicts,
+} from "@/lib/integrations/schedule-conflicts";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -284,12 +288,17 @@ export function EngagementDialog({
                               </ul>
                             </div>
                           )}
-                          {screen.blindConflictCount > 0 && (
-                            <p className="rounded-md bg-brand-amber/10 px-2 py-1.5 text-xs text-[#8A6A00]">
-                              이 일시에 <b>다른 일정 {screen.blindConflictCount}건</b>과
-                              겹칩니다. (다른 회사 섭외 또는 전문가 개인 일정 — 상세는
-                              공개되지 않습니다)
-                            </p>
+                          {blindConflictTotal(screen.blind) > 0 && (
+                            <div className="space-y-0.5 rounded-md bg-brand-amber/10 px-2 py-1.5">
+                              {describeBlindConflicts(screen.blind).map((line, i) => (
+                                <p key={i} className="text-xs text-[#8A6A00]">
+                                  {line}
+                                </p>
+                              ))}
+                              <p className="text-[11px] text-[#8A6A00]/80">
+                                어느 기업의 무슨 일인지는 공개되지 않습니다.
+                              </p>
+                            </div>
                           )}
                         </>
                       )}
