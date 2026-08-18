@@ -9,6 +9,9 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { AlertBanner } from "@/components/layout/alert-banner";
 import { PracticeBar } from "@/components/layout/practice-bar";
 import { ModuleOnboarding } from "@/components/layout/module-onboarding";
+import { SetupBanner } from "@/components/layout/setup-banner";
+import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
+import { tenantIdFromUser } from "@/lib/auth/tenant";
 
 /** 테넌트 대시보드 공통 레이아웃 — /{tenant-slug}/... (미들웨어 인증 게이트와 이중 방어) */
 export default async function TenantDashboardLayout({
@@ -41,6 +44,14 @@ export default async function TenantDashboardLayout({
     role === "platform_admin" ||
     Object.values(adminScopes).some(Boolean);
 
+  // 최초 설정 안내 — 설정을 실제로 할 수 있는 사람에게만 띄운다.
+  // 연습모드에서는 띄우지 않는다(연습 환경의 설정 상태가 아니다).
+  const tenantId = tenantIdFromUser(user);
+  const setup =
+    !practice && isOrgAdmin && tenantId
+      ? await getSetupStatus(tenantId, params.tenantSlug, modules)
+      : null;
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -51,6 +62,13 @@ export default async function TenantDashboardLayout({
       />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
         {canPractice && <PracticeBar practice={practice} />}
+        {setup && (
+          <SetupBanner
+            tenantSlug={params.tenantSlug}
+            requiredRemaining={setup.requiredRemaining}
+            recommendedRemaining={setup.recommendedRemaining}
+          />
+        )}
         {/* 새로 켜진 모듈 안내 — 확인하면 사용자별로 사라진다 (CLAUDE.md §1-2-8) */}
         {!practice &&
           pendingOnboarding.map((key) => (
