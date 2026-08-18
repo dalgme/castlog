@@ -11,8 +11,17 @@ import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { getTenantModules } from "@/lib/modules/server";
+import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
+import {
+  isModuleRequestStatus,
+  parseRequestedModules,
+  requestableModules,
+} from "@/lib/modules/requests";
+
 import { SmsConfigForm } from "./sms-config-form";
 import { SmsConnectionPanel } from "./sms-connection-panel";
+import { ModuleRequestPanel, type OpenRequest } from "./module-request-panel";
 
 export const metadata = { title: "설정" };
 
@@ -34,12 +43,15 @@ export default async function SettingsPage({
   // 대표·플랫폼관리자 또는 '발송 설정·템플릿' 위임을 받은 직원 (CLAUDE.md 3-1)
   const gateUser = await requireUser();
   let canManageSending = false;
+  // 모듈 추가 요청은 '설정' 위임 범위다 — 발송 위임만 받은 직원에게는 숨긴다.
+  let canRequestModules = false;
   if (gateUser) {
     const role = roleFromUser(gateUser);
     const scopes = await getAdminScopes();
-    canManageSending =
-      role === "org_admin" || role === "platform_admin" || scopes.sending;
-    if (!canManageSending) redirect(postLoginPath(gateUser));
+    const isCeo = role === "org_admin" || role === "platform_admin";
+    canManageSending = isCeo || scopes.sending;
+    canRequestModules = isCeo || scopes.settings;
+    if (!canManageSending && !canRequestModules) redirect(postLoginPath(gateUser));
   }
 
   if (!hasSupabaseEnv()) {
@@ -62,10 +74,47 @@ export default async function SettingsPage({
     .select("provider, sender_number, is_active")
     .maybeSingle();
 
+  // 사용 기능(모듈) 현황 + 추가 요청 상태 (CLAUDE.md §1-2-8)
+  const modules = await getTenantModules();
+  const { data: requestRows } = await supabase
+    .from("tenant_module_requests")
+    .select("id, requested_modules, status, decision_note, created_at")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const requests: OpenRequest[] = (requestRows ?? []).map((r) => ({
+    id: r.id,
+    requested: parseRequestedModules(r.requested_modules),
+    status: isModuleRequestStatus(r.status) ? r.status : "pending",
+    decisionNote: r.decision_note,
+    createdAt: r.created_at,
+  }));
+  const openRequest = requests.find((r) => r.status === "pending") ?? null;
+  const lastDecision = requests.find((r) => r.status !== "pending") ?? null;
+
   return (
     <div>
       <PageHeader title="설정" />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+        {canRequestModules && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">사용 기능 · 추가 요청</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ModuleRequestPanel
+              available={requestableModules(modules)}
+              activeLabels={MODULE_KEYS.filter((k) => modules[k]).map(
+                (k) => MODULE_LABELS[k]
+              )}
+              openRequest={openRequest}
+              lastDecision={lastDecision}
+            />
+          </CardContent>
+        </Card>
+        )}
+
+        {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">SMS 연결 상태</CardTitle>
@@ -81,7 +130,9 @@ export default async function SettingsPage({
             />
           </CardContent>
         </Card>
+        )}
 
+        {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">SMS 발송 설정 (자사 공급자)</CardTitle>
@@ -106,7 +157,9 @@ export default async function SettingsPage({
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">솔라피 연결 방법</CardTitle>
@@ -144,6 +197,7 @@ export default async function SettingsPage({
             </p>
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">

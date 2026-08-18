@@ -2506,6 +2506,72 @@ export type Database = {
         }
         Relationships: []
       }
+      module_onboarding_acks: {
+        Row: {
+          acked_at: string
+          id: string
+          module_key: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          acked_at?: string
+          id?: string
+          module_key: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          acked_at?: string
+          id?: string
+          module_key?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tenant_module_requests: {
+        Row: {
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          note: string | null
+          requested_by: string | null
+          requested_modules: Json
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          note?: string | null
+          requested_by?: string | null
+          requested_modules: Json
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          note?: string | null
+          requested_by?: string | null
+          requested_modules?: Json
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           created_at: string
@@ -3270,6 +3336,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          modules_changed_at: string | null
           brand_color: string | null
           business_registration_number: string | null
           contract_ends_on: string | null
@@ -3285,6 +3352,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
           contract_ends_on?: string | null
@@ -3300,6 +3368,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
           contract_ends_on?: string | null

@@ -40,6 +40,7 @@ import {
 } from "./expert-evaluation-form";
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
@@ -382,6 +383,17 @@ export default async function ProjectDetailPage({
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
   }
+  // 프로젝트에 연결되지 않은 섭외 건 — 있을 때만 '붙이기' 도구를 노출한다.
+  // (프로젝트 없이 섭외해 온 테넌트가 프로젝트를 쓰기 시작할 때의 정리 경로)
+  const { count: unlinkedCount } =
+    modules.experts && canManage
+      ? await supabase
+          .from("expert_engagements")
+          .select("id", { count: "exact", head: true })
+          .is("project_id", null)
+          .in("status", ["requested", "accepted"])
+      : { count: 0 };
+
   // 예산 대비 섭외비 집계 (Phase C-3)
   const plannedCost = slotRecords.reduce(
     (sum, s) => sum + (s.fee_amount ?? 0) * s.required_count,
@@ -581,11 +593,16 @@ export default async function ProjectDetailPage({
               <CardTitle className="text-sm">
                 전문가 섭외 ({engagements.length})
               </CardTitle>
-              <EngagementDialog
-                experts={connectedExperts}
-                projects={null}
-                defaultProjectId={project.id}
-              />
+              <div className="flex items-center gap-2">
+                {canManage && (unlinkedCount ?? 0) > 0 && (
+                  <AttachEngagementsDialog projectId={project.id} />
+                )}
+                <EngagementDialog
+                  experts={connectedExperts}
+                  projects={null}
+                  defaultProjectId={project.id}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {engagements.length === 0 ? (

@@ -1,0 +1,168 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { requireAdminScope } from "@/lib/auth/admin-scopes";
+import { roleFromUser } from "@/lib/auth/tenant";
+import { getTenantModules } from "@/lib/modules/server";
+import { MODULE_KEYS, MODULE_LABELS, type ModuleKey } from "@/lib/modules/modules";
+import { parseRequestedModules } from "@/lib/modules/requests";
+
+export type ModuleRequestResult = { ok: true } | { ok: false; error: string };
+
+/** 감사로그의 actor_role — AdminScopeSession에는 role이 없어 세션에서 다시 읽는다. */
+async function currentRole(): Promise<string> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return roleFromUser(user) ?? "staff";
+}
+
+/**
+ * 모듈 추가 요청 (기업 → 캐스트로그).
+ *
+ * 모듈 조합은 계약(플랜) 정보이므로 기업이 스스로 켤 수 없다. 요청만 남기고
+ * 캐스트로그 관리모드에서 승인해야 feature_flags가 바뀐다. 결제 기능은 없다.
+ */
+export async function requestModules(
+  moduleKeys: string[],
+  note: string
+): Promise<ModuleRequestResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  // 설정 위임(settings)을 받은 임원도 요청할 수 있다 — 대표 전용은 아니다.
+  const gate = await requireAdminScope("settings");
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const wanted = moduleKeys.filter((k): k is ModuleKey =>
+    (MODULE_KEYS as readonly string[]).includes(k)
+  );
+  if (wanted.length === 0) {
+    return { ok: false, error: "추가할 기능을 선택하세요." };
+  }
+
+  const current = await getTenantModules();
+  const alreadyOn = wanted.filter((k) => current[k]);
+  if (alreadyOn.length > 0) {
+    return {
+      ok: false,
+      error: `${alreadyOn.map((k) => MODULE_LABELS[k]).join("·")}은(는) 이미 사용 중입니다.`,
+    };
+  }
+
+  const supabase = createClient();
+
+  // 대기 중인 요청이 이미 있으면 중복 상신을 막는다 (부분 유니크 인덱스도 있음)
+  const { data: open } = await supabase
+    .from("tenant_module_requests")
+    .select("id")
+    .eq("tenant_id", gate.tenantId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (open) {
+    return {
+      ok: false,
+      error: "이미 검토 중인 요청이 있습니다. 처리된 뒤에 다시 요청해 주세요.",
+    };
+  }
+
+  const requestedModules: Record<string, boolean> = {};
+  for (const key of wanted) requestedModules[key] = true;
+
+  const { error } = await supabase.from("tenant_module_requests").insert({
+    tenant_id: gate.tenantId,
+    requested_modules: requestedModules,
+    note: note.trim() || null,
+    requested_by: gate.userId,
+  });
+  if (error) return { ok: false, error: "요청 저장에 실패했습니다." };
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: gate.tenantId,
+    actor_auth_user_id: gate.userId,
+    actor_role: await currentRole(),
+    action: "module_request.create",
+    resource_type: "tenant",
+    resource_id: gate.tenantId,
+    after_data: { requested: wanted },
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/** 검토 전인 자기 요청 취소. */
+export async function cancelModuleRequest(
+  requestId: string
+): Promise<ModuleRequestResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const gate = await requireAdminScope("settings");
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = createClient();
+  const { data: updated, error } = await supabase
+    .from("tenant_module_requests")
+    .update({ status: "canceled" })
+    .eq("id", requestId)
+    .eq("tenant_id", gate.tenantId)
+    .eq("status", "pending")
+    .select("id, requested_modules")
+    .maybeSingle();
+
+  if (error || !updated) {
+    return { ok: false, error: "취소할 수 있는 요청이 없습니다." };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: gate.tenantId,
+    actor_auth_user_id: gate.userId,
+    actor_role: await currentRole(),
+    action: "module_request.cancel",
+    resource_type: "tenant",
+    resource_id: gate.tenantId,
+    after_data: { requested: parseRequestedModules(updated.requested_modules) },
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/** 모듈 활성화 안내 배너 확인 처리 (사용자별). */
+export async function ackModuleOnboarding(
+  moduleKey: string
+): Promise<ModuleRequestResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  if (!(MODULE_KEYS as readonly string[]).includes(moduleKey)) {
+    return { ok: false, error: "잘못된 요청입니다." };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  const tenantId = user.app_metadata?.tenant_id;
+  if (typeof tenantId !== "string") {
+    return { ok: false, error: "테넌트 정보를 확인할 수 없습니다." };
+  }
+
+  const { error } = await supabase
+    .from("module_onboarding_acks")
+    .upsert(
+      { tenant_id: tenantId, user_id: user.id, module_key: moduleKey },
+      { onConflict: "user_id,module_key" }
+    );
+  if (error) return { ok: false, error: "처리에 실패했습니다." };
+
+  revalidatePath("/[tenantSlug]", "layout");
+  return { ok: true };
+}
