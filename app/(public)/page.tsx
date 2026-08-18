@@ -360,9 +360,8 @@ export default function LandingPage() {
           </div>
           <div className="footer-col">
             <div className="footer-head">법적 고지</div>
-            <a href="#privacy">개인정보처리방침</a>
-            <a href="#terms">이용약관</a>
-            <a href="#efin">전자금융거래 약관</a>
+            <Link href="/legal/privacy">개인정보처리방침</Link>
+            <Link href="/legal/terms">이용약관</Link>
           </div>
         </div>
         <div className="container footer-bottom">

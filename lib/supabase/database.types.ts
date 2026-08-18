@@ -2529,6 +2529,9 @@ export type Database = {
       }
       platform_inquiries: {
         Row: {
+          marketing_consent_at: string | null
+          privacy_consent_at: string | null
+          terms_version: string | null
           company_name: string
           contact_name: string
           created_at: string
@@ -2543,6 +2546,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          marketing_consent_at?: string | null
+          privacy_consent_at?: string | null
+          terms_version?: string | null
           company_name: string
           contact_name: string
           created_at?: string
@@ -2557,6 +2563,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          marketing_consent_at?: string | null
+          privacy_consent_at?: string | null
+          terms_version?: string | null
           company_name?: string
           contact_name?: string
           created_at?: string
@@ -3462,8 +3471,74 @@ export type Database = {
           },
         ]
       }
+      staff_join_requests: {
+        Row: {
+          created_at: string
+          created_user_id: string | null
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          department: string | null
+          email: string
+          id: string
+          name: string
+          note: string | null
+          phone: string | null
+          privacy_agreed_at: string
+          status: string
+          tenant_id: string
+          terms_agreed_at: string
+          terms_version: string
+        }
+        Insert: {
+          created_at?: string
+          created_user_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          department?: string | null
+          email: string
+          id?: string
+          name: string
+          note?: string | null
+          phone?: string | null
+          privacy_agreed_at?: string
+          status?: string
+          tenant_id: string
+          terms_agreed_at?: string
+          terms_version: string
+        }
+        Update: {
+          created_at?: string
+          created_user_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          department?: string | null
+          email?: string
+          id?: string
+          name?: string
+          note?: string | null
+          phone?: string | null
+          privacy_agreed_at?: string
+          status?: string
+          tenant_id?: string
+          terms_agreed_at?: string
+          terms_version?: string
+        }
+        Relationships: []
+      }
       tenants: {
         Row: {
+          address: string | null
+          contact_phone: string | null
+          industry: string | null
+          privacy_officer_email: string | null
+          privacy_officer_name: string | null
+          privacy_officer_phone: string | null
+          representative_name: string | null
+          terms_agreed_at: string | null
+          terms_version: string | null
           modules_changed_at: string | null
           brand_color: string | null
           business_registration_number: string | null
@@ -3480,6 +3555,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          privacy_officer_email?: string | null
+          privacy_officer_name?: string | null
+          privacy_officer_phone?: string | null
+          representative_name?: string | null
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
@@ -3496,6 +3580,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          privacy_officer_email?: string | null
+          privacy_officer_name?: string | null
+          privacy_officer_phone?: string | null
+          representative_name?: string | null
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
@@ -3693,6 +3786,9 @@ export type Database = {
       }
       users: {
         Row: {
+          joined_via: string
+          terms_agreed_at: string | null
+          terms_version: string | null
           created_at: string
           department: string | null
           email: string
@@ -3707,6 +3803,9 @@ export type Database = {
           grade: string
         }
         Insert: {
+          joined_via?: string
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           created_at?: string
           department?: string | null
           email: string
@@ -3721,6 +3820,9 @@ export type Database = {
           grade?: string
         }
         Update: {
+          joined_via?: string
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           created_at?: string
           department?: string | null
           email?: string

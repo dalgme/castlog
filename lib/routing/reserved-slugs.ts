@@ -31,6 +31,12 @@ export const SYSTEM_RESERVED_SLUGS: readonly string[] = [
   "support",
   "about",
   "contact",
+  // /join/{tenant-slug} · /legal/{doc} — 정적 경로가 테넌트 경로보다 먼저 잡히므로
+  // 같은 이름의 테넌트가 생기면 그 테넌트가 통째로 가려진다.
+  "join",
+  "legal",
+  "terms",
+  "privacy",
   "dashboard",
   "settings",
   "auth",

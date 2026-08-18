@@ -20,6 +20,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -49,6 +50,7 @@ export function InquiryForm({
       email: "",
       phone: "",
       message: "",
+      marketingConsent: false,
       source,
     },
   });
@@ -205,6 +207,65 @@ export function InquiryForm({
           )}
         />
 
+        <div className="space-y-2.5 rounded-md border p-3">
+          <FormField
+            control={form.control}
+            name="privacyConsent"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value === true}
+                    onCheckedChange={(checked) =>
+                      field.onChange(checked === true ? true : undefined)
+                    }
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel className="text-sm font-normal">
+                    (필수) 개인정보 수집·이용에 동의합니다
+                  </FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    항목: 회사·기관명, 담당자명, 이메일, 연락처 · 목적: 도입 상담
+                    응대 · 보유기간: 문의 처리 후 3년.{" "}
+                    <a
+                      href="/legal/privacy"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      개인정보처리방침
+                    </a>
+                  </p>
+                  <FormMessage />
+                </div>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="marketingConsent"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value === true}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel className="text-sm font-normal">
+                    (선택) 서비스 소식·업데이트 정보 수신에 동의합니다
+                  </FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    동의하지 않아도 문의 접수와 상담에는 영향이 없습니다.
+                  </p>
+                </div>
+              </FormItem>
+            )}
+          />
+        </div>
+
         {serverError && (
           <Alert variant="destructive">
             <AlertDescription>{serverError}</AlertDescription>
@@ -216,7 +277,11 @@ export function InquiryForm({
         </Button>
 
         <p className="text-center text-xs text-muted-foreground">
-          제출하신 정보는 도입 상담 목적으로만 이용되며, 상담 완료 후 파기됩니다.
+          제출하신 정보는 도입 상담 목적으로만 이용되며, 보유기간 경과 시
+          파기됩니다.{" "}
+          <a href="/legal/terms" target="_blank" rel="noreferrer" className="underline">
+            이용약관
+          </a>
         </p>
       </form>
     </Form>

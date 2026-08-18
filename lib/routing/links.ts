@@ -28,3 +28,12 @@ export function buildTenantPath(tenantSlug: string, subPath = ""): string {
   const cleaned = subPath.replace(/^\/+/, "");
   return cleaned ? `/${tenantSlug}/${cleaned}` : `/${tenantSlug}`;
 }
+
+/**
+ * 임직원 가입 신청 링크 (/join/{tenant-slug}) — 사내 공유용 절대 URL.
+ * 테넌트 경로 밖이다: 아직 계정이 없는 사람이 여는 화면이라 인증 게이트 안에
+ * 두면 예외를 뚫어야 하고, 예외는 곧 구멍이 된다.
+ */
+export function buildStaffJoinLink(tenantSlug: string): string {
+  return `${getBaseUrl()}/join/${encodeURIComponent(tenantSlug)}`;
+}

@@ -61,6 +61,7 @@ export function CreateStaffDialog({
       name: "",
       email: "",
       grade: "staff",
+      phone: "",
       department: "",
       positionId: "",
     },
@@ -237,6 +238,19 @@ export function CreateStaffDialog({
                   )}
                 />
               </div>
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>휴대전화번호 (선택)</FormLabel>
+                    <FormControl>
+                      <Input type="tel" placeholder="010-0000-0000" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="department"
