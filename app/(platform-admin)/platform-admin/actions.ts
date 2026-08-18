@@ -187,6 +187,8 @@ export async function updateTenantModules(
     .from("tenants")
     .update({
       feature_flags: { ...currentFlags, modules: parsed.data.modules },
+      // 기업 화면의 '새로 켜진 기능' 안내 노출 판정에 쓴다 (CLAUDE.md §1-2-8)
+      modules_changed_at: new Date().toISOString(),
     })
     .eq("id", tenant.id);
 

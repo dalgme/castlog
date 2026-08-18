@@ -38,14 +38,23 @@ export default async function PlatformAdminPage() {
 
   const lockdown = await getRrnLockdown();
 
-  // 미처리 신청 건수 — 랜딩 신청이 조용히 묻히지 않도록 헤더에 노출한다.
+  // 미처리 건수 — 접수된 신청·요청이 조용히 묻히지 않도록 헤더에 노출한다.
   let newInquiryCount = 0;
+  let pendingModuleRequests = 0;
   if (hasSupabaseEnv()) {
-    const { count } = await createClient()
-      .from("platform_inquiries")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "new");
-    newInquiryCount = count ?? 0;
+    const supabase = createClient();
+    const [inquiries, moduleRequests] = await Promise.all([
+      supabase
+        .from("platform_inquiries")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "new"),
+      supabase
+        .from("tenant_module_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
+    ]);
+    newInquiryCount = inquiries.count ?? 0;
+    pendingModuleRequests = moduleRequests.count ?? 0;
   }
 
   const headerActions = (
@@ -59,6 +68,16 @@ export default async function PlatformAdminPage() {
           {newInquiryCount > 0 && (
             <Badge className="ml-1.5 h-5 px-1.5 text-[10px]">
               {newInquiryCount}
+            </Badge>
+          )}
+        </a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/module-requests">
+          모듈 요청
+          {pendingModuleRequests > 0 && (
+            <Badge className="ml-1.5 h-5 px-1.5 text-[10px]">
+              {pendingModuleRequests}
             </Badge>
           )}
         </a>

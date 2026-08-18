@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
-import { getTenantModules, requireModule } from "@/lib/modules/server";
+import { getTenantModules } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
@@ -32,7 +32,7 @@ export default async function ExecutivePage({
   searchParams: { year?: string };
 }) {
   await requireRole(["platform_admin", "org_admin"]);
-  await requireModule("operations");
+  // 임원 현황은 프로젝트 기초 위의 통계 — 공통 기반
 
   if (!hasSupabaseEnv()) {
     return (

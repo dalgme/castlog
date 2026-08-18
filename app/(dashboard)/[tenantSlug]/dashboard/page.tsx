@@ -82,19 +82,16 @@ export default async function DashboardPage({
     approvalsCompleted,
     batchesConfirmed,
   ] = await Promise.all([
-    modules.operations
-      ? supabase
-          .from("projects")
-          .select("id", { count: "exact", head: true })
-          .eq("business_year", year)
-      : Promise.resolve({ count: null }),
-    modules.operations
-      ? supabase
-          .from("projects")
-          .select("id", { count: "exact", head: true })
-          .eq("business_year", year)
-          .eq("status", "active")
-      : Promise.resolve({ count: null }),
+    // 프로젝트 통계는 공통 기반 — 모듈 조합과 무관하게 항상 집계한다
+    supabase
+      .from("projects")
+      .select("id", { count: "exact", head: true })
+      .eq("business_year", year),
+    supabase
+      .from("projects")
+      .select("id", { count: "exact", head: true })
+      .eq("business_year", year)
+      .eq("status", "active"),
     modules.experts
       ? supabase
           .from("expert_tenant_links")
@@ -172,16 +169,12 @@ export default async function DashboardPage({
           {year}년 사업연도 기준 현황입니다.
         </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {modules.operations && (
-            <>
-              <StatCard
-                label={`${year}년 프로젝트`}
-                value={String(("count" in projectsTotal ? projectsTotal.count : 0) ?? 0)}
-                sub={`진행중 ${("count" in projectsActive ? projectsActive.count : 0) ?? 0}건`}
-                href={`/${slug}/projects`}
-              />
-            </>
-          )}
+          <StatCard
+            label={`${year}년 프로젝트`}
+            value={String(("count" in projectsTotal ? projectsTotal.count : 0) ?? 0)}
+            sub={`진행중 ${("count" in projectsActive ? projectsActive.count : 0) ?? 0}건`}
+            href={`/${slug}/projects`}
+          />
           {modules.experts && (
             <>
               <StatCard
@@ -230,12 +223,7 @@ export default async function DashboardPage({
           </div>
         )}
 
-        {!modules.operations && !modules.experts && !modules.approvals && (
-          <EmptyState
-            title="활성화된 모듈이 없습니다"
-            description="플랫폼 관리자에게 모듈 활성화를 요청하세요."
-          />
-        )}
+
       </main>
     </>
   );

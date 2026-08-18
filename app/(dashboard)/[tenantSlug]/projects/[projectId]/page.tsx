@@ -10,7 +10,7 @@ import {
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
-import { getTenantModules, requireModule } from "@/lib/modules/server";
+import { getTenantModules } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -40,6 +40,7 @@ import {
 } from "./expert-evaluation-form";
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
@@ -59,7 +60,11 @@ const STEP_TYPE_ORDER: StepType[] = [
 ];
 
 /**
- * 프로젝트 상세 — 21스텝 라이프사이클 진행 관리 (operations 모듈).
+ * 프로젝트 상세.
+ *
+ * 프로젝트 기본정보·PM/부PM 배정·세션·코드넘버·예산·종료 기여도는 **공통 기반**이다
+ * (모듈 조합과 무관하게 항상 제공 — CLAUDE.md §1-2). 21스텝 라이프사이클만
+ * operations 모듈 소속이라 그 섹션만 조건부로 그린다.
  * 스텝은 오케스트레이션 전용 — 각 단계의 업무 데이터는 전용 화면에서 다룬다.
  * 조회는 모바일 대응, 입력은 PC 최적화 (CLAUDE.md 10).
  */
@@ -74,7 +79,7 @@ export default async function ProjectDetailPage({
     "manager",
     "staff",
   ]);
-  await requireModule("operations");
+  // 프로젝트 기초는 공통 기반 — 모듈 게이트 없음 (21스텝 섹션만 아래에서 조건부)
 
   const role = roleFromUser(user);
   const canEvaluate = role === "org_admin" || role === "manager";
@@ -117,13 +122,16 @@ export default async function ProjectDetailPage({
     assignmentsResult,
     slotsResult,
   ] = await Promise.all([
-      supabase
-        .from("project_lifecycle_steps")
-        .select(
-          "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
-        )
-        .eq("project_id", project.id)
-        .order("step_no", { ascending: true }),
+      // 21스텝은 operations 모듈 소속 — 미사용 테넌트에는 스텝 자체가 없다
+      modules.operations
+        ? supabase
+            .from("project_lifecycle_steps")
+            .select(
+              "id, step_no, step_type, title, status, due_on, completed_at, users (name)"
+            )
+            .eq("project_id", project.id)
+            .order("step_no", { ascending: true })
+        : Promise.resolve({ data: null }),
       // 섭외 연동은 experts 모듈 활성 시에만 (CLAUDE.md 1-2-6)
       modules.experts
         ? supabase
@@ -161,17 +169,15 @@ export default async function ProjectDetailPage({
         .from("project_assignments")
         .select("user_id, assignment_role")
         .eq("project_id", project.id),
-      // Phase B-1: 섭외 테이블(타임테이블 + 넘버링코드 인원)
-      modules.experts
-        ? supabase
-            .from("engagement_slots")
-            .select(
-              "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
-            )
-            .eq("project_id", project.id)
-            .order("slot_date", { ascending: true })
-            .order("starts_time", { ascending: true })
-        : Promise.resolve({ data: null }),
+      // 세션별 정보 + 전문가 코드넘버 — 공통 기반(모듈 무관하게 항상 제공)
+      supabase
+        .from("engagement_slots")
+        .select(
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
+        )
+        .eq("project_id", project.id)
+        .order("slot_date", { ascending: true })
+        .order("starts_time", { ascending: true }),
     ]);
 
   const stepRows = steps ?? [];
@@ -377,6 +383,17 @@ export default async function ProjectDetailPage({
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
   }
+  // 프로젝트에 연결되지 않은 섭외 건 — 있을 때만 '붙이기' 도구를 노출한다.
+  // (프로젝트 없이 섭외해 온 테넌트가 프로젝트를 쓰기 시작할 때의 정리 경로)
+  const { count: unlinkedCount } =
+    modules.experts && canManage
+      ? await supabase
+          .from("expert_engagements")
+          .select("id", { count: "exact", head: true })
+          .is("project_id", null)
+          .in("status", ["requested", "accepted"])
+      : { count: 0 };
+
   // 예산 대비 섭외비 집계 (Phase C-3)
   const plannedCost = slotRecords.reduce(
     (sum, s) => sum + (s.fee_amount ?? 0) * s.required_count,
@@ -458,8 +475,8 @@ export default async function ProjectDetailPage({
             </CardContent>
           </Card>
         )}
-        {modules.experts && (
-          <Card>
+        {/* 예산은 프로젝트 기초정보 — 공통 기반 */}
+        <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">예산 · 섭외비 현황</CardTitle>
             </CardHeader>
@@ -473,8 +490,7 @@ export default async function ProjectDetailPage({
                 canManage={canManage}
               />
             </CardContent>
-          </Card>
-        )}
+        </Card>
         {modules.experts && planPanel && (
           <EngagementPlanPanel
             tenantSlug={params.tenantSlug}
@@ -485,10 +501,10 @@ export default async function ProjectDetailPage({
             hasProjectRule={hasProjectRule}
           />
         )}
-        {modules.experts && (
-          <Card>
+        {/* 세션 · 코드넘버는 공통 기반 — experts 없이도 TO 관리가 가능해야 한다 */}
+        <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">섭외 테이블 (타임테이블 · 넘버링코드)</CardTitle>
+              <CardTitle className="text-sm">세션 · 전문가 코드넘버</CardTitle>
             </CardHeader>
             <CardContent>
               <SlotTable
@@ -500,8 +516,7 @@ export default async function ProjectDetailPage({
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />
             </CardContent>
-          </Card>
-        )}
+        </Card>
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 text-sm">
             <span>
@@ -524,9 +539,11 @@ export default async function ProjectDetailPage({
               {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
             </span>
             <Badge>{PROJECT_STATUS_LABELS[project.status] ?? project.status}</Badge>
-            <span className="ml-auto text-muted-foreground">
-              진행 {done}/{stepRows.length}
-            </span>
+            {modules.operations && (
+              <span className="ml-auto text-muted-foreground">
+                진행 {done}/{stepRows.length}
+              </span>
+            )}
           </CardContent>
         </Card>
 
@@ -576,11 +593,16 @@ export default async function ProjectDetailPage({
               <CardTitle className="text-sm">
                 전문가 섭외 ({engagements.length})
               </CardTitle>
-              <EngagementDialog
-                experts={connectedExperts}
-                projects={null}
-                defaultProjectId={project.id}
-              />
+              <div className="flex items-center gap-2">
+                {canManage && (unlinkedCount ?? 0) > 0 && (
+                  <AttachEngagementsDialog projectId={project.id} />
+                )}
+                <EngagementDialog
+                  experts={connectedExperts}
+                  projects={null}
+                  defaultProjectId={project.id}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {engagements.length === 0 ? (

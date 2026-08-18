@@ -22,7 +22,7 @@ async function requireNoticeSession(): Promise<
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
   const modules = await getTenantModules();
-  if (!modules.experts || !modules.operations) {
+  if (!modules.experts) {
     return { ok: false, error: "전문가·프로젝트 모듈이 모두 활성이어야 합니다." };
   }
   const supabase = createClient();

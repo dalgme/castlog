@@ -35,10 +35,11 @@ const NAV_ITEMS: readonly {
     label: "임원 현황",
     path: "executive",
     icon: BarChart3,
-    module: "operations",
+    module: null, // 프로젝트 기초 위의 통계 — 공통 기반
     orgAdminOnly: true,
   },
-  { label: "프로젝트", path: "projects", icon: FolderKanban, module: "operations" },
+  // 프로젝트 개설·기본정보·PM배정·세션·코드넘버는 공통 기반 (CLAUDE.md §1-2)
+  { label: "프로젝트", path: "projects", icon: FolderKanban, module: null },
   { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
   { label: "전문가", path: "experts", icon: Users, module: "experts" },
   {

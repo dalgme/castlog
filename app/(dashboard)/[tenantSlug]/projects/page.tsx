@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
-import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
@@ -40,7 +39,7 @@ export default async function ProjectsPage({
   params: { tenantSlug: string };
 }) {
   await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
-  await requireModule("operations");
+  // 프로젝트 목록은 공통 기반 — 모듈 게이트 없음
 
   if (!hasSupabaseEnv()) {
     return (
