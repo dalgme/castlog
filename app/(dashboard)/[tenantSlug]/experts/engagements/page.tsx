@@ -13,6 +13,8 @@ import {
   roleTypeLabel,
 } from "@/lib/integrations/engagement-roles";
 import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow";
+import { resolvePage, totalPages, withParams } from "@/lib/ui/paging";
+import { Pagination } from "@/components/layout/list-controls";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -47,10 +49,14 @@ const STATUS_VARIANT: Record<
  * 요청/수락/반려(거절)/회수/만료를 한 곳에서 집계하고, 건별 수락서 진행 상태를 함께 본다.
  * 가시성은 프로젝트 배정을 따른다(권한자=전체, 담당자=배정된 프로젝트 건만).
  */
+const PAGE_SIZE = 50;
+
 export default async function EngagementStatusPage({
   params,
+  searchParams,
 }: {
   params: { tenantSlug: string };
+  searchParams?: { status?: string; page?: string };
 }) {
   const user = await requireRole([
     "platform_admin",
@@ -83,29 +89,49 @@ export default async function EngagementStatusPage({
   const { data: visibleProjects } = await supabase
     .from("projects")
     .select("id, name");
-  const visibleIds = (visibleProjects ?? []).map((p) => p.id);
   const projectNameById = new Map(
     (visibleProjects ?? []).map((p) => [p.id, p.name])
   );
 
-  const { data: engagementRows } = await supabase
-    .from("expert_engagements")
-    .select(
-      `id, expert_id, project_id, role_description, role_type, program_name,
+  // 가시성(배정 범위)은 expert_engagements RLS가 이미 강제한다 —
+  //   권한자: 전체 / 담당자: 배정 프로젝트 건만, 프로젝트 미연결 건은 권한자만.
+  // 예전에는 300건을 받아 JS로 다시 걸렀는데, 그러면 (1) 301번째부터 조용히
+  // 사라지고 (2) 집계 숫자도 받아온 300건 기준이라 사실과 달랐다.
+  const basePath = `/${params.tenantSlug}/experts/engagements`;
+  const statusFilter = STATUS_ORDER.includes(searchParams?.status ?? "")
+    ? (searchParams?.status as string)
+    : "all";
+  const paging = resolvePage(searchParams?.page, PAGE_SIZE);
+  const activeParams = { status: statusFilter === "all" ? undefined : statusFilter };
+
+  const SELECT_COLUMNS = `id, expert_id, project_id, role_description, role_type, program_name,
        fee_amount, starts_on, ends_on, starts_time, ends_time, status,
        created_at, responded_at, response_note, token_expires_at,
-       experts (name)`
-    )
-    .order("created_at", { ascending: false })
-    .limit(300);
+       experts (name)`;
 
-  // 담당자는 배정된 프로젝트 건만. 프로젝트 미연결 건은 권한자만 조회.
-  const rows = (engagementRows ?? []).filter((e) =>
-    e.project_id ? visibleIds.includes(e.project_id) : canSeeAll
-  );
+  let listQuery = supabase
+    .from("expert_engagements")
+    .select(SELECT_COLUMNS, { count: "exact" });
+  if (statusFilter !== "all") listQuery = listQuery.eq("status", statusFilter);
 
-  const counts = STATUS_ORDER.reduce<Record<string, number>>((acc, s) => {
-    acc[s] = rows.filter((r) => r.status === s).length;
+  // 집계는 전체 기준으로 따로 센다(페이지에 보이는 것만 세면 사실과 달라진다).
+  const [{ data: engagementRows, count: listCount }, ...countResults] =
+    await Promise.all([
+      listQuery
+        .order("created_at", { ascending: false })
+        .range(paging.from, paging.to),
+      ...STATUS_ORDER.map((s) =>
+        supabase
+          .from("expert_engagements")
+          .select("id", { count: "exact", head: true })
+          .eq("status", s)
+      ),
+    ]);
+
+  const rows = engagementRows ?? [];
+  const pageCount = totalPages(listCount, PAGE_SIZE);
+  const counts = STATUS_ORDER.reduce<Record<string, number>>((acc, s, i) => {
+    acc[s] = countResults[i]?.count ?? 0;
     return acc;
   }, {});
 
@@ -132,18 +158,42 @@ export default async function EngagementStatusPage({
         }
       />
       <main className="space-y-4 p-5">
+        {/* 집계 카드가 곧 필터다 — 숫자를 보고 그 상태만 바로 열어 본다 */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {STATUS_ORDER.map((s) => (
-            <Card key={s}>
-              <CardContent className="pt-6">
-                <p className="text-xs text-muted-foreground">
-                  {ENGAGEMENT_STATUS_LABELS[s] ?? s}
-                </p>
-                <p className="mt-1 text-2xl font-bold">{counts[s] ?? 0}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {STATUS_ORDER.map((s) => {
+            const on = statusFilter === s;
+            return (
+              <Link
+                key={s}
+                href={withParams(basePath, {}, { status: on ? undefined : s })}
+                className="block"
+              >
+                <Card
+                  className={
+                    "transition-colors " +
+                    (on ? "border-brand bg-brand/5" : "hover:border-brand/40")
+                  }
+                >
+                  <CardContent className="pt-6">
+                    <p className="text-xs text-muted-foreground">
+                      {ENGAGEMENT_STATUS_LABELS[s] ?? s}
+                    </p>
+                    <p className="mt-1 text-2xl font-bold">{counts[s] ?? 0}</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
+        {statusFilter !== "all" && (
+          <p className="text-xs text-muted-foreground">
+            ‘{ENGAGEMENT_STATUS_LABELS[statusFilter] ?? statusFilter}’ 상태만
+            보고 있습니다.{" "}
+            <Link href={basePath} className="text-brand underline-offset-4 hover:underline">
+              전체 보기
+            </Link>
+          </p>
+        )}
 
         {rows.length === 0 ? (
           <EmptyState
@@ -230,6 +280,14 @@ export default async function EngagementStatusPage({
             </CardContent>
           </Card>
         )}
+
+        <Pagination
+          basePath={basePath}
+          params={activeParams}
+          page={paging.page}
+          pageCount={pageCount}
+          totalCount={listCount}
+        />
       </main>
     </div>
   );

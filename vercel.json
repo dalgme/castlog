@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/session-notices",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/engagement-expiry",
+      "schedule": "0 * * * *"
     }
   ]
 }

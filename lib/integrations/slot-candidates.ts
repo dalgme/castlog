@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { tagSortWeight } from "./expert-tags";
+import { CANDIDATE_LIMIT } from "./candidate-limits";
 import {
   blindBucketOf,
   blindConflictWeight,
@@ -136,10 +137,13 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
   const tenantId = tenantIdFromUser(user);
   if (!tenantId) return [];
 
+  // 후보 상한 — 겹침 판독을 후보 수만큼 수행하므로 무제한으로 두면 화면이 멎는다.
+  // 잘렸다는 사실은 화면에 표시한다 (조용한 절단 금지).
   const { data: links } = await supabase
     .from("expert_tenant_links")
     .select("expert_id, status, experts (id, name, specialty, region, career_years)")
-    .eq("status", "active");
+    .eq("status", "active")
+    .limit(CANDIDATE_LIMIT);
 
   const candidates = (links ?? [])
     .map((l) => l.experts)
