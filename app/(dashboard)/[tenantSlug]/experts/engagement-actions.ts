@@ -16,7 +16,12 @@ import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import {
+  buildEngagementRequestSms,
+  sendEngagementSms,
+} from "@/lib/integrations/engagement-sms";
 import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
+import { releasePositionsForEngagement } from "@/lib/integrations/engagement-lifecycle";
 import {
   screenExpertSchedule,
   type ScreenResult,
@@ -190,6 +195,25 @@ export async function createEngagement(
       `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n`,
   });
 
+  // 문자 — 이메일은 선택 항목이라 미등록 전문가에게는 이게 유일한 연락 수단이다.
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", tenantId)
+    .maybeSingle();
+  await sendEngagementSms({
+    tenantId,
+    senderUserId: user.id,
+    expertId: data.expertId,
+    body: buildEngagementRequestSms({
+      tenantName: tenantRow?.name ?? "캐스트로그",
+      programName: data.programName?.trim() || data.roleDescription,
+      schedule,
+      locationName: data.locationName?.trim() || null,
+      url,
+    }),
+  });
+
   revalidatePath("/[tenantSlug]/experts", "page");
   if (projectId) {
     revalidatePath(`/[tenantSlug]/projects/${projectId}`, "page");
@@ -274,6 +298,10 @@ export async function cancelEngagement(
   if (error || !updated) {
     return { ok: false, error: "이미 처리되어 취소할 수 없습니다." };
   }
+
+  // 코드넘버 자리를 다시 미섭외로 되돌린다.
+  // 이게 없으면 취소한 자리에 다른 전문가를 영영 붙일 수 없다.
+  await releasePositionsForEngagement(engagementId);
 
   // 취소 내역 기록
   await supabase.from("engagement_cancellations").insert({
