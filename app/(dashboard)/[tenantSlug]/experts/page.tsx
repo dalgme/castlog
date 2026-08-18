@@ -6,6 +6,13 @@ import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
+import {
+  phoneSearchFragment,
+  resolvePage,
+  totalPages,
+  withParams,
+} from "@/lib/ui/paging";
+import { Pagination, SearchForm } from "@/components/layout/list-controls";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -42,10 +49,21 @@ const LINK_STATUS_LABEL: Record<string, { label: string; variant: "default" | "s
  * 이후 단계에서 이 화면에 연결된다.
  *
  */
+const PAGE_SIZE = 30;
+
+const STATUS_FILTERS = [
+  { key: "all", label: "전체" },
+  { key: "active", label: "연결됨" },
+  { key: "pending", label: "대기중" },
+  { key: "revoked", label: "해제됨" },
+] as const;
+
 export default async function TenantExpertsPage({
   params,
+  searchParams,
 }: {
   params: { tenantSlug: string };
+  searchParams?: { q?: string; status?: string; page?: string };
 }) {
   await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
@@ -67,21 +85,57 @@ export default async function TenantExpertsPage({
   const supabase = createClient();
   const modules = await getTenantModules();
 
-  const [{ data: links }, { data: invitations }] = await Promise.all([
-    supabase
-      .from("expert_tenant_links")
-      .select(
-        "id, status, accepted_at, requested_at, experts (id, name, phone, email, specialty, region, career_years)"
-      )
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("expert_invitations")
-      .select("id, invited_name, invited_phone, status, expires_at, created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false }),
-  ]);
+  const basePath = `/${params.tenantSlug}/experts`;
+  const query = (searchParams?.q ?? "").trim();
+  const statusFilter =
+    STATUS_FILTERS.find((s) => s.key === searchParams?.status)?.key ?? "all";
+  const paging = resolvePage(searchParams?.page, PAGE_SIZE);
+  const activeParams = {
+    q: query || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+  };
+
+  // 검색은 연결된 전문가 정보를 대상으로 한다. experts는 임베드 테이블이므로
+  // !inner 조인 + referencedTable 옵션으로 필터를 건다.
+  // 휴대폰은 E.164(+8210…)로 저장돼 있어 '010-…' 입력으로는 안 잡힌다 —
+  // 숫자만 뽑아 앞자리 0을 떼고 부분 일치시킨다.
+  let linkQuery = supabase
+    .from("expert_tenant_links")
+    .select(
+      "id, status, accepted_at, requested_at, experts!inner (id, name, phone, email, specialty, region, career_years)",
+      { count: "exact" }
+    );
+
+  if (statusFilter !== "all") linkQuery = linkQuery.eq("status", statusFilter);
+
+  if (query) {
+    const escaped = query.replace(/[%,()]/g, " ");
+    const conditions = [
+      `name.ilike.%${escaped}%`,
+      `specialty.ilike.%${escaped}%`,
+      `region.ilike.%${escaped}%`,
+      `email.ilike.%${escaped}%`,
+    ];
+    const digits = phoneSearchFragment(query);
+    if (digits) conditions.push(`phone.ilike.%${digits}%`);
+    linkQuery = linkQuery.or(conditions.join(","), { referencedTable: "experts" });
+  }
+
+  const [{ data: links, count: linkCount }, { data: invitations }] =
+    await Promise.all([
+      linkQuery
+        .order("created_at", { ascending: false })
+        .range(paging.from, paging.to),
+      supabase
+        .from("expert_invitations")
+        .select("id, invited_name, invited_phone, status, expires_at, created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
 
   const linkRows = links ?? [];
+  const pageCount = totalPages(linkCount, PAGE_SIZE);
   const pendingInvitations = invitations ?? [];
 
   // 자사 등급 태그 (테넌트 격리 — 전문가 본인에게는 노출하지 않는다)
@@ -143,6 +197,36 @@ export default async function TenantExpertsPage({
         }
       />
       <main className="space-y-5 p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchForm
+            action={basePath}
+            defaultValue={query}
+            placeholder="이름 · 휴대폰 · 전문분야 · 지역"
+            hidden={{ status: activeParams.status }}
+          />
+          <div className="flex flex-wrap gap-1">
+            {STATUS_FILTERS.map((filter) => (
+              <Button
+                key={filter.key}
+                asChild
+                size="sm"
+                variant={statusFilter === filter.key ? "default" : "outline"}
+                className="h-8 px-2.5 text-xs"
+              >
+                <Link
+                  href={withParams(
+                    basePath,
+                    { q: activeParams.q },
+                    { status: filter.key === "all" ? undefined : filter.key }
+                  )}
+                >
+                  {filter.label}
+                </Link>
+              </Button>
+            ))}
+          </div>
+        </div>
+
         {pendingInvitations.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -187,8 +271,16 @@ export default async function TenantExpertsPage({
 
         {linkRows.length === 0 ? (
           <EmptyState
-            title="아직 연결된 전문가가 없습니다"
-            description="우측 상단 ‘전문가 등록 요청’으로 등록 링크를 만들어 전문가에게 전달하세요."
+            title={
+              query || statusFilter !== "all"
+                ? "조건에 맞는 전문가가 없습니다"
+                : "아직 연결된 전문가가 없습니다"
+            }
+            description={
+              query || statusFilter !== "all"
+                ? "검색어나 상태 필터를 바꿔 보세요."
+                : "우측 상단 ‘전문가 등록 요청’으로 등록 링크를 만들어 전문가에게 전달하세요."
+            }
           />
         ) : (
           <Card>
@@ -256,6 +348,15 @@ export default async function TenantExpertsPage({
             </CardContent>
           </Card>
         )}
+
+        <Pagination
+          basePath={basePath}
+          params={activeParams}
+          page={paging.page}
+          pageCount={pageCount}
+          totalCount={linkCount}
+          unitLabel="명"
+        />
       </main>
     </div>
   );

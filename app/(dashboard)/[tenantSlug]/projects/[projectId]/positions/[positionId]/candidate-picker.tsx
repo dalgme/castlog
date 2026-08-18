@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Send, Copy, Check, AlertTriangle, CircleCheck } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SlotCandidate } from "@/lib/integrations/slot-candidates";
+import { CANDIDATE_LIMIT } from "@/lib/integrations/candidate-limits";
 import { expertTagLabel } from "@/lib/integrations/expert-tags";
 import {
   blindConflictTotal,
@@ -38,10 +39,23 @@ export function CandidatePicker({
   const [copied, setCopied] = useState(false);
 
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [programName, setProgramName] = useState(defaultProgramName);
   const [eventSummary, setEventSummary] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
   const [deadline, setDeadline] = useState("");
+
+  // 후보가 수십 명만 돼도 스크롤로 찾기 어렵다. 서버에서 이미 정렬(충돌 없는 순
+  // → 등급 → 이름)해 두었으므로 여기서는 순서를 건드리지 않고 걸러내기만 한다.
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return candidates;
+    return candidates.filter((c) =>
+      [c.name, c.specialty, c.region]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q))
+    );
+  }, [candidates, search]);
 
   const send = () => {
     if (!selected) return;
@@ -105,13 +119,33 @@ export function CandidatePicker({
         ‘이미 확정’인지와 건수만 보여집니다.
       </p>
 
+      {candidates.length >= CANDIDATE_LIMIT && (
+        <p className="rounded-md bg-amber-50 p-2.5 text-xs text-amber-900">
+          연결 전문가가 많아 최근 {CANDIDATE_LIMIT}명만 불러왔습니다. 찾는 분이
+          없으면 전문가 목록에서 확인해 주세요.
+        </p>
+      )}
+
+      {candidates.length > 0 && (
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="이름 · 전문분야 · 지역으로 좁히기"
+          className="h-9"
+        />
+      )}
+
       {candidates.length === 0 ? (
         <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
           연결된 전문가가 없습니다. 전문가 목록에서 먼저 연결해 주세요.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
+          ‘{search}’와 일치하는 후보가 없습니다.
+        </p>
       ) : (
         <ul className="max-h-80 space-y-1.5 overflow-y-auto">
-          {candidates.map((c) => {
+          {visible.map((c) => {
             const blindLines = describeBlindConflicts(c.conflict.blind);
             const blindTotal = blindConflictTotal(c.conflict.blind);
             const hasConflict = c.conflict.own.length > 0 || blindTotal > 0;
