@@ -210,3 +210,68 @@ export async function updateTenantModules(
   revalidatePath("/platform-admin");
   return { ok: true };
 }
+
+export type TenantStatusResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 테넌트 상태 변경 (활성 ↔ 중지).
+ *
+ * 중지는 그 회사 전원의 로그인을 막는 조치다 — 되돌릴 수는 있지만 그 사이의
+ * 업무는 멈춘다. 그래서 화면에서 2단계 확인을 거치고(§14-3), 여기서는 사유를
+ * 함께 받아 감사로그에 남긴다. '누가 언제 왜 껐는지'가 남지 않으면 나중에
+ * 아무도 되돌릴 근거를 대지 못한다.
+ *
+ * 해지(terminated)는 여기서 다루지 않는다 — 데이터 파기·계약 종료가 얽혀
+ * 있어 별도 절차가 필요하다.
+ */
+export async function setTenantStatus(input: {
+  tenantId: string;
+  status: "active" | "suspended";
+  reason?: string;
+}): Promise<TenantStatusResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const session = await requirePlatformAdminSession();
+  if (!session.ok) return session;
+
+  if (input.status !== "active" && input.status !== "suspended") {
+    return { ok: false, error: "상태 값을 확인하세요." };
+  }
+  if ((input.reason ?? "").length > 500) {
+    return { ok: false, error: "사유는 500자 이내로 입력하세요." };
+  }
+
+  const admin = createAdminClient();
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("id, name, status")
+    .eq("id", input.tenantId)
+    .maybeSingle();
+  if (!tenant) return { ok: false, error: "존재하지 않는 테넌트입니다." };
+  if (tenant.status === "terminated") {
+    return { ok: false, error: "해지된 테넌트는 이 화면에서 되돌릴 수 없습니다." };
+  }
+  if (tenant.status === input.status) return { ok: true };
+
+  const { error } = await admin
+    .from("tenants")
+    .update({ status: input.status, updated_at: new Date().toISOString() })
+    .eq("id", tenant.id);
+  if (error) return { ok: false, error: "상태 변경에 실패했습니다." };
+
+  await admin.from("audit_logs").insert({
+    tenant_id: tenant.id,
+    actor_auth_user_id: session.userId,
+    actor_role: "platform_admin",
+    action:
+      input.status === "suspended" ? "tenant.suspend" : "tenant.reactivate",
+    resource_type: "tenant",
+    resource_id: tenant.id,
+    before_data: { status: tenant.status },
+    after_data: { status: input.status, reason: input.reason?.trim() || null },
+  });
+
+  revalidatePath("/platform-admin");
+  return { ok: true };
+}
