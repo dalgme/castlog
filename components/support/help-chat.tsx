@@ -6,7 +6,12 @@ import { MessageCircleQuestion, X, SendHorizontal } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/logo";
 import { askHelpBot } from "@/lib/ai/help-actions";
-import { HELP_GREETING, HELP_SUGGESTIONS } from "@/lib/ai/help-copy";
+import {
+  HELP_DISCLAIMER,
+  HELP_GREETING,
+  HELP_INPUT_PLACEHOLDER,
+  HELP_SUGGESTIONS,
+} from "@/lib/ai/help-copy";
 
 import { BotAvatar } from "./bot-avatar";
 
@@ -42,6 +47,46 @@ export function HelpChat({
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  /**
+   * 버튼의 아래쪽 여백(px) — 위아래로 끌어 옮길 수 있다.
+   *
+   * 오른쪽 아래는 관례적인 자리지만, 화면에 따라 그 자리에 표·합계·저장 버튼이
+   * 오기도 한다. 그럴 때 버튼을 옮기지 못하면 도우미가 일을 가린다. 좌우로는
+   * 움직이지 않는다 — 좌우까지 열면 사용자가 버튼을 화면 구석에 흘려 두고
+   * 다시 찾지 못한다.
+   *
+   * 위치는 이 컴포넌트의 상태로만 갖는다. localStorage는 쓰지 않는다
+   * (CLAUDE.md §11-7). 셸에 얹혀 있어 화면을 옮겨 다녀도 유지된다.
+   */
+  const [bottom, setBottom] = useState(24);
+  const dragRef = useRef<{ startY: number; startBottom: number; moved: boolean } | null>(
+    null
+  );
+
+  function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    dragRef.current = { startY: e.clientY, startBottom: bottom, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const delta = drag.startY - e.clientY;
+    // 손이 살짝 흔들린 것까지 이동으로 치면 버튼이 안 눌린다
+    if (Math.abs(delta) > 4) drag.moved = true;
+    if (!drag.moved) return;
+    const max = Math.max(24, window.innerHeight - 96);
+    setBottom(Math.min(max, Math.max(12, drag.startBottom + delta)));
+  }
+
+  function onPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    // 끌어 옮긴 동작이면 창을 열지 않는다 — 옮길 때마다 창이 뜨면 성가시다
+    if (!drag?.moved) setOpen(true);
+  }
+
   useEffect(() => {
     if (open) {
       endRef.current?.scrollIntoView({ block: "end" });
@@ -73,16 +118,24 @@ export function HelpChat({
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onKeyDown={(e) => {
+            // 키보드 사용자도 옮길 수 있어야 한다
+            if (e.key === "ArrowUp") setBottom((v) => Math.min(window.innerHeight - 96, v + 24));
+            if (e.key === "ArrowDown") setBottom((v) => Math.max(12, v - 24));
+          }}
           aria-expanded={false}
-          aria-label="사용법 도우미 열기"
-          title="사용법 도우미 — 지금 화면에서 무엇을 하면 되는지 물어보세요"
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-brand-navy py-2.5 pl-2.5 pr-4 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-105 sm:bottom-6 sm:right-6"
+          aria-label="챗봇 열기 (위아래 화살표로 위치 이동)"
+          title="챗봇 — 사용법을 묻거나 불편한 점을 알려 주세요. 끌어서 위아래로 옮길 수 있습니다"
+          style={{ bottom }}
+          className="fixed right-5 z-40 inline-flex touch-none items-center gap-2 rounded-full bg-coral py-2.5 pl-2.5 pr-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-coral-dark sm:right-6"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white">
             <BotAvatar size={22} />
           </span>
-          <span className="hidden sm:inline">도움말</span>
+          <span className="hidden sm:inline">챗봇</span>
           <MessageCircleQuestion className="h-4 w-4 sm:hidden" aria-hidden />
         </button>
       )}
@@ -90,11 +143,12 @@ export function HelpChat({
       {open && (
         <div
           role="dialog"
-          aria-label="사용법 도우미"
-          className="fixed bottom-5 right-5 z-40 flex h-[min(38rem,calc(100vh-3rem))] w-[min(28rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl sm:bottom-6 sm:right-6"
+          aria-label="사용법 안내 · 개선 요청 도우미"
+          style={{ bottom }}
+          className="fixed right-5 z-40 flex h-[min(38rem,calc(100vh-3rem))] max-h-[calc(100vh-3rem)] w-[min(28rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl sm:right-6"
         >
           {/* 머리 — 회사 로고 + 봇 */}
-          <div className="flex items-center gap-2.5 border-b bg-brand-navy px-4 py-3 text-white">
+          <div className="flex items-center gap-2.5 border-b bg-coral px-4 py-3 text-white">
             <span className="flex h-8 w-8 items-center justify-center rounded bg-white">
               {logoSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -108,7 +162,7 @@ export function HelpChat({
               )}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold">사용법 도우미</p>
+              <p className="truncate text-sm font-bold">사용법 안내 · 개선 요청</p>
               <p className="truncate text-[11px] text-white/70">
                 {tenantName ?? "캐스트로그"} · 로그봇
               </p>
@@ -195,7 +249,7 @@ export function HelpChat({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               maxLength={1000}
-              placeholder="예: 수락서는 어디서 보내나요?"
+              placeholder={HELP_INPUT_PLACEHOLDER}
               className="h-10 min-w-0 flex-1 rounded-md border border-input px-3 text-sm outline-none focus:border-brand"
             />
             <button
@@ -208,8 +262,7 @@ export function HelpChat({
             </button>
           </form>
           <p className="border-t bg-white px-4 py-2 text-[11px] leading-snug text-muted-foreground">
-            사용법 안내만 합니다. 실제 프로젝트·전문가·금액은 조회하지 못하며,
-            결재·지급 판단의 근거로 쓸 수 없습니다.
+            {HELP_DISCLAIMER}
           </p>
         </div>
       )}

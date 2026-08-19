@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireRole } from "@/lib/auth/session";
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { blockInPractice } from "@/lib/practice/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -23,13 +24,26 @@ import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
  *  - 서류 원본/서명 이미지: 제외 (메타데이터만).
  *  - 통장사본·사업자번호·세무 프로필: 제외.
  *  - 지급 데이터: 합계·상태 등 업무 데이터만(계좌 정보 없음).
- * 권한: org_admin(대표) 이상. 조회는 RLS 세션 범위(자사 테넌트) 내에서만.
+ * 권한: 대표 또는 '데이터 반출' 위임자. 조회는 RLS 세션 범위 안에서만 이뤄지므로,
+ * 반출 결과는 **그 사람이 볼 수 있는 범위**까지다 (팀장 이하는 배정 프로젝트만).
+ * 전사 반출이 필요하면 대표·이사에게 이 권한을 준다.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }
 ) {
-  const user = await requireRole(["platform_admin", "org_admin"]);
+  const user = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
+  const scopes = await getAdminScopes();
+  if (!scopes.backup) {
+    return NextResponse.redirect(
+      new URL(`/${params.tenantSlug}/admin/org`, request.url)
+    );
+  }
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
       new URL(`/${params.tenantSlug}/admin/org`, request.url)

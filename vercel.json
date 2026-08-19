@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["icn1"],
+  "regions": [
+    "icn1"
+  ],
   "crons": [
     {
       "path": "/api/cron/session-notices",
@@ -9,6 +11,10 @@
     {
       "path": "/api/cron/engagement-expiry",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/product-brief",
+      "schedule": "0 17 * * *"
     }
   ]
 }

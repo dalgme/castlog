@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser, practiceFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
@@ -9,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
 import { shouldShowWelcomeTour } from "@/lib/onboarding/welcome-tour";
 import { WelcomeTour } from "@/components/onboarding/welcome-tour";
+import { SetupReturnBar } from "@/components/onboarding/setup-return-bar";
 import { HelpChat } from "@/components/support/help-chat";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
@@ -95,6 +98,11 @@ export async function TenantShell({
           canPractice={canPractice}
         />
         {canPractice && <PracticeBar practice={practice} />}
+        {/* 최초 설정에서 출발했다면 돌아올 길을 항상 띄운다 — 설정 화면마다
+            붙이면 다음에 만든 화면에서 또 길이 끊긴다 */}
+        <Suspense fallback={null}>
+          <SetupReturnBar tenantSlug={tenantSlug} />
+        </Suspense>
         {setup && (
           <SetupBanner
             tenantSlug={tenantSlug}

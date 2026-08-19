@@ -6,7 +6,9 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "./tenant";
 import { gradeAtLeast } from "./grades";
 import {
+  ADMIN_SCOPES as ALL_SCOPES,
   ADMIN_SCOPE_LABELS,
+  expandScopes,
   isAdminScope,
   type AdminScope,
   type AdminScopeSet,
@@ -28,26 +30,29 @@ export {
   ADMIN_SCOPES,
   ADMIN_SCOPE_LABELS,
   ADMIN_SCOPE_DESCRIPTIONS,
+  ADMIN_SCOPE_GROUPS,
+  ADMIN_SCOPE_RISK,
+  SCOPE_IMPLIES,
+  expandScopes,
   isAdminScope,
   type AdminScope,
   type AdminScopeSet,
 } from "./admin-scope-keys";
 
-const NONE: AdminScopeSet = {
-  settings: false,
-  staff: false,
-  sending: false,
-  audit: false,
-  finance: false,
-};
+function emptySet(): AdminScopeSet {
+  const out = {} as AdminScopeSet;
+  for (const scope of ALL_SCOPES) out[scope] = false;
+  return out;
+}
 
-const ALL: AdminScopeSet = {
-  settings: true,
-  staff: true,
-  sending: true,
-  audit: true,
-  finance: true,
-};
+function fullSet(): AdminScopeSet {
+  const out = {} as AdminScopeSet;
+  for (const scope of ALL_SCOPES) out[scope] = true;
+  return out;
+}
+
+const NONE: AdminScopeSet = emptySet();
+const ALL: AdminScopeSet = fullSet();
 
 /**
  * 현재 세션이 보유한 관리 스코프. CEO(org_admin)·플랫폼관리자는 전부 보유.
@@ -75,10 +80,14 @@ export async function getAdminScopes(): Promise<AdminScopeSet> {
     .eq("user_id", user.id)
     .is("revoked_at", null);
 
-  const scopes = { ...NONE };
+  const granted: AdminScope[] = [];
   for (const row of data ?? []) {
-    if (isAdminScope(row.scope)) scopes[row.scope] = true;
+    if (isAdminScope(row.scope)) granted.push(row.scope);
   }
+  const scopes = { ...NONE };
+  // 넓은 스코프는 그 안에서 갈라져 나온 스코프를 포함한다 — 세분화 이전에
+  // 부여한 위임이 끊기면 안 된다
+  for (const scope of expandScopes(granted)) scopes[scope] = true;
   return scopes;
 }
 
@@ -113,11 +122,15 @@ export async function requireAdminScope(
     return { ok: true, userId: user.id, tenantId, tenantSlug, isCeo: true };
   }
 
+  // 요청한 스코프를 직접 가졌거나, 그것을 포함하는 넓은 스코프를 가졌으면 통과
+  const accepted = ALL_SCOPES.filter((s) =>
+    expandScopes([s]).includes(scope)
+  );
   const { data: grant } = await supabase
     .from("tenant_admin_grants")
     .select("id")
     .eq("user_id", user.id)
-    .eq("scope", scope)
+    .in("scope", accepted)
     .is("revoked_at", null)
     .maybeSingle();
 

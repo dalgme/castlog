@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireAdminScope } from "@/lib/auth/admin-scopes";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
@@ -461,7 +462,9 @@ export async function saveApprovalRule(input: RuleSaveInput): Promise<ActResult>
   const auth = await requireApprovalsSession();
   if (!auth.ok) return auth;
   const { session } = auth;
-  if (!["org_admin", "platform_admin"].includes(session.role)) {
+  // 대표 또는 '전결규정' 위임자 (requireAdminScope가 대표를 포함한다)
+  const ruleGate = await requireAdminScope("approvals");
+  if (!ruleGate.ok) {
     return { ok: false, error: "전결규정 관리 권한이 없습니다." };
   }
 
@@ -558,7 +561,9 @@ export async function deactivateApprovalRule(ruleId: string): Promise<ActResult>
   const auth = await requireApprovalsSession();
   if (!auth.ok) return auth;
   const { session } = auth;
-  if (!["org_admin", "platform_admin"].includes(session.role)) {
+  // 대표 또는 '전결규정' 위임자 (requireAdminScope가 대표를 포함한다)
+  const ruleGate = await requireAdminScope("approvals");
+  if (!ruleGate.ok) {
     return { ok: false, error: "전결규정 관리 권한이 없습니다." };
   }
 

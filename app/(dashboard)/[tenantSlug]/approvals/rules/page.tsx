@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { requireRole } from "@/lib/auth/session";
+import { requireRole, postLoginPath } from "@/lib/auth/session";
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -31,7 +33,16 @@ export default async function ApprovalRulesPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["org_admin", "platform_admin"]);
+  // 대표 또는 '전결규정' 위임자 — 결재선을 실제로 설계하는 사람은 대개
+  // 경영지원·기획 담당이다. 대표만 열어 두면 대표 계정을 빌려 쓰게 된다.
+  const gateUser = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
+  const scopes = await getAdminScopes();
+  if (gateUser && !scopes.approvals) redirect(postLoginPath(gateUser));
   await requireModule("approvals");
 
   if (!hasSupabaseEnv()) {
@@ -154,6 +165,7 @@ export default async function ApprovalRulesPage({
       />
       <SettingsTabs
         tenantSlug={params.tenantSlug}
+        showStaff
         showSms
         showOrg
         showRules

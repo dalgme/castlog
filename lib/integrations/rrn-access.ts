@@ -13,6 +13,16 @@ export const RRN_ACCESS_ROLES = {
 } as const;
 export type RrnAccessRole = keyof typeof RRN_ACCESS_ROLES;
 
+/**
+ * 조회 지정자 인원 상한 (활성 기준).
+ *
+ * 실무에서 필요한 자리는 대표·임원(전결)·회계담당 정도다. 그 이상은
+ * "혹시 몰라서"로 늘어나고, 조회 가능한 사람이 늘어난 만큼 유출면이 넓어진다.
+ * 부족하면 늘리는 게 아니라 교체한다. DB 트리거(app.enforce_tax_grant_limit)로도
+ * 강제하므로 앱을 우회한 경로에서도 지켜진다.
+ */
+export const RRN_GRANT_LIMIT = 3;
+
 /** 프로젝트당 기본 조회 한도 (초과는 차단이 아니라 사유+대표승인+통지) */
 export const RRN_PROJECT_LIMIT = 2;
 
