@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 import { EngagementRespondButtons } from "./respond-buttons";
+import { ExpertUrgentCancelButton } from "./urgent-cancel-button";
 
 export const metadata = { title: "섭외 요청" };
 
@@ -76,6 +77,19 @@ export default async function ExpertEngagementsPage() {
     .order("created_at", { ascending: false });
 
   const rows = engagements ?? [];
+
+  // 수락서 상태 — '수락'과 '참여 확정'은 다르다. 수락서를 승인해야 확정이다.
+  const acceptedIds = rows.filter((e) => e.status === "accepted").map((e) => e.id);
+  const { data: acceptances } = acceptedIds.length
+    ? await supabase
+        .from("engagement_acceptances")
+        .select("engagement_id, status")
+        .in("engagement_id", acceptedIds)
+    : { data: [] };
+  const acceptanceStatus = new Map(
+    (acceptances ?? []).map((a) => [a.engagement_id, a.status])
+  );
+
   const now = Date.now();
   const pendingCount = rows.filter(
     (e) =>
@@ -209,19 +223,68 @@ export default async function ExpertEngagementsPage() {
                   {answerable && (
                     <EngagementRespondButtons engagementId={engagement.id} />
                   )}
-                  {engagement.status === "accepted" && (
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                    >
-                      <Link href={`/expert/engagements/${engagement.id}/acceptance`}>
-                        <FileSignature className="mr-1.5 h-4 w-4" aria-hidden />
-                        섭외수락서 보기
-                      </Link>
-                    </Button>
-                  )}
+                  {engagement.status === "accepted" &&
+                    (() => {
+                      const letter = acceptanceStatus.get(engagement.id) ?? null;
+                      const confirmed = letter === "confirmed";
+                      // 아직 승인하지 않은 수락서 — 여기가 지금 할 일이다
+                      const needsApproval =
+                        letter === "sent" || letter === "issued";
+                      return (
+                        <div className="mt-3 space-y-2">
+                          {confirmed && (
+                            <div className="rounded-lg border-l-4 border-green-600 bg-green-50 p-2.5">
+                              <p className="text-sm font-bold text-green-900">
+                                참여 확정
+                              </p>
+                              <p className="mt-0.5 text-xs text-green-900">
+                                수락서 승인이 완료되어 참여가 확정되었습니다.
+                              </p>
+                            </div>
+                          )}
+                          {needsApproval && (
+                            <div className="rounded-lg border-l-4 border-brand-amber bg-[#FFF7E6] p-2.5">
+                              <p className="text-sm font-bold text-[#8A6A00]">
+                                수락서 확인·승인이 필요합니다
+                              </p>
+                              <p className="mt-0.5 text-xs text-[#8A6A00]">
+                                수락서를 열어 내용을 확인하고 승인(서명)하시면
+                                참여가 확정됩니다.
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              asChild
+                              variant={needsApproval ? "default" : "outline"}
+                              size="sm"
+                            >
+                              <Link
+                                href={`/expert/engagements/${engagement.id}/acceptance`}
+                              >
+                                <FileSignature
+                                  className="mr-1.5 h-4 w-4"
+                                  aria-hidden
+                                />
+                                {needsApproval
+                                  ? "수락서 확인 및 승인"
+                                  : "섭외수락서 보기"}
+                              </Link>
+                            </Button>
+                            {confirmed && (
+                              <ExpertUrgentCancelButton
+                                engagementId={engagement.id}
+                                programName={
+                                  engagement.program_name ??
+                                  engagement.projects?.name ??
+                                  "섭외 건"
+                                }
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                 </CardContent>
               </Card>
             );

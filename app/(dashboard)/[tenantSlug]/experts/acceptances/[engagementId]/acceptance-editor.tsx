@@ -238,7 +238,7 @@ export function AcceptanceEditor({
         )}
         {status === "confirmed" && (
           <p className="text-sm text-muted-foreground">
-            전문가 서명본을 확인 완료했습니다.
+            전문가가 확인·승인(서명)을 완료했습니다 — 참여 확정.
           </p>
         )}
       </div>
