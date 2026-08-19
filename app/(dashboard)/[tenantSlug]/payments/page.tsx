@@ -122,6 +122,13 @@ export default async function PaymentsPage({
       .map((p) => [p.expert_id, p.payment_type as string])
   );
 
+  // 지급 품의 검토 요청 — 담당자가 마감을 끝내고 회계로 넘긴 프로젝트
+  const { data: reviewProjects } = await supabase
+    .from("projects")
+    .select("id, name, business_year, client_name")
+    .eq("engagement_stage", "settlement_review")
+    .order("updated_at", { ascending: false });
+
   // 프로젝트별 그룹 (기획 확정 — 프로젝트 귀속 전문가 일괄 확인)
   const groups = new Map<
     string,
@@ -165,6 +172,44 @@ export default async function PaymentsPage({
         }
       />
       <main className="space-y-5 p-5">
+        {/* 담당자가 넘긴 마감 건 — 회계담당자가 가장 먼저 봐야 할 줄이다 */}
+        {(reviewProjects ?? []).length > 0 && (
+          <Card className="border-brand">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">
+                지급 품의 검토 요청 ({reviewProjects?.length ?? 0})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-2 text-xs text-muted-foreground">
+                담당자가 참여율과 만족도 입력을 마치고 검토를 요청한 프로젝트입니다.
+                지급품의서를 확인하면 종료 및 지급 품의가 상신됩니다.
+              </p>
+              <ul className="divide-y">
+                {(reviewProjects ?? []).map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
+                  >
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {p.business_year}
+                      {p.client_name ? ` · ${p.client_name}` : ""}
+                    </span>
+                    <Button asChild size="sm" className="ml-auto">
+                      <Link
+                        href={`/${params.tenantSlug}/projects/${p.id}?tab=closing`}
+                      >
+                        지급품의서 검토
+                      </Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {groups.size === 0 ? (
           <EmptyState
             title="지급 대기 중인 섭외가 없습니다"

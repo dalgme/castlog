@@ -17,8 +17,7 @@ export const PROJECT_TAB_KEYS = [
   "basic",
   "sessions",
   "experts",
-  "plan",
-  "acceptances",
+  "closing",
 ] as const;
 
 export type ProjectTabKey = (typeof PROJECT_TAB_KEYS)[number];
@@ -33,8 +32,7 @@ const TAB_DEFS: readonly {
   { key: "basic", label: "기본설정" },
   { key: "sessions", label: "세션 계획 등록" },
   { key: "experts", label: "전문가 등록", needsExperts: true },
-  { key: "plan", label: "섭외계획품의", needsExperts: true },
-  { key: "acceptances", label: "수락서 생성 및 확정", needsExperts: true },
+  { key: "closing", label: "프로젝트 종료 및 지급 품의" },
 ];
 
 /** 쿼리 문자열을 탭 키로 — 모르는 값·모듈 꺼진 탭은 첫 탭으로 되돌린다 */

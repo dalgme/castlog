@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
+import { canManagePayments } from "@/lib/auth/admin-scopes";
 import {
   assignmentRoleRank,
   isAssignmentRole,
@@ -26,7 +27,6 @@ import {
   STEP_TYPE_LABELS,
   type StepType,
 } from "@/lib/operations/steps";
-import { acceptanceStatusLabel } from "@/lib/integrations/acceptance-workflow";
 import {
   deriveEngagementStage,
   type EngagementStage,
@@ -48,9 +48,9 @@ import { AttachmentPanel } from "./attachment-panel";
 
 import { StepStatusSelect } from "./step-status-select";
 import {
-  ExpertEvaluationForm,
-  type ExpertEvaluationRow,
-} from "./expert-evaluation-form";
+  ExpertReviewForm,
+  type ExpertReviewTarget,
+} from "./expert-review-form";
 import { ProjectClosing } from "./project-closing";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import {
@@ -61,15 +61,23 @@ import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
-import {
-  EngagementPlanPanel,
-  type PlanPanelState,
-} from "./engagement-plan-panel";
+import { type PlanPanelState } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
+import {
+  getProjectSettlement,
+  buildSettlementDocument,
+} from "@/lib/integrations/project-settlement";
+import {
+  PROJECT_STAGE_DESCRIPTIONS,
+  PROJECT_STAGE_LABELS,
+} from "@/lib/integrations/project-stage";
 import {
   EngagementWorkbench,
   type UnlinkedEngagement,
 } from "./engagement-workbench";
+import { ClosingStageButtons } from "./closing-stage-buttons";
+import { SatisfactionForm } from "./satisfaction-form";
+import { SettlementPanel } from "./settlement-panel";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -140,7 +148,6 @@ export default async function ProjectDetailPage({
     { data: steps },
     engagementsResult,
     expertsResult,
-    evaluationsResult,
     staffResult,
     contributionsResult,
     assignmentsResult,
@@ -171,13 +178,6 @@ export default async function ProjectDetailPage({
             .from("expert_tenant_links")
             .select("expert_id, status, experts (id, name)")
             .eq("status", "active")
-        : Promise.resolve({ data: null }),
-      // 단계 27: 프로젝트 종료 평가 (테넌트 격리 — 전문가 비공개)
-      modules.experts
-        ? supabase
-            .from("expert_evaluations")
-            .select("expert_id, score, reason")
-            .eq("project_id", project.id)
         : Promise.resolve({ data: null }),
       // 단계 23: 종료 기여도 대상 직원 + 기존 기여도
       supabase
@@ -214,11 +214,6 @@ export default async function ProjectDetailPage({
     (s) => s.status === "completed" || s.status === "skipped"
   ).length;
 
-  // 단계 27: 수락(계약 성립)된 섭외 = 평가 대상. 전문가별 1건 (중복 제거).
-  const evaluationByExpert = new Map(
-    (evaluationsResult.data ?? []).map((e) => [e.expert_id, e])
-  );
-
   // 정성 후기 — 이 프로젝트 건만 (전문가별 전체 이력은 전문가 화면에서 본다)
   const { data: reviewRows } = modules.experts
     ? await supabase
@@ -230,21 +225,18 @@ export default async function ProjectDetailPage({
   const staffNameById = new Map(
     (staffResult.data ?? []).map((u) => [u.id, u.name])
   );
+  // 후기 대상 — 수락(계약 성립)된 섭외의 전문가. 사람 단위로 한 번씩 (중복 제거)
   const seenExpert = new Set<string>();
-  const evaluationRows: ExpertEvaluationRow[] = [];
+  const reviewTargets: ExpertReviewTarget[] = [];
   for (const engagement of engagements) {
     if (engagement.status !== "accepted") continue;
     if (seenExpert.has(engagement.expert_id)) continue;
     seenExpert.add(engagement.expert_id);
-    const existing = evaluationByExpert.get(engagement.expert_id);
-    evaluationRows.push({
+    reviewTargets.push({
       expertId: engagement.expert_id,
-      engagementId: engagement.id,
       name: engagement.experts?.name ?? "-",
       // 참여 세션은 슬롯을 읽은 뒤에 채운다 (아래 sessionsByExpert)
       sessions: [],
-      score: existing?.score ?? null,
-      reason: existing?.reason ?? null,
       reviews: (reviewRows ?? [])
         .filter((r) => r.expert_id === engagement.expert_id)
         .map((r) => ({
@@ -257,7 +249,6 @@ export default async function ProjectDetailPage({
         })),
     });
   }
-  const unevaluatedCount = evaluationRows.filter((r) => r.score === null).length;
 
   // 단계 23: 종료 기여도 + 종료 상태
   const staffOptions = (staffResult.data ?? []).map((u) => ({
@@ -269,8 +260,6 @@ export default async function ProjectDetailPage({
 
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
-  let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
-  let hasProjectRule = false;
   if (modules.experts) {
     const [gate, snapshot] = await Promise.all([
       evaluatePlanGate(project.id, modules.approvals),
@@ -296,23 +285,6 @@ export default async function ProjectDetailPage({
       currentSlotCount: snapshot.slotCount,
     };
 
-    // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
-    planApprovers = (staffResult.data ?? [])
-      .filter((u) => u.is_active && u.id !== user?.id)
-      .map((u) => ({
-        id: u.id,
-        name: u.name,
-        gradeLabel: gradeLabel(u.grade),
-      }));
-
-    if (modules.approvals) {
-      const { count } = await supabase
-        .from("approval_rules")
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true)
-        .or("approval_type.is.null,approval_type.eq.project");
-      hasProjectRule = (count ?? 0) > 0;
-    }
   }
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
@@ -492,7 +464,7 @@ export default async function ProjectDetailPage({
       sessionsByExpert.set(position.expert_id, list);
     }
   }
-  for (const row of evaluationRows) {
+  for (const row of reviewTargets) {
     row.sessions = sessionsByExpert.get(row.expertId) ?? [];
   }
 
@@ -633,6 +605,12 @@ export default async function ProjectDetailPage({
     )
   ).map((id) => ({ id, name: expertNameById.get(id) ?? "전문가" }));
 
+  // 종료·지급 품의 — 마감 탭에서만 쓰지만 단계 배너는 늘 필요하다
+  const [settlement, canReviewSettlementDoc] = await Promise.all([
+    getProjectSettlement(project.id),
+    canManagePayments(),
+  ]);
+
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
   return (
@@ -712,16 +690,6 @@ export default async function ProjectDetailPage({
             </CardContent>
         </Card>
         )}
-        {tab === "plan" && modules.experts && planPanel && (
-          <EngagementPlanPanel
-            tenantSlug={params.tenantSlug}
-            projectId={project.id}
-            plan={planPanel}
-            canSubmit={canManage}
-            approverOptions={planApprovers}
-            hasProjectRule={hasProjectRule}
-          />
-        )}
         {/* 세션 · 코드넘버는 공통 기반 — experts 없이도 TO 관리가 가능해야 한다 */}
         {tab === "sessions" && (
         <Card>
@@ -780,10 +748,12 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
-        {tab === "basic" && canEvaluate && (
+        {/* 프로젝트 종료 및 지급 품의 — 마감의 모든 절차를 한 탭에 모은다.
+            참여율 → 세션별 만족도 → 회계담당자 검토 → 지급 품의 송신 순서다 */}
+        {tab === "closing" && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-sm">프로젝트 종료</CardTitle>
+              <CardTitle className="text-sm">프로젝트 종료 및 지급 품의</CardTitle>
               {isClosed && (
                 <Badge>
                   종료됨
@@ -793,21 +763,147 @@ export default async function ProjectDetailPage({
                 </Badge>
               )}
             </CardHeader>
-            <CardContent>
-              {isClosed ? (
-                <p className="text-sm text-muted-foreground">
-                  이 프로젝트는 종료되었습니다. 참여 기여도는 임원 대시보드 성과
-                  집계에 반영됩니다.
+            <CardContent className="space-y-5">
+              {/* 지금 어느 단계인지 — 버튼이 왜 열리고 닫히는지의 근거다 */}
+              <div className="rounded-lg border-l-4 border-brand bg-brand/[0.04] p-3">
+                <p className="text-sm font-bold text-brand-navy">
+                  {PROJECT_STAGE_LABELS[settlement?.stage ?? "assigning"]}
                 </p>
-              ) : (
-                <ProjectClosing
-                  projectId={project.id}
-                  staff={staffOptions}
-                  initial={contributionInitial}
-                  closingInProgress={closingInProgress}
-                  approvalsActive={modules.approvals}
-                />
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  {PROJECT_STAGE_DESCRIPTIONS[settlement?.stage ?? "assigning"]}
+                </p>
+              </div>
+
+              {!modules.experts && (
+                <p className="text-sm text-muted-foreground">
+                  전문가 모듈을 쓰지 않는 테넌트입니다. 참여율만 정리하면 종료할 수
+                  있습니다.
+                </p>
               )}
+
+              {/* ① 참여율 — PM·부PM을 포함한 참여 직원의 배분 (합 100%) */}
+              {canEvaluate && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold">① 참여율 배분 (합 100%)</h3>
+                  {isClosed ? (
+                    <p className="text-sm text-muted-foreground">
+                      이 프로젝트는 종료되었습니다. 참여율은 임원 대시보드 성과
+                      집계에 반영됩니다.
+                    </p>
+                  ) : (
+                    <ProjectClosing
+                      projectId={project.id}
+                      staff={staffOptions}
+                      initial={contributionInitial}
+                      closingInProgress={closingInProgress}
+                      approvalsActive={modules.approvals}
+                      contributionsOnly={modules.experts}
+                    />
+                  )}
+                </section>
+              )}
+
+              {/* ② 세션별 만족도 — 사람이 아니라 참여 세션 단위로 매긴다 */}
+              {modules.experts && settlement && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold">
+                    ② 세션별 전문가 만족도 (
+                    {settlement.lines.length - settlement.unratedCount}/
+                    {settlement.lines.length})
+                  </h3>
+                  {settlement.stage === "confirmed" ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        아직 종료 절차가 시작되지 않았습니다. 아래 버튼을 누르면
+                        만족도 입력이 열립니다.
+                      </p>
+                      {canManage && (
+                        <ClosingStageButtons
+                          projectId={project.id}
+                          mode="start"
+                          disabledReason={null}
+                        />
+                      )}
+                    </>
+                  ) : settlement.stage === "closing" ||
+                    settlement.stage === "settlement_review" ||
+                    settlement.stage === "settled" ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        0~100점, 5점 단위입니다. 점수를 누르면 바로 저장됩니다.
+                        메모는 회사 내부 기록이며 전문가에게 공개되지 않습니다.
+                      </p>
+                      {settlement.lines.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          수락(확정)된 참여 건이 없습니다.
+                        </p>
+                      ) : (
+                        <ul className="divide-y">
+                          {settlement.lines.map((line) => (
+                            <SatisfactionForm
+                              key={`${line.engagementId}`}
+                              projectId={project.id}
+                              disabled={!canEvaluate || settlement.stage !== "closing"}
+                              row={{
+                                expertId: line.expertId,
+                                expertName: line.expertName,
+                                slotId: line.slotId,
+                                sessionName: line.sessionName,
+                                schedule: line.schedule,
+                                positionCode: line.positionCode,
+                                satisfaction: line.satisfaction,
+                                memo: line.memo,
+                              }}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                      {settlement.stage === "closing" && canManage && (
+                        <ClosingStageButtons
+                          projectId={project.id}
+                          mode="request"
+                          disabledReason={
+                            settlement.contributionTotal !== 100
+                              ? `참여율 합계가 100%가 아닙니다 (현재 ${settlement.contributionTotal}%).`
+                              : settlement.unratedCount > 0
+                                ? `만족도 미입력 ${settlement.unratedCount}건이 남았습니다.`
+                                : null
+                          }
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      전원 확정 이후에 만족도를 입력할 수 있습니다.
+                    </p>
+                  )}
+                </section>
+              )}
+
+              {/* ③ 회계담당자 검토 — 지급품의서는 회계담당관·임원 이상만 */}
+              {modules.experts &&
+                settlement &&
+                (settlement.stage === "settlement_review" ||
+                  settlement.stage === "settled") && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-semibold">③ 지급 품의 검토</h3>
+                    <SettlementPanel
+                      projectId={project.id}
+                      canReview={canReviewSettlementDoc}
+                      summary={{
+                        expertCount: settlement.expertCount,
+                        lineCount: settlement.lines.length,
+                        totalGross: settlement.totalGross,
+                        totalWithholding: settlement.totalWithholding,
+                        totalNet: settlement.totalNet,
+                        document: buildSettlementDocument(settlement),
+                        note: settlement.settlementNote,
+                        reviewedAt: settlement.settlementReviewedAt,
+                        submitted: settlement.stage === "settled",
+                      }}
+                    />
+                  </section>
+                )}
             </CardContent>
           </Card>
         )}
@@ -901,129 +997,33 @@ export default async function ProjectDetailPage({
           />
         )}
 
-        {tab === "basic" && modules.experts && evaluationRows.length > 0 && (
+        {/* ④ 정성 후기 — 숫자로 남지 않는 판단을 문장으로 남긴다 */}
+        {tab === "closing" && modules.experts && canEvaluate && reviewTargets.length > 0 && (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm">
-                프로젝트 마감 평가 ({evaluationRows.length - unevaluatedCount}/
-                {evaluationRows.length})
+                ④ 전문가 정성 후기 (선택)
               </CardTitle>
-              {unevaluatedCount > 0 ? (
-                <Badge variant="secondary">미완료 {unevaluatedCount}</Badge>
-              ) : (
-                <Badge>평가 완료</Badge>
-              )}
             </CardHeader>
             <CardContent>
               <p className="mb-2 text-xs text-muted-foreground">
-                프로젝트를 마감할 때 참여 전문가를 간단히 평가합니다. 전원을
-                평가해야 수당 지급 품의를 올릴 수 있습니다. 여기서 남긴 점수는
-                다음 섭외에서 <strong>후보 목록의 ‘평판’</strong>으로 다시
-                보입니다. 평가(점수·사유)는{" "}
-                <strong>전문가에게 공개되지 않으며</strong> 회사 내부 기록으로만
-                보관됩니다.
+                만족도 점수와 별개로 문장 기록을 남길 수 있습니다. 여기서 남긴
+                내용은 다음 섭외에서 후보 목록의 <strong>평판</strong>으로 다시
+                보이며, <strong>전문가에게 공개되지 않습니다</strong>.
               </p>
-              {canEvaluate ? (
-                <ul className="divide-y">
-                  {evaluationRows.map((row) => (
-                    <ExpertEvaluationForm
-                      key={row.expertId}
-                      projectId={project.id}
-                      row={row}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <ul className="divide-y">
-                  {evaluationRows.map((row) => (
-                    <li
-                      key={row.expertId}
-                      className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
-                    >
-                      <span className="font-medium">{row.name}</span>
-                      {row.sessions.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {row.sessions.join(" · ")}
-                        </span>
-                      )}
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {row.score !== null
-                          ? `평가 완료 · ${row.score}점`
-                          : "평가 미완료"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ul className="divide-y">
+                {reviewTargets.map((row) => (
+                  <ExpertReviewForm
+                    key={row.expertId}
+                    projectId={project.id}
+                    target={row}
+                  />
+                ))}
+              </ul>
             </CardContent>
           </Card>
         )}
 
-        {tab === "acceptances" && modules.experts && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">
-                수락서 생성 및 확정 ({acceptedEngagements.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-3 text-xs text-muted-foreground">
-                전문가가 섭외를 수락하면 수락서가 자동 생성됩니다. 안내 정보를
-                보완해 송부하고, 전문가 확인 후 담당자가 최종 확인합니다. 수락서는
-                화면에서만 열람하며 파일로 내려받지 않습니다.
-              </p>
-              {acceptedEngagements.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  아직 수락(확정)된 섭외 건이 없습니다. ‘전문가 등록’ 탭에서 섭외를
-                  요청하세요.
-                </p>
-              ) : (
-                <ul className="divide-y">
-                  {acceptedEngagements.map((engagement) => {
-                    const acceptance = acceptanceByEngagement.get(engagement.id);
-                    return (
-                      <li
-                        key={engagement.id}
-                        className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
-                      >
-                        <span className="font-medium">
-                          {engagement.experts?.name ?? "-"}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {engagement.role_description}
-                        </span>
-                        {acceptance?.letter_no && (
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {acceptance.letter_no}
-                          </span>
-                        )}
-                        <Badge
-                          className="ml-auto"
-                          variant={
-                            acceptance?.status === "confirmed"
-                              ? "default"
-                              : "secondary"
-                          }
-                        >
-                          {acceptance
-                            ? acceptanceStatusLabel(acceptance.status)
-                            : "생성 대기"}
-                        </Badge>
-                        <Button asChild variant="outline" size="sm">
-                          <Link
-                            href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
-                          >
-                            수락서 열기
-                          </Link>
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {tab === "overview" &&
           STEP_TYPE_ORDER.map((stepType) => {

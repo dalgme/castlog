@@ -85,6 +85,7 @@ const PEER_TENANT_NAME = "(연습용 가상 기업)";
 
 const COMPLETED_PROJECT_NAME = "[연습] 지난 분기 창업 아카데미";
 const ACTIVE_PROJECT_NAME = "[연습] 예비창업패키지 교육·멘토링";
+const CLOSING_PROJECT_NAME = "[연습] 상반기 창업캠프 — 종료·지급 실습";
 
 /** YYYY-MM-DD (KST 기준). Date의 UTC 밀림을 피하려고 직접 만든다. */
 function ymd(d: Date): string {
@@ -447,6 +448,113 @@ export type SeedResult =
  * service_role로 실행되므로 RLS를 우회하지만, is_practice를 명시하므로
  * 무결성 트리거가 실데이터와의 혼입을 막는다.
  */
+/**
+ * 종료·지급 실습용 프로젝트 (멱등).
+ *
+ * 마감 탭(참여율·만족도·지급 품의)을 실제로 눌러 보려면 '전원 확정'까지 온
+ * 프로젝트가 하나 있어야 한다. 진행 프로젝트는 후보 고르기 연습을 위해 빈
+ * 자리를 일부러 남겨 두므로 그 역할을 못 한다.
+ *
+ * **이미 만들어진 연습 환경에도 붙어야 한다.** 새 환경에서만 만들면 먼저
+ * 시드된 회사는 마감 연습을 영영 못 한다 (수락서 404와 같은 실수).
+ */
+async function ensureClosingPracticeProject(
+  admin: Admin,
+  tenantId: string,
+  experts: { id: string; name: string }[],
+  now: Date
+): Promise<void> {
+  const closingId = await createProject(
+    admin,
+    tenantId,
+    CLOSING_PROJECT_NAME,
+    "active",
+    ymd(addDays(now, -20)),
+    ymd(addDays(now, -5))
+  );
+  if (!closingId) return;
+
+  const { count } = await admin
+    .from("engagement_slots")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", closingId);
+  if ((count ?? 0) === 0) {
+    const closingSessions: SlotSpec[] = [
+      {
+        date: ymd(addDays(now, -18)),
+        startsTime: "10:00",
+        endsTime: "12:00",
+        sessionName: "1일차 · 아이디어 워크숍",
+        roleType: "lecturer",
+        roleDescription: "강사",
+        fee: 350000,
+      },
+      {
+        date: ymd(addDays(now, -12)),
+        startsTime: "13:00",
+        endsTime: "17:00",
+        sessionName: "2일차 · 팀별 멘토링",
+        roleType: "mentor",
+        roleDescription: "멘토",
+        fee: 400000,
+      },
+      {
+        date: ymd(addDays(now, -6)),
+        startsTime: "14:00",
+        endsTime: "17:00",
+        sessionName: "3일차 · 데모데이 심사",
+        roleType: "judge",
+        roleDescription: "심사위원",
+        fee: 300000,
+      },
+    ];
+    for (const spec of closingSessions) {
+      await createSlot(admin, tenantId, closingId, spec, experts);
+    }
+  }
+
+  // 이미 마감을 진행한 뒤라면 되돌리지 않는다
+  const { data: project } = await admin
+    .from("projects")
+    .select("engagement_stage")
+    .eq("id", closingId)
+    .maybeSingle();
+  if (!project?.engagement_stage || project.engagement_stage === "assigning") {
+    await admin
+      .from("projects")
+      .update({ engagement_stage: "confirmed" })
+      .eq("id", closingId);
+  }
+}
+
+/** 먼저 시드된 연습 환경의 단계 값을 실제 모습에 맞춘다 (멱등). */
+async function backfillPracticeStages(
+  admin: Admin,
+  tenantId: string
+): Promise<void> {
+  const targets: [string, string][] = [
+    [COMPLETED_PROJECT_NAME, "settled"],
+    [ACTIVE_PROJECT_NAME, "requesting"],
+  ];
+  for (const [name, stage] of targets) {
+    const { data: project } = await admin
+      .from("projects")
+      .select("id, engagement_stage")
+      .eq("tenant_id", tenantId)
+      .eq("is_practice", true)
+      .eq("name", name)
+      .maybeSingle();
+    if (!project) continue;
+    if (project.engagement_stage && project.engagement_stage !== "assigning") {
+      continue;
+    }
+    await admin
+      .from("projects")
+      .update({ engagement_stage: stage })
+      .eq("id", project.id);
+  }
+}
+
 export async function ensurePracticeEnvironment(
   tenantId: string
 ): Promise<SeedResult> {
@@ -470,6 +578,8 @@ export async function ensurePracticeEnvironment(
   // 먼저 시드된 환경은 영영 비어 있다 (수락서 404의 원인이었다).
   await ensureTaxProfiles(admin, experts);
   await backfillPracticeAcceptances(admin, tenantId);
+  await backfillPracticeStages(admin, tenantId);
+  await ensureClosingPracticeProject(admin, tenantId, experts, new Date());
   if (already) return { ok: true, created: false, experts: experts.length };
 
   const now = new Date();
@@ -520,6 +630,12 @@ export async function ensurePracticeEnvironment(
     for (const spec of pastSessions) {
       await createSlot(admin, tenantId, completedId, spec, experts);
     }
+    // 끝난 사업이므로 단계도 끝까지 와 있어야 한다 — '임의 배정 중'으로 남으면
+    // 마감 탭이 사실과 다른 상태를 보여 준다
+    await admin
+      .from("projects")
+      .update({ engagement_stage: "settled" })
+      .eq("id", completedId);
   }
 
   // ---- 2) 진행 프로젝트: 승인 8건 + 빈 슬롯 3개 ------------------------------
@@ -596,6 +712,12 @@ export async function ensurePracticeEnvironment(
       [] // 미섭외 상태로 남긴다
     );
   }
+
+  // 8세션이 확정되고 3자리가 비어 있는 상태 = '섭외 요청 발송됨'
+  await admin
+    .from("projects")
+    .update({ engagement_stage: "requesting" })
+    .eq("id", activeId);
 
   // ---- 3) 가상 타사의 '섭외 중' 3건 — 빈 슬롯 날짜와 겹치게 -------------------
   const peerTenantId = await ensurePeerTenant(admin);
