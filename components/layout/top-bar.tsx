@@ -4,8 +4,12 @@ import { getSessionUser } from "@/lib/auth/session";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { gradeLabel } from "@/lib/auth/grades";
 
+import { canEnterPlatformMode } from "@/lib/auth/platform-mode";
+import { HelpChat } from "@/components/support/help-chat";
+
 import { LocationCrumbs } from "./location-crumbs";
 import { PracticeToggle } from "./practice-toggle";
+import { PlatformModeButton } from "./platform-mode-button";
 
 /**
  * 대시보드 상단 바 — 왼쪽 현재 위치, 오른쪽 계정·로그아웃.
@@ -19,15 +23,20 @@ export async function TopBar({
   tenantName,
   practice,
   canPractice,
+  logoSrc,
 }: {
   tenantSlug: string;
   tenantName: string | null;
   practice: boolean;
+  /** 회사 로고 — 도우미 대화창 머리에 쓴다 */
+  logoSrc: string | null;
   /** 연습모드를 쓸 수 있는 사람인가 (플랫폼관리자는 테넌트 소속이 아니라 제외) */
   canPractice: boolean;
 }) {
   const user = await getSessionUser();
   const grade = gradeFromUser(user);
+  // 넥스트랩 운영자만 — 명단은 배포 환경변수(PLATFORM_ADMIN_EMAILS)에 있다
+  const canSwitchToPlatform = canEnterPlatformMode(user);
 
   return (
     // sticky — 목록이 길어져도 현재 위치와 나가는 문은 화면에서 사라지지 않는다.
@@ -36,6 +45,10 @@ export async function TopBar({
       <LocationCrumbs tenantSlug={tenantSlug} tenantName={tenantName} />
 
       <div className="flex shrink-0 items-center gap-2">
+        {/* 사용법 도우미 — 화면을 떠나지 않고 물어볼 수 있어야 한다 */}
+        <HelpChat tenantName={tenantName} logoSrc={logoSrc} />
+        {/* 운영사 전환 — 테넌트 경계를 넘는 버튼이라 계정 영역에 둔다 */}
+        {canSwitchToPlatform && <PlatformModeButton mode="enter" />}
         {/* 연습모드는 '지금 내가 어떤 자리에 있는가'라서 계정 옆이 제자리다 */}
         {canPractice && <PracticeToggle practice={practice} />}
         {user?.email && (

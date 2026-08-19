@@ -47,11 +47,7 @@ import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-mar
 import { AttachmentPanel } from "./attachment-panel";
 
 import { StepStatusSelect } from "./step-status-select";
-import {
-  ExpertReviewForm,
-  type ExpertReviewTarget,
-} from "./expert-review-form";
-import { ProjectClosing } from "./project-closing";
+import { type ExpertReviewTarget } from "./expert-review-form";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import {
   ActionRequestPanel,
@@ -63,21 +59,12 @@ import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
 import { type PlanPanelState } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
-import {
-  getProjectSettlement,
-  buildSettlementDocument,
-} from "@/lib/integrations/project-settlement";
-import {
-  PROJECT_STAGE_DESCRIPTIONS,
-  PROJECT_STAGE_LABELS,
-} from "@/lib/integrations/project-stage";
+import { getProjectSettlement } from "@/lib/integrations/project-settlement";
 import {
   EngagementWorkbench,
   type UnlinkedEngagement,
 } from "./engagement-workbench";
-import { ClosingStageButtons } from "./closing-stage-buttons";
-import { SatisfactionForm } from "./satisfaction-form";
-import { SettlementPanel } from "./settlement-panel";
+import { ClosingTab } from "./closing-tab";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -751,161 +738,21 @@ export default async function ProjectDetailPage({
         {/* 프로젝트 종료 및 지급 품의 — 마감의 모든 절차를 한 탭에 모은다.
             참여율 → 세션별 만족도 → 회계담당자 검토 → 지급 품의 송신 순서다 */}
         {tab === "closing" && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-sm">프로젝트 종료 및 지급 품의</CardTitle>
-              {isClosed && (
-                <Badge>
-                  종료됨
-                  {project.closed_at
-                    ? ` · ${new Date(project.closed_at).toLocaleDateString("ko-KR")}`
-                    : ""}
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {/* 지금 어느 단계인지 — 버튼이 왜 열리고 닫히는지의 근거다 */}
-              <div className="rounded-lg border-l-4 border-brand bg-brand/[0.04] p-3">
-                <p className="text-sm font-bold text-brand-navy">
-                  {PROJECT_STAGE_LABELS[settlement?.stage ?? "assigning"]}
-                </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  {PROJECT_STAGE_DESCRIPTIONS[settlement?.stage ?? "assigning"]}
-                </p>
-              </div>
-
-              {!modules.experts && (
-                <p className="text-sm text-muted-foreground">
-                  전문가 모듈을 쓰지 않는 테넌트입니다. 참여율만 정리하면 종료할 수
-                  있습니다.
-                </p>
-              )}
-
-              {/* ① 참여율 — PM·부PM을 포함한 참여 직원의 배분 (합 100%) */}
-              {canEvaluate && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-semibold">① 참여율 배분 (합 100%)</h3>
-                  {isClosed ? (
-                    <p className="text-sm text-muted-foreground">
-                      이 프로젝트는 종료되었습니다. 참여율은 임원 대시보드 성과
-                      집계에 반영됩니다.
-                    </p>
-                  ) : (
-                    <ProjectClosing
-                      projectId={project.id}
-                      staff={staffOptions}
-                      initial={contributionInitial}
-                      closingInProgress={closingInProgress}
-                      approvalsActive={modules.approvals}
-                      contributionsOnly={modules.experts}
-                    />
-                  )}
-                </section>
-              )}
-
-              {/* ② 세션별 만족도 — 사람이 아니라 참여 세션 단위로 매긴다 */}
-              {modules.experts && settlement && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-semibold">
-                    ② 세션별 전문가 만족도 (
-                    {settlement.lines.length - settlement.unratedCount}/
-                    {settlement.lines.length})
-                  </h3>
-                  {settlement.stage === "confirmed" ? (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        아직 종료 절차가 시작되지 않았습니다. 아래 버튼을 누르면
-                        만족도 입력이 열립니다.
-                      </p>
-                      {canManage && (
-                        <ClosingStageButtons
-                          projectId={project.id}
-                          mode="start"
-                          disabledReason={null}
-                        />
-                      )}
-                    </>
-                  ) : settlement.stage === "closing" ||
-                    settlement.stage === "settlement_review" ||
-                    settlement.stage === "settled" ? (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        0~100점, 5점 단위입니다. 점수를 누르면 바로 저장됩니다.
-                        메모는 회사 내부 기록이며 전문가에게 공개되지 않습니다.
-                      </p>
-                      {settlement.lines.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          수락(확정)된 참여 건이 없습니다.
-                        </p>
-                      ) : (
-                        <ul className="divide-y">
-                          {settlement.lines.map((line) => (
-                            <SatisfactionForm
-                              key={`${line.engagementId}`}
-                              projectId={project.id}
-                              disabled={!canEvaluate || settlement.stage !== "closing"}
-                              row={{
-                                expertId: line.expertId,
-                                expertName: line.expertName,
-                                slotId: line.slotId,
-                                sessionName: line.sessionName,
-                                schedule: line.schedule,
-                                positionCode: line.positionCode,
-                                satisfaction: line.satisfaction,
-                                memo: line.memo,
-                              }}
-                            />
-                          ))}
-                        </ul>
-                      )}
-                      {settlement.stage === "closing" && canManage && (
-                        <ClosingStageButtons
-                          projectId={project.id}
-                          mode="request"
-                          disabledReason={
-                            settlement.contributionTotal !== 100
-                              ? `참여율 합계가 100%가 아닙니다 (현재 ${settlement.contributionTotal}%).`
-                              : settlement.unratedCount > 0
-                                ? `만족도 미입력 ${settlement.unratedCount}건이 남았습니다.`
-                                : null
-                          }
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      전원 확정 이후에 만족도를 입력할 수 있습니다.
-                    </p>
-                  )}
-                </section>
-              )}
-
-              {/* ③ 회계담당자 검토 — 지급품의서는 회계담당관·임원 이상만 */}
-              {modules.experts &&
-                settlement &&
-                (settlement.stage === "settlement_review" ||
-                  settlement.stage === "settled") && (
-                  <section className="space-y-2">
-                    <h3 className="text-sm font-semibold">③ 지급 품의 검토</h3>
-                    <SettlementPanel
-                      projectId={project.id}
-                      canReview={canReviewSettlementDoc}
-                      summary={{
-                        expertCount: settlement.expertCount,
-                        lineCount: settlement.lines.length,
-                        totalGross: settlement.totalGross,
-                        totalWithholding: settlement.totalWithholding,
-                        totalNet: settlement.totalNet,
-                        document: buildSettlementDocument(settlement),
-                        note: settlement.settlementNote,
-                        reviewedAt: settlement.settlementReviewedAt,
-                        submitted: settlement.stage === "settled",
-                      }}
-                    />
-                  </section>
-                )}
-            </CardContent>
-          </Card>
+          <ClosingTab
+            projectId={project.id}
+            settlement={settlement}
+            hasExperts={modules.experts}
+            hasApprovals={modules.approvals}
+            canManage={canManage}
+            canEvaluate={canEvaluate}
+            canReviewSettlement={canReviewSettlementDoc}
+            isClosed={isClosed}
+            closedAt={project.closed_at}
+            closingInProgress={closingInProgress}
+            staff={staffOptions}
+            contributionInitial={contributionInitial}
+            reviewTargets={reviewTargets}
+          />
         )}
 
         {/* 섭외 절차의 입구 — 세션(코드넘버)별로 '지금 할 일'을 펼친다 */}
@@ -997,32 +844,6 @@ export default async function ProjectDetailPage({
           />
         )}
 
-        {/* ④ 정성 후기 — 숫자로 남지 않는 판단을 문장으로 남긴다 */}
-        {tab === "closing" && modules.experts && canEvaluate && reviewTargets.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">
-                ④ 전문가 정성 후기 (선택)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-2 text-xs text-muted-foreground">
-                만족도 점수와 별개로 문장 기록을 남길 수 있습니다. 여기서 남긴
-                내용은 다음 섭외에서 후보 목록의 <strong>평판</strong>으로 다시
-                보이며, <strong>전문가에게 공개되지 않습니다</strong>.
-              </p>
-              <ul className="divide-y">
-                {reviewTargets.map((row) => (
-                  <ExpertReviewForm
-                    key={row.expertId}
-                    projectId={project.id}
-                    target={row}
-                  />
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
 
 
         {tab === "overview" &&

@@ -4,6 +4,8 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getRrnLockdown } from "@/lib/integrations/rrn-lockdown";
 import { MODULE_KEYS, MODULE_LABELS, parseModuleFlags } from "@/lib/modules/modules";
 import { PageHeader } from "@/components/layout/header";
+import { PlatformModeButton } from "@/components/layout/platform-mode-button";
+import { readPriorContext } from "@/lib/auth/platform-mode";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,7 +36,9 @@ const TENANT_STATUS_LABEL: Record<string, string> = {
  * 주의: 플랫폼관리자도 전문가 세무정보 조회 권한은 없다 (설계문서 4.4).
  */
 export default async function PlatformAdminPage() {
-  await requireRole(["platform_admin"]);
+  const user = await requireRole(["platform_admin"]);
+  // 기업 계정에서 올라온 세션이면 되돌아갈 자리가 보관돼 있다
+  const backToTenant = readPriorContext(user) !== null;
 
   const lockdown = await getRrnLockdown();
 
@@ -59,6 +63,8 @@ export default async function PlatformAdminPage() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
+      {/* 원래 회사 화면으로 — 관리모드에서 나가는 문이 없으면 로그아웃밖에 없다 */}
+      {backToTenant && <PlatformModeButton mode="exit" />}
       <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/usage">사용 현황</a>
       </Button>

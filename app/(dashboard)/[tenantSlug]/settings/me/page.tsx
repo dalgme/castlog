@@ -12,6 +12,7 @@ import {
 import { getTenantModules } from "@/lib/modules/server";
 import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
 import { createClient } from "@/lib/supabase/server";
+import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -21,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { ProfileForm } from "./profile-form";
+import { TenantLogoForm } from "./logo-form";
 
 export const metadata = { title: "내 설정" };
 
@@ -71,6 +73,7 @@ export default async function MySettingsPage({
     getTenantModules(),
     canManagePayments(),
   ]);
+  const logoSrc = await tenantLogoSrc();
 
   const role = roleFromUser(user);
   const grade = gradeFromUser(user);
@@ -88,7 +91,9 @@ export default async function MySettingsPage({
         showOrg={canRequestModules}
         showRules={modules.approvals && canRequestModules}
       />
-      <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+      {/* 좁은 칸에 카드를 세로로 쌓으면 넓은 화면에서 오른쪽이 통째로 빈다.
+          설정은 훑어보는 화면이므로 한눈에 들어오는 편이 낫다 */}
+      <main className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">내 정보</CardTitle>
@@ -131,6 +136,15 @@ export default async function MySettingsPage({
             <Button asChild variant="outline" size="sm">
               <Link href="/account/password">비밀번호 변경</Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">회사 로고</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TenantLogoForm currentSrc={logoSrc} canEdit={canRequestModules} />
           </CardContent>
         </Card>
 

@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Check, Loader2, Minus, Plus } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,14 +20,25 @@ export type SatisfactionRow = {
   memo: string | null;
 };
 
-/** 0~100, 5점 단위 — 슬라이더로 두면 5의 배수를 정확히 맞추기 어렵다 */
-const STEPS = Array.from({ length: 21 }, (_, i) => i * 5);
+/** 자주 쓰는 값만 빠른 버튼으로 — 나머지는 슬라이더·증감으로 맞춘다 */
+const QUICK = [60, 70, 80, 90, 100];
+
+function toneOf(value: number): string {
+  if (value >= 90) return "bg-emerald-600";
+  if (value >= 70) return "bg-brand";
+  if (value >= 50) return "bg-amber-500";
+  return "bg-destructive";
+}
 
 /**
- * 세션별 전문가 만족도.
+ * 세션별 전문가 만족도 (0~100, 5점 단위).
  *
- * 사람 단위가 아니라 **참여 세션 단위**로 매긴다. 같은 전문가라도 세션마다
- * 다르게 진행되고, 다음에 어느 자리에 다시 부를지는 그 차이를 봐야 정해진다.
+ * 처음에는 5점 단위 버튼 21개를 늘어놓았는데, 한 프로젝트에 참여 건이 열 개만
+ * 돼도 화면이 버튼 200개가 됐다. 무엇을 눌러야 하는지가 아니라 '버튼이 많다'가
+ * 먼저 보이면 그 화면은 실패한 것이다.
+ *
+ * 그래서 슬라이더(5점 단위로 스냅) + 자주 쓰는 값 몇 개 + 미세 조정으로 바꿨다.
+ * 저장은 손을 뗄 때 자동으로 한다 — 점수마다 저장 버튼을 누르게 하지 않는다.
  */
 export function SatisfactionForm({
   projectId,
@@ -40,113 +51,179 @@ export function SatisfactionForm({
   disabled: boolean;
 }) {
   const router = useRouter();
-  const [value, setValue] = useState<number | null>(row.satisfaction);
+  const [value, setValue] = useState<number>(row.satisfaction ?? 80);
+  const [saved, setSaved] = useState(row.satisfaction !== null);
   const [memo, setMemo] = useState(row.memo ?? "");
+  const [memoOpen, setMemoOpen] = useState(Boolean(row.memo));
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
 
-  function save(next: number) {
-    setValue(next);
+  function commit(next: number, nextMemo = memo) {
+    const clamped = Math.min(100, Math.max(0, Math.round(next / 5) * 5));
+    setValue(clamped);
     startTransition(async () => {
       const res = await saveSessionSatisfaction({
         projectId,
         expertId: row.expertId,
         slotId: row.slotId,
-        satisfaction: next,
-        memo,
-      });
-      if (!res.ok) {
-        toast({ variant: "destructive", description: res.error });
-        setValue(row.satisfaction);
-        return;
-      }
-      router.refresh();
-    });
-  }
-
-  function saveMemo() {
-    if (value === null) {
-      toast({ variant: "destructive", description: "만족도를 먼저 선택하세요." });
-      return;
-    }
-    startTransition(async () => {
-      const res = await saveSessionSatisfaction({
-        projectId,
-        expertId: row.expertId,
-        slotId: row.slotId,
-        satisfaction: value,
-        memo,
+        satisfaction: clamped,
+        memo: nextMemo,
       });
       if (!res.ok) {
         toast({ variant: "destructive", description: res.error });
         return;
       }
-      toast({ description: "메모를 저장했습니다." });
+      setSaved(true);
       router.refresh();
     });
   }
 
   return (
-    <li className="space-y-2 py-3">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-        <span className="font-semibold">{row.expertName}</span>
-        <span className="text-xs text-muted-foreground">{row.sessionName}</span>
-        <span className="text-xs text-muted-foreground">{row.schedule}</span>
-        {row.positionCode && (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.positionCode}
-          </span>
-        )}
-        <span
-          className={
-            value === null
-              ? "ml-auto rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
-              : "ml-auto rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700"
-          }
-        >
-          {value === null ? "만족도 미입력" : `만족도 ${value}점`}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap gap-1">
-        {STEPS.map((step) => (
+    <li className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] sm:items-center sm:gap-4">
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="font-semibold">{row.expertName}</span>
+          {row.positionCode && (
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {row.positionCode}
+            </span>
+          )}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {row.sessionName} · {row.schedule}
+        </p>
+        {!memoOpen && !disabled && (
           <button
-            key={step}
             type="button"
-            disabled={disabled || pending}
-            onClick={() => save(step)}
-            aria-pressed={value === step}
-            className={
-              value === step
-                ? "min-w-[2.6rem] rounded-md border border-brand bg-brand px-1.5 py-1 text-xs font-semibold text-white"
-                : "min-w-[2.6rem] rounded-md border px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
-            }
+            onClick={() => setMemoOpen(true)}
+            className="mt-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-brand hover:underline"
           >
-            {step}
+            메모 추가
           </button>
-        ))}
+        )}
       </div>
 
-      <div className="flex gap-1.5">
-        <Textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          disabled={disabled || pending}
-          rows={2}
-          maxLength={1000}
-          placeholder="메모 (선택) — 회사 내부 기록이며 전문가에게 공개되지 않습니다."
-          className="text-sm"
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled || pending}
-          onClick={saveMemo}
-        >
-          메모 저장
-        </Button>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span
+            className={`flex h-7 w-11 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${
+              saved ? toneOf(value) : "bg-muted-foreground/40"
+            }`}
+          >
+            {saved ? value : "–"}
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={value}
+            disabled={disabled || pending}
+            onChange={(e) => setValue(Number(e.target.value))}
+            onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+            onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+            aria-label={`${row.expertName} ${row.sessionName} 만족도`}
+            className="h-1.5 min-w-0 flex-1 cursor-pointer accent-[#1A68F0]"
+          />
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              aria-label="5점 내림"
+              disabled={disabled || pending || value <= 0}
+              onClick={() => commit(value - 5)}
+              className="rounded border p-1 text-muted-foreground transition-colors hover:text-brand disabled:opacity-40"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              aria-label="5점 올림"
+              disabled={disabled || pending || value >= 100}
+              onClick={() => commit(value + 5)}
+              className="rounded border p-1 text-muted-foreground transition-colors hover:text-brand disabled:opacity-40"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+          <span className="w-4 shrink-0">
+            {pending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            ) : saved ? (
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+            ) : null}
+          </span>
+        </div>
+
+        {!disabled && (
+          <div className="flex flex-wrap gap-1">
+            {QUICK.map((q) => (
+              <button
+                key={q}
+                type="button"
+                disabled={pending}
+                onClick={() => commit(q)}
+                className={
+                  saved && value === q
+                    ? "rounded border border-brand bg-brand/10 px-1.5 py-0.5 text-[11px] font-semibold text-brand"
+                    : "rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-brand"
+                }
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {memoOpen && (
+        <div className="sm:col-span-2">
+          <Textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            onBlur={() => saved && commit(value, memo)}
+            disabled={disabled || pending}
+            rows={2}
+            maxLength={1000}
+            placeholder="메모 (선택) — 회사 내부 기록이며 전문가에게 공개되지 않습니다."
+            className="text-sm"
+          />
+        </div>
+      )}
     </li>
+  );
+}
+
+/** 목록 위에 붙는 안내 — 개별 행마다 반복하지 않는다 */
+export function SatisfactionHint({ readOnly }: { readOnly: boolean }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      {readOnly
+        ? "검토 요청 이후에는 수정할 수 없습니다."
+        : "0~100점, 5점 단위입니다. 손을 떼면 자동 저장됩니다."}
+    </p>
+  );
+}
+
+/** 만족도 요약 막대 — 몇 건이 남았는지 한눈에 */
+export function SatisfactionProgress({
+  done,
+  total,
+}: {
+  done: number;
+  total: number;
+}) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
+        <div
+          className={pct === 100 ? "h-full bg-emerald-600" : "h-full bg-brand"}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs font-medium text-muted-foreground">
+        {done}/{total}
+      </span>
+    </div>
   );
 }
