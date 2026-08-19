@@ -7,6 +7,7 @@ import { getTenantModules } from "@/lib/modules/server";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantDashboard } from "@/lib/integrations/tenant-dashboard";
 import { getMyWork } from "@/lib/integrations/my-work";
+import { getUrgentCancellations } from "@/lib/integrations/urgent-cancellations";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
@@ -15,6 +16,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
 import { BarList } from "@/components/charts/bar-list";
 import { Donut } from "@/components/charts/donut";
 
@@ -141,10 +143,12 @@ export default async function DashboardPage({
   const isJunior = grade !== null && gradeRank(grade) < gradeRank("team_lead");
 
   const modules = await getTenantModules();
-  const [data, payments, myWork] = await Promise.all([
+  const [data, payments, myWork, urgentCancels] = await Promise.all([
     getTenantDashboard(year, modules),
     canManagePayments(),
     getMyWork(user?.id ?? "", slug, modules),
+    // 확정 전문가의 갑작스러운 취소는 전 임직원이 즉시 알아야 한다
+    modules.experts ? getUrgentCancellations() : Promise.resolve([]),
   ]);
 
   const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
@@ -205,6 +209,7 @@ export default async function DashboardPage({
 
   return (
     <>
+      <UrgentCancelMarquee items={urgentCancels} tenantSlug={slug} />
       <PageHeader
         title="대시보드"
         actions={

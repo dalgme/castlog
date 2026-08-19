@@ -311,7 +311,7 @@ export default async function TenantExpertsPage({
                       <TableHead>전문분야</TableHead>
                       <TableHead>지역</TableHead>
                       <TableHead>경력</TableHead>
-                      <TableHead>평판</TableHead>
+                      <TableHead>자사 평균</TableHead>
                       <TableHead>등급</TableHead>
                       <TableHead>상태</TableHead>
                       <TableHead className="w-20" />
@@ -348,15 +348,12 @@ export default async function TenantExpertsPage({
                                   </span>
                                 );
                               }
+                              // 자사에서 매긴 평가의 평균만 보여 준다.
+                              // 다른 기업의 평가는 애초에 조회되지 않는다 (§4).
                               return (
-                                <>
-                                  <strong>
-                                    {(acc.sum / acc.count).toFixed(1)}
-                                  </strong>
-                                  <span className="text-muted-foreground">
-                                    /10 · {acc.count}건
-                                  </span>
-                                </>
+                                <strong>
+                                  {(acc.sum / acc.count).toFixed(1)}
+                                </strong>
                               );
                             })()}
                           </TableCell>

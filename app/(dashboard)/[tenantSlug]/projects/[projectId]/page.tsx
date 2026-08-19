@@ -9,6 +9,10 @@ import {
   isAssignmentRole,
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
+import {
+  getUrgentCancellations,
+  getCanceledExpertByPositionCode,
+} from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
 import { getTenantModules } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
+import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
 
 import { StepStatusSelect } from "./step-status-select";
 import {
@@ -407,6 +412,14 @@ export default async function ProjectDetailPage({
       ])
     : [{ data: null }, { data: null }];
 
+  // 긴급 취소 — 이 프로젝트 건만. 재섭외 대상 자리를 눈에 띄게 표시한다.
+  const [urgentCancels, canceledByCode] = modules.experts
+    ? await Promise.all([
+        getUrgentCancellations({ projectId: project.id }),
+        getCanceledExpertByPositionCode(project.id),
+      ])
+    : [[], {} as Record<string, string>];
+
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
     slotDate: s.slot_date,
@@ -427,6 +440,8 @@ export default async function ProjectDetailPage({
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
         engagementId: p.engagement_id,
+        canceledExpertName:
+          p.status === "open" ? (canceledByCode[p.code] ?? null) : null,
       })),
     notice: {
       // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)
@@ -576,10 +591,12 @@ export default async function ProjectDetailPage({
       }),
     }));
 
+
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
   return (
     <div>
+      <UrgentCancelMarquee items={urgentCancels} tenantSlug={params.tenantSlug} />
       <PageHeader
         title={project.name}
         actions={
