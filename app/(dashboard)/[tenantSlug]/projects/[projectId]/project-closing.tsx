@@ -24,12 +24,18 @@ export function ProjectClosing({
   initial,
   closingInProgress,
   approvalsActive,
+  contributionsOnly = false,
 }: {
   projectId: string;
   staff: StaffOption[];
   initial: Record<string, number>;
   closingInProgress: boolean;
   approvalsActive: boolean;
+  /**
+   * 참여율 입력만 쓴다 — 종료·지급 품의는 마감 탭의 절차가 몰아서 처리한다.
+   * 종료 버튼이 두 곳에 있으면 어느 쪽이 진짜 종료인지 알 수 없다.
+   */
+  contributionsOnly?: boolean;
 }) {
   const [shares, setShares] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {};
@@ -124,8 +130,13 @@ export function ProjectClosing({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        참여 직원의 기여도를 입력하세요. 합계가 <strong>정확히 100%</strong>여야 종료할 수
-        있습니다. {approvalsActive ? "종료는 품의 승인으로 확정됩니다." : "결재 없이 즉시 종료됩니다."}
+        참여 직원의 참여율(기여도)을 입력하세요. 합계가{" "}
+        <strong>정확히 100%</strong>여야 다음 단계로 넘어갑니다.{" "}
+        {contributionsOnly
+          ? "저장한 값은 임원 대시보드 성과 집계에 반영됩니다."
+          : approvalsActive
+            ? "종료는 품의 승인으로 확정됩니다."
+            : "결재 없이 즉시 종료됩니다."}
       </p>
       <ul className="divide-y">
         {staff.map((s) => (
@@ -158,14 +169,16 @@ export function ProjectClosing({
           >
             기여도 저장
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onSubmitClosing}
-            disabled={pending || total !== 100}
-          >
-            {approvalsActive ? "종료 품의 상신" : "프로젝트 종료"}
-          </Button>
+          {!contributionsOnly && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSubmitClosing}
+              disabled={pending || total !== 100}
+            >
+              {approvalsActive ? "종료 품의 상신" : "프로젝트 종료"}
+            </Button>
+          )}
         </div>
       </div>
     </div>
