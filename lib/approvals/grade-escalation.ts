@@ -30,6 +30,8 @@ export type EscalationLine = {
   steps: EngineLineStep[];
   /** 화면 안내용 — "김이사(이사) → 박대표(대표)" */
   description: string;
+  /** 대표가 스스로 결재하는 건인가 (1인 기업·상위 결재자 없음) */
+  selfApproved?: boolean;
 };
 
 type Candidate = { id: string; name: string; grade: string };
@@ -61,7 +63,21 @@ export async function buildGradeEscalationLine(
     .filter((u) => u.id !== requesterUserId)
     .filter((u) => isUserGrade(u.grade) && gradeRank(u.grade) > requesterRank);
 
-  if (superiors.length === 0) return null;
+  // 상급자가 아무도 없는 경우 — 1인 기업이거나 대표가 직접 올린 건이다.
+  // 대표는 회사의 최종 결재권자이므로 스스로 결재할 수 있어야 한다. 결재를
+  // '남의 승인'으로만 정의하면 1인 기업은 아무것도 상신할 수 없다.
+  // 다만 사원·팀장이 자기 건을 스스로 결재하는 것은 여전히 막는다 —
+  // 여기 도달하는 비-대표는 상급자가 없다는 뜻이므로 거부한다.
+  if (superiors.length === 0) {
+    if (requesterGrade !== "ceo") return null;
+    return {
+      steps: [
+        { stepOrder: 1, stepKind: "approval" as const, approverUserId: requesterUserId },
+      ],
+      description: "대표 자가결재 (상위 결재자 없음)",
+      selfApproved: true,
+    };
+  }
 
   /** 특정 직급의 대표 1인 (가장 먼저 등록된 사람) */
   const firstOfGrade = (grade: string): Candidate | null =>
@@ -93,6 +109,7 @@ export async function buildGradeEscalationLine(
   if (picked.length === 0) return null;
 
   return {
+    selfApproved: false,
     steps: picked.map((c, i) => ({
       stepOrder: i + 1,
       stepKind: "approval" as const,

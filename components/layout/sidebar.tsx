@@ -16,6 +16,7 @@ import {
   Handshake,
   BookOpen,
   ListChecks,
+  Scale,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -46,6 +47,15 @@ const NAV_ITEMS: readonly {
   // 프로젝트 개설·기본정보·PM배정·세션·코드넘버는 공통 기반 (CLAUDE.md §1-2)
   { label: "프로젝트", path: "projects", icon: FolderKanban, module: null },
   { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
+  // 전결규정은 '설정'이지 '프로젝트'가 아니다. 결재 현황과 규정 설정을 분리해
+  // 각각 독립된 메뉴로 연다 (기획 지시).
+  {
+    label: "전결규정",
+    path: "approvals/rules",
+    icon: Scale,
+    module: "approvals",
+    orgAdminOnly: true,
+  },
   { label: "전문가", path: "experts", icon: Users, module: "experts" },
   {
     label: "섭외 현황",
@@ -98,7 +108,17 @@ export function Sidebar({
       <nav className="flex flex-col gap-1 px-2">
         {visibleItems.map(({ label, path, icon: Icon }) => {
           const href = buildTenantPath(tenantSlug, path);
-          const active = pathname.startsWith(href);
+          // startsWith만 쓰면 /approvals/rules에서 '전자결재'와 '전결규정'이
+          // 동시에 활성된다. 더 긴 경로가 있으면 그쪽만 활성으로 둔다.
+          const active =
+            pathname === href ||
+            (pathname.startsWith(`${href}/`) &&
+              !visibleItems.some(
+                (other) =>
+                  other.path !== path &&
+                  other.path.startsWith(`${path}/`) &&
+                  pathname.startsWith(buildTenantPath(tenantSlug, other.path))
+              ));
           return (
             <Link
               key={path}

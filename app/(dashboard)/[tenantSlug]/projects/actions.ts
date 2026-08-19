@@ -18,6 +18,7 @@ import {
   type StepStatusInput,
 } from "@/lib/operations/schemas";
 import { DEFAULT_LIFECYCLE_STEPS } from "@/lib/operations/steps";
+import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 
 export type CreateProjectResult =
   | { ok: true; projectId: string }
@@ -374,14 +375,17 @@ export async function submitProjectClosing(
   }
 
   // approvals 활성 — 종료 품의 상신 (승인 시 hook이 completed로 전이)
+  // 전결규정이 없으면 직급 체계로 위로 올린다(상신 자체를 막지 않는다).
   const matched = await matchApprovalRule("project", 0);
-  if (!matched) {
+  const escalation = matched ? null : await buildGradeEscalationLine(session.userId, 0);
+  if (!matched && !escalation) {
     return {
       ok: false,
       error:
-        "프로젝트 품의에 적용할 전결규정이 없습니다. 전결규정(유형: 프로젝트 품의)을 등록한 뒤 다시 상신하세요.",
+        "결재할 상위직급자가 없습니다. 전결규정(유형: 프로젝트 품의)을 등록하거나 상위 직급 계정을 추가해 주세요.",
     };
   }
+  const closingLine = matched ? matched.steps : escalation!.steps;
 
   const body = [
     `프로젝트: ${project.name}`,
@@ -401,8 +405,8 @@ export async function submitProjectClosing(
     approvalType: "project",
     amount: 0,
     projectId,
-    appliedRuleId: matched.ruleId,
-    steps: matched.steps,
+    appliedRuleId: matched?.ruleId ?? null,
+    steps: closingLine,
   });
   if (!created.ok) return created;
 
