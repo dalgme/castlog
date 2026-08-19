@@ -176,6 +176,17 @@ export default async function PositionPage({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">섭외 후보군 (일정 중복 자동 검증)</CardTitle>
+              {/* 한 화면에서 네 단계가 이어진다는 것을 먼저 말해 준다 —
+                  절차를 모르면 후보 목록이 그냥 명단으로만 보인다 */}
+              <ol className="flex flex-wrap gap-x-2 gap-y-1 pt-1 text-xs text-muted-foreground">
+                <li>① 전문가 조회</li>
+                <li aria-hidden>›</li>
+                <li>② 일정 겹침 확인</li>
+                <li aria-hidden>›</li>
+                <li>③ 요청서 작성</li>
+                <li aria-hidden>›</li>
+                <li>④ 섭외 요청 발송</li>
+              </ol>
             </CardHeader>
             <CardContent>
               <CandidatePicker
