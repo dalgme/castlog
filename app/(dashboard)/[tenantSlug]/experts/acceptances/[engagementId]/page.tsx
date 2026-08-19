@@ -5,6 +5,8 @@ import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { requireModule } from "@/lib/modules/server";
 import { getAcceptanceView } from "@/lib/integrations/acceptance-view";
+import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
+import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +34,63 @@ export default async function TenantAcceptancePage({
   await requireModule("experts");
 
   const view = await getAcceptanceView(params.engagementId);
-  if (!view) notFound();
+  if (!view) {
+    // 섭외 건 자체가 없거나 볼 수 없는 경우만 404다. 건은 있는데 수락서가 아직
+    // 없는 경우를 404로 떨어뜨리면 사용자에게는 그냥 '에러'로 보인다 — 무엇이
+    // 없는지, 언제 생기는지를 말해 준다.
+    const supabase = createClient();
+    const { data: engagement } = await supabase
+      .from("expert_engagements")
+      .select("id, status, project_id, experts (name)")
+      .eq("id", params.engagementId)
+      .maybeSingle();
+    if (!engagement) notFound();
+
+    return (
+      <div>
+        <PageHeader
+          title="섭외 수락서"
+          actions={
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/${params.tenantSlug}/experts`}>전문가 목록</Link>
+            </Button>
+          }
+        />
+        <main className="mx-auto max-w-2xl space-y-4 p-5">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">아직 수락서가 없습니다</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                수락서는 전문가가 <strong>섭외를 수락한 시점</strong>에 자동으로
+                만들어집니다. 현재 이 건은{" "}
+                <strong>
+                  {ENGAGEMENT_STATUS_LABELS[engagement.status] ?? engagement.status}
+                </strong>{" "}
+                상태입니다.
+              </p>
+              {engagement.status === "accepted" && (
+                <p>
+                  수락 처리는 되었으나 수락서 생성이 아직 끝나지 않았습니다. 잠시 뒤
+                  다시 열어 보시고, 계속 같은 화면이면 담당자에게 알려 주세요.
+                </p>
+              )}
+              {engagement.project_id && (
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={`/${params.tenantSlug}/projects/${engagement.project_id}?tab=experts`}
+                  >
+                    프로젝트 섭외 현황으로
+                  </Link>
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   const role = roleFromUser(user);
   const canManage = role === "org_admin" || role === "manager";

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
+import { PositionRequestDialog } from "./position-request-dialog";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
 
 import { createSlot, deleteSlot, adjustSlotCount } from "./slot-actions";
@@ -224,30 +225,40 @@ export function SlotTable({
             </div>
 
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {s.positions.map((p) => (
-                <a
-                  key={p.id}
-                  href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
-                  className={
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-brand " +
-                    (p.status === "filled"
-                      ? "border-green-300 bg-green-50 text-green-800"
-                      : p.status === "requested"
-                        ? "border-amber-300 bg-amber-50 text-amber-800"
-                        : "bg-background text-muted-foreground")
-                  }
-                >
-                  <span className="font-mono font-semibold">{p.code}</span>
-                  {/* 코드 조각이 '눌러서 섭외하는 자리'라는 걸 글자로 말해 준다 —
-                      상태만 적혀 있으면 배지로 읽히고 아무도 누르지 않는다 */}
-                  <span>
-                    {p.expertName ??
-                      (p.status === "open"
-                        ? "섭외하기 →"
-                        : (POSITION_STATUS_LABELS[p.status] ?? p.status))}
-                  </span>
-                </a>
-              ))}
+              {s.positions.map((p) =>
+                // 미섭외 자리는 그 자리에서 바로 섭외를 시작한다 — '전문가 등록'
+                // 탭의 버튼과 같은 팝업이다. 같은 일에 두 가지 경로를 두면
+                // 어느 쪽이 진짜인지 헷갈린다.
+                p.status === "open" && canManage ? (
+                  <PositionRequestDialog
+                    key={p.id}
+                    positionId={p.id}
+                    code={p.code}
+                    tenantSlug={tenantSlug}
+                    projectId={projectId}
+                    variant="chip"
+                  />
+                ) : (
+                  <a
+                    key={p.id}
+                    href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
+                    className={
+                      "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-brand " +
+                      (p.status === "filled"
+                        ? "border-green-300 bg-green-50 text-green-800"
+                        : p.status === "requested"
+                          ? "border-amber-300 bg-amber-50 text-amber-800"
+                          : "bg-background text-muted-foreground")
+                    }
+                  >
+                    <span className="font-mono font-semibold">{p.code}</span>
+                    <span>
+                      {p.expertName ??
+                        (POSITION_STATUS_LABELS[p.status] ?? p.status)}
+                    </span>
+                  </a>
+                )
+              )}
             </div>
           </div>
         );

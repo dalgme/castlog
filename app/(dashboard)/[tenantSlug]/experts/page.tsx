@@ -152,6 +152,23 @@ export default async function TenantExpertsPage({
     (tagRows ?? []).map((t) => [t.expert_id, { tag: t.tag, note: t.note }])
   );
 
+  // 자사 평판 — 프로젝트 마감 평가의 평균. 다음 섭외에서 후보를 고를 때
+  // 가장 먼저 보는 값이라 목록에 함께 띄운다 (테넌트 격리 — 자사 평가만).
+  const { data: evaluationRows } = linkedExpertIds.length
+    ? await supabase
+        .from("expert_evaluations")
+        .select("expert_id, score")
+        .in("expert_id", linkedExpertIds)
+    : { data: null };
+  const scoreByExpert = new Map<string, { sum: number; count: number }>();
+  for (const row of evaluationRows ?? []) {
+    if (row.score === null) continue;
+    const acc = scoreByExpert.get(row.expert_id) ?? { sum: 0, count: 0 };
+    acc.sum += row.score;
+    acc.count += 1;
+    scoreByExpert.set(row.expert_id, acc);
+  }
+
   const sessionUser = await getSessionUser();
   const canManageTags = ["org_admin", "manager"].includes(
     roleFromUser(sessionUser) ?? ""
@@ -294,6 +311,7 @@ export default async function TenantExpertsPage({
                       <TableHead>전문분야</TableHead>
                       <TableHead>지역</TableHead>
                       <TableHead>경력</TableHead>
+                      <TableHead>평판</TableHead>
                       <TableHead>등급</TableHead>
                       <TableHead>상태</TableHead>
                       <TableHead className="w-20" />
@@ -319,6 +337,28 @@ export default async function TenantExpertsPage({
                             {expert.career_years != null
                               ? `${expert.career_years}년`
                               : "-"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-sm">
+                            {(() => {
+                              const acc = scoreByExpert.get(expert.id);
+                              if (!acc || acc.count === 0) {
+                                return (
+                                  <span className="text-muted-foreground">
+                                    평가 없음
+                                  </span>
+                                );
+                              }
+                              return (
+                                <>
+                                  <strong>
+                                    {(acc.sum / acc.count).toFixed(1)}
+                                  </strong>
+                                  <span className="text-muted-foreground">
+                                    /10 · {acc.count}건
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             <ExpertTagCell

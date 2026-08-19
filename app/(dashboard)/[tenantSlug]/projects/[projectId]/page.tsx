@@ -18,9 +18,12 @@ import {
   STEP_TYPE_LABELS,
   type StepType,
 } from "@/lib/operations/steps";
-import { formatKrw } from "@/lib/approvals/constants";
-import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { acceptanceStatusLabel } from "@/lib/integrations/acceptance-workflow";
+import {
+  deriveEngagementStage,
+  type EngagementStage,
+  type PlanStageInput,
+} from "@/lib/integrations/engagement-stage";
 import {
   buildPlanSnapshot,
   evaluatePlanGate,
@@ -31,8 +34,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
-import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
-import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 
 import { StepStatusSelect } from "./step-status-select";
 import {
@@ -54,7 +55,10 @@ import {
   type PlanPanelState,
 } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
-import { EngagementWorkbench } from "./engagement-workbench";
+import {
+  EngagementWorkbench,
+  type UnlinkedEngagement,
+} from "./engagement-workbench";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -226,6 +230,8 @@ export default async function ProjectDetailPage({
       expertId: engagement.expert_id,
       engagementId: engagement.id,
       name: engagement.experts?.name ?? "-",
+      // 참여 세션은 슬롯을 읽은 뒤에 채운다 (아래 sessionsByExpert)
+      sessions: [],
       score: existing?.score ?? null,
       reason: existing?.reason ?? null,
       reviews: (reviewRows ?? [])
@@ -444,6 +450,22 @@ export default async function ProjectDetailPage({
         })),
     },
   }));
+  // 전문가별 참여 세션 — 마감 평가에서 "무슨 일을 한 분인지"가 먼저 떠올라야 한다
+  const sessionsByExpert = new Map<string, string[]>();
+  for (const slot of slotRecords) {
+    const label =
+      slot.session_name ?? slot.role_description ?? `${slot.slot_date} 세션`;
+    for (const position of positionRecords ?? []) {
+      if (position.slot_id !== slot.id || !position.expert_id) continue;
+      const list = sessionsByExpert.get(position.expert_id) ?? [];
+      if (!list.includes(label)) list.push(label);
+      sessionsByExpert.set(position.expert_id, list);
+    }
+  }
+  for (const row of evaluationRows) {
+    row.sessions = sessionsByExpert.get(row.expertId) ?? [];
+  }
+
   const contributionInitial: Record<string, number> = {};
   for (const c of contributionsResult.data ?? []) {
     contributionInitial[c.user_id] = c.percentage;
@@ -503,6 +525,56 @@ export default async function ProjectDetailPage({
   const acceptanceByEngagement = new Map(
     (acceptanceRecords ?? []).map((a) => [a.engagement_id, a])
   );
+
+  // 코드넘버 한 자리의 '지금 어디까지 왔나' — 계획품의·섭외·수락서를 합쳐 판정한다.
+  // 판정 규칙은 lib/integrations/engagement-stage.ts 한 곳에 있다.
+  const engagementStatusById = new Map(engagements.map((e) => [e.id, e.status]));
+  const planState: PlanStageInput = planPanel
+    ? planPanel.required
+      ? planPanel.state
+      : "module_off"
+    : "module_off";
+  const stageByPosition: Record<string, EngagementStage> = {};
+  for (const slot of slotRows) {
+    for (const position of slot.positions) {
+      const engagementStatus = position.engagementId
+        ? (engagementStatusById.get(position.engagementId) ?? null)
+        : null;
+      const acceptanceStatus = position.engagementId
+        ? (acceptanceByEngagement.get(position.engagementId)?.status ?? null)
+        : null;
+      stageByPosition[position.id] = deriveEngagementStage({
+        positionStatus: position.status,
+        engagementStatus,
+        acceptanceStatus,
+        planState,
+      });
+    }
+  }
+
+  // 코드넘버에 붙지 않은 섭외 건 — 세션 아래 자리가 없으므로 작업대 끝에 모은다
+  const linkedEngagementIds = new Set(
+    slotRows.flatMap((slot) =>
+      slot.positions
+        .map((p) => p.engagementId)
+        .filter((id): id is string => id !== null)
+    )
+  );
+  const unlinkedEngagements: UnlinkedEngagement[] = engagements
+    .filter((e) => !linkedEngagementIds.has(e.id))
+    .map((e) => ({
+      id: e.id,
+      expertName: e.experts?.name ?? "-",
+      roleDescription: e.role_description,
+      feeAmount: e.fee_amount,
+      status: e.status,
+      stage: deriveEngagementStage({
+        positionStatus: "requested",
+        engagementStatus: e.status,
+        acceptanceStatus: acceptanceByEngagement.get(e.id)?.status ?? null,
+        planState,
+      }),
+    }));
 
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
@@ -693,94 +765,30 @@ export default async function ProjectDetailPage({
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
             }}
+            stageByPosition={stageByPosition}
+            unlinked={unlinkedEngagements}
+            headerActions={
+              canManage ? (
+                <>
+                  {(unlinkedCount ?? 0) > 0 && (
+                    <AttachEngagementsDialog projectId={project.id} />
+                  )}
+                  <EngagementDialog
+                    experts={connectedExperts}
+                    projects={null}
+                    defaultProjectId={project.id}
+                  />
+                </>
+              ) : null
+            }
           />
         )}
 
-        {tab === "experts" && modules.experts && (
+        {tab === "basic" && modules.experts && evaluationRows.length > 0 && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">
-                섭외 건 전체 목록 ({engagements.length})
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {canManage && (unlinkedCount ?? 0) > 0 && (
-                  <AttachEngagementsDialog projectId={project.id} />
-                )}
-                <EngagementDialog
-                  experts={connectedExperts}
-                  projects={null}
-                  defaultProjectId={project.id}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {engagements.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  아직 섭외 건이 없습니다. 위 <strong>전문가 섭외 진행</strong>에서
-                  코드넘버의 ‘전문가 조회 · 섭외 요청’을 누르면 시작됩니다.
-                </p>
-              ) : (
-                <ul className="divide-y">
-                  {engagements.map((engagement) => (
-                    <li
-                      key={engagement.id}
-                      className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
-                    >
-                      <span className="font-medium">
-                        {engagement.experts?.name ?? "-"}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {engagement.role_description}
-                      </span>
-                      {engagement.fee_amount !== null && (
-                        <span className="text-xs text-muted-foreground">
-                          {formatKrw(engagement.fee_amount)}
-                        </span>
-                      )}
-                      <Badge
-                        className="ml-auto"
-                        variant={
-                          engagement.status === "accepted"
-                            ? "default"
-                            : engagement.status === "declined"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                      >
-                        {ENGAGEMENT_STATUS_LABELS[engagement.status] ??
-                          engagement.status}
-                      </Badge>
-                      {engagement.status === "requested" && (
-                        <EngagementCancelButton engagementId={engagement.id} />
-                      )}
-                      {engagement.status === "accepted" && (
-                        <>
-                          <Button asChild variant="ghost" size="sm">
-                            <Link
-                              href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
-                            >
-                              수락서
-                            </Link>
-                          </Button>
-                          <EngagementUrgentCancel
-                            engagementId={engagement.id}
-                            expertName={engagement.experts?.name ?? "전문가"}
-                          />
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {tab === "experts" && modules.experts && evaluationRows.length > 0 && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-sm">
-                전문가 평가 ({evaluationRows.length - unevaluatedCount}/
+                프로젝트 마감 평가 ({evaluationRows.length - unevaluatedCount}/
                 {evaluationRows.length})
               </CardTitle>
               {unevaluatedCount > 0 ? (
@@ -791,9 +799,12 @@ export default async function ProjectDetailPage({
             </CardHeader>
             <CardContent>
               <p className="mb-2 text-xs text-muted-foreground">
-                프로젝트에 참여한 전문가 전원을 평가해야 수당 지급 품의를 올릴 수
-                있습니다. 평가(점수·사유)는 <strong>전문가에게 공개되지 않으며</strong>{" "}
-                회사 내부 기록으로만 보관됩니다.
+                프로젝트를 마감할 때 참여 전문가를 간단히 평가합니다. 전원을
+                평가해야 수당 지급 품의를 올릴 수 있습니다. 여기서 남긴 점수는
+                다음 섭외에서 <strong>후보 목록의 ‘평판’</strong>으로 다시
+                보입니다. 평가(점수·사유)는{" "}
+                <strong>전문가에게 공개되지 않으며</strong> 회사 내부 기록으로만
+                보관됩니다.
               </p>
               {canEvaluate ? (
                 <ul className="divide-y">
@@ -813,6 +824,11 @@ export default async function ProjectDetailPage({
                       className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
                     >
                       <span className="font-medium">{row.name}</span>
+                      {row.sessions.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {row.sessions.join(" · ")}
+                        </span>
+                      )}
                       <span className="ml-auto text-xs text-muted-foreground">
                         {row.score !== null
                           ? `평가 완료 · ${row.score}점`

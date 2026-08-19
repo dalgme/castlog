@@ -250,6 +250,40 @@ async function ensureTaxProfiles(
   }
 }
 
+/**
+ * 수락서가 없는 연습 확정 건을 채운다 (멱등).
+ *
+ * 연습 확정 건은 수락서가 있어야 '수락서 보기'가 열린다. 열람 시점 자동 생성
+ * 경로도 있지만, 그 경로는 한 건씩만 고치고 실패하면 화면이 비어 보인다.
+ * 연습모드에 들어올 때 한 번에 채워 두는 편이 확실하다.
+ */
+async function backfillPracticeAcceptances(
+  admin: Admin,
+  tenantId: string
+): Promise<void> {
+  const { data: accepted } = await admin
+    .from("expert_engagements")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_practice", true)
+    .eq("status", "accepted");
+  if (!accepted || accepted.length === 0) return;
+
+  const { data: existing } = await admin
+    .from("engagement_acceptances")
+    .select("engagement_id")
+    .in(
+      "engagement_id",
+      accepted.map((e) => e.id)
+    );
+  const have = new Set((existing ?? []).map((a) => a.engagement_id));
+
+  for (const engagement of accepted) {
+    if (have.has(engagement.id)) continue;
+    await ensurePracticeAcceptance(engagement.id);
+  }
+}
+
 type SlotSpec = {
   date: string;
   startsTime: string;
@@ -431,8 +465,11 @@ export async function ensurePracticeEnvironment(
   if (experts.length === 0) {
     return { ok: false, error: "연습용 전문가를 만들지 못했습니다." };
   }
-  // 소득유형은 이미 만들어진 연습 환경에도 붙어야 하므로 조기 반환보다 앞에 둔다
+  // 소득유형·수락서는 **이미 만들어진** 연습 환경에도 붙어야 하므로
+  // 조기 반환보다 앞에 둔다. createSlot 안에서만 만들면 새 환경만 채워지고,
+  // 먼저 시드된 환경은 영영 비어 있다 (수락서 404의 원인이었다).
   await ensureTaxProfiles(admin, experts);
+  await backfillPracticeAcceptances(admin, tenantId);
   if (already) return { ok: true, created: false, experts: experts.length };
 
   const now = new Date();
