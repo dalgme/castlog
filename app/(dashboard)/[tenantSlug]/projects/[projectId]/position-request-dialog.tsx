@@ -32,6 +32,10 @@ import {
   blindConflictTotal,
   describeBlindConflicts,
 } from "@/lib/integrations/schedule-conflicts";
+import {
+  describeOwnConflict,
+  hasOtherProjectConflict,
+} from "@/lib/integrations/own-conflicts";
 import type { SlotCandidate, SlotContext } from "@/lib/integrations/slot-candidates";
 
 import { loadPositionRequestData } from "./position-request-actions";
@@ -76,6 +80,8 @@ export function PositionRequestDialog({
   const [planMessage, setPlanMessage] = useState("");
 
   const [step, setStep] = useState<1 | 2>(1);
+  // 같은 날 다른 사업에 이미 물려 있는 후보를 고른 경우 한 번 되묻는다
+  const [confirmOverlap, setConfirmOverlap] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SlotCandidate | null>(null);
 
@@ -99,6 +105,7 @@ export function PositionRequestDialog({
     setDeadline("");
     setUrl(null);
     setError(null);
+    setConfirmOverlap(false);
     setNeedsPmApproval(false);
     setApprovalRequested(false);
   }
@@ -360,13 +367,50 @@ export function PositionRequestDialog({
               <SelectedDetail candidate={selected} />
             )}
 
-            <Button
-              className="w-full"
-              disabled={!selected || planBlocked}
-              onClick={() => setStep(2)}
-            >
-              다음
-            </Button>
+            {/* 같은 날 다른 사업에 이미 물려 있으면 한 번 되묻는다.
+                막지는 않는다 — 오전·오후로 나뉘거나 장소가 가까워 실제로 가능한
+                경우가 있고, 그 판단은 담당자가 한다 */}
+            {confirmOverlap ? (
+              <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3">
+                <p className="text-sm font-bold text-amber-900">
+                  같은 날짜에 배정/섭외된 프로젝트가 존재합니다. 그래도 섭외
+                  진행하시겠습니까?
+                </p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {(selected?.conflict.own ?? []).map((o, i) => (
+                    <li key={i} className="text-xs text-amber-900">
+                      · {describeOwnConflict(o)}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" onClick={() => { setConfirmOverlap(false); setStep(2); }}>
+                    예, 진행합니다
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setConfirmOverlap(false)}
+                  >
+                    아니오, 다시 고르겠습니다
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                className="w-full"
+                disabled={!selected}
+                onClick={() => {
+                  if (selected && selected.conflict.own.length > 0) {
+                    setConfirmOverlap(true);
+                    return;
+                  }
+                  setStep(2);
+                }}
+              >
+                다음
+              </Button>
+            )}
           </div>
         ) : (
           /* ---- 2단계: 자동 기입 확인 + 메모 -------------------------------- */
@@ -463,9 +507,17 @@ export function PositionRequestDialog({
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 이전
               </Button>
-              <Button className="flex-1" onClick={send} disabled={pending}>
+              <Button
+                className="flex-1"
+                onClick={send}
+                disabled={pending || planBlocked}
+              >
                 <Send className="mr-1.5 h-4 w-4" />
-                {pending ? "생성 중…" : "섭외 요청 보내기"}
+                {planBlocked
+                  ? "섭외계획 승인 후 발송 가능"
+                  : pending
+                    ? "생성 중…"
+                    : "섭외 요청 보내기"}
               </Button>
             </div>
           </div>
@@ -487,12 +539,22 @@ function Field({ label, value }: { label: string; value: string }) {
 /** 해당 일정 섭외 가능 여부 — 시스템이 아는 일정만 본 임시 판단 */
 function AvailabilityMark({ candidate }: { candidate: SlotCandidate }) {
   const blindTotal = blindConflictTotal(candidate.conflict.blind);
+  // 자사 다른 사업에 이미 물려 있는 경우가 가장 흔한 실수라 따로 이름을 붙인다.
+  // '일정 겹침'이라고만 하면 어디서 겹치는지 몰라 그냥 넘긴다.
+  const otherProject = hasOtherProjectConflict(candidate.conflict.own);
   const hard =
     candidate.conflict.own.length > 0 ||
     candidate.conflict.blind.accepted > 0 ||
     candidate.conflict.blind.personal > 0;
   const soft = !hard && blindTotal > 0;
 
+  if (otherProject) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700">
+        <AlertTriangle className="h-3.5 w-3.5" /> 타사업 배정 중
+      </span>
+    );
+  }
   if (hard) {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700">
@@ -543,11 +605,18 @@ function SelectedDetail({ candidate }: { candidate: SlotCandidate }) {
       <HistoryLine candidate={candidate} />
       {hasAny ? (
         <div className="mt-2 space-y-0.5">
-          {candidate.conflict.own.map((o, i) => (
-            <p key={i} className="text-xs text-amber-800">
-              {o.startsOn} · {o.label}
-            </p>
-          ))}
+          {candidate.conflict.own.length > 0 && (
+            <>
+              <p className="text-xs font-bold text-amber-900">
+                우리 회사에서 같은 날 이미 잡혀 있는 일정
+              </p>
+              {candidate.conflict.own.map((o, i) => (
+                <p key={i} className="pl-2 text-xs text-amber-800">
+                  · {describeOwnConflict(o)}
+                </p>
+              ))}
+            </>
+          )}
           {blindLines.map((line, i) => (
             <p key={i} className="text-xs text-muted-foreground">
               {line}

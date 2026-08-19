@@ -13,9 +13,29 @@ import {
   type BlindConflicts,
 } from "./schedule-conflicts";
 
+/**
+ * 자사에서 같은 날 이미 잡혀 있는 건 — **상세를 공개한다**.
+ * 우리 회사 안의 일이므로 어느 사업 어느 세션인지, 언제 어디인지까지 보여 줘야
+ * 담당자가 "그래도 이 분으로 갈지"를 판단할 수 있다.
+ */
+export type OwnConflict = {
+  /** 상태 — 배정만 해 둔 것 / 요청 보낸 것 / 수락된 것 */
+  kind: "assigned" | "requested" | "accepted";
+  projectId: string | null;
+  projectName: string | null;
+  sessionName: string | null;
+  roleDescription: string | null;
+  startsOn: string;
+  startsTime: string | null;
+  endsTime: string | null;
+  locationName: string | null;
+  /** 지금 채우려는 자리와 다른 사업인가 */
+  otherProject: boolean;
+};
+
 export type CandidateConflict = {
-  /** 자사 섭외와 겹침 — 상세 공개 */
-  own: { label: string; startsOn: string }[];
+  /** 자사 섭외·배정과 겹침 — 상세 공개 */
+  own: OwnConflict[];
   /**
    * 타사 섭외·전문가 개인 일정과 겹침 — 상태별 건수만(§4 테넌트 격리).
    * '섭외 진행 중(미수락)'과 '확정'을 구분해야 담당자가 판단할 수 있다.
@@ -171,7 +191,9 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
   const [{ data: engagements }, { data: externals }] = await Promise.all([
     admin
       .from("expert_engagements")
-      .select("expert_id, tenant_id, role_description, starts_on, ends_on, status")
+      .select(
+        "expert_id, tenant_id, role_description, starts_on, ends_on, status, project_id, session_name, starts_time, ends_time, location_name, projects (name)"
+      )
       .in("expert_id", ids)
       .in("status", ["requested", "accepted"])
       .not("starts_on", "is", null),
@@ -252,10 +274,16 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
     const c = ensure(g.expert_id);
     if (g.tenant_id === tenantId) {
       c.own.push({
-        label:
-          (g.status === "accepted" ? "자사 섭외(확정)" : "자사 섭외(요청중)") +
-          (g.role_description ? ` · ${g.role_description}` : ""),
+        kind: g.status === "accepted" ? "accepted" : "requested",
+        projectId: g.project_id,
+        projectName: g.projects?.name ?? null,
+        sessionName: g.session_name,
+        roleDescription: g.role_description,
         startsOn: g.starts_on,
+        startsTime: g.starts_time,
+        endsTime: g.ends_time,
+        locationName: g.location_name,
+        otherProject: g.project_id !== ctx.projectId,
       });
     } else {
       // 타사 건 — 어느 기업인지·무슨 일인지는 절대 담지 않고 상태별 건수만 센다.
