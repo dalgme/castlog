@@ -105,6 +105,7 @@ export function EngagementWorkbench({
   slots,
   canManage,
   planGate,
+  planPanel,
   stageByPosition,
   unlinked,
   projectState,
@@ -120,6 +121,8 @@ export function EngagementWorkbench({
   canManage: boolean;
   /** 섭외계획 품의 게이트 — 승인 전이면 요청 자체가 막힌다 */
   planGate: { blocked: boolean; message: string };
+  /** 섭외계획 품의 패널 — 게이트에 걸렸을 때 그 자리에서 상신할 수 있게 */
+  planPanel?: React.ReactNode;
   /** 코드넘버 id → 현재 진행 단계 (계획품의·섭외·수락서를 합쳐 판정한 값) */
   stageByPosition: Record<string, EngagementStage>;
   /** 코드넘버에 붙지 않은 섭외 건 (프로젝트에 직접 만든 건·나중에 붙인 건) */
@@ -273,13 +276,12 @@ export function EngagementWorkbench({
             <p className="mt-1 text-xs leading-relaxed text-amber-900">
               {planGate.message}
             </p>
-            <Button asChild size="sm" variant="outline" className="mt-2">
-              <Link href={`/${tenantSlug}/projects/${projectId}?tab=plan`}>
-                섭외계획품의로 이동
-              </Link>
-            </Button>
           </div>
         )}
+
+        {/* 막힌 이유를 적어 놓고 푸는 길을 다른 화면에 두면, 사용자는 그 화면을
+            찾다가 포기한다. 상신·변경 상신은 여기서 바로 한다 */}
+        {planGate.blocked && planPanel}
 
         {/* 결재가 끝나면 보내기 전에 첨부를 붙인다 — 보낸 뒤에는 못 붙인다 */}
         {canManage &&

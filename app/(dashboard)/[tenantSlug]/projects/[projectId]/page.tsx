@@ -57,7 +57,10 @@ import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
-import { type PlanPanelState } from "./engagement-plan-panel";
+import {
+  EngagementPlanPanel,
+  type PlanPanelState,
+} from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
 import {
@@ -247,6 +250,8 @@ export default async function ProjectDetailPage({
 
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
+  let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
+  let hasProjectRule = false;
   if (modules.experts) {
     const [gate, snapshot] = await Promise.all([
       evaluatePlanGate(project.id, modules.approvals),
@@ -272,6 +277,23 @@ export default async function ProjectDetailPage({
       currentSlotCount: snapshot.slotCount,
     };
 
+    // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
+    planApprovers = (staffResult.data ?? [])
+      .filter((u) => u.is_active && u.id !== user?.id)
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        gradeLabel: gradeLabel(u.grade),
+      }));
+
+    if (modules.approvals) {
+      const { count } = await supabase
+        .from("approval_rules")
+        .select("id", { count: "exact", head: true })
+        .eq("is_active", true)
+        .or("approval_type.is.null,approval_type.eq.project");
+      hasProjectRule = (count ?? 0) > 0;
+    }
   }
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
@@ -766,6 +788,18 @@ export default async function ProjectDetailPage({
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
             }}
+            planPanel={
+              planPanel ? (
+                <EngagementPlanPanel
+                  tenantSlug={params.tenantSlug}
+                  projectId={project.id}
+                  plan={planPanel}
+                  canSubmit={canManage}
+                  approverOptions={planApprovers}
+                  hasProjectRule={hasProjectRule}
+                />
+              ) : null
+            }
             stageByPosition={stageByPosition}
             unlinked={unlinkedEngagements}
             projectState={{
