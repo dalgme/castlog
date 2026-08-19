@@ -38,6 +38,7 @@ import {
   type JoinRequestRow,
 } from "./join-requests-panel";
 import { StaffActiveToggle } from "./staff-active-toggle";
+import { StaffEditDialog } from "./staff-edit-dialog";
 import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
@@ -99,7 +100,7 @@ export default async function OrgAdminPage({
       supabase
         .from("users")
         .select(
-          "id, name, email, role, grade, department, is_active, positions (name)"
+          "id, name, email, phone, role, grade, department, position_id, is_active, positions (name)"
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -305,7 +306,7 @@ export default async function OrgAdminPage({
                       <TableHead>부서</TableHead>
                       <TableHead>직급</TableHead>
                       <TableHead>상태</TableHead>
-                      <TableHead className="w-24" />
+                      <TableHead className="w-32">관리</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -329,11 +330,28 @@ export default async function OrgAdminPage({
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <StaffActiveToggle
-                            userId={member.id}
-                            isActive={member.is_active}
-                            isSelf={member.id === sessionUser?.id}
-                          />
+                          <span className="flex items-center gap-1">
+                            {/* 정보 수정은 본인 것도 연다 — 이름·부서를 고치는
+                                일에 위험이 없다. 등급은 위 선택 상자에서만 */}
+                            <StaffEditDialog
+                              target={{
+                                id: member.id,
+                                name: member.name,
+                                email: member.email,
+                                phone: member.phone,
+                                department: member.department,
+                                positionId: member.position_id,
+                              }}
+                              positions={positionRows}
+                              isSelf={member.id === sessionUser?.id}
+                              isCeoTarget={member.grade === "ceo"}
+                            />
+                            <StaffActiveToggle
+                              userId={member.id}
+                              isActive={member.is_active}
+                              isSelf={member.id === sessionUser?.id}
+                            />
+                          </span>
                         </TableCell>
                       </TableRow>
                     ))}
