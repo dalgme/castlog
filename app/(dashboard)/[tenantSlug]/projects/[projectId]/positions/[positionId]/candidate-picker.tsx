@@ -16,6 +16,7 @@ import {
   blindConflictTotal,
   describeBlindConflicts,
 } from "@/lib/integrations/schedule-conflicts";
+import { describeOwnConflict } from "@/lib/integrations/own-conflicts";
 
 import { requestEngagementForPosition } from "./position-actions";
 import { submitActionRequest } from "../../action-request-actions";
@@ -257,7 +258,7 @@ export function CandidatePicker({
                     <div className="mt-1 space-y-0.5">
                       {c.conflict.own.map((o, i) => (
                         <p key={i} className="text-xs text-amber-800">
-                          {o.startsOn} · {o.label}
+                          {describeOwnConflict(o)}
                         </p>
                       ))}
                       {c.tag === "caution" && c.tagNote && (
