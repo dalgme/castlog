@@ -10,6 +10,7 @@ import {
   createApprovalWithSteps,
   matchApprovalRule,
 } from "@/lib/approvals/engine";
+import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { formatKrw } from "@/lib/approvals/constants";
 import {
   PAYMENT_TYPE_LABELS,
@@ -108,14 +109,20 @@ async function submitBatchApprovalInternal(
   }
 
   // 지급 품의 전결규정 매칭 — 총액 기준 (CLAUDE.md 7)
+  // 전결규정이 있으면 그 결재선, 없으면 직급 체계로 위로 올린다.
+  // 규정 미등록이 상신 자체를 막으면 초기 도입 기업은 지급을 시작할 수 없다.
   const matched = await matchApprovalRule("payment", batch.total_gross);
-  if (!matched) {
+  const escalation = matched
+    ? null
+    : await buildGradeEscalationLine(session.userId, batch.total_gross);
+  if (!matched && !escalation) {
     return {
       ok: false,
       error:
-        "지급 품의에 적용할 전결규정이 없습니다. 전결규정(유형: 지급 품의)을 등록한 뒤 다시 상신하세요.",
+        "결재할 상위직급자가 없습니다. 전결규정(유형: 지급 품의)을 등록하거나 상위 직급 계정을 추가해 주세요.",
     };
   }
+  const paymentLine = matched ? matched.steps : escalation!.steps;
 
   const body = composeApprovalBody(
     batch.projects?.name ?? null,
@@ -141,8 +148,8 @@ async function submitBatchApprovalInternal(
     approvalType: "payment",
     amount: batch.total_gross,
     projectId: batch.project_id,
-    appliedRuleId: matched.ruleId,
-    steps: matched.steps,
+    appliedRuleId: matched?.ruleId ?? null,
+    steps: paymentLine,
   });
   if (!created.ok) return created;
 

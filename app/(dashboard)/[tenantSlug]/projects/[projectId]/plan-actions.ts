@@ -16,6 +16,7 @@ import {
   getActivePlan,
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
+import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 
 export type PlanActionResult = { ok: true } | { ok: false; error: string };
 
@@ -83,10 +84,17 @@ async function resolveLine(
 
   const ids = Array.from(new Set(manualApproverIds.filter(Boolean)));
   if (ids.length === 0) {
+    // 결재자를 고르지 않았으면 직급 체계로 위로 올린다. 상신자가 대표이고
+    // 상위 결재자가 없는 1인 기업이면 대표 자가결재로 진행한다 —
+    // 그렇지 않으면 섭외를 시작할 방법 자체가 없다.
+    const escalation = await buildGradeEscalationLine(requesterUserId, amount);
+    if (escalation) {
+      return { ok: true, ruleId: null, steps: escalation.steps };
+    }
     return {
       ok: false,
       error:
-        "적용 가능한 전결규정이 없습니다. 결재자를 직접 지정하거나 전결규정에 '프로젝트' 유형 규정을 등록하세요.",
+        "적용 가능한 전결규정이 없고 결재할 상위직급자도 없습니다. 결재자를 직접 지정하거나, 전결규정('프로젝트' 유형)을 등록하거나, 상위 직급 계정을 추가하세요.",
     };
   }
   if (ids.includes(requesterUserId)) {

@@ -1,0 +1,103 @@
+import { requireRole } from "@/lib/auth/session";
+import { roleFromUser, practiceFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { getTenantModules } from "@/lib/modules/server";
+import { getPendingModuleOnboarding } from "@/lib/modules/onboarding";
+import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
+import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
+import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
+import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
+
+import { Sidebar } from "./sidebar";
+import { TopBar } from "./top-bar";
+import { AlertBanner } from "./alert-banner";
+import { PracticeBar } from "./practice-bar";
+import { ModuleOnboarding } from "./module-onboarding";
+import { SetupBanner } from "./setup-banner";
+
+/**
+ * 테넌트 공통 셸 — 사이드바 + 상단 바 + 각종 안내 띠.
+ *
+ * 대시보드와 기업관리가 서로 다른 라우트 그룹에 있어 기업관리만 셸 없이 단독
+ * 화면으로 떴다. 메뉴가 사라지면 사용자는 자기가 어디로 튕겨 나왔다고 느낀다.
+ * 셸을 한 곳으로 모아 두 그룹이 같은 것을 쓰게 한다.
+ */
+export async function TenantShell({
+  tenantSlug,
+  children,
+}: {
+  tenantSlug: string;
+  children: React.ReactNode;
+}) {
+  const user = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
+  const [modules, adminScopes, pendingOnboarding, payments] = await Promise.all([
+    getTenantModules(),
+    getAdminScopes(),
+    getPendingModuleOnboarding(),
+    canManagePayments(),
+  ]);
+  const role = roleFromUser(user);
+  // 연습모드 — 하위 계정(ceo·이사·팀장·대리·주임·사원) 전부에게 열린다.
+  // 플랫폼관리자는 테넌트 소속이 아니므로 대상이 아니다.
+  const practice = practiceFromUser(user);
+  const canPractice = role !== null && role !== "platform_admin";
+  // 대표 외에도 관리 스코프를 위임받은 직원에게 '기업 관리' 메뉴를 연다
+  const isOrgAdmin =
+    role === "org_admin" ||
+    role === "platform_admin" ||
+    Object.values(adminScopes).some(Boolean);
+
+  const tenantId = tenantIdFromUser(user);
+
+  let tenantName: string | null = null;
+  if (hasSupabaseEnv() && tenantId) {
+    const supabase = createClient();
+    const { data } = await supabase.from("tenants").select("name").maybeSingle();
+    tenantName = data?.name ?? null;
+  }
+
+  // 최초 설정 안내 — 설정을 실제로 할 수 있는 사람에게만.
+  // 연습모드에서는 띄우지 않는다(연습 환경의 설정 상태가 아니다).
+  const setup =
+    !practice && isOrgAdmin && tenantId
+      ? await getSetupStatus(tenantId, tenantSlug, modules)
+      : null;
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar
+        tenantSlug={tenantSlug}
+        modules={modules}
+        isOrgAdmin={isOrgAdmin}
+        canManagePayments={payments}
+      />
+      <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
+        <TopBar tenantSlug={tenantSlug} tenantName={tenantName} />
+        {canPractice && <PracticeBar practice={practice} />}
+        {setup && (
+          <SetupBanner
+            tenantSlug={tenantSlug}
+            requiredRemaining={setup.requiredRemaining}
+            recommendedRemaining={setup.recommendedRemaining}
+          />
+        )}
+        {/* 새로 켜진 모듈 안내 — 확인하면 사용자별로 사라진다 (CLAUDE.md §1-2-8) */}
+        {!practice &&
+          pendingOnboarding.map((key) => (
+            <ModuleOnboarding
+              key={key}
+              moduleKey={key}
+              hints={MODULE_ONBOARDING_HINTS[key]}
+            />
+          ))}
+        <AlertBanner />
+        {children}
+      </div>
+    </div>
+  );
+}
