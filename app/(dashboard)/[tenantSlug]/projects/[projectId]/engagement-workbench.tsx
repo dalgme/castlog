@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, Search, CalendarCheck, FileText, Send } from "lucide-react";
+import {
+  ArrowRight,
+  Search,
+  CalendarCheck,
+  FileText,
+  Send,
+  FileCheck2,
+} from "lucide-react";
 
 import { formatKrw } from "@/lib/approvals/constants";
 import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
@@ -32,6 +39,7 @@ import {
   type PlanPreviewLine,
 } from "./engagement-plan-button";
 import { DispatchDialog } from "./dispatch-dialog";
+import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -67,6 +75,11 @@ const STEPS = [
     title: "④ 결재 후 섭외 진행",
     body: "결재가 끝나면 전원에게 한 번에 요청을 보냅니다. 수락하면 수락서가 자동 생성됩니다.",
   },
+  {
+    icon: FileCheck2,
+    title: "⑤ 수락서 송신 → 확정",
+    body: "전원이 수락하면 수락서를 한 번에 보냅니다. 수락서는 캐스트로그 화면에서 확인·승인(서명)하며, 전원이 승인하면 확정됩니다.",
+  },
 ] as const;
 
 export type UnlinkedEngagement = {
@@ -98,6 +111,7 @@ export function EngagementWorkbench({
   planPreview,
   projectName,
   attachmentPanel,
+  acceptanceAttachmentPanel,
   headerActions,
 }: {
   tenantSlug: string;
@@ -116,6 +130,8 @@ export function EngagementWorkbench({
     assigned: number;
     total: number;
     open: number;
+    /** 수락·확정된 자리 — 수락서 송신 대상 수 */
+    filled: number;
     fullyAssigned: boolean;
   };
   /** 품의서 미리보기 (상신 전 확인용) */
@@ -123,6 +139,8 @@ export function EngagementWorkbench({
   projectName: string;
   /** 섭외요청 첨부 패널 — 서버 컴포넌트에서 내려받는다 */
   attachmentPanel?: React.ReactNode;
+  /** 수락서 첨부 패널 — 수락서 송신 전에만 붙일 수 있다 */
+  acceptanceAttachmentPanel?: React.ReactNode;
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
 }) {
@@ -167,6 +185,18 @@ export function EngagementWorkbench({
                 disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
               />
             )}
+          {canManage &&
+            (projectState.stage === "requesting" ||
+              projectState.stage === "accepted_all" ||
+              projectState.stage === "letters_sent") && (
+              <AcceptanceSendDialog
+                projectId={projectId}
+                targetCount={projectState.filled}
+                alreadySent={projectState.stage === "letters_sent"}
+                disabled={projectState.stage === "requesting"}
+                disabledReason="아직 전원이 수락하지 않았습니다. 전원 수락 후 열립니다."
+              />
+            )}
           {headerActions}
           <Button asChild variant="ghost" size="sm">
             <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
@@ -186,7 +216,7 @@ export function EngagementWorkbench({
           </p>
         </div>
 
-        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {STEPS.map((step) => (
             <li
               key={step.title}
@@ -255,6 +285,26 @@ export function EngagementWorkbench({
         {canManage &&
           projectState.stage === "plan_approved" &&
           attachmentPanel}
+
+        {/* 수락서에 동봉할 자료 — 송신 순간 각 수락서로 복사된다. 보낸 뒤에
+            프로젝트 첨부를 지워도 이미 나간 수락서의 자료는 남는다 */}
+        {canManage &&
+          projectState.stage === "accepted_all" &&
+          acceptanceAttachmentPanel}
+
+        {/* 전원 수락 — 이 화면에서 지금 할 일은 수락서 송신 하나뿐이다 */}
+        {canManage && projectState.stage === "accepted_all" && (
+          <div className="rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
+            <p className="text-sm font-bold text-brand-navy">
+              전원 수락 완료 — 수락서를 보낼 차례입니다
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-brand-navy">
+              수락서는 각 전문가별로 자동 생성됩니다. 동봉할 자료를 먼저 붙인 뒤
+              위쪽 <strong>수락서 송신</strong> 버튼을 누르세요. 수락서는
+              캐스트로그 화면에서만 열리며, 문자·이메일은 도착 안내입니다.
+            </p>
+          </div>
+        )}
 
         {reengageCount > 0 && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3">
