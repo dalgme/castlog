@@ -103,6 +103,15 @@ export function EngagementWorkbench({
     0
   );
   const totalCount = slots.reduce((sum, s) => sum + s.positions.length, 0);
+  // 긴급 취소로 다시 비게 된 자리 — 나머지 빈 자리와 섞이면 놓친다
+  const reengageCount = slots.reduce(
+    (sum, s) =>
+      sum +
+      s.positions.filter(
+        (p) => p.status === "open" && p.canceledExpertName !== null
+      ).length,
+    0
+  );
 
   return (
     <Card>
@@ -185,6 +194,19 @@ export function EngagementWorkbench({
           </div>
         )}
 
+        {reengageCount > 0 && (
+          <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3">
+            <p className="text-sm font-bold text-amber-900">
+              재섭외 필요 {reengageCount}자리
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-900">
+              확정됐던 전문가가 긴급 취소한 자리입니다. 아래에서 오렌지로 표시된
+              자리만 다시 섭외하면 됩니다. 상급자 보고는 프로젝트 전체 명단으로
+              올라가고, 그 안에서 이 자리들만 강조되어 보입니다.
+            </p>
+          </div>
+        )}
+
         {slots.length === 0 ? (
           <div className="rounded-lg border border-dashed p-4 text-sm">
             <p className="text-muted-foreground">
@@ -228,11 +250,22 @@ export function EngagementWorkbench({
                     return (
                       <li
                         key={p.id}
-                        className="flex flex-wrap items-center gap-2 py-2 text-sm"
+                        className={cn(
+                          "flex flex-wrap items-center gap-2 py-2 text-sm",
+                          // 긴급 취소로 다시 비게 된 자리는 오렌지 배경으로 띄운다 —
+                          // 이 자리만 다시 섭외하면 된다는 것을 한눈에 보여 준다
+                          p.canceledExpertName !== null &&
+                            "-mx-2 rounded-md border-l-4 border-amber-500 bg-amber-50 px-2"
+                        )}
                       >
                         <span className="font-mono text-xs font-semibold">
                           {p.code}
                         </span>
+                        {p.canceledExpertName !== null && (
+                          <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[11px] font-bold text-destructive">
+                            긴급취소 · {p.canceledExpertName}
+                          </span>
+                        )}
                         <span
                           className={
                             p.expertName

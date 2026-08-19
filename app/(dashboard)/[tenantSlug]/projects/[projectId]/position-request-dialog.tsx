@@ -520,7 +520,8 @@ function HistoryLine({ candidate }: { candidate: SlotCandidate }) {
   const parts: string[] = [];
   parts.push(h.acceptedCount > 0 ? `자사 ${h.acceptedCount}회` : "자사 첫 섭외");
   if (h.lastEngagedOn) parts.push(`최근 ${h.lastEngagedOn}`);
-  if (h.avgScore !== null) parts.push(`평판 ${h.avgScore.toFixed(1)}/10`);
+  // 자사에서 매긴 평가의 평균만 — 타사 평가는 조회되지 않는다 (§4)
+  if (h.avgScore !== null) parts.push(`자사 평균 ${h.avgScore.toFixed(1)}`);
   if (candidate.careerYears) parts.push(`경력 ${candidate.careerYears}년`);
   if (candidate.region) parts.push(candidate.region);
   return (

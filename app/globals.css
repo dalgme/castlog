@@ -72,3 +72,24 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* 긴급 취소 전광판 — CSS만으로 흐른다 (클라이언트 JS 없음).
+   움직임 최소화를 켜 둔 사용자에게는 멈춘 채로 보여 준다. */
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee-scroll 28s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}

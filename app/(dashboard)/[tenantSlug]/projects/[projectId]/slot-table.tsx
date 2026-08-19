@@ -35,6 +35,8 @@ export type SlotPositionRow = {
   expertName: string | null;
   /** 확정 건의 수락서로 바로 가기 위한 섭외 건 id */
   engagementId: string | null;
+  /** 긴급 취소로 다시 비게 된 자리라면 취소한 전문가 이름 */
+  canceledExpertName: string | null;
 };
 
 export type SlotNoticeData = {
