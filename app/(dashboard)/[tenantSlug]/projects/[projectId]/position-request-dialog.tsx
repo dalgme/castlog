@@ -6,17 +6,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   CircleCheck,
-  Copy,
-  Check,
   Search,
-  Send,
+  UserCheck,
 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -39,33 +36,31 @@ import {
 import type { SlotCandidate, SlotContext } from "@/lib/integrations/slot-candidates";
 
 import { loadPositionRequestData } from "./position-request-actions";
-import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
-import { submitActionRequest } from "./action-request-actions";
+import { assignExpertToPosition } from "./position-assign-actions";
 
 /**
- * 코드넘버 하나에 대한 섭외 요청 — 탐색 → 확인 → 발송을 팝업 안에서 끝낸다.
+ * 코드넘버 한 자리에 전문가를 **임의 배정**한다 — 탐색 → 확인 → 배정.
  *
- * 왜 팝업인가: 세션 목록에서 "이 자리를 채우자"고 마음먹은 순간과 실제로 요청을
- * 보내는 순간 사이에 페이지 이동이 끼면, 어느 자리를 채우던 중이었는지 맥락이
- * 끊긴다. 자리를 보면서 후보를 고르고 그 자리에서 보내는 것이 실제 일의 순서다.
+ * 배정은 아직 아무에게도 나가지 않는 내부 결정이다. 전문가는 이 사실을 모른다.
+ * 알리는 것은 자리를 전부 채우고 → 섭외 품의를 올려 결재를 받은 뒤 →
+ * '섭외 진행'으로 전원에게 한 번에 한다. 그래서 여기서 섭외 요청을 보내지 않는다.
  *
- * 1단계 탐색 — 후보 목록. 해당 일정 섭외 가능 여부는 **임시 판단**이다. 시스템이
- *   아는 일정(자사 섭외·타사 섭외·전문가가 공개한 개인일정)만 보고 말하는 것이라,
- *   최종 가능 여부는 전문가 본인의 수락으로 정해진다. 화면에도 그렇게 적는다.
- * 2단계 확인·발송 — 프로젝트·세션 정보는 자동으로 채워 읽기 전용으로 보여 주고,
- *   담당자가 손댈 것(사업명·주제·메모·회신 마감)만 입력받는다.
+ * 1단계 탐색 — 후보 목록. 해당 일정 가능 여부는 **임시 판단**이다. 시스템이 아는
+ *   일정(자사 섭외·배정, 타사 섭외, 전문가가 공개한 개인일정)만 보고 말하는
+ *   것이라, 최종 가능 여부는 전문가 본인의 수락으로 정해진다.
+ * 2단계 확인 — 프로젝트·세션 정보를 자동으로 채워 읽기 전용으로 보여 주고,
+ *   그 자리에 이 분을 넣을지만 확인받는다.
  */
 export function PositionRequestDialog({
   positionId,
   code,
-  tenantSlug,
-  projectId,
+  currentExpertName,
   variant = "button",
 }: {
   positionId: string;
   code: string;
-  tenantSlug: string;
-  projectId: string;
+  /** 이미 배정된 전문가가 있으면 이름 (바꿔 넣는 경우) */
+  currentExpertName?: string | null;
   /** chip = 세션 표의 코드 조각 자리에 그대로 놓는 형태 */
   variant?: "button" | "chip";
 }) {
@@ -76,38 +71,21 @@ export function PositionRequestDialog({
 
   const [context, setContext] = useState<SlotContext | null>(null);
   const [candidates, setCandidates] = useState<SlotCandidate[] | null>(null);
-  const [planBlocked, setPlanBlocked] = useState(false);
-  const [planMessage, setPlanMessage] = useState("");
 
   const [step, setStep] = useState<1 | 2>(1);
   // 같은 날 다른 사업에 이미 물려 있는 후보를 고른 경우 한 번 되묻는다
   const [confirmOverlap, setConfirmOverlap] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SlotCandidate | null>(null);
-
-  const [programName, setProgramName] = useState("");
-  const [eventSummary, setEventSummary] = useState("");
-  const [memo, setMemo] = useState("");
-  const [deadline, setDeadline] = useState("");
-
-  const [url, setUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [needsPmApproval, setNeedsPmApproval] = useState(false);
-  const [approvalNote, setApprovalNote] = useState("");
-  const [approvalRequested, setApprovalRequested] = useState(false);
+  const [done, setDone] = useState(false);
 
   function reset() {
     setStep(1);
     setSearch("");
     setSelected(null);
-    setEventSummary("");
-    setMemo("");
-    setDeadline("");
-    setUrl(null);
     setError(null);
     setConfirmOverlap(false);
-    setNeedsPmApproval(false);
-    setApprovalRequested(false);
+    setDone(false);
   }
 
   function onOpenChange(next: boolean) {
@@ -126,10 +104,6 @@ export function PositionRequestDialog({
       }
       setContext(res.context);
       setCandidates(res.candidates);
-      setPlanBlocked(res.planBlocked);
-      setPlanMessage(res.planMessage);
-      // 사업명은 프로젝트명으로 시작한다 — 대부분 그대로 쓰고, 다르면 고친다
-      setProgramName(res.context.projectName);
     });
   }
 
@@ -141,51 +115,21 @@ export function PositionRequestDialog({
       .some((v) => v!.toLowerCase().includes(q));
   });
 
-  function send() {
+  function assign() {
     if (!selected) return;
     setError(null);
     startTransition(async () => {
-      const res = await requestEngagementForPosition({
+      const res = await assignExpertToPosition({
         positionId,
         expertId: selected.expertId,
-        programName,
-        eventSummary,
-        specialNotes: memo,
-        responseDeadline: deadline || undefined,
       });
       if (!res.ok) {
         setError(res.error);
-        setNeedsPmApproval(res.needsPmApproval === true);
-      } else {
-        setUrl(res.url);
-        router.refresh();
+        return;
       }
+      setDone(true);
+      router.refresh();
     });
-  }
-
-  function askPm() {
-    setError(null);
-    startTransition(async () => {
-      const res = await submitActionRequest({
-        tenantSlug,
-        projectId,
-        actionType: "engagement.request",
-        targetId: positionId,
-        note: approvalNote,
-      });
-      if (!res.ok) setError(res.error);
-      else {
-        setNeedsPmApproval(false);
-        setApprovalRequested(true);
-      }
-    });
-  }
-
-  async function copyUrl() {
-    if (!url) return;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   const schedule = context
@@ -205,24 +149,26 @@ export function PositionRequestDialog({
             className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-brand hover:text-brand"
           >
             <span className="font-mono font-semibold">{code}</span>
-            <span>섭외하기 →</span>
+            <span>{currentExpertName ?? "배정하기 →"}</span>
           </button>
         ) : (
-          <Button size="sm">
+          <Button size="sm" variant={currentExpertName ? "outline" : "default"}>
             <Search className="mr-1.5 h-3.5 w-3.5" />
-            전문가 탐색/요청
+            {currentExpertName ? "배정 변경" : "전문가 탐색 · 배정"}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            섭외 요청 · <span className="font-mono">{code}</span>
+            전문가 배정 · <span className="font-mono">{code}</span>
           </DialogTitle>
           <DialogDescription>
-            {step === 1
-              ? "1단계 — 후보를 고릅니다. 해당 일정 가능 여부는 시스템이 아는 일정만 보고 내린 임시 판단입니다."
-              : "2단계 — 프로젝트·세션 정보는 자동으로 채워집니다. 확인 후 보내세요."}
+            {done
+              ? "배정했습니다."
+              : step === 1
+                ? "1단계 — 후보를 고릅니다. 해당 일정 가능 여부는 시스템이 아는 일정만 보고 내린 임시 판단입니다."
+                : "2단계 — 이 자리에 배정합니다. 아직 전문가에게 알려지지 않습니다."}
           </DialogDescription>
         </DialogHeader>
 
@@ -232,62 +178,15 @@ export function PositionRequestDialog({
           </Alert>
         )}
 
-        {needsPmApproval && (
-          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-xs leading-relaxed text-amber-900">
-              부PM은 PM과 같은 일을 하지만, 전문가에게 직접 나가는 요청은 PM 승인을
-              먼저 받습니다. 승인되면 여기서 그대로 보내시면 됩니다.
-            </p>
-            <Textarea
-              rows={2}
-              value={approvalNote}
-              onChange={(e) => setApprovalNote(e.target.value)}
-              placeholder="PM에게 전할 메모 (선택)"
-            />
-            <Button size="sm" onClick={askPm} disabled={pending}>
-              PM 승인 요청
-            </Button>
-          </div>
-        )}
-
-        {approvalRequested && (
-          <Alert>
-            <AlertDescription>
-              PM에게 승인 요청을 보냈습니다. 승인되면 이 화면에서 바로 발송할 수
-              있습니다.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {planBlocked && (
-          <Alert>
-            <AlertDescription className="text-sm">
-              섭외계획 승인 전입니다. {planMessage}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* ---- 발송 완료 ---------------------------------------------------- */}
-        {url ? (
+        {done ? (
           <div className="space-y-3">
             <Alert>
               <AlertDescription>
-                <p className="mb-2">
-                  <strong>{selected?.name}</strong> 님에게 보낼 섭외 요청을
-                  만들었습니다. 아래 동의 링크를 전달하세요.
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-secondary/70 px-2 py-1 text-xs">
-                    {url}
-                  </code>
-                  <Button size="sm" variant="outline" onClick={copyUrl}>
-                    {copied ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+                <strong>{selected?.name}</strong> 님을{" "}
+                <span className="font-mono">{code}</span> 자리에 배정했습니다.
+                아직 전문가에게 알려지지 않았습니다 — 자리를 전부 채운 뒤{" "}
+                <strong>섭외 품의서 자동 작성 및 송신</strong>으로 결재를 올리고,
+                승인되면 <strong>섭외 진행</strong>에서 전원에게 한 번에 요청합니다.
               </AlertDescription>
             </Alert>
             <Button className="w-full" onClick={() => onOpenChange(false)}>
@@ -363,9 +262,7 @@ export function PositionRequestDialog({
               </ul>
             )}
 
-            {selected && (
-              <SelectedDetail candidate={selected} />
-            )}
+            {selected && <SelectedDetail candidate={selected} />}
 
             {/* 같은 날 다른 사업에 이미 물려 있으면 한 번 되묻는다.
                 막지는 않는다 — 오전·오후로 나뉘거나 장소가 가까워 실제로 가능한
@@ -384,7 +281,13 @@ export function PositionRequestDialog({
                   ))}
                 </ul>
                 <div className="mt-3 flex gap-2">
-                  <Button size="sm" onClick={() => { setConfirmOverlap(false); setStep(2); }}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setConfirmOverlap(false);
+                      setStep(2);
+                    }}
+                  >
                     예, 진행합니다
                   </Button>
                   <Button
@@ -413,11 +316,11 @@ export function PositionRequestDialog({
             )}
           </div>
         ) : (
-          /* ---- 2단계: 자동 기입 확인 + 메모 -------------------------------- */
+          /* ---- 2단계: 배정 확인 -------------------------------------------- */
           <div className="space-y-3">
             <div className="rounded-lg border">
               <p className="border-b bg-secondary/40 px-3 py-2 text-xs font-semibold">
-                자동으로 채워지는 내용 (세션에서 승계)
+                이 자리에 배정합니다 (세션에서 자동 승계)
               </p>
               <dl className="divide-y text-sm">
                 <Field label="전문가" value={selected?.name ?? "-"} />
@@ -431,9 +334,7 @@ export function PositionRequestDialog({
                 <Field
                   label="역할"
                   value={
-                    context?.roleDescription ??
-                    roleTypeLabel(context?.roleType) ??
-                    "-"
+                    context?.roleDescription ?? roleTypeLabel(context?.roleType) ?? "-"
                   }
                 />
                 <Field
@@ -449,9 +350,7 @@ export function PositionRequestDialog({
                   value={
                     context?.locationName
                       ? `${context.locationName}${
-                          context.locationAddress
-                            ? ` (${context.locationAddress})`
-                            : ""
+                          context.locationAddress ? ` (${context.locationAddress})` : ""
                         }`
                       : "미지정"
                   }
@@ -459,65 +358,20 @@ export function PositionRequestDialog({
               </dl>
             </div>
 
-            <div className="space-y-2">
-              <div>
-                <label className="text-[11px] text-muted-foreground">
-                  사업명 / 프로그램명
-                </label>
-                <Input
-                  value={programName}
-                  onChange={(e) => setProgramName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground">
-                  주제 / 행사 내용 (선택)
-                </label>
-                <Textarea
-                  rows={2}
-                  value={eventSummary}
-                  onChange={(e) => setEventSummary(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground">
-                  추가 메모 · 특기사항 (선택)
-                </label>
-                <Textarea
-                  rows={3}
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  placeholder="주차 안내, 준비물, 사전 협의 내용 등 — 전문가에게 그대로 전달됩니다."
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground">
-                  회신 마감일시 (선택)
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                />
-              </div>
-            </div>
+            <p className="rounded-md bg-secondary/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
+              배정은 <strong>내부 결정</strong>입니다. 전문가에게는 아직 아무것도
+              나가지 않습니다. 사업명·주제·추가 메모·회신 마감은 결재 승인 후
+              ‘섭외 진행’ 단계에서 한 번에 작성해 발송합니다.
+            </p>
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)} disabled={pending}>
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 이전
               </Button>
-              <Button
-                className="flex-1"
-                onClick={send}
-                disabled={pending || planBlocked}
-              >
-                <Send className="mr-1.5 h-4 w-4" />
-                {planBlocked
-                  ? "섭외계획 승인 후 발송 가능"
-                  : pending
-                    ? "생성 중…"
-                    : "섭외 요청 보내기"}
+              <Button className="flex-1" onClick={assign} disabled={pending}>
+                <UserCheck className="mr-1.5 h-4 w-4" />
+                {pending ? "배정 중…" : "이 자리에 배정"}
               </Button>
             </div>
           </div>
@@ -586,9 +440,7 @@ function HistoryLine({ candidate }: { candidate: SlotCandidate }) {
   if (h.avgScore !== null) parts.push(`자사 평균 ${h.avgScore.toFixed(1)}`);
   if (candidate.careerYears) parts.push(`경력 ${candidate.careerYears}년`);
   if (candidate.region) parts.push(candidate.region);
-  return (
-    <p className="mt-1 text-xs text-muted-foreground">{parts.join(" · ")}</p>
-  );
+  return <p className="mt-1 text-xs text-muted-foreground">{parts.join(" · ")}</p>;
 }
 
 /** 고른 후보의 겹침 상세 — 왜 '겹침'인지 근거를 보여 준다 */

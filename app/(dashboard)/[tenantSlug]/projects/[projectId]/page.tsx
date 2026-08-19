@@ -10,6 +10,10 @@ import {
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import {
+  getProjectEngagementState,
+  buildEngagementPlanDraft,
+} from "@/lib/integrations/project-engagement";
+import {
   getUrgentCancellations,
   getCanceledExpertByPositionCode,
 } from "@/lib/integrations/urgent-cancellations";
@@ -379,12 +383,18 @@ export default async function ProjectDetailPage({
   const { data: positionRecords } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("id, slot_id, position_no, code, status, expert_id, engagement_id")
+        .select(
+          "id, slot_id, position_no, code, status, expert_id, engagement_id, assigned_expert_id"
+        )
         .in("slot_id", slotIds)
         .order("position_no", { ascending: true })
     : { data: [] };
   const positionExpertIds = Array.from(
-    new Set((positionRecords ?? []).map((p) => p.expert_id).filter(Boolean))
+    new Set(
+      (positionRecords ?? [])
+        .flatMap((p) => [p.expert_id, p.assigned_expert_id])
+        .filter(Boolean)
+    )
   ) as string[];
   const { data: positionExperts } = positionExpertIds.length
     ? await supabase.from("experts").select("id, name").in("id", positionExpertIds)
@@ -442,6 +452,9 @@ export default async function ProjectDetailPage({
         engagementId: p.engagement_id,
         canceledExpertName:
           p.status === "open" ? (canceledByCode[p.code] ?? null) : null,
+        assignedExpertName: p.assigned_expert_id
+          ? (expertNameById.get(p.assigned_expert_id) ?? null)
+          : null,
       })),
     notice: {
       // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)
@@ -591,6 +604,14 @@ export default async function ProjectDetailPage({
       }),
     }));
 
+
+  // 프로젝트 단위 진행 단계 + 품의서 미리보기 — 버튼 활성 조건의 단일 근거
+  const [engagementState, planDraft] = modules.experts
+    ? await Promise.all([
+        getProjectEngagementState(project.id),
+        buildEngagementPlanDraft(project.id),
+      ])
+    : [null, null];
 
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
@@ -784,6 +805,23 @@ export default async function ProjectDetailPage({
             }}
             stageByPosition={stageByPosition}
             unlinked={unlinkedEngagements}
+            projectState={{
+              stage: engagementState?.stage ?? "assigning",
+              assigned: engagementState?.assigned ?? 0,
+              total: engagementState?.total ?? 0,
+              open: engagementState?.open ?? 0,
+              fullyAssigned: engagementState?.fullyAssigned ?? false,
+            }}
+            planPreview={{
+              lines: (planDraft?.lines ?? []).map((l) => ({
+                code: l.code,
+                expertName: l.expertName,
+                sessionName: l.sessionName,
+                schedule: l.schedule,
+                fee: l.fee,
+              })),
+              amount: planDraft?.amount ?? 0,
+            }}
             headerActions={
               canManage ? (
                 <>

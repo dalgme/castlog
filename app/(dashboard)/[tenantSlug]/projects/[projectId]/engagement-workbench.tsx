@@ -19,8 +19,18 @@ import {
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
 import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 
+import {
+  PROJECT_STAGE_DESCRIPTIONS,
+  PROJECT_STAGE_LABELS,
+  type ProjectStage,
+} from "@/lib/integrations/project-stage";
+
 import type { SlotRow } from "./slot-table";
 import { PositionRequestDialog } from "./position-request-dialog";
+import {
+  EngagementPlanButton,
+  type PlanPreviewLine,
+} from "./engagement-plan-button";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -38,7 +48,7 @@ import { PositionRequestDialog } from "./position-request-dialog";
 const STEPS = [
   {
     icon: Search,
-    title: "① 전문가 조회",
+    title: "① 전문가 탐색",
     body: "연결된 전문가를 이름·전문분야·지역으로 좁혀 봅니다.",
   },
   {
@@ -48,13 +58,13 @@ const STEPS = [
   },
   {
     icon: FileText,
-    title: "③ 요청서 작성",
-    body: "일정·역할·비용·장소는 세션에서 자동 승계되고, 사업명·주제·특기사항·회신 마감만 입력합니다.",
+    title: "③ 임의 배정 → 품의",
+    body: "자리를 전부 채우면 ‘섭외 품의서 자동 작성 및 송신’이 열립니다. 배정은 아직 전문가에게 알려지지 않습니다.",
   },
   {
     icon: Send,
-    title: "④ 섭외 요청 발송",
-    body: "동의 링크가 만들어집니다. 전문가가 수락하면 수락서가 자동 생성됩니다.",
+    title: "④ 결재 후 섭외 진행",
+    body: "결재가 끝나면 전원에게 한 번에 요청을 보냅니다. 수락하면 수락서가 자동 생성됩니다.",
   },
 ] as const;
 
@@ -83,6 +93,8 @@ export function EngagementWorkbench({
   planGate,
   stageByPosition,
   unlinked,
+  projectState,
+  planPreview,
   headerActions,
 }: {
   tenantSlug: string;
@@ -95,14 +107,19 @@ export function EngagementWorkbench({
   stageByPosition: Record<string, EngagementStage>;
   /** 코드넘버에 붙지 않은 섭외 건 (프로젝트에 직접 만든 건·나중에 붙인 건) */
   unlinked: UnlinkedEngagement[];
+  /** 프로젝트 단위 진행 단계 — 버튼 활성 조건은 이 값 하나로 정한다 */
+  projectState: {
+    stage: ProjectStage;
+    assigned: number;
+    total: number;
+    open: number;
+    fullyAssigned: boolean;
+  };
+  /** 품의서 미리보기 (상신 전 확인용) */
+  planPreview: { lines: PlanPreviewLine[]; amount: number };
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
 }) {
-  const openCount = slots.reduce(
-    (sum, s) => sum + s.positions.filter((p) => p.status === "open").length,
-    0
-  );
-  const totalCount = slots.reduce((sum, s) => sum + s.positions.length, 0);
   // 긴급 취소로 다시 비게 된 자리 — 나머지 빈 자리와 섞이면 놓친다
   const reengageCount = slots.reduce(
     (sum, s) =>
@@ -117,9 +134,22 @@ export function EngagementWorkbench({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm">
-          전문가 섭외 진행 (미섭외 {openCount} / 전체 {totalCount})
+          전문가 섭외 진행 · 배정 {projectState.assigned + (projectState.total - projectState.open - projectState.assigned)}/{projectState.total}
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage && projectState.stage === "assigning" && (
+            <EngagementPlanButton
+              projectId={projectId}
+              disabled={!projectState.fullyAssigned}
+              disabledReason={
+                projectState.total === 0
+                  ? "세션(코드넘버)을 먼저 등록하세요."
+                  : `아직 배정되지 않은 자리가 ${projectState.open}개 있습니다. 전부 배정하면 열립니다.`
+              }
+              lines={planPreview.lines}
+              amount={planPreview.amount}
+            />
+          )}
           {headerActions}
           <Button asChild variant="ghost" size="sm">
             <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
@@ -129,6 +159,16 @@ export function EngagementWorkbench({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 지금 프로젝트가 어느 단계인지 — 버튼이 왜 열리고 닫히는지의 근거다 */}
+        <div className="rounded-lg border-l-4 border-brand bg-brand/[0.04] p-3">
+          <p className="text-sm font-bold text-brand-navy">
+            {PROJECT_STAGE_LABELS[projectState.stage]}
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {PROJECT_STAGE_DESCRIPTIONS[projectState.stage]}
+          </p>
+        </div>
+
         <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((step) => (
             <li
@@ -244,7 +284,7 @@ export function EngagementWorkbench({
 
                 <ul className="mt-2 divide-y">
                   {slot.positions.map((p) => {
-                    const isOpen = p.status === "open";
+                    const isOpen = p.status === "open" || p.status === "assigned";
                     const isFilled = p.status === "filled";
                     const stage = stageByPosition[p.id] ?? "assigned";
                     return (
@@ -268,12 +308,12 @@ export function EngagementWorkbench({
                         )}
                         <span
                           className={
-                            p.expertName
+                            p.expertName ?? p.assignedExpertName
                               ? "font-medium"
                               : "text-muted-foreground"
                           }
                         >
-                          {p.expertName ?? "미섭외"}
+                          {p.expertName ?? p.assignedExpertName ?? "미배정"}
                         </span>
                         <span
                           title={ENGAGEMENT_STAGE_DESCRIPTIONS[stage]}
@@ -293,8 +333,7 @@ export function EngagementWorkbench({
                               <PositionRequestDialog
                                 positionId={p.id}
                                 code={p.code}
-                                tenantSlug={tenantSlug}
-                                projectId={projectId}
+                                currentExpertName={p.assignedExpertName}
                               />
                               <Button asChild size="sm" variant="ghost">
                                 <Link

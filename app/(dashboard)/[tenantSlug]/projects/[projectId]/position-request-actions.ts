@@ -46,8 +46,10 @@ export async function loadPositionRequestData(
   // 가시성은 RLS가 판정한다 — 못 보는 프로젝트의 코드넘버는 여기서 null이 된다
   const context = await getPositionContext(positionId);
   if (!context) return { ok: false, error: "대상을 찾을 수 없습니다." };
-  if (context.status !== "open") {
-    return { ok: false, error: "이미 섭외가 진행 중이거나 확정된 인원입니다." };
+  // 배정 상태에서는 다른 전문가로 바꿔 넣을 수 있어야 한다 —
+  // 요청이 나간 뒤(requested/filled)에만 잠근다
+  if (context.status !== "open" && context.status !== "assigned") {
+    return { ok: false, error: "이미 섭외 요청이 나갔거나 확정된 인원입니다." };
   }
 
   const gate = await evaluatePlanGate(context.projectId, modules.approvals);

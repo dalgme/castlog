@@ -931,6 +931,9 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: string
+          assigned_expert_id: string | null
+          assigned_at: string | null
+          assigned_by: string | null
         }
         Insert: {
           code: string
@@ -943,6 +946,9 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: string
+          assigned_expert_id?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
         }
         Update: {
           code?: string
@@ -955,6 +961,9 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: string
+          assigned_expert_id?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
         }
         Relationships: []
       }
@@ -1429,6 +1438,9 @@ export type Database = {
           score: number
           tenant_id: string
           updated_at: string
+          slot_id: string | null
+          satisfaction: number | null
+          memo: string | null
         }
         Insert: {
           is_practice?: boolean
@@ -1442,6 +1454,9 @@ export type Database = {
           score: number
           tenant_id: string
           updated_at?: string
+          slot_id?: string | null
+          satisfaction?: number | null
+          memo?: string | null
         }
         Update: {
           is_practice?: boolean
@@ -1455,6 +1470,9 @@ export type Database = {
           score?: number
           tenant_id?: string
           updated_at?: string
+          slot_id?: string | null
+          satisfaction?: number | null
+          memo?: string | null
         }
         Relationships: [
           {
@@ -2941,6 +2959,54 @@ export type Database = {
         }
         Relationships: []
       }
+      project_engagement_attachments: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          purpose: string
+          scope: string
+          expert_id: string | null
+          file_name: string
+          storage_path: string
+          mime_type: string | null
+          file_size_bytes: number | null
+          uploaded_by: string | null
+          created_at: string
+          is_practice: boolean
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          purpose: string
+          scope: string
+          expert_id?: string | null
+          file_name: string
+          storage_path: string
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          uploaded_by?: string | null
+          created_at?: string
+          is_practice?: boolean
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          purpose?: string
+          scope?: string
+          expert_id?: string | null
+          file_name?: string
+          storage_path?: string
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          uploaded_by?: string | null
+          created_at?: string
+          is_practice?: boolean
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           category_id: string | null
@@ -2962,6 +3028,18 @@ export type Database = {
           updated_at: string
         
           budget_amount: number | null
+
+          engagement_stage: string
+          engagement_plan_approval_id: string | null
+          engagement_requested_at: string | null
+          engagement_channel: string | null
+          engagement_deadline: string | null
+          acceptance_sent_at: string | null
+          acceptance_channel: string | null
+          settlement_approval_id: string | null
+          settlement_reviewed_by: string | null
+          settlement_reviewed_at: string | null
+          settlement_note: string | null
         }
         Insert: {
           category_id?: string | null
@@ -2983,6 +3061,18 @@ export type Database = {
           updated_at?: string
         
           budget_amount?: number | null
+
+          engagement_stage?: string
+          engagement_plan_approval_id?: string | null
+          engagement_requested_at?: string | null
+          engagement_channel?: string | null
+          engagement_deadline?: string | null
+          acceptance_sent_at?: string | null
+          acceptance_channel?: string | null
+          settlement_approval_id?: string | null
+          settlement_reviewed_by?: string | null
+          settlement_reviewed_at?: string | null
+          settlement_note?: string | null
         }
         Update: {
           category_id?: string | null
@@ -3004,6 +3094,18 @@ export type Database = {
           updated_at?: string
         
           budget_amount?: number | null
+
+          engagement_stage?: string
+          engagement_plan_approval_id?: string | null
+          engagement_requested_at?: string | null
+          engagement_channel?: string | null
+          engagement_deadline?: string | null
+          acceptance_sent_at?: string | null
+          acceptance_channel?: string | null
+          settlement_approval_id?: string | null
+          settlement_reviewed_by?: string | null
+          settlement_reviewed_at?: string | null
+          settlement_note?: string | null
         }
         Relationships: [
           {
