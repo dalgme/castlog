@@ -32,6 +32,8 @@ export type SlotPositionRow = {
   positionNo: number;
   status: string;
   expertName: string | null;
+  /** 확정 건의 수락서로 바로 가기 위한 섭외 건 id */
+  engagementId: string | null;
 };
 
 export type SlotNoticeData = {
@@ -236,7 +238,14 @@ export function SlotTable({
                   }
                 >
                   <span className="font-mono font-semibold">{p.code}</span>
-                  <span>{p.expertName ?? POSITION_STATUS_LABELS[p.status] ?? p.status}</span>
+                  {/* 코드 조각이 '눌러서 섭외하는 자리'라는 걸 글자로 말해 준다 —
+                      상태만 적혀 있으면 배지로 읽히고 아무도 누르지 않는다 */}
+                  <span>
+                    {p.expertName ??
+                      (p.status === "open"
+                        ? "섭외하기 →"
+                        : (POSITION_STATUS_LABELS[p.status] ?? p.status))}
+                  </span>
                 </a>
               ))}
             </div>
