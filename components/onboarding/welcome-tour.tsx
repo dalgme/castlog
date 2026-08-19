@@ -140,7 +140,7 @@ const SLIDES: Slide[] = [
   {
     eyebrow: "STEP 4",
     title: "막히면 물어보세요",
-    body: "화면 오른쪽 위 도우미에게 대화로 물어보면 어디서 무엇을 하면 되는지 알려 드립니다. 불편한 점이나 오류도 그대로 말씀해 주세요 — 개선에 반영됩니다.",
+    body: "화면 오른쪽 아래 도우미 버튼을 누르면 어디서 무엇을 하면 되는지 알려 드립니다. 불편한 점이나 오류도 그대로 말씀해 주세요 — 개선에 반영됩니다.",
     art: (
       <div className="flex items-end justify-center gap-2">
         <BotAvatar size={44} />
