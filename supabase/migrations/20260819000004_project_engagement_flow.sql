@@ -8,6 +8,10 @@
 --
 -- 그래서 프로젝트에 **단계(engagement_stage)** 를 둔다. 버튼이 언제 열리는지가
 -- 이 단계 하나로 정해진다 — 화면마다 조건을 따로 계산하면 어긋난다.
+--
+-- 이 파일은 **몇 번을 다시 실행해도 안전하다**. 이름 붙은 제약·정책은 전부
+-- 'drop if exists' 뒤에 다시 만든다. 중간에 실패했으면 그냥 처음부터 다시
+-- 돌리면 된다 (create table 안에 이름 붙인 제약을 두면 재실행이 깨진다).
 -- ============================================================================
 
 -- ---- 1. 코드넘버: '임의 배정' 단계 추가 ------------------------------------
@@ -86,13 +90,17 @@ create index if not exists projects_engagement_stage_idx
 -- ---- 3. 섭외·수락서 첨부파일 (공통 / 개별) ----------------------------------
 -- 공통 = 전원에게 같은 파일(사업 안내문·약도), 개별 = 전문가 한 명에게만.
 -- 민감서류가 아니므로 리사이즈 대상이 아니지만, 용량·확장자는 서버에서 검증한다.
+--
+-- 제약은 표 안에 이름 붙여 넣지 않는다. 'create table if not exists'는 표가
+-- 이미 있으면 통째로 건너뛰지만, 표가 없을 때는 제약까지 새로 만들어 이름이
+-- 겹치는 순간 재실행이 깨진다. 아래에서 따로 붙인다.
 create table if not exists public.project_engagement_attachments (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants (id) on delete cascade,
   project_id uuid not null references public.projects (id) on delete cascade,
   -- engagement = 섭외요청에 동봉 / acceptance = 수락서에 귀속
-  purpose text not null check (purpose in ('engagement', 'acceptance')),
-  scope text not null check (scope in ('common', 'individual')),
+  purpose text not null,
+  scope text not null,
   -- scope='individual'일 때만 채운다
   expert_id uuid references public.experts (id) on delete cascade,
   file_name text not null,
@@ -101,20 +109,45 @@ create table if not exists public.project_engagement_attachments (
   file_size_bytes bigint,
   uploaded_by uuid references public.users (id) on delete set null,
   created_at timestamptz not null default now(),
-  -- 개별 파일에는 전문가가 반드시 있고, 공통 파일에는 없어야 한다
-  constraint project_engagement_attachments_scope_check
-    check ((scope = 'individual') = (expert_id is not null))
+  is_practice boolean not null default false
 );
+
+-- 이전 버전에서 표를 먼저 만든 경우에도 컬럼이 빠지지 않게 한다
+alter table public.project_engagement_attachments
+  add column if not exists is_practice boolean not null default false;
+
+alter table public.project_engagement_attachments
+  drop constraint if exists project_engagement_attachments_purpose_check;
+alter table public.project_engagement_attachments
+  add constraint project_engagement_attachments_purpose_check
+  check (purpose in ('engagement', 'acceptance'));
+
+alter table public.project_engagement_attachments
+  drop constraint if exists project_engagement_attachments_scope_kind_check;
+alter table public.project_engagement_attachments
+  add constraint project_engagement_attachments_scope_kind_check
+  check (scope in ('common', 'individual'));
+
+-- 개별 파일에는 전문가가 반드시 있고, 공통 파일에는 없어야 한다
+alter table public.project_engagement_attachments
+  drop constraint if exists project_engagement_attachments_scope_check;
+alter table public.project_engagement_attachments
+  add constraint project_engagement_attachments_scope_check
+  check ((scope = 'individual') = (expert_id is not null));
 
 create index if not exists project_engagement_attachments_idx
   on public.project_engagement_attachments (project_id, purpose, scope);
 
 alter table public.project_engagement_attachments enable row level security;
 
+drop policy if exists project_engagement_attachments_select
+  on public.project_engagement_attachments;
 create policy project_engagement_attachments_select
   on public.project_engagement_attachments
   for select using (tenant_id = app.tenant_id());
 
+drop policy if exists project_engagement_attachments_write
+  on public.project_engagement_attachments;
 create policy project_engagement_attachments_write
   on public.project_engagement_attachments
   for all using (
@@ -154,9 +187,7 @@ comment on column public.expert_evaluations.satisfaction is
   '세션별 만족도 0~100 (5점 단위). 프로젝트 마감 시 입력한다.';
 
 -- ---- 5. 연습모드 스탬프 ------------------------------------------------------
-alter table public.project_engagement_attachments
-  add column if not exists is_practice boolean not null default false;
-
+-- 첨부는 프로젝트에 속하므로 모드도 프로젝트에서 물려받는다.
 create or replace function app.stamp_project_attachment_practice()
 returns trigger
 language plpgsql
