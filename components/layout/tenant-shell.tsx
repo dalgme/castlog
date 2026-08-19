@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
 import { shouldShowWelcomeTour } from "@/lib/onboarding/welcome-tour";
 import { WelcomeTour } from "@/components/onboarding/welcome-tour";
+import { HelpChat } from "@/components/support/help-chat";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 import { Sidebar } from "./sidebar";
@@ -92,7 +93,6 @@ export async function TenantShell({
           tenantName={tenantName}
           practice={practice}
           canPractice={canPractice}
-          logoSrc={logoSrc}
         />
         {canPractice && <PracticeBar practice={practice} />}
         {setup && (
@@ -112,6 +112,9 @@ export async function TenantShell({
             />
           ))}
         <AlertBanner />
+        {/* 도우미는 화면 오른쪽 아래에 떠 있는다 — 본문 흐름 밖이라 셸 최상위에
+            둔다. 상단 바 안에 두면 사이드바 폭에 따라 위치가 흔들린다 */}
+        <HelpChat tenantName={tenantName} logoSrc={logoSrc} />
         {showTour && (
           <WelcomeTour tenantName={tenantName} logoSrc={logoSrc} />
         )}
