@@ -1,4 +1,11 @@
-import { LogoMark, Wordmark } from "@/components/brand/logo";
+import {
+  TenantBrand,
+  PoweredByCastlog,
+} from "@/components/brand/tenant-brand";
+import {
+  getPublicTenantBrand,
+  type TenantBrand as TenantBrandData,
+} from "@/lib/branding/tenant-logo";
 import {
   Card,
   CardContent,
@@ -21,18 +28,21 @@ export const metadata = {
  * 광고성 메시지 수신거부 공개 페이지 (설계문서 5.2 /u — 법적 필수).
  * 발송된 링크는 회수 불가하므로 토큰은 만료되지 않는다.
  */
+const EMPTY_BRAND: TenantBrandData = { name: null, logoSrc: null };
+
 export default async function UnsubscribePage({
   params,
 }: {
   params: { token: string };
 }) {
-  const shell = (body: React.ReactNode) => (
+  const shell = (
+    body: React.ReactNode,
+    brand: TenantBrandData = EMPTY_BRAND
+  ) => (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary/50 p-4">
-      <div className="flex items-center gap-2.5">
-        <LogoMark width={26} height={32} />
-        <Wordmark className="text-lg" />
-      </div>
+      <TenantBrand name={brand.name} logoSrc={brand.logoSrc} />
       {body}
+      <PoweredByCastlog />
     </main>
   );
 
@@ -69,6 +79,8 @@ export default async function UnsubscribePage({
     );
   }
 
+  const brand = await getPublicTenantBrand(record.tenant_id);
+
   return shell(
     <Card className="w-full max-w-md">
       <CardHeader>
@@ -84,6 +96,7 @@ export default async function UnsubscribePage({
       <CardContent>
         <UnsubscribeButton token={params.token} />
       </CardContent>
-    </Card>
+    </Card>,
+    brand
   );
 }

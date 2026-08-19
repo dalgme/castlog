@@ -14,6 +14,7 @@ import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
 
 import { generateChat, isAiConfigured, type ChatMessage } from "./client";
 import { helpSystemPrompt, HELP_PROMPT_VERSION } from "./help-prompts";
+import { classifyFeedback } from "./feedback-classify";
 
 export type HelpAnswer = { ok: true; text: string } | { ok: false; error: string };
 
@@ -68,19 +69,37 @@ export async function askHelpBot(input: {
     getTenantModules(),
   ]);
 
-  const result = await generateChat({
-    system: helpSystemPrompt({
-      tenantName: tenant?.name ?? null,
-      gradeLabel: gradeLabel(gradeFromUser(user)),
-      moduleLabels: MODULE_KEYS.filter((k) => modules[k]).map(
-        (k) => MODULE_LABELS[k]
-      ),
-      path: input.path ?? null,
-      practice: practiceFromUser(user),
+  // 답변과 분류를 함께 돌린다 — 분류는 마지막 질문만 보면 되므로 답을 기다릴
+  // 이유가 없다. 순서대로 하면 사용자가 두 번 기다린다.
+  const [result, feedback] = await Promise.all([
+    generateChat({
+      system: helpSystemPrompt({
+        tenantName: tenant?.name ?? null,
+        gradeLabel: gradeLabel(gradeFromUser(user)),
+        moduleLabels: MODULE_KEYS.filter((k) => modules[k]).map(
+          (k) => MODULE_LABELS[k]
+        ),
+        path: input.path ?? null,
+        practice: practiceFromUser(user),
+      }),
+      messages: history,
+      maxTokens: 700,
     }),
-    messages: history,
-    maxTokens: 700,
-  });
+    classifyFeedback(history),
+  ]);
+
+  // 걸러진 목소리는 관리모드 상담게시판으로 간다. 기록 실패가 답변을 막지 않는다 —
+  // 사용자는 답을 들으러 온 것이지 기록을 남기러 온 것이 아니다.
+  if (feedback) {
+    await supabase.from("help_feedback").insert({
+      tenant_id: tenantId,
+      user_id: user.id,
+      kind: feedback.kind,
+      title: feedback.title,
+      summary: feedback.summary,
+      path: input.path ?? null,
+    });
+  }
 
   if (!result.ok) return { ok: false, error: result.error };
 
@@ -92,7 +111,11 @@ export async function askHelpBot(input: {
     action: "help_bot.ask",
     resource_type: "ai",
     resource_id: null,
-    after_data: { prompt_version: HELP_PROMPT_VERSION, turns: history.length },
+    after_data: {
+      prompt_version: HELP_PROMPT_VERSION,
+      turns: history.length,
+      recorded: feedback?.kind ?? null,
+    },
   });
 
   return { ok: true, text: result.text };

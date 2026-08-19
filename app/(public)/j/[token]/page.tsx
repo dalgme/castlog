@@ -1,4 +1,11 @@
-import { LogoMark, Wordmark } from "@/components/brand/logo";
+import {
+  TenantBrand,
+  PoweredByCastlog,
+} from "@/components/brand/tenant-brand";
+import {
+  getPublicTenantBrand,
+  type TenantBrand as TenantBrandData,
+} from "@/lib/branding/tenant-logo";
 import {
   Card,
   CardContent,
@@ -28,18 +35,21 @@ const INVALID_MESSAGES: Record<string, string> = {
  * 전문가 등록 공개 페이지 (설계문서 3.2) — 로그인 불필요, 모바일 완전 대응.
  * 토큰 검증은 서버(service_role)에서만 수행한다.
  */
+const EMPTY_BRAND: TenantBrandData = { name: null, logoSrc: null };
+
 export default async function ExpertJoinPage({
   params,
 }: {
   params: { token: string };
 }) {
-  const shell = (body: React.ReactNode) => (
+  const shell = (
+    body: React.ReactNode,
+    brand: TenantBrandData = EMPTY_BRAND
+  ) => (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary/50 p-4">
-      <div className="flex items-center gap-2.5">
-        <LogoMark width={26} height={32} />
-        <Wordmark className="text-lg" />
-      </div>
+      <TenantBrand name={brand.name} logoSrc={brand.logoSrc} />
       {body}
+      <PoweredByCastlog />
     </main>
   );
 
@@ -70,6 +80,7 @@ export default async function ExpertJoinPage({
   }
 
   const { invitation, tenantName } = lookup;
+  const brand = await getPublicTenantBrand(invitation.tenant_id);
 
   return shell(
     <Card className="w-full max-w-md">
@@ -92,6 +103,7 @@ export default async function ExpertJoinPage({
           }
         />
       </CardContent>
-    </Card>
+    </Card>,
+    brand
   );
 }

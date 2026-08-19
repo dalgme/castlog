@@ -48,3 +48,41 @@ export async function tenantLogoSrc(): Promise<string | null> {
   const stamp = data.updated_at ? Date.parse(data.updated_at) : 0;
   return `/api/tenant-logo?v=${Number.isFinite(stamp) ? stamp : 0}`;
 }
+
+export type TenantBrand = {
+  name: string | null;
+  /** 로고 주소 (없으면 null → 캐스트로그 심볼로 폴백) */
+  logoSrc: string | null;
+};
+
+/**
+ * 공개 화면용 회사 브랜드.
+ *
+ * 전문가가 보는 화면은 대부분 로그인이 없다(섭외 동의·서류 제출·수신거부).
+ * 그 화면에서 전문가가 만나는 상대는 캐스트로그가 아니라 **그 회사**이므로,
+ * 이름과 로고를 여기서 함께 꺼내 준다 (CLAUDE.md §16).
+ *
+ * service_role로 읽는다 — 호출부가 토큰 검증을 끝낸 뒤에만 부른다.
+ */
+export async function getPublicTenantBrand(
+  tenantId: string | null | undefined
+): Promise<TenantBrand> {
+  if (!hasSupabaseEnv() || !tenantId) return { name: null, logoSrc: null };
+
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("tenants")
+    .select("name, logo_url, updated_at")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (!data) return { name: null, logoSrc: null };
+
+  const stamp = data.updated_at ? Date.parse(data.updated_at) : 0;
+  return {
+    name: data.name,
+    logoSrc: data.logo_url
+      ? `/api/tenant-logo/${tenantId}?v=${Number.isFinite(stamp) ? stamp : 0}`
+      : null,
+  };
+}

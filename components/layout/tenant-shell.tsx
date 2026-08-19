@@ -7,6 +7,8 @@ import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
 import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
+import { shouldShowWelcomeTour } from "@/lib/onboarding/welcome-tour";
+import { WelcomeTour } from "@/components/onboarding/welcome-tour";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 import { Sidebar } from "./sidebar";
@@ -63,6 +65,9 @@ export async function TenantShell({
   }
   // 회사 로고 — 사이드바와 챗봇이 함께 쓴다
   const logoSrc = await tenantLogoSrc();
+  // 처음 들어온 사람에게만 뜨는 안내. 연습모드에서는 띄우지 않는다 —
+  // 연습을 하러 들어온 사람에게 시작 안내를 다시 꺼낼 이유가 없다
+  const showTour = !practice && (await shouldShowWelcomeTour());
 
   // 최초 설정 안내 — 설정을 실제로 할 수 있는 사람에게만.
   // 연습모드에서는 띄우지 않는다(연습 환경의 설정 상태가 아니다).
@@ -107,6 +112,9 @@ export async function TenantShell({
             />
           ))}
         <AlertBanner />
+        {showTour && (
+          <WelcomeTour tenantName={tenantName} logoSrc={logoSrc} />
+        )}
         {children}
       </div>
     </div>
