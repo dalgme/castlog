@@ -54,6 +54,7 @@ import {
   type PlanPanelState,
 } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
+import { EngagementWorkbench } from "./engagement-workbench";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -367,7 +368,7 @@ export default async function ProjectDetailPage({
   const { data: positionRecords } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("id, slot_id, position_no, code, status, expert_id")
+        .select("id, slot_id, position_no, code, status, expert_id, engagement_id")
         .in("slot_id", slotIds)
         .order("position_no", { ascending: true })
     : { data: [] };
@@ -419,6 +420,7 @@ export default async function ProjectDetailPage({
         positionNo: p.position_no,
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
+        engagementId: p.engagement_id,
       })),
     notice: {
       // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)
@@ -680,11 +682,25 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
+        {/* 섭외 절차의 입구 — 세션(코드넘버)별로 '지금 할 일'을 펼친다 */}
+        {tab === "experts" && modules.experts && (
+          <EngagementWorkbench
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
+            slots={slotRows}
+            canManage={canManage}
+            planGate={{
+              blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
+              message: planPanel?.message ?? "",
+            }}
+          />
+        )}
+
         {tab === "experts" && modules.experts && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">
-                전문가 섭외 ({engagements.length})
+                섭외 건 전체 목록 ({engagements.length})
               </CardTitle>
               <div className="flex items-center gap-2">
                 {canManage && (unlinkedCount ?? 0) > 0 && (
@@ -700,8 +716,8 @@ export default async function ProjectDetailPage({
             <CardContent>
               {engagements.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  이 프로젝트에 섭외된 전문가가 없습니다. ‘섭외 요청’으로 동의
-                  링크를 만들어 전달하세요.
+                  아직 섭외 건이 없습니다. 위 <strong>전문가 섭외 진행</strong>에서
+                  코드넘버의 ‘전문가 조회 · 섭외 요청’을 누르면 시작됩니다.
                 </p>
               ) : (
                 <ul className="divide-y">
