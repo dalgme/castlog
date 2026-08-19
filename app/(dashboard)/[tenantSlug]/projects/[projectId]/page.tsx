@@ -20,6 +20,7 @@ import {
 } from "@/lib/operations/steps";
 import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
+import { acceptanceStatusLabel } from "@/lib/integrations/acceptance-workflow";
 import {
   buildPlanSnapshot,
   evaluatePlanGate,
@@ -52,6 +53,7 @@ import {
   EngagementPlanPanel,
   type PlanPanelState,
 } from "./engagement-plan-panel";
+import { ProjectTabs, resolveProjectTab } from "./project-tabs";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -74,8 +76,10 @@ const STEP_TYPE_ORDER: StepType[] = [
  */
 export default async function ProjectDetailPage({
   params,
+  searchParams,
 }: {
   params: { tenantSlug: string; projectId: string };
+  searchParams: { tab?: string };
 }) {
   const user = await requireRole([
     "platform_admin",
@@ -480,6 +484,26 @@ export default async function ProjectDetailPage({
   const closingInProgress =
     project.closing_approval_id !== null && !isClosed;
 
+  // '수락서 생성 및 확정' 탭 — 확정(수락)된 섭외 건의 수락서 진행 상태
+  const acceptedEngagements = engagements.filter((e) => e.status === "accepted");
+  const { data: acceptanceRecords } =
+    modules.experts && acceptedEngagements.length
+      ? await supabase
+          .from("engagement_acceptances")
+          .select(
+            "id, engagement_id, letter_no, status, sent_at, signed_at, confirmed_at"
+          )
+          .in(
+            "engagement_id",
+            acceptedEngagements.map((e) => e.id)
+          )
+      : { data: null };
+  const acceptanceByEngagement = new Map(
+    (acceptanceRecords ?? []).map((a) => [a.engagement_id, a])
+  );
+
+  const tab = resolveProjectTab(searchParams.tab, modules.experts);
+
   return (
     <div>
       <PageHeader
@@ -490,7 +514,14 @@ export default async function ProjectDetailPage({
           </Button>
         }
       />
+      <ProjectTabs
+        tenantSlug={params.tenantSlug}
+        projectId={project.id}
+        active={tab}
+        hasExperts={modules.experts}
+      />
       <main className="space-y-5 p-5">
+        {tab === "overview" && (
         <ProjectDashboardCards
           tenantSlug={params.tenantSlug}
           data={dashboard}
@@ -500,7 +531,8 @@ export default async function ProjectDetailPage({
           deputyPmNames={deputyPmNames}
           modules={{ experts: modules.experts, approvals: modules.approvals }}
         />
-        {canManage && (
+        )}
+        {tab === "basic" && canManage && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">담당자 배정</CardTitle>
@@ -514,7 +546,7 @@ export default async function ProjectDetailPage({
             </CardContent>
           </Card>
         )}
-        {showActionRequests && (
+        {tab === "overview" && showActionRequests && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">PM 승인 (부PM 실행 건)</CardTitle>
@@ -531,6 +563,7 @@ export default async function ProjectDetailPage({
           </Card>
         )}
         {/* 예산은 프로젝트 기초정보 — 공통 기반 */}
+        {tab === "basic" && (
         <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">예산 · 섭외비 현황</CardTitle>
@@ -546,7 +579,8 @@ export default async function ProjectDetailPage({
               />
             </CardContent>
         </Card>
-        {modules.experts && planPanel && (
+        )}
+        {tab === "plan" && modules.experts && planPanel && (
           <EngagementPlanPanel
             tenantSlug={params.tenantSlug}
             projectId={project.id}
@@ -557,6 +591,7 @@ export default async function ProjectDetailPage({
           />
         )}
         {/* 세션 · 코드넘버는 공통 기반 — experts 없이도 TO 관리가 가능해야 한다 */}
+        {tab === "sessions" && (
         <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">세션 · 전문가 코드넘버</CardTitle>
@@ -572,6 +607,8 @@ export default async function ProjectDetailPage({
               />
             </CardContent>
         </Card>
+        )}
+        {(tab === "overview" || tab === "basic") && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 text-sm">
             <span>
@@ -601,8 +638,9 @@ export default async function ProjectDetailPage({
             )}
           </CardContent>
         </Card>
+        )}
 
-        {project.description && (
+        {(tab === "overview" || tab === "basic") && project.description && (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               {project.description}
@@ -610,7 +648,7 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
-        {canEvaluate && (
+        {tab === "basic" && canEvaluate && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">프로젝트 종료</CardTitle>
@@ -642,7 +680,7 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
-        {modules.experts && (
+        {tab === "experts" && modules.experts && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">
@@ -722,7 +760,7 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
-        {modules.experts && evaluationRows.length > 0 && (
+        {tab === "experts" && modules.experts && evaluationRows.length > 0 && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">
@@ -772,7 +810,74 @@ export default async function ProjectDetailPage({
           </Card>
         )}
 
-        {STEP_TYPE_ORDER.map((stepType) => {
+        {tab === "acceptances" && modules.experts && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">
+                수락서 생성 및 확정 ({acceptedEngagements.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-xs text-muted-foreground">
+                전문가가 섭외를 수락하면 수락서가 자동 생성됩니다. 안내 정보를
+                보완해 송부하고, 전문가 확인 후 담당자가 최종 확인합니다. 수락서는
+                화면에서만 열람하며 파일로 내려받지 않습니다.
+              </p>
+              {acceptedEngagements.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  아직 수락(확정)된 섭외 건이 없습니다. ‘전문가 등록’ 탭에서 섭외를
+                  요청하세요.
+                </p>
+              ) : (
+                <ul className="divide-y">
+                  {acceptedEngagements.map((engagement) => {
+                    const acceptance = acceptanceByEngagement.get(engagement.id);
+                    return (
+                      <li
+                        key={engagement.id}
+                        className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
+                      >
+                        <span className="font-medium">
+                          {engagement.experts?.name ?? "-"}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {engagement.role_description}
+                        </span>
+                        {acceptance?.letter_no && (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {acceptance.letter_no}
+                          </span>
+                        )}
+                        <Badge
+                          className="ml-auto"
+                          variant={
+                            acceptance?.status === "confirmed"
+                              ? "default"
+                              : "secondary"
+                          }
+                        >
+                          {acceptance
+                            ? acceptanceStatusLabel(acceptance.status)
+                            : "생성 대기"}
+                        </Badge>
+                        <Button asChild variant="outline" size="sm">
+                          <Link
+                            href={`/${params.tenantSlug}/experts/acceptances/${engagement.id}`}
+                          >
+                            수락서 열기
+                          </Link>
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {tab === "overview" &&
+          STEP_TYPE_ORDER.map((stepType) => {
           const group = stepRows.filter((s) => s.step_type === stepType);
           if (group.length === 0) return null;
           return (

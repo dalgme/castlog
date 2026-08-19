@@ -1041,6 +1041,8 @@ export type Database = {
           submission_docs: string | null
           session_name: string | null
           position_code: string | null
+
+          is_practice: boolean
         }
         Insert: {
           accepted_at?: string
@@ -1088,6 +1090,8 @@ export type Database = {
           submission_docs?: string | null
           session_name?: string | null
           position_code?: string | null
+
+          is_practice?: boolean
         }
         Update: {
           accepted_at?: string
@@ -1135,6 +1139,8 @@ export type Database = {
           submission_docs?: string | null
           session_name?: string | null
           position_code?: string | null
+
+          is_practice?: boolean
         }
         Relationships: [
           {

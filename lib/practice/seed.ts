@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
+import { ensurePracticeAcceptance } from "@/lib/integrations/acceptance";
 
 /**
  * 연습 환경 시드 — 연습모드 최초 진입 시 1회 구축한다 (멱등).
@@ -293,6 +294,9 @@ async function createSlot(
         .select("id")
         .maybeSingle();
       engagementId = engagement?.id ?? null;
+      // 확정 건에는 수락서가 있어야 한다 — 연습에서도 '수락서 보기'가 열려야 하므로
+      // 가상 수락서를 함께 만든다.
+      if (engagementId) await ensurePracticeAcceptance(engagementId);
     }
 
     await admin.from("engagement_slot_positions").insert({

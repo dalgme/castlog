@@ -142,7 +142,10 @@ export default async function ProjectsPage({
                       <TableHead>프로젝트명</TableHead>
                       <TableHead>발주처</TableHead>
                       <TableHead>기간</TableHead>
-                      <TableHead>PM · 부PM</TableHead>
+                      {/* PM과 부PM을 한 칸에 붙여 두면 부PM이 여럿일 때
+                          누가 PM인지 읽히지 않는다 — 칸을 나눈다 */}
+                      <TableHead>PM</TableHead>
+                      <TableHead>부PM</TableHead>
                       <TableHead>진행</TableHead>
                       <TableHead>상태</TableHead>
                     </TableRow>
@@ -173,24 +176,25 @@ export default async function ProjectsPage({
                           <TableCell className="text-xs text-muted-foreground">
                             {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
                           </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {leadByProject.get(project.id)?.pm ?? (
+                              <span className="text-muted-foreground">미지정</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-xs">
                             {(() => {
-                              const lead = leadByProject.get(project.id);
-                              if (!lead?.pm && !lead?.deputies.length) {
-                                return (
-                                  <span className="text-muted-foreground">미지정</span>
-                                );
+                              const deputies =
+                                leadByProject.get(project.id)?.deputies ?? [];
+                              if (deputies.length === 0) {
+                                return <span className="text-muted-foreground">-</span>;
                               }
+                              // 여러 명일 때 한 줄로 이어 붙이면 이름이 뭉개진다 — 줄로 쌓는다
                               return (
-                                <>
-                                  {lead.pm ?? "-"}
-                                  {lead.deputies.length > 0 && (
-                                    <span className="text-muted-foreground">
-                                      {" · "}
-                                      {lead.deputies.join(", ")}
-                                    </span>
-                                  )}
-                                </>
+                                <ul className="space-y-0.5">
+                                  {deputies.map((name) => (
+                                    <li key={name}>{name}</li>
+                                  ))}
+                                </ul>
                               );
                             })()}
                           </TableCell>

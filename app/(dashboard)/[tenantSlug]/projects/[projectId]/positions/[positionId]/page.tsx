@@ -188,6 +188,14 @@ export default async function PositionPage({
             </CardContent>
           </Card>
         )}
+
+        {/* 코드넘버 상세는 프로젝트에서 들어와 프로젝트로 돌아가는 자리다.
+            돌아가는 문을 화면 맨 아래 전체 폭으로 크게 둔다 (기획 지시) */}
+        <Button asChild variant="outline" className="h-12 w-full text-base">
+          <Link href={`/${params.tenantSlug}/projects/${params.projectId}`}>
+            프로젝트로
+          </Link>
+        </Button>
       </main>
     </div>
   );

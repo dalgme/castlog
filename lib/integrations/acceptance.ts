@@ -164,3 +164,56 @@ export async function createEngagementAcceptance(
     after_data: { letter_no: letterNo, has_signature: signaturePath !== null },
   });
 }
+
+/**
+ * 연습모드 가상 수락서 보장 (멱등).
+ *
+ * 연습 데이터의 섭외 건은 '확정' 상태로 심어지지만 수락서 행은 없었다. 그래서
+ * 연습모드에서 '수락서 보기'를 누르면 화면이 없다고 나왔다. 연습은 실제 흐름을
+ * 그대로 밟아 보는 자리이므로, 확정 건에는 수락서가 있어야 한다.
+ *
+ * **연습 건에만 적용한다.** 실데이터에서 수락서가 없는 확정 건에 문서를 만들어
+ * 주면, 전문가가 서명한 적 없는 문서를 시스템이 지어내는 셈이 된다.
+ *
+ * @returns 수락서가 존재하게 되었으면 true
+ */
+export async function ensurePracticeAcceptance(
+  engagementId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+
+  const { data: eng } = await admin
+    .from("expert_engagements")
+    .select("id, status, is_practice")
+    .eq("id", engagementId)
+    .maybeSingle();
+  if (!eng || !eng.is_practice || eng.status !== "accepted") return false;
+
+  await createEngagementAcceptance(engagementId, "portal");
+
+  // 연습에서는 송부·확인까지 끝난 모습을 보여 준다 — 실제 확정 건과 같은 화면을
+  // 봐야 연습이 의미가 있다.
+  const { data: created } = await admin
+    .from("engagement_acceptances")
+    .select("id, status")
+    .eq("engagement_id", engagementId)
+    .maybeSingle();
+  if (!created) return false;
+
+  if (created.status === "issued") {
+    const now = new Date().toISOString();
+    await admin
+      .from("engagement_acceptances")
+      .update({
+        status: "confirmed",
+        sent_at: now,
+        signed_at: now,
+        confirmed_at: now,
+        guide_note:
+          "(연습) 이 수락서는 연습모드에서 자동 생성된 가상 문서입니다. 실제 전문가의 서명·확인이 아닙니다.",
+      })
+      .eq("id", created.id);
+  }
+
+  return true;
+}

@@ -16,7 +16,6 @@ import {
   Handshake,
   BookOpen,
   ListChecks,
-  Scale,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -47,15 +46,9 @@ const NAV_ITEMS: readonly {
   // 프로젝트 개설·기본정보·PM배정·세션·코드넘버는 공통 기반 (CLAUDE.md §1-2)
   { label: "프로젝트", path: "projects", icon: FolderKanban, module: null },
   { label: "전자결재", path: "approvals", icon: FileCheck, module: "approvals" },
-  // 전결규정은 '설정'이지 '프로젝트'가 아니다. 결재 현황과 규정 설정을 분리해
-  // 각각 독립된 메뉴로 연다 (기획 지시).
-  {
-    label: "전결규정",
-    path: "approvals/rules",
-    icon: Scale,
-    module: "approvals",
-    orgAdminOnly: true,
-  },
+  // 전결규정은 '설정'이지 '프로젝트'가 아니다. 결재 현황(전자결재)과 규정 설정을
+  // 분리하되, 규정은 자주 드나드는 화면이 아니므로 사이드바가 아니라
+  // 설정 > 전결규정 탭에서만 연다 (기획 지시).
   { label: "전문가", path: "experts", icon: Users, module: "experts" },
   {
     label: "섭외 현황",
@@ -97,7 +90,7 @@ export function Sidebar({
   );
 
   return (
-    <aside className="flex h-full w-14 shrink-0 flex-col bg-brand-navy text-white/70 md:w-52">
+    <aside className="sticky top-0 z-40 flex h-screen w-14 shrink-0 flex-col self-start overflow-y-auto bg-brand-navy text-white/70 md:w-52">
       <Link
         href={buildTenantPath(tenantSlug, "dashboard")}
         className="flex items-center gap-2 px-4 py-5"

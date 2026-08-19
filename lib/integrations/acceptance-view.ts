@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { EXPERT_DOCUMENT_BUCKET } from "@/lib/experts/documents";
+import { ensurePracticeAcceptance } from "@/lib/integrations/acceptance";
 import type { Tables } from "@/lib/supabase/database.types";
 
 const SIGNED_URL_EXPIRES_SECONDS = 120;
@@ -48,11 +49,30 @@ export async function getAcceptanceView(
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: acceptance } = await supabase
-    .from("engagement_acceptances")
-    .select("*")
-    .eq("engagement_id", engagementId)
-    .maybeSingle();
+  async function readAcceptance() {
+    const { data } = await supabase
+      .from("engagement_acceptances")
+      .select("*")
+      .eq("engagement_id", engagementId)
+      .maybeSingle();
+    return data;
+  }
+
+  let acceptance = await readAcceptance();
+  if (!acceptance) {
+    // 연습모드 확정 건은 수락서가 없어도 화면이 열려야 한다 — 없으면 그 자리에서
+    // 가상 수락서를 만든다. RLS로 이 섭외 건을 볼 수 있는 사람만 여기 도달한다.
+    // (실데이터 건은 ensurePracticeAcceptance가 스스로 거부한다 — 서명한 적 없는
+    //  문서를 시스템이 지어내면 안 된다)
+    const { data: engagement } = await supabase
+      .from("expert_engagements")
+      .select("id")
+      .eq("id", engagementId)
+      .maybeSingle();
+    if (!engagement) return null;
+    if (!(await ensurePracticeAcceptance(engagementId))) return null;
+    acceptance = await readAcceptance();
+  }
   if (!acceptance) return null;
 
   const admin = createAdminClient();

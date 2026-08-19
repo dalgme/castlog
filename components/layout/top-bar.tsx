@@ -24,7 +24,9 @@ export async function TopBar({
   const grade = gradeFromUser(user);
 
   return (
-    <header className="flex h-12 items-center gap-2 border-b bg-white px-4">
+    // sticky — 목록이 길어져도 현재 위치와 나가는 문은 화면에서 사라지지 않는다.
+    // (사이드바도 함께 고정한다 — 위쪽만 남고 메뉴가 사라지면 더 헷갈린다)
+    <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-white px-4">
       <LocationCrumbs tenantSlug={tenantSlug} tenantName={tenantName} />
 
       <div className="flex shrink-0 items-center gap-2">
