@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /**
- * 설정 탭 — 내 설정 · SMS 설정 · 기업관리 · 전결규정.
+ * 설정 탭 — 내 설정 · 임직원 설정 · SMS 설정 · 기업관리 · 전결규정.
  *
  * '내 설정'은 등급과 무관하게 항상 있다. 대리 이하에게 설정이 하나도 없으면
  * 자기 연락처를 고치는 것조차 관리자에게 부탁해야 한다.
@@ -21,11 +21,13 @@ import { cn } from "@/lib/utils";
  */
 export function SettingsTabs({
   tenantSlug,
+  showStaff,
   showSms,
   showOrg,
   showRules,
 }: {
   tenantSlug: string;
+  showStaff?: boolean;
   showSms: boolean;
   showOrg: boolean;
   showRules: boolean;
@@ -39,6 +41,14 @@ export function SettingsTabs({
       label: "내 설정",
       href: `/${tenantSlug}/settings/me`,
       show: true,
+    },
+    {
+      // 사람에 관한 것은 여기 하나로 모은다 — 가입 신청·계정·직급·권한 위임.
+      // 회사에 관한 것(기업정보·세무·카테고리)은 '기업관리'에 남는다.
+      key: "staff",
+      label: "임직원 설정",
+      href: `/${tenantSlug}/admin/staff`,
+      show: Boolean(showStaff),
     },
     {
       key: "sms",

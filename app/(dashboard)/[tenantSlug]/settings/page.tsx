@@ -12,18 +12,11 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { getTenantModules } from "@/lib/modules/server";
-import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
-import {
-  isModuleRequestStatus,
-  parseRequestedModules,
-  requestableModules,
-} from "@/lib/modules/requests";
 
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { SmsConfigForm } from "./sms-config-form";
 import { SmsConnectionPanel } from "./sms-connection-panel";
-import { ModuleRequestPanel, type OpenRequest } from "./module-request-panel";
 
 export const metadata = { title: "설정" };
 
@@ -47,15 +40,21 @@ export default async function SettingsPage({
   let canManageSending = false;
   // 모듈 추가 요청은 '설정' 위임 범위다 — 발송 위임만 받은 직원에게는 숨긴다.
   let canRequestModules = false;
+  let canManageStaff = false;
   if (gateUser) {
     const role = roleFromUser(gateUser);
     const scopes = await getAdminScopes();
     const isCeo = role === "org_admin" || role === "platform_admin";
     canManageSending = isCeo || scopes.sending;
-    canRequestModules = isCeo || scopes.settings;
-    // 관리 권한이 없는 직원은 로그인 화면으로 튕겨내지 않는다 — '설정'을 눌렀는데
-    // 대시보드로 되돌아가면 고장으로 읽힌다. 누구에게나 있는 '내 설정'으로 보낸다.
-    if (!canManageSending && !canRequestModules) {
+    canRequestModules = isCeo || scopes.settings || scopes.modules;
+    canManageStaff = isCeo || scopes.staff;
+    // 사이드바 '설정'은 이 화면(SMS)으로 온다. 발송 권한이 없는 위임자에게는
+    // 빈 화면이 되므로, 그 사람이 실제로 쓸 수 있는 첫 탭으로 보낸다.
+    // 아무 권한도 없으면 누구에게나 있는 '내 설정'으로 — 대시보드로 되돌리면
+    // '설정을 눌렀는데 아무 일도 안 일어난다'가 된다.
+    if (!canManageSending) {
+      if (canManageStaff) redirect(`/${params.tenantSlug}/admin/staff`);
+      if (canRequestModules) redirect(`/${params.tenantSlug}/admin/org`);
       redirect(`/${params.tenantSlug}/settings/me`);
     }
   }
@@ -80,29 +79,16 @@ export default async function SettingsPage({
     .select("provider, sender_number, is_active")
     .maybeSingle();
 
-  // 사용 기능(모듈) 현황 + 추가 요청 상태 (CLAUDE.md §1-2-8)
+  // 사용 기능(모듈) 현황·추가 요청은 '기업관리' 탭으로 옮겼다 — 발송 설정 옆에
+  // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
   const modules = await getTenantModules();
-  const { data: requestRows } = await supabase
-    .from("tenant_module_requests")
-    .select("id, requested_modules, status, decision_note, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  const requests: OpenRequest[] = (requestRows ?? []).map((r) => ({
-    id: r.id,
-    requested: parseRequestedModules(r.requested_modules),
-    status: isModuleRequestStatus(r.status) ? r.status : "pending",
-    decisionNote: r.decision_note,
-    createdAt: r.created_at,
-  }));
-  const openRequest = requests.find((r) => r.status === "pending") ?? null;
-  const lastDecision = requests.find((r) => r.status !== "pending") ?? null;
 
   return (
     <div>
       <PageHeader title="설정" />
       <SettingsTabs
         tenantSlug={params.tenantSlug}
+        showStaff={canManageStaff}
         showSms={canManageSending}
         showOrg={canRequestModules}
         showRules={modules.approvals && canRequestModules}
@@ -110,24 +96,6 @@ export default async function SettingsPage({
       {/* 기업관리·전결규정 탭과 같은 폭을 쓴다 — 탭을 옮길 때마다 본문 폭이
           달라지면 같은 화면이 아닌 것처럼 읽힌다 */}
       <main className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-2">
-        {canRequestModules && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">사용 기능 · 추가 요청</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ModuleRequestPanel
-              available={requestableModules(modules)}
-              activeLabels={MODULE_KEYS.filter((k) => modules[k]).map(
-                (k) => MODULE_LABELS[k]
-              )}
-              openRequest={openRequest}
-              lastDecision={lastDecision}
-            />
-          </CardContent>
-        </Card>
-        )}
-
         {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
@@ -235,12 +203,12 @@ export default async function SettingsPage({
             <CardTitle className="text-sm">직원·직급 관리</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            직원 계정과 직급은{" "}
+            직원 계정·직급·가입 신청 승인은{" "}
             <Link
-              href={`/${params.tenantSlug}/admin/org`}
+              href={`/${params.tenantSlug}/admin/staff`}
               className="text-brand underline-offset-4 hover:underline"
             >
-              기업 관리
+              임직원 설정
             </Link>
             에서, 전결규정은{" "}
             <Link

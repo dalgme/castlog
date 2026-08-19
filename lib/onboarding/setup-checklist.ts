@@ -122,7 +122,7 @@ export async function getSetupStatus(
       "어떤 영역을 쓰는지에 따라 화면과 메뉴가 달라집니다. 지금 조합이 맞는지 확인하고, 필요하면 추가를 요청하세요. 나중에 추가해도 기존 데이터는 그대로 이어집니다.",
     done: activeModules.length > 0,
     required: true,
-    href: `${base}/settings`,
+    href: `${base}/admin/org`,
   });
 
   // --- 2. 기업 정보 · 개인정보 보호책임자 -------------------------------------
@@ -150,10 +150,10 @@ export async function getSetupStatus(
     key: "staff",
     title: "임직원 계정 등록",
     why:
-      "대표 혼자서는 프로젝트 PM·부PM을 배정할 수 없습니다. 직접 추가하거나, 가입 신청 링크를 공유해 신청받은 뒤 승인하세요.",
+      "대표 혼자서는 프로젝트 PM·부PM을 배정할 수 없습니다. ‘설정 > 임직원 설정’에서 직접 추가하거나, 가입 신청 링크를 공유해 신청받은 뒤 승인하세요.",
     done: (staffCount ?? 0) > 1,
     required: true,
-    href: `${base}/admin/org`,
+    href: `${base}/admin/staff`,
   });
   items.push({
     key: "positions",
@@ -162,7 +162,7 @@ export async function getSetupStatus(
       "권한단계(대표~사원)와 별개로, 회사가 실제로 쓰는 직급 표기를 등록해 두면 결재선·명부에 그대로 쓰입니다.",
     done: (positionCount ?? 0) > 0,
     required: false,
-    href: `${base}/admin/org`,
+    href: `${base}/admin/staff`,
   });
   items.push({
     key: "delegation",
@@ -171,7 +171,7 @@ export async function getSetupStatus(
       "설정·직원관리·발송·감사·지급 권한을 임원에게 나눠 두지 않으면 모든 관리 업무가 대표 계정에 몰립니다. 세무(주민번호) 조회 지정과 위임 권한 자체는 위임할 수 없습니다.",
     done: (delegationCount ?? 0) > 0,
     required: false,
-    href: `${base}/admin/org`,
+    href: `${base}/admin/staff`,
     ceoOnly: true,
   });
 
@@ -205,7 +205,7 @@ export async function getSetupStatus(
       key: "tax_grants",
       title: "주민등록번호 조회 지정자 지정",
       why:
-        "지급명세서 작성 시 조회할 사람(회계담당자·대표자)을 지정해야 합니다. 지정하지 않으면 아무도 조회할 수 없습니다. 이 권한은 위임 대상이 아니며 대표만 지정할 수 있습니다.",
+        "지급명세서 작성 시 조회할 사람을 지정해야 합니다. 지정하지 않으면 아무도 조회할 수 없습니다. 최대 3명이며, 이 권한은 위임 대상이 아니라 대표만 지정할 수 있습니다.",
       done: (taxGranteeCount ?? 0) > 0,
       required: false,
       href: `${base}/admin/org`,

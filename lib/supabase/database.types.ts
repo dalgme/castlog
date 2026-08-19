@@ -2734,6 +2734,24 @@ export type Database = {
         }
         Relationships: []
       }
+      product_brief_editions: {
+        Row: {
+          content: Json
+          edition: string
+          generated_at: string
+        }
+        Insert: {
+          content: Json
+          edition: string
+          generated_at?: string
+        }
+        Update: {
+          content?: Json
+          edition?: string
+          generated_at?: string
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           created_at: string

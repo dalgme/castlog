@@ -73,9 +73,9 @@ export default async function LandingPage() {
             <p className="hero-desc">프로젝트 생성부터 전문가 섭외, 결재, 지급, 보고서 관리까지<br />21단계 워크플로우로 체계적으로 관리하고<br />의사결정을 빠르고 안전하게 진행하세요.</p>
             <div className="hero-cta">
               <Link className="btn-primary" href="/contact?type=trial&source=hero">무료 체험 시작</Link>
-              <a className="btn-secondary" href="mailto:hello@castlog.kr?subject=%EC%BA%90%EC%8A%A4%ED%8A%B8%EB%A1%9C%EA%B7%B8%20%EC%A0%9C%ED%92%88%20%EC%86%8C%EA%B0%9C%EC%84%9C%20%EC%9A%94%EC%B2%AD">제품 소개 다운로드
+              <Link className="btn-secondary" href="/product-brief">제품 소개 보기 · 내려받기
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>
-              </a>
+              </Link>
             </div>
             <div className="hero-checks">
               <span className="hero-check"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#246BFF" /><path d="M7.5 12.4l3 3 6-6.4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>30일 무료 체험</span>

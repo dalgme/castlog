@@ -125,6 +125,7 @@ export async function approveJoinRequest(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true, email: request.email, tempPassword };
 }
 
@@ -168,5 +169,6 @@ export async function rejectJoinRequest(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }

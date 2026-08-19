@@ -70,6 +70,11 @@ const config = {
           sky: "hsl(var(--brand-sky))",
           amber: "hsl(var(--brand-amber))",
         },
+        /* 도움 창구(챗봇) 전용 — 브랜드색과 섞지 않는다 */
+        coral: {
+          DEFAULT: "hsl(var(--accent-coral))",
+          dark: "hsl(var(--accent-coral-dark))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

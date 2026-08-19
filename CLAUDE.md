@@ -95,10 +95,24 @@
   * 열람 범위(전사 프로젝트) = app.can_view_all_projects() — **대표·이사만 전체**,
     팀장 이하는 project_assignments에 배정된 프로젝트만. 배정은 권한자(대표·이사)가 한다.
 - 대표는 'CEO 업무기능 + 시스템 설정·관리기능'을 모두 갖는다. 이 중 **설정·관리기능만**
-  스코프 단위로 위임할 수 있다 (tenant_admin_grants: settings/staff/sending/audit).
+  스코프 단위로 위임할 수 있다 (tenant_admin_grants).
   서버 게이트는 requireAdminScope(scope), DB는 app.has_admin_scope(scope).
+  * 스코프 9종: settings(회사 정보·기본 설정) / modules(사용 기능 요청) /
+    staff(임직원 계정·직급) / sending(문자 발송 자격증명) / templates(발송 문구) /
+    approvals(전결규정) / audit(감사로그·보안 현황 열람) / backup(데이터 반출) /
+    finance(지급·정산 금액).
+  * **위험도가 갈리는 지점에서 자른다.** 자격증명 ↔ 문구, 읽기 ↔ 반출,
+    회사 설정 ↔ 계약(모듈 요청)은 서로 다른 권한이다. 한 스위치에 묶으면
+    필요한 권한을 주려다 필요 없는 권한까지 준다.
+  * **넓은 스코프는 하위를 포함한다** (settings⊃modules, sending⊃templates,
+    audit⊃backup). 앱은 lib/auth/admin-scope-keys.ts SCOPE_IMPLIES,
+    DB는 app.has_admin_scope가 같은 규칙으로 판정한다.
   * sending 스코프는 SMS 자격증명(tenant_sms_configs: API 키·발신번호·활성 여부)까지
     포함한다. 키는 암호화 저장되고 화면에 재표시되지 않으며, 변경·테스트는 감사로그에 남는다.
+  * backup 반출 범위는 그 사람의 RLS 열람 범위까지다(팀장 이하는 배정 프로젝트만).
+    전사 반출이 필요하면 대표·이사에게 준다.
+  * 위임 화면은 **기능이 행, 담당자가 열**이다. 기능마다 다른 사람을 둘 수 있어야
+    한다 — 발송은 홍보, 지급은 회계, 계정은 인사가 실제 주인이다.
 - **위임 금지 대상(코드로 강제):**
   1. 세무(주민등록번호) 조회 지정자 관리 — tax_access_grants는 계속 app.is_org_admin() 전용
   2. 위임 자체의 부여·회수 — 위임받은 사람은 재위임할 수 없다
@@ -134,7 +148,9 @@
   * **일괄 조회 API를 만들지 않는다** (1요청 = 1건). 사용자·테넌트별 시간당 복호화 상한 강제,
     초과 시 자동 잠금 + 경보.
   * 승인된 지급 결재건에 연결되지 않은 조회 요청은 거부. 상시 조회 화면 없음.
-  * 조회 권한: tax_access_grants 지정자(회계담당자·대표자)만.
+  * 조회 권한: tax_access_grants 지정자만. **활성 최대 3명**(앱 + DB 트리거
+    app.enforce_tax_grant_limit로 강제). 역할 표기는 회사 직급 체계(positions)에서
+    고른다 — 회사마다 이 일을 맡는 자리 이름이 다르다.
     **플랫폼관리자(넥스트랩)도 조회 불가.** 대결·위임 대상에서 제외(코드로 강제).
   * 평문을 DB·로그·캐시·APM·클라이언트 상태에 저장 금지. 마스킹 필터를 로그 파이프라인 최전단에.
   * 화면 노출 시 조회자·시각 워터마크. 일정 시간 후 자동 재마스킹.

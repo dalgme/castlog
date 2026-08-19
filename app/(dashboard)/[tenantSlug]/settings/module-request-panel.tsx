@@ -40,11 +40,14 @@ export function ModuleRequestPanel({
   activeLabels,
   openRequest,
   lastDecision,
+  canRequest = true,
 }: {
   available: ModuleKey[];
   activeLabels: string[];
   openRequest: OpenRequest | null;
   lastDecision: OpenRequest | null;
+  /** 요청을 보낼 수 있는 사람인가 (대표 또는 '테넌트 설정' 위임자) */
+  canRequest?: boolean;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<Set<ModuleKey>>(new Set());
@@ -143,13 +146,22 @@ export function ModuleRequestPanel({
             요청 취소
           </Button>
         </div>
-      ) : available.length === 0 ? (
-        <p className="flex items-center gap-1.5 rounded-md bg-secondary/50 p-3 text-sm">
-          <Check className="h-4 w-4 text-brand" />
-          3개 영역을 모두 사용 중입니다.
+      ) : !canRequest ? (
+        <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
+          기능 추가·변경 요청은 대표 또는 ‘테넌트 설정’ 관리 권한을 위임받은
+          임직원이 보낼 수 있습니다.
         </p>
       ) : (
         <div className="space-y-2">
+          {available.length === 0 ? (
+            <p className="flex items-start gap-1.5 rounded-md bg-secondary/50 p-3 text-sm">
+              <Check className="mt-0.5 h-4 w-4 flex-none text-brand" />
+              <span>
+                3개 영역을 모두 사용 중입니다. 기능 사용 범위·설정에 대해 물어보거나
+                요청할 내용이 있으면 아래에 적어 캐스트로그로 보내세요.
+              </span>
+            </p>
+          ) : (
           <div className="space-y-2">
             {available.map((key) => (
               <label
@@ -172,22 +184,36 @@ export function ModuleRequestPanel({
               </label>
             ))}
           </div>
+          )}
           <Textarea
             rows={2}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="필요한 시점·사유 등 (선택)"
+            placeholder={
+              available.length === 0
+                ? "예: 전문가 섭외에서 지급 품의를 결재 없이 확정하고 싶습니다"
+                : "필요한 시점·사유 등 (선택)"
+            }
           />
           <Button
             className="w-full"
-            disabled={pending || picked.size === 0}
+            // 고를 모듈이 없으면 글로 보내는 요청이므로 내용이 있어야 한다.
+            // 빈 요청은 받는 쪽에서 무엇을 해 달라는 것인지 알 수 없다.
+            disabled={
+              pending ||
+              (picked.size === 0 && note.trim().length < 5)
+            }
             onClick={submit}
           >
-            {pending ? "요청 중..." : "추가 요청 보내기"}
+            {pending
+              ? "보내는 중..."
+              : picked.size > 0
+                ? "추가 요청 보내기"
+                : "캐스트로그에 요청 보내기"}
           </Button>
           <p className="text-[11px] text-muted-foreground">
-            요청은 계약 확인 후 캐스트로그가 활성화합니다. 이 화면에서 결제는
-            일어나지 않습니다.
+            요청은 계약 확인 후 캐스트로그가 처리합니다. 이 화면에서 결제는
+            일어나지 않습니다. 처리 결과와 답변은 이 자리에 그대로 표시됩니다.
           </p>
         </div>
       )}

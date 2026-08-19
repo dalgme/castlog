@@ -134,6 +134,19 @@ export default async function SetupPage({
   );
 }
 
+/**
+ * 설정 화면으로 갈 때 '최초 설정에서 왔다'는 사실을 들려 보낸다.
+ *
+ * 이 표식이 있으면 도착한 화면 위에 복귀 띠가 뜬다(SetupReturnBar). 예전에는
+ * 한 항목을 처리하러 떠나면 돌아올 길이 없어서, 사용자가 사이드바를 뒤지거나
+ * 그냥 포기했다. 체크리스트는 한 번에 끝내라고 만든 것인데 항목마다 길을
+ * 잃으면 그 목적이 무너진다.
+ */
+function setupHref(item: SetupItem): string {
+  const join = item.href.includes("?") ? "&" : "?";
+  return `${item.href}${join}from=setup&item=${encodeURIComponent(item.title)}`;
+}
+
 function SetupGroup({
   title,
   items,
@@ -189,7 +202,7 @@ function SetupGroup({
                     className="ml-auto"
                     disabled={item.ceoOnly && !isCeo}
                   >
-                    <Link href={item.href}>설정하기</Link>
+                    <Link href={setupHref(item)}>설정하기</Link>
                   </Button>
                 )}
               </div>

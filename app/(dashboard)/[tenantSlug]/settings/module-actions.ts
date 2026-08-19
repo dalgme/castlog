@@ -35,15 +35,20 @@ export async function requestModules(
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
 
-  // 설정 위임(settings)을 받은 임원도 요청할 수 있다 — 대표 전용은 아니다.
-  const gate = await requireAdminScope("settings");
+  // '사용 기능 요청'은 계약에 닿는 일이라 별도 스코프로 뗐다 (settings가 포함).
+  const gate = await requireAdminScope("modules");
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const wanted = moduleKeys.filter((k): k is ModuleKey =>
     (MODULE_KEYS as readonly string[]).includes(k)
   );
-  if (wanted.length === 0) {
-    return { ok: false, error: "추가할 기능을 선택하세요." };
+  // 3개 영역을 이미 다 쓰는 회사도 요청할 것이 있다(설정 범위·사용 방식 문의).
+  // 그때는 고를 모듈이 없으므로 글로 받는다 — 대신 내용은 있어야 한다.
+  if (wanted.length === 0 && note.trim().length < 5) {
+    return {
+      ok: false,
+      error: "추가할 기능을 선택하거나, 요청 내용을 적어 주세요.",
+    };
   }
 
   const current = await getTenantModules();
@@ -93,6 +98,7 @@ export async function requestModules(
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");
+  revalidatePath("/[tenantSlug]/admin/org", "page");
   return { ok: true };
 }
 
@@ -103,7 +109,7 @@ export async function cancelModuleRequest(
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
-  const gate = await requireAdminScope("settings");
+  const gate = await requireAdminScope("modules");
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const supabase = createClient();
@@ -131,6 +137,7 @@ export async function cancelModuleRequest(
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");
+  revalidatePath("/[tenantSlug]/admin/org", "page");
   return { ok: true };
 }
 

@@ -115,6 +115,7 @@ export async function createStaffUser(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true, tempPassword, email: data.email };
 }
 
@@ -167,6 +168,7 @@ export async function setStaffActive(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -215,6 +217,7 @@ export async function createPosition(
   }
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -236,6 +239,7 @@ export async function deletePosition(
   }
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -311,6 +315,7 @@ export async function setStaffGrade(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -384,6 +389,7 @@ export async function grantAdminScopes(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -424,6 +430,7 @@ export async function revokeAdminGrant(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -521,6 +528,7 @@ export async function updateStaffProfile(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }
 
@@ -640,5 +648,6 @@ export async function deleteStaffUser(
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
   return { ok: true };
 }

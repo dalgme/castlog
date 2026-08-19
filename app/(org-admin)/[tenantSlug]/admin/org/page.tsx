@@ -5,56 +5,36 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
 import { createAdminClient } from "@/lib/supabase/admin";
 import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { isUserGrade, type UserGrade } from "@/lib/auth/grades";
-import { isAdminScope } from "@/lib/auth/admin-scope-keys";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
-import { buildStaffJoinLink } from "@/lib/routing/links";
+import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
+import {
+  isModuleRequestStatus,
+  parseRequestedModules,
+  requestableModules,
+} from "@/lib/modules/requests";
+
+import {
+  ModuleRequestPanel,
+  type OpenRequest,
+} from "@/app/(dashboard)/[tenantSlug]/settings/module-request-panel";
 
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
-import { CreateStaffDialog } from "./staff-dialog";
 import { CompanyProfileForm } from "./company-profile-form";
 import {
   CategoriesPanel,
   type CategoryRow,
 } from "./categories-panel";
-import {
-  JoinRequestsPanel,
-  type JoinRequestRow,
-} from "./join-requests-panel";
-import { StaffActiveToggle } from "./staff-active-toggle";
-import { StaffEditDialog } from "./staff-edit-dialog";
-import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
 import { RrnRevealPanel } from "./rrn-reveal-panel";
-import { StaffGradeSelect } from "./staff-grade-select";
-import {
-  AdminDelegationPanel,
-  type DelegationRow,
-} from "./admin-delegation-panel";
 
 export const metadata = { title: "기업 관리" };
-
-/** DB 문자열 → UserGrade (제약이 걸려 있지만 타입 경계에서 한 번 좁힌다) */
-function gradeOf(value: string): UserGrade {
-  return isUserGrade(value) ? value : "staff";
-}
 
 /**
  * 기업총괄관리자 — 직원 계정·직급 관리 (실행계획서 단계 8, 공통 기반).
@@ -95,13 +75,13 @@ export default async function OrgAdminPage({
   const sessionUser = await getSessionUser();
   const supabase = createClient();
 
+  // 세무 조회 지정자는 '누구를 지정했나'를 보여야 하므로 직원 이름이 필요하다.
+  // 직원 관리 자체는 '임직원 설정' 탭으로 옮겼다 — 여기서는 조회만 한다.
   const [{ data: staff }, { data: positions }, { data: grants }] =
     await Promise.all([
       supabase
         .from("users")
-        .select(
-          "id, name, email, phone, role, grade, department, position_id, is_active, positions (name)"
-        )
+        .select("id, name, email, grade, is_active")
         .order("created_at", { ascending: true }),
       supabase
         .from("positions")
@@ -112,12 +92,6 @@ export default async function OrgAdminPage({
         .select("id, user_id, role_label")
         .is("revoked_at", null),
     ]);
-
-  const { data: adminGrants } = await supabase
-    .from("tenant_admin_grants")
-    .select("id, user_id, scope, note, granted_at")
-    .is("revoked_at", null)
-    .order("granted_at", { ascending: true });
 
   const staffRows = staff ?? [];
   const positionRows = positions ?? [];
@@ -134,19 +108,11 @@ export default async function OrgAdminPage({
     .map((s) => ({ id: s.id, name: s.name, email: s.email }));
 
   const isCeo = roleFromUser(sessionUser) === "org_admin";
-  const delegationCandidates = staffRows
-    .filter((s) => s.is_active && s.grade !== "ceo")
-    .map((s) => ({ id: s.id, name: s.name, grade: gradeOf(s.grade) }));
-  const delegationRows: DelegationRow[] = (adminGrants ?? [])
-    .filter((g) => isAdminScope(g.scope))
-    .map((g) => ({
-      id: g.id,
-      userId: g.user_id,
-      userName: staffNameById.get(g.user_id) ?? "(직원)",
-      scope: g.scope as DelegationRow["scope"],
-      note: g.note,
-      grantedAt: g.granted_at,
-    }));
+  // 카드마다 필요한 위임이 다르다 — 못 쓰는 카드는 아예 그리지 않는다
+  const canRequestModules = isCeo || scopeSet.modules;
+  const canEditCompany = isCeo || scopeSet.settings;
+  const canViewAudit = isCeo || scopeSet.audit;
+  const canBackup = isCeo || scopeSet.backup;
 
   // 주민번호 열람 키 설정 여부 (deny-all 테이블 — admin client로 존재만 확인)
   const rrnTenantId = tenantIdFromUser(sessionUser);
@@ -160,20 +126,13 @@ export default async function OrgAdminPage({
     rrnKeySet = (count ?? 0) > 0;
   }
 
-  // 기업 가입정보 + 임직원 셀프 가입 신청
-  const [{ data: tenantRow }, { data: joinRecords }] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select(
-        "business_registration_number, representative_name, address, contact_phone, industry, privacy_officer_name, privacy_officer_email, privacy_officer_phone"
-      )
-      .maybeSingle(),
-    supabase
-      .from("staff_join_requests")
-      .select("id, name, email, phone, department, note, created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: true }),
-  ]);
+  // 기업 가입정보
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select(
+      "business_registration_number, representative_name, address, contact_phone, industry, privacy_officer_name, privacy_officer_email, privacy_officer_phone"
+    )
+    .maybeSingle();
   const companyProfile = {
     businessRegistrationNumber: tenantRow?.business_registration_number ?? "",
     representativeName: tenantRow?.representative_name ?? "",
@@ -184,16 +143,25 @@ export default async function OrgAdminPage({
     privacyOfficerEmail: tenantRow?.privacy_officer_email ?? "",
     privacyOfficerPhone: tenantRow?.privacy_officer_phone ?? "",
   };
-  const joinRequests: JoinRequestRow[] = (joinRecords ?? []).map((r) => ({
+
+  // 사용 기능(모듈) 현황 + 추가 요청 — SMS 설정에 있을 이유가 없다.
+  // 계약·기능 조합은 '이 회사가 무엇을 쓰는가'이므로 기업관리에 속한다.
+  const { data: requestRows } = await supabase
+    .from("tenant_module_requests")
+    .select("id, requested_modules, status, decision_note, created_at")
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const moduleRequests: OpenRequest[] = (requestRows ?? []).map((r) => ({
     id: r.id,
-    name: r.name,
-    email: r.email,
-    phone: r.phone,
-    department: r.department,
-    note: r.note,
+    requested: parseRequestedModules(r.requested_modules),
+    status: isModuleRequestStatus(r.status) ? r.status : "pending",
+    decisionNote: r.decision_note,
     createdAt: r.created_at,
   }));
-  const joinUrl = buildStaffJoinLink(params.tenantSlug);
+  const openModuleRequest =
+    moduleRequests.find((r) => r.status === "pending") ?? null;
+  const lastModuleDecision =
+    moduleRequests.find((r) => r.status !== "pending") ?? null;
 
   // 프로젝트 분야 카테고리 + 카테고리별 프로젝트 수(비활성화 판단 근거)
   const [{ data: categoryRecords }, { data: categorizedProjects }] =
@@ -226,46 +194,58 @@ export default async function OrgAdminPage({
       <PageHeader
         title="기업 관리"
         actions={
+          /* 버튼은 위임 스코프에 맞춰 나온다 — 눌러도 막히는 버튼을 보여 주면
+             사용자는 자기 권한이 아니라 시스템을 의심한다 */
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/admin/org/export`}>엑셀</a>
             </Button>
-            <Button asChild variant="outline" size="sm">
-              <a href={`/${params.tenantSlug}/admin/org/security`}>보안 현황</a>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <a href={`/${params.tenantSlug}/admin/org/audit`}>감사로그</a>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <a href={`/${params.tenantSlug}/admin/org/backup`}>데이터 반출</a>
-            </Button>
-            <CreateStaffDialog positions={positionRows} />
+            {canViewAudit && (
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <a href={`/${params.tenantSlug}/admin/org/security`}>보안 현황</a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href={`/${params.tenantSlug}/admin/org/audit`}>감사로그</a>
+                </Button>
+              </>
+            )}
+            {canBackup && (
+              <Button asChild variant="outline" size="sm">
+                <a href={`/${params.tenantSlug}/admin/org/backup`}>데이터 반출</a>
+              </Button>
+            )}
           </div>
         }
       />
       <SettingsTabs
         tenantSlug={params.tenantSlug}
+        showStaff={isCeo || scopeSet.staff}
         showSms={isCeo || scopeSet.sending}
         showOrg
-        showRules={modules.approvals && (isCeo || scopeSet.settings)}
+        showRules={modules.approvals && (isCeo || scopeSet.approvals)}
       />
       <main className="space-y-5 p-5">
+        {canRequestModules && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">
-              임직원 가입 신청 ({joinRequests.length})
-            </CardTitle>
+            <CardTitle className="text-sm">사용 기능 · 추가 요청</CardTitle>
           </CardHeader>
           <CardContent>
-            <JoinRequestsPanel
-              joinUrl={joinUrl}
-              requests={joinRequests}
-              positions={positionRows}
-              canGrantCeo={isCeo}
+            <ModuleRequestPanel
+              available={requestableModules(modules)}
+              activeLabels={MODULE_KEYS.filter((k) => modules[k]).map(
+                (k) => MODULE_LABELS[k]
+              )}
+              openRequest={openModuleRequest}
+              lastDecision={lastModuleDecision}
+              canRequest={canRequestModules}
             />
           </CardContent>
         </Card>
+        )}
 
+        {canEditCompany && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">프로젝트 분야 카테고리</CardTitle>
@@ -274,7 +254,9 @@ export default async function OrgAdminPage({
             <CategoriesPanel categories={categoryRows} />
           </CardContent>
         </Card>
+        )}
 
+        {canEditCompany && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">
@@ -285,98 +267,10 @@ export default async function OrgAdminPage({
             <CompanyProfileForm initial={companyProfile} />
           </CardContent>
         </Card>
+        )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">직원 계정 ({staffRows.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {staffRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                등록된 직원이 없습니다. 우측 상단 ‘직원 추가’로 시작하세요.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>이름</TableHead>
-                      <TableHead>이메일</TableHead>
-                      <TableHead>권한단계</TableHead>
-                      <TableHead>부서</TableHead>
-                      <TableHead>직급</TableHead>
-                      <TableHead>상태</TableHead>
-                      <TableHead className="w-32">관리</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {staffRows.map((member) => (
-                      <TableRow key={member.id}>
-                        <TableCell className="font-medium">{member.name}</TableCell>
-                        <TableCell>{member.email}</TableCell>
-                        <TableCell>
-                          <StaffGradeSelect
-                            userId={member.id}
-                            grade={gradeOf(member.grade)}
-                            disabled={member.id === sessionUser?.id}
-                            disabledReason="본인 권한단계는 변경할 수 없습니다."
-                          />
-                        </TableCell>
-                        <TableCell>{member.department ?? "-"}</TableCell>
-                        <TableCell>{member.positions?.name ?? "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={member.is_active ? "default" : "destructive"}>
-                            {member.is_active ? "활성" : "비활성"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="flex items-center gap-1">
-                            {/* 정보 수정은 본인 것도 연다 — 이름·부서를 고치는
-                                일에 위험이 없다. 등급은 위 선택 상자에서만 */}
-                            <StaffEditDialog
-                              target={{
-                                id: member.id,
-                                name: member.name,
-                                email: member.email,
-                                phone: member.phone,
-                                department: member.department,
-                                positionId: member.position_id,
-                              }}
-                              positions={positionRows}
-                              isSelf={member.id === sessionUser?.id}
-                              isCeoTarget={member.grade === "ceo"}
-                            />
-                            <StaffActiveToggle
-                              userId={member.id}
-                              isActive={member.is_active}
-                              isSelf={member.id === sessionUser?.id}
-                            />
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <AdminDelegationPanel
-          candidates={delegationCandidates}
-          grants={delegationRows}
-          canManage={isCeo}
-        />
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">직급 관리</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PositionsPanel positions={positionRows} />
-          </CardContent>
-        </Card>
-
+        {isCeo && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">
@@ -384,9 +278,14 @@ export default async function OrgAdminPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <TaxAccessGrantsPanel staff={staffOptions} grants={grantRows} />
+            <TaxAccessGrantsPanel
+              staff={staffOptions}
+              grants={grantRows}
+              positionNames={positionRows.map((p) => p.name)}
+            />
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">
