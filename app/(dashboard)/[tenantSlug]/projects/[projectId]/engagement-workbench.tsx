@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import type { SlotRow } from "./slot-table";
+import { PositionRequestDialog } from "./position-request-dialog";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -195,18 +196,24 @@ export function EngagementWorkbench({
 
                         <span className="ml-auto flex items-center gap-1.5">
                           {isOpen && canManage && (
-                            <Button
-                              asChild
-                              size="sm"
-                              variant={planGate.blocked ? "outline" : "default"}
-                            >
-                              <Link
-                                href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
-                              >
-                                전문가 조회 · 섭외 요청
-                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                              </Link>
-                            </Button>
+                            <>
+                              {/* 자리를 보면서 그 자리에서 보낸다 — 페이지를 옮기면
+                                  어느 자리를 채우던 중이었는지 맥락이 끊긴다 */}
+                              <PositionRequestDialog
+                                positionId={p.id}
+                                code={p.code}
+                                tenantSlug={tenantSlug}
+                                projectId={projectId}
+                              />
+                              <Button asChild size="sm" variant="ghost">
+                                <Link
+                                  href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
+                                >
+                                  자세히
+                                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                </Link>
+                              </Button>
+                            </>
                           )}
                           {isOpen && !canManage && (
                             <span className="text-xs text-muted-foreground">

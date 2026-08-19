@@ -23,6 +23,19 @@ export type CandidateConflict = {
   blind: BlindConflicts;
 };
 
+/**
+ * 자사 기준 간단 이력 — "우리와 몇 번 했고, 언제였고, 평이 어땠나".
+ * 다른 기업에서의 이력은 담지 않는다 (§4 테넌트 격리).
+ */
+export type CandidateHistory = {
+  /** 자사에서 수락(계약 성립)된 섭외 건수 */
+  acceptedCount: number;
+  /** 가장 최근 자사 섭외 수행일 (YYYY-MM-DD) */
+  lastEngagedOn: string | null;
+  /** 자사 평가 평균 (10점 만점). 평가가 없으면 null */
+  avgScore: number | null;
+};
+
 export type SlotCandidate = {
   expertId: string;
   name: string;
@@ -33,6 +46,7 @@ export type SlotCandidate = {
   /** 자사 등급 (favorite/vip/caution). 전문가 본인에게는 노출하지 않는다(§4). */
   tag: string | null;
   tagNote: string | null;
+  history: CandidateHistory;
 };
 
 export type SlotContext = {
@@ -178,6 +192,50 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
     (tags ?? []).map((t) => [t.expert_id, { tag: t.tag, note: t.note }])
   );
 
+  // 간단 이력 — 자사 건만. '몇 번 했고 언제였고 평이 어땠나'가 후보를 고를 때
+  // 실제로 보는 것이다. 타사 이력은 담지 않는다 (§4).
+  const [{ data: pastRows }, { data: evaluationRows }] = await Promise.all([
+    admin
+      .from("expert_engagements")
+      .select("expert_id, starts_on")
+      .eq("tenant_id", tenantId)
+      .eq("status", "accepted")
+      .in("expert_id", ids),
+    admin
+      .from("expert_evaluations")
+      .select("expert_id, score")
+      .eq("tenant_id", tenantId)
+      .in("expert_id", ids),
+  ]);
+
+  const historyByExpert = new Map<string, CandidateHistory>();
+  const ensureHistory = (id: string) => {
+    let h = historyByExpert.get(id);
+    if (!h) {
+      h = { acceptedCount: 0, lastEngagedOn: null, avgScore: null };
+      historyByExpert.set(id, h);
+    }
+    return h;
+  };
+  for (const row of pastRows ?? []) {
+    const h = ensureHistory(row.expert_id);
+    h.acceptedCount += 1;
+    if (row.starts_on && (!h.lastEngagedOn || row.starts_on > h.lastEngagedOn)) {
+      h.lastEngagedOn = row.starts_on;
+    }
+  }
+  const scoreSum = new Map<string, { sum: number; count: number }>();
+  for (const row of evaluationRows ?? []) {
+    if (row.score === null) continue;
+    const acc = scoreSum.get(row.expert_id) ?? { sum: 0, count: 0 };
+    acc.sum += row.score;
+    acc.count += 1;
+    scoreSum.set(row.expert_id, acc);
+  }
+  scoreSum.forEach((acc, id) => {
+    if (acc.count > 0) ensureHistory(id).avgScore = acc.sum / acc.count;
+  });
+
   const conflictByExpert = new Map<string, CandidateConflict>();
   const ensure = (id: string) => {
     let c = conflictByExpert.get(id);
@@ -220,6 +278,11 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       conflict: conflictByExpert.get(c.id) ?? { own: [], blind: emptyBlindConflicts() },
       tag: tagByExpert.get(c.id)?.tag ?? null,
       tagNote: tagByExpert.get(c.id)?.note ?? null,
+      history: historyByExpert.get(c.id) ?? {
+        acceptedCount: 0,
+        lastEngagedOn: null,
+        avgScore: null,
+      },
     }))
     .sort((a, b) => {
       // 1) 일정 충돌 적은 후보 먼저 (미수락 경합은 확정보다 가볍게 본다)
