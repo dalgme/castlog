@@ -24,6 +24,7 @@ import {
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
 import { onEngagementPlanApprovalResolved } from "@/lib/integrations/engagement-plans";
+import { onProjectEngagementApprovalResolved } from "@/lib/integrations/project-engagement";
 
 type Session = {
   userId: string;
@@ -281,6 +282,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
     await onProjectClosingApprovalResolved(approvalId, "rejected");
     await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
+    await onProjectEngagementApprovalResolved(approvalId, "rejected");
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -294,6 +296,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       await onPaymentApprovalResolved(approvalId, "approved", null);
       await onProjectClosingApprovalResolved(approvalId, "approved");
       await onEngagementPlanApprovalResolved(approvalId, "approved", null);
+      await onProjectEngagementApprovalResolved(approvalId, "approved");
     }
   }
 

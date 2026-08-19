@@ -204,6 +204,46 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       .eq("shared_with_tenants", true),
   ]);
 
+  // 임의 배정 겹침 — 아직 요청이 나가지 않았어도 우리 회사가 이미 그 날 그
+  // 전문가를 쓰기로 정해 둔 자리다. 이걸 안 보여 주면 같은 사람을 두 사업에
+  // 배정해 놓고 나중에 한쪽을 취소하게 된다.
+  //
+  // 두 번에 나눠 읽는다 — 타입 정의에 위치↔세션 관계가 없어 중첩 조회가 안 된다.
+  const { data: assignedRows } = await admin
+    .from("engagement_slot_positions")
+    .select("assigned_expert_id, slot_id")
+    .eq("status", "assigned")
+    .in("assigned_expert_id", ids);
+
+  const assignedSlotIds = Array.from(
+    new Set((assignedRows ?? []).map((a) => a.slot_id))
+  );
+  const { data: assignedSlots } = assignedSlotIds.length
+    ? await admin
+        .from("engagement_slots")
+        .select(
+          "id, tenant_id, project_id, slot_date, starts_time, ends_time, session_name, role_description, location_name"
+        )
+        .in("id", assignedSlotIds)
+        // 다른 회사의 배정은 애초에 담지 않는다 — 배정은 내부 결정이라
+        // 상대 회사가 알 이유가 없다 (§4: 건수조차 노출하지 않는다)
+        .eq("tenant_id", tenantId)
+    : { data: [] };
+  const assignedSlotById = new Map(
+    (assignedSlots ?? []).map((slot) => [slot.id, slot])
+  );
+
+  // 사업명은 따로 읽는다 (타입 정의에 세션↔프로젝트 관계가 없다)
+  const assignedProjectIds = Array.from(
+    new Set((assignedSlots ?? []).map((slot) => slot.project_id))
+  );
+  const { data: assignedProjects } = assignedProjectIds.length
+    ? await admin.from("projects").select("id, name").in("id", assignedProjectIds)
+    : { data: [] };
+  const assignedProjectName = new Map(
+    (assignedProjects ?? []).map((pr) => [pr.id, pr.name])
+  );
+
   // 자사 등급 태그 — 후보군 정렬·표시에 쓴다 (테넌트 격리)
   const { data: tags } = await admin
     .from("expert_tenant_tags")
@@ -291,6 +331,25 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
       if (bucket) c.blind[bucket] += 1;
     }
   }
+  for (const a of assignedRows ?? []) {
+    const slot = assignedSlotById.get(a.slot_id);
+    const expertId = a.assigned_expert_id;
+    if (!slot || !expertId) continue;
+    if (!overlapsDay(from, to, slot.slot_date, slot.slot_date)) continue;
+    ensure(expertId).own.push({
+      kind: "assigned",
+      projectId: slot.project_id,
+      projectName: assignedProjectName.get(slot.project_id) ?? null,
+      sessionName: slot.session_name,
+      roleDescription: slot.role_description,
+      startsOn: slot.slot_date,
+      startsTime: slot.starts_time,
+      endsTime: slot.ends_time,
+      locationName: slot.location_name,
+      otherProject: slot.project_id !== ctx.projectId,
+    });
+  }
+
   for (const e of externals ?? []) {
     if (!overlapsDay(from, to, e.starts_at, e.ends_at)) continue;
     ensure(e.expert_id).blind.personal += 1;

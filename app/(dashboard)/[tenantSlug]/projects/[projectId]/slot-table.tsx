@@ -37,6 +37,8 @@ export type SlotPositionRow = {
   engagementId: string | null;
   /** 긴급 취소로 다시 비게 된 자리라면 취소한 전문가 이름 */
   canceledExpertName: string | null;
+  /** 임의 배정된 전문가 이름 (요청 전 내부 결정) */
+  assignedExpertName: string | null;
 };
 
 export type SlotNoticeData = {
@@ -231,13 +233,12 @@ export function SlotTable({
                 // 미섭외 자리는 그 자리에서 바로 섭외를 시작한다 — '전문가 등록'
                 // 탭의 버튼과 같은 팝업이다. 같은 일에 두 가지 경로를 두면
                 // 어느 쪽이 진짜인지 헷갈린다.
-                p.status === "open" && canManage ? (
+                (p.status === "open" || p.status === "assigned") && canManage ? (
                   <PositionRequestDialog
                     key={p.id}
                     positionId={p.id}
                     code={p.code}
-                    tenantSlug={tenantSlug}
-                    projectId={projectId}
+                    currentExpertName={p.assignedExpertName}
                     variant="chip"
                   />
                 ) : (
