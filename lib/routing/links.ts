@@ -30,6 +30,17 @@ export function buildTenantPath(tenantSlug: string, subPath = ""): string {
 }
 
 /**
+ * 기업 전용 진입 주소 (castlog.kr/{tenant-slug}) — 사내 공지·명함·즐겨찾기용 절대 URL.
+ *
+ * 회사가 '우리 주소'로 알리는 값이다. 도메인은 반드시 설정에서 온다 — 여기에
+ * castlog.kr을 박아 두면 나중에 서브도메인·자체 도메인으로 옮길 때
+ * 이미 배포된 안내문이 전부 죽는다.
+ */
+export function buildTenantHomeLink(tenantSlug: string): string {
+  return `${getBaseUrl()}/${encodeURIComponent(tenantSlug)}`;
+}
+
+/**
  * 임직원 가입 신청 링크 (/join/{tenant-slug}) — 사내 공유용 절대 URL.
  * 테넌트 경로 밖이다: 아직 계정이 없는 사람이 여는 화면이라 인증 게이트 안에
  * 두면 예외를 뚫어야 하고, 예외는 곧 구멍이 된다.

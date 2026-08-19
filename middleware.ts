@@ -66,6 +66,19 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // 2-1) 기업 전용 진입 주소 — /{tenant-slug} 딱 한 칸.
+  //      그 아래(/{slug}/…)는 전부 업무 화면이라 인증이 필요하지만, 루트 한 칸은
+  //      회사 이름·로고와 '들어가는 문'만 보여 주는 공개 화면이다. 회사 주소를
+  //      눌렀는데 로그인 화면으로 튕기면 그건 '우리 회사 주소'가 아니다.
+  //      화면 자체가 조직 정보를 내보내지 않으므로 열어도 안전하다.
+  {
+    const parts = pathname.split("/").filter(Boolean);
+    const only = parts.length === 1 ? parts[0] : undefined;
+    if (only && isTenantSlugSegment(only)) {
+      return response;
+    }
+  }
+
   // 3) 인증 게이트 — 미로그인 시 대상별 로그인 페이지로 (레이아웃 가드와 이중 방어)
   if (!user) {
     const url = request.nextUrl.clone();
