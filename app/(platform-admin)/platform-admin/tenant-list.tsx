@@ -95,9 +95,16 @@ export function TenantList({ rows }: { rows: TenantAdminRow[] }) {
                 <span className="text-sm font-bold text-brand-navy">
                   {tenant.name}
                 </span>
-                <code className="rounded bg-secondary px-1.5 py-0.5 text-[11px]">
-                  {tenant.slug}
-                </code>
+                {/* 슬러그 = 그 회사의 전용 주소. 눌러서 진입 화면을 그대로 확인한다 */}
+                <a
+                  href={`/${tenant.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="이 회사의 전용 진입 주소 열기"
+                  className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px] underline-offset-2 hover:text-brand hover:underline"
+                >
+                  /{tenant.slug}
+                </a>
                 <Badge
                   variant={tenant.status === "active" ? "default" : "destructive"}
                 >

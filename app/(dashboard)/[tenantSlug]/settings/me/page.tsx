@@ -22,8 +22,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
+import { buildStaffJoinLink, buildTenantHomeLink } from "@/lib/routing/links";
+
 import { ProfileForm } from "./profile-form";
 import { TenantLogoForm } from "./logo-form";
+import { CompanyAddressCard } from "./company-address-card";
 
 export const metadata = { title: "내 설정" };
 
@@ -84,6 +87,18 @@ export default async function MySettingsPage({
   const grantedScopes = ADMIN_SCOPES.filter((s) => scopes[s]);
   const canManageSending = isCeo || scopes.sending;
   const canRequestModules = isCeo || scopes.settings;
+
+  // base URL 미설정(프리뷰 배포)에서는 주소 카드를 숨긴다 — 틀린 주소를 보여
+  // 주느니 안 보여 주는 편이 낫다. 인쇄·공지에 그대로 옮겨 적히는 값이다.
+  let addresses: { home: string; join: string } | null = null;
+  try {
+    addresses = {
+      home: buildTenantHomeLink(params.tenantSlug),
+      join: buildStaffJoinLink(params.tenantSlug),
+    };
+  } catch {
+    addresses = null;
+  }
 
   return (
     <div>
@@ -167,6 +182,20 @@ export default async function MySettingsPage({
             <TenantLogoForm currentSrc={logoSrc} canEdit={canRequestModules} />
           </CardContent>
         </Card>
+
+        {addresses && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">우리 회사 주소</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CompanyAddressCard
+                homeUrl={addresses.home}
+                joinUrl={addresses.join}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">
