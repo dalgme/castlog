@@ -166,6 +166,56 @@ export async function createEngagementAcceptance(
 }
 
 /**
+ * 수락서의 서명·날인 스냅샷을 다시 뜬다.
+ *
+ * 수락서는 수락(계약 성립) 시점에 만들어지는데, 그때 서명을 등록하지 않은
+ * 전문가는 서명 칸이 빈 채로 문서가 만들어진다. 승인(서명) 화면에서 그 자리에
+ * 그리면 그 순간의 서명을 문서에 박아야 한다.
+ *
+ * 이미 서명이 박힌 수락서는 건드리지 않는다 — 보낸 문서의 서명이 나중에 다른
+ * 그림으로 바뀌면 안 된다.
+ */
+export async function refreshAcceptanceSignatureSnapshot(
+  acceptanceId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+
+  const { data: acceptance } = await admin
+    .from("engagement_acceptances")
+    .select("id, tenant_id, engagement_id, expert_id, has_signature")
+    .eq("id", acceptanceId)
+    .maybeSingle();
+  if (!acceptance) return false;
+  if (acceptance.has_signature) return true;
+
+  const base = `acceptances/${acceptance.tenant_id}/${acceptance.engagement_id}`;
+  const signaturePath = await snapshotSignatureImage(
+    admin,
+    acceptance.expert_id,
+    "signature",
+    `${base}-signature.png`
+  );
+  const sealPath = await snapshotSignatureImage(
+    admin,
+    acceptance.expert_id,
+    "seal",
+    `${base}-seal.png`
+  );
+  if (!signaturePath && !sealPath) return false;
+
+  await admin
+    .from("engagement_acceptances")
+    .update({
+      signature_path: signaturePath,
+      seal_path: sealPath,
+      has_signature: signaturePath !== null,
+    })
+    .eq("id", acceptanceId);
+
+  return signaturePath !== null;
+}
+
+/**
  * 프로젝트 첨부(수락서용)를 각 수락서에 스냅샷 복사한다.
  *
  * 왜 복사하는가: 프로젝트 첨부를 지우면 스토리지 파일까지 지워진다. 수락서가
