@@ -45,6 +45,8 @@ export function TravelForm({
   const [otherCost, setOtherCost] = useState("");
   const [note, setNote] = useState("");
   const [autoSource, setAutoSource] = useState<string | null>(null);
+  // 자동 계산 실패 사유 — 화면에 남겨 두어야 연결 문제를 고칠 수 있다
+  const [autoIssues, setAutoIssues] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
 
@@ -83,11 +85,13 @@ export function TravelForm({
         filled.push("유가");
       }
       setAutoSource(res.source);
+      setAutoIssues(res.issues);
       toast({
+        variant: filled.length > 0 ? "default" : "destructive",
         description:
           filled.length > 0
             ? `${filled.join("·")} 자동 입력됨. 나머지는 직접 확인하세요.`
-            : "자동 계산이 설정되지 않아 수동 입력이 필요합니다.",
+            : (res.issues[0] ?? "자동 계산이 되지 않아 수동 입력이 필요합니다."),
       });
     });
   }
@@ -218,6 +222,17 @@ export function TravelForm({
         <p className="text-xs text-muted-foreground">
           거리·유가 자동 계산 API가 설정되지 않았습니다. 아래 값을 직접 입력하세요.
         </p>
+      )}
+      {autoIssues.length > 0 && (
+        <div className="rounded-md bg-amber-50 p-2.5 text-xs text-amber-900">
+          <p className="font-semibold">자동 계산되지 않은 항목</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {autoIssues.map((issue, i) => (
+              <li key={i}>{issue}</li>
+            ))}
+          </ul>
+          <p className="mt-1">해당 값은 아래에서 직접 입력해 주세요.</p>
+        </div>
       )}
 
       <div className="grid grid-cols-3 gap-3">

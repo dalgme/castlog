@@ -2411,6 +2411,66 @@ export type Database = {
         }
         Relationships: []
       }
+      tax_access_requests: {
+        Row: {
+          approval_id: string | null
+          consumed_at: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          expert_id: string
+          id: string
+          is_over_limit: boolean
+          over_limit_approved_by: string | null
+          over_limit_reason: string | null
+          project_id: string | null
+          reason: string
+          reauth_at: string | null
+          requested_by: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          approval_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expert_id: string
+          id?: string
+          is_over_limit?: boolean
+          over_limit_approved_by?: string | null
+          over_limit_reason?: string | null
+          project_id?: string | null
+          reason: string
+          reauth_at?: string | null
+          requested_by?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          approval_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expert_id?: string
+          id?: string
+          is_over_limit?: boolean
+          over_limit_approved_by?: string | null
+          over_limit_reason?: string | null
+          project_id?: string | null
+          reason?: string
+          reauth_at?: string | null
+          requested_by?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       tax_access_logs: {
         Row: {
           access_type: string
@@ -2419,6 +2479,8 @@ export type Database = {
           created_at: string
           expert_id: string
           id: string
+          is_over_limit: boolean
+          over_limit_reason: string | null
           project_id: string | null
           project_name: string | null
           reason: string
@@ -2432,6 +2494,8 @@ export type Database = {
           created_at?: string
           expert_id: string
           id?: string
+          is_over_limit?: boolean
+          over_limit_reason?: string | null
           project_id?: string | null
           project_name?: string | null
           reason: string
@@ -2445,6 +2509,8 @@ export type Database = {
           created_at?: string
           expert_id?: string
           id?: string
+          is_over_limit?: boolean
+          over_limit_reason?: string | null
           project_id?: string | null
           project_name?: string | null
           reason?: string
@@ -2463,6 +2529,9 @@ export type Database = {
       }
       platform_inquiries: {
         Row: {
+          marketing_consent_at: string | null
+          privacy_consent_at: string | null
+          terms_version: string | null
           company_name: string
           contact_name: string
           created_at: string
@@ -2477,6 +2546,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          marketing_consent_at?: string | null
+          privacy_consent_at?: string | null
+          terms_version?: string | null
           company_name: string
           contact_name: string
           created_at?: string
@@ -2491,6 +2563,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          marketing_consent_at?: string | null
+          privacy_consent_at?: string | null
+          terms_version?: string | null
           company_name?: string
           contact_name?: string
           created_at?: string
@@ -2732,6 +2807,68 @@ export type Database = {
           },
         ]
       }
+      project_action_requests: {
+        Row: {
+          action_type: string
+          consumed_at: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          is_practice: boolean
+          project_id: string
+          request_note: string | null
+          requested_by: string
+          status: string
+          target_id: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Insert: {
+          action_type: string
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          is_practice?: boolean
+          project_id: string
+          request_note?: string | null
+          requested_by: string
+          status?: string
+          target_id?: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Update: {
+          action_type?: string
+          consumed_at?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          is_practice?: boolean
+          project_id?: string
+          request_note?: string | null
+          requested_by?: string
+          status?: string
+          target_id?: string | null
+          target_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_action_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_assignments: {
         Row: {
           assigned_by: string | null
@@ -2762,8 +2899,45 @@ export type Database = {
         }
         Relationships: []
       }
+      project_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          slug: string | null
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          slug?: string | null
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string | null
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
+          category_id: string | null
           is_practice: boolean
           business_year: number
           client_name: string | null
@@ -2784,6 +2958,7 @@ export type Database = {
           budget_amount: number | null
         }
         Insert: {
+          category_id?: string | null
           is_practice?: boolean
           business_year: number
           client_name?: string | null
@@ -2804,6 +2979,7 @@ export type Database = {
           budget_amount?: number | null
         }
         Update: {
+          category_id?: string | null
           is_practice?: boolean
           business_year?: number
           client_name?: string | null
@@ -3334,8 +3510,74 @@ export type Database = {
           },
         ]
       }
+      staff_join_requests: {
+        Row: {
+          created_at: string
+          created_user_id: string | null
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          department: string | null
+          email: string
+          id: string
+          name: string
+          note: string | null
+          phone: string | null
+          privacy_agreed_at: string
+          status: string
+          tenant_id: string
+          terms_agreed_at: string
+          terms_version: string
+        }
+        Insert: {
+          created_at?: string
+          created_user_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          department?: string | null
+          email: string
+          id?: string
+          name: string
+          note?: string | null
+          phone?: string | null
+          privacy_agreed_at?: string
+          status?: string
+          tenant_id: string
+          terms_agreed_at?: string
+          terms_version: string
+        }
+        Update: {
+          created_at?: string
+          created_user_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          department?: string | null
+          email?: string
+          id?: string
+          name?: string
+          note?: string | null
+          phone?: string | null
+          privacy_agreed_at?: string
+          status?: string
+          tenant_id?: string
+          terms_agreed_at?: string
+          terms_version?: string
+        }
+        Relationships: []
+      }
       tenants: {
         Row: {
+          address: string | null
+          contact_phone: string | null
+          industry: string | null
+          privacy_officer_email: string | null
+          privacy_officer_name: string | null
+          privacy_officer_phone: string | null
+          representative_name: string | null
+          terms_agreed_at: string | null
+          terms_version: string | null
           modules_changed_at: string | null
           brand_color: string | null
           business_registration_number: string | null
@@ -3352,6 +3594,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          privacy_officer_email?: string | null
+          privacy_officer_name?: string | null
+          privacy_officer_phone?: string | null
+          representative_name?: string | null
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
@@ -3368,6 +3619,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          privacy_officer_email?: string | null
+          privacy_officer_name?: string | null
+          privacy_officer_phone?: string | null
+          representative_name?: string | null
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           modules_changed_at?: string | null
           brand_color?: string | null
           business_registration_number?: string | null
@@ -3565,6 +3825,9 @@ export type Database = {
       }
       users: {
         Row: {
+          joined_via: string
+          terms_agreed_at: string | null
+          terms_version: string | null
           created_at: string
           department: string | null
           email: string
@@ -3579,6 +3842,9 @@ export type Database = {
           grade: string
         }
         Insert: {
+          joined_via?: string
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           created_at?: string
           department?: string | null
           email: string
@@ -3593,6 +3859,9 @@ export type Database = {
           grade?: string
         }
         Update: {
+          joined_via?: string
+          terms_agreed_at?: string | null
+          terms_version?: string | null
           created_at?: string
           department?: string | null
           email?: string

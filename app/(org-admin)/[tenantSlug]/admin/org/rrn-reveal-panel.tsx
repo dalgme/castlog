@@ -6,6 +6,7 @@ import { ShieldAlert, Eye, Timer, FileDown } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,7 @@ import { RRN_ACCESS_REASONS, type RrnAccessReason } from "@/lib/integrations/rrn
 import {
   listRevealTargets,
   getRevealMaterial,
+  requestOverLimitAccess,
   type RevealTarget,
   type RevealAccessType,
 } from "./tax-reveal-actions";
@@ -44,6 +46,9 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
   const [info, setInfo] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
+  // 한도 초과 — 차단이 아니라 사유 기재 + 대표 승인으로 넘어가는 분기(§5)
+  const [overLimit, setOverLimit] = useState<{ usedCount: number } | null>(null);
+  const [overLimitReason, setOverLimitReason] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -89,10 +94,28 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
     URL.revokeObjectURL(url);
   };
 
+  const submitOverLimit = () => {
+    if (!grantId || !reason) return;
+    setError(null);
+    setInfo(null);
+    startTransition(async () => {
+      const r = await requestOverLimitAccess(grantId, reason, overLimitReason);
+      if (!r.ok) setError(r.error);
+      else {
+        setOverLimit(null);
+        setOverLimitReason("");
+        setInfo(
+          "초과 조회 요청을 접수했습니다. 대표 승인 후 다시 조회하세요. 승인 1건은 조회 1회분입니다."
+        );
+      }
+    });
+  };
+
   const run = (accessType: RevealAccessType) => {
     setError(null);
     setInfo(null);
     setRevealed(null);
+    setOverLimit(null);
     if (!grantId) return setError("전문가를 선택하세요.");
     if (!reason) return setError("조회 사유를 선택하세요.");
     if (!accountPassword) return setError("재인증: 계정 비밀번호를 입력하세요.");
@@ -101,8 +124,12 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
       const res = await getRevealMaterial(grantId, reason, accountPassword, accessType);
       if (!res.ok) {
         setError(res.error);
+        if (res.needsOverLimitApproval) {
+          setOverLimit({ usedCount: res.usedCount ?? 0 });
+        }
         return;
       }
+      setOverLimit(null);
       try {
         const rrn = await decryptRrnEnvelope({
           wrappedPrivateKey: res.material.wrappedPrivateKey,
@@ -210,6 +237,25 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
         <Alert>
           <AlertDescription>{info}</AlertDescription>
         </Alert>
+      )}
+
+      {overLimit && (
+        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs leading-relaxed text-amber-900">
+            이 프로젝트에서 이미 {overLimit.usedCount}회 조회했습니다. 초과 조회는
+            막지 않지만 <b>사유를 남기고 대표 승인</b>을 받아야 하며, 조회 시 전문가
+            본인에게 초과 사실이 통지됩니다.
+          </p>
+          <Textarea
+            rows={2}
+            value={overLimitReason}
+            onChange={(e) => setOverLimitReason(e.target.value)}
+            placeholder="초과 조회 사유 (예: 국세청 경정청구 대응으로 지급명세서 재작성 필요)"
+          />
+          <Button size="sm" onClick={submitOverLimit} disabled={pending}>
+            대표 승인 요청
+          </Button>
+        </div>
       )}
 
       {revealed && (

@@ -16,11 +16,12 @@ import {
   sendEngagementSms,
 } from "@/lib/integrations/engagement-sms";
 import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
+import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { getTenantModules } from "@/lib/modules/server";
 
 export type RequestFromPositionResult =
   | { ok: true; url: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; needsPmApproval?: true };
 
 const MANAGER_ROLES = ["org_admin", "manager"];
 
@@ -72,6 +73,20 @@ export async function requestEngagementForPosition(input: {
   const modules = await getTenantModules();
   const planGate = await assertEngagementAllowed(slot.project_id, modules.approvals);
   if (!planGate.ok) return planGate;
+
+  // 부PM 실행 게이트 — PM 승인 1건을 소진한다. PM·대표·이사는 그대로 통과.
+  const deputyGate = await gateDeputyAction({
+    projectId: slot.project_id,
+    actionType: "engagement.request",
+    targetId: position.id,
+  });
+  if (!deputyGate.ok) {
+    return {
+      ok: false,
+      error: deputyGate.error,
+      ...(deputyGate.needsPmApproval ? { needsPmApproval: true as const } : {}),
+    };
+  }
 
   // 활성 연결 확인
   const { data: link } = await supabase

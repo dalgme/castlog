@@ -1,4 +1,7 @@
 import Link from "next/link";
+
+import { LandingHeaderActions } from "@/components/layout/landing-header-actions";
+
 import "./landing.css";
 
 export const metadata = {
@@ -8,7 +11,7 @@ export const metadata = {
 };
 
 /** 랜딩페이지 (Claude Design 핸드오프 v2 시안) — 정적 index.html에서 포팅 */
-export default function LandingPage() {
+export default async function LandingPage() {
   return (
     <>
       
@@ -57,10 +60,7 @@ export default function LandingPage() {
             <a href="#support">고객지원</a>
           </nav>
       
-          <div className="header-actions">
-            <Link className="btn-login" href="/login">로그인</Link>
-            <Link className="btn-trial" href="/contact?type=trial&source=header">무료 체험 신청</Link>
-          </div>
+          <LandingHeaderActions />
         </div>
       </header>
       
@@ -360,9 +360,8 @@ export default function LandingPage() {
           </div>
           <div className="footer-col">
             <div className="footer-head">법적 고지</div>
-            <a href="#privacy">개인정보처리방침</a>
-            <a href="#terms">이용약관</a>
-            <a href="#efin">전자금융거래 약관</a>
+            <Link href="/legal/privacy">개인정보처리방침</Link>
+            <Link href="/legal/terms">이용약관</Link>
           </div>
         </div>
         <div className="container footer-bottom">

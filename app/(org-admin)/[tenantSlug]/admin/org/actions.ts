@@ -91,8 +91,10 @@ export async function createStaffUser(
     name: data.name,
     email: data.email,
     grade: data.grade, // role은 DB 트리거가 파생시킨다
+    phone: data.phone || null,
     department: data.department || null,
     position_id: data.positionId || null,
+    joined_via: "admin_created",
   });
 
   if (profileError) {

@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { SettingsTabs } from "@/components/layout/settings-tabs";
+
 import { RuleDialog, type RulePrefill } from "./rule-dialog";
 import { RuleDeactivateButton } from "./rule-deactivate-button";
 
@@ -149,6 +151,12 @@ export default async function ApprovalRulesPage({
             />
           </div>
         }
+      />
+      <SettingsTabs
+        tenantSlug={params.tenantSlug}
+        showSms
+        showOrg
+        showRules
       />
       <main className="space-y-5 p-5">
         {activeRules.length === 0 ? (

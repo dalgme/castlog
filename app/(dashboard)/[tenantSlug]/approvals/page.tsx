@@ -140,6 +140,12 @@ export default async function ApprovalsPage({
   });
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 
+  // 현황 요약 — 목록만으로는 "지금 회사 결재가 어떤 상태인가"가 안 보인다.
+  const inProgress = rows.filter((a) => a.status === "in_progress");
+  const approved = rows.filter((a) => a.status === "approved");
+  const rejected = rows.filter((a) => a.status === "rejected");
+  const inProgressAmount = inProgress.reduce((sum, a) => sum + (a.amount ?? 0), 0);
+
   const renderTable = (list: ApprovalRow[]) => (
     <div className="overflow-x-auto">
       <Table>
@@ -212,6 +218,18 @@ export default async function ApprovalsPage({
         }
       />
       <main className="space-y-5 p-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <StatTile
+            label="내 결재 차례"
+            value={`${myTurn.length}건`}
+            highlight={myTurn.length > 0}
+          />
+          <StatTile label="진행 중" value={`${inProgress.length}건`} />
+          <StatTile label="진행 중 금액" value={formatKrw(inProgressAmount)} />
+          <StatTile label="승인 완료" value={`${approved.length}건`} />
+          <StatTile label="반려" value={`${rejected.length}건`} />
+        </div>
+
         {myTurn.length > 0 && (
           <Card className="border-brand/40">
             <CardHeader className="pb-3">
@@ -255,6 +273,35 @@ export default async function ApprovalsPage({
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+/** 결재 현황 타일 — 최근 100건 기준 (목록과 같은 범위) */
+function StatTile({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={
+        "rounded-lg border bg-white p-3 " + (highlight ? "border-brand/50" : "")
+      }
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={
+          "mt-1 text-lg font-bold tabular-nums " +
+          (highlight ? "text-brand" : "text-brand-navy")
+        }
+      >
+        {value}
+      </p>
     </div>
   );
 }

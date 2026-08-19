@@ -114,6 +114,16 @@ i, em { font-style: normal; }
   color: var(--navy);
 }
 .btn-login:hover { border-color: var(--blue); color: var(--blue); }
+/* 로그인 상태 표시 — 좁은 화면에서는 버튼만 남긴다 */
+.header-user {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #5A6577;
+}
+@media (max-width: 900px) { .header-user { display: none; } }
 .btn-trial {
   display: inline-flex;
   align-items: center;

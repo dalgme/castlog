@@ -59,6 +59,8 @@ export const staffCreateSchema = z.object({
   grade: z.enum(USER_GRADES, {
     errorMap: () => ({ message: "권한단계를 선택하세요." }),
   }),
+  // 업무 연락·본인확인에 쓴다. users.phone 컬럼은 처음부터 있었는데 폼에만 없었다.
+  phone: z.string().trim().max(30, "30자 이내로 입력하세요.").optional().or(z.literal("")),
   department: z.string().max(50, "50자 이내로 입력하세요.").optional(),
   positionId: z.string().uuid().optional().or(z.literal("")),
 });

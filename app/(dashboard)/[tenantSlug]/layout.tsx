@@ -3,12 +3,15 @@ import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { getPendingModuleOnboarding } from "@/lib/modules/onboarding";
 import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
-import { getAdminScopes } from "@/lib/auth/admin-scopes";
+import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
 import { practiceFromUser } from "@/lib/auth/tenant";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AlertBanner } from "@/components/layout/alert-banner";
 import { PracticeBar } from "@/components/layout/practice-bar";
 import { ModuleOnboarding } from "@/components/layout/module-onboarding";
+import { SetupBanner } from "@/components/layout/setup-banner";
+import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
+import { tenantIdFromUser } from "@/lib/auth/tenant";
 
 /** 테넌트 대시보드 공통 레이아웃 — /{tenant-slug}/... (미들웨어 인증 게이트와 이중 방어) */
 export default async function TenantDashboardLayout({
@@ -24,10 +27,11 @@ export default async function TenantDashboardLayout({
     "manager",
     "staff",
   ]);
-  const [modules, adminScopes, pendingOnboarding] = await Promise.all([
+  const [modules, adminScopes, pendingOnboarding, payments] = await Promise.all([
     getTenantModules(),
     getAdminScopes(),
     getPendingModuleOnboarding(),
+    canManagePayments(),
   ]);
   const role = roleFromUser(user);
   // 연습모드 — 하위 계정(ceo·이사·팀장·대리·주임·사원) 전부에게 열린다.
@@ -40,15 +44,31 @@ export default async function TenantDashboardLayout({
     role === "platform_admin" ||
     Object.values(adminScopes).some(Boolean);
 
+  // 최초 설정 안내 — 설정을 실제로 할 수 있는 사람에게만 띄운다.
+  // 연습모드에서는 띄우지 않는다(연습 환경의 설정 상태가 아니다).
+  const tenantId = tenantIdFromUser(user);
+  const setup =
+    !practice && isOrgAdmin && tenantId
+      ? await getSetupStatus(tenantId, params.tenantSlug, modules)
+      : null;
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
         tenantSlug={params.tenantSlug}
         modules={modules}
         isOrgAdmin={isOrgAdmin}
+        canManagePayments={payments}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
         {canPractice && <PracticeBar practice={practice} />}
+        {setup && (
+          <SetupBanner
+            tenantSlug={params.tenantSlug}
+            requiredRemaining={setup.requiredRemaining}
+            recommendedRemaining={setup.recommendedRemaining}
+          />
+        )}
         {/* 새로 켜진 모듈 안내 — 확인하면 사용자별로 사라진다 (CLAUDE.md §1-2-8) */}
         {!practice &&
           pendingOnboarding.map((key) => (

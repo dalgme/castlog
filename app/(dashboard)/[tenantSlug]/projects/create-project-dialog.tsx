@@ -29,12 +29,26 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createProject } from "./actions";
 
 /** 프로젝트 생성 다이얼로그 — 생성 시 기본 21스텝이 복사된다 */
-export function CreateProjectDialog({ tenantSlug }: { tenantSlug: string }) {
+export function CreateProjectDialog({
+  tenantSlug,
+  categories,
+}: {
+  tenantSlug: string;
+  /** 대표가 설정한 분야별 카테고리 (활성만) */
+  categories: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -46,6 +60,7 @@ export function CreateProjectDialog({ tenantSlug }: { tenantSlug: string }) {
       name: "",
       businessYear: String(new Date().getFullYear()),
       clientName: "",
+      categoryId: "",
       code: "",
       startsOn: "",
       endsOn: "",
@@ -149,6 +164,38 @@ export function CreateProjectDialog({ tenantSlug }: { tenantSlug: string }) {
                   <FormControl>
                     <Input placeholder="OO창조경제혁신센터" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="categoryId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>분야 카테고리 (선택)</FormLabel>
+                  {categories.length === 0 ? (
+                    <p className="rounded-md bg-secondary/50 p-2.5 text-xs text-muted-foreground">
+                      아직 등록된 카테고리가 없습니다. 대표 계정의 기업 관리
+                      화면에서 ‘창업 · 교육행사 · 엑셀러레이터’처럼 회사가 쓰는
+                      분야를 먼저 등록하세요.
+                    </p>
+                  ) : (
+                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="분야 선택" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

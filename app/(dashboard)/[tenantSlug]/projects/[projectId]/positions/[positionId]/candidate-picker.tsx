@@ -18,6 +18,7 @@ import {
 } from "@/lib/integrations/schedule-conflicts";
 
 import { requestEngagementForPosition } from "./position-actions";
+import { submitActionRequest } from "../../action-request-actions";
 
 /**
  * 넘버링코드별 섭외 후보군 — 일정 중복이 자동 검증되어 표시된다.
@@ -27,10 +28,14 @@ export function CandidatePicker({
   positionId,
   candidates,
   defaultProgramName,
+  tenantSlug,
+  projectId,
 }: {
   positionId: string;
   candidates: SlotCandidate[];
   defaultProgramName: string;
+  tenantSlug: string;
+  projectId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -44,6 +49,10 @@ export function CandidatePicker({
   const [eventSummary, setEventSummary] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
   const [deadline, setDeadline] = useState("");
+  // 부PM이 PM 승인 없이 실행을 시도한 경우 — 그 자리에서 승인을 요청한다.
+  const [needsPmApproval, setNeedsPmApproval] = useState(false);
+  const [approvalNote, setApprovalNote] = useState("");
+  const [requested, setRequested] = useState(false);
 
   // 후보가 수십 명만 돼도 스크롤로 찾기 어렵다. 서버에서 이미 정렬(충돌 없는 순
   // → 등급 → 이름)해 두었으므로 여기서는 순서를 건드리지 않고 걸러내기만 한다.
@@ -69,10 +78,30 @@ export function CandidatePicker({
         specialNotes,
         responseDeadline: deadline || undefined,
       });
-      if (!r.ok) setError(r.error);
-      else {
+      if (!r.ok) {
+        setError(r.error);
+        setNeedsPmApproval(r.needsPmApproval === true);
+      } else {
         setUrl(r.url);
         router.refresh();
+      }
+    });
+  };
+
+  const askPm = () => {
+    setError(null);
+    startTransition(async () => {
+      const r = await submitActionRequest({
+        tenantSlug,
+        projectId,
+        actionType: "engagement.request",
+        targetId: positionId,
+        note: approvalNote,
+      });
+      if (!r.ok) setError(r.error);
+      else {
+        setNeedsPmApproval(false);
+        setRequested(true);
       }
     });
   };
@@ -110,6 +139,32 @@ export function CandidatePicker({
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {needsPmApproval && (
+        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs leading-relaxed text-amber-900">
+            부PM은 PM과 같은 일을 하지만, 전문가에게 직접 나가는 요청은 PM 승인을
+            먼저 받습니다. 승인되면 이 화면에서 직접 발송하시면 됩니다.
+          </p>
+          <Textarea
+            rows={2}
+            value={approvalNote}
+            onChange={(e) => setApprovalNote(e.target.value)}
+            placeholder="PM에게 전할 메모 (선택)"
+          />
+          <Button size="sm" onClick={askPm} disabled={pending}>
+            PM 승인 요청
+          </Button>
+        </div>
+      )}
+
+      {requested && (
+        <Alert>
+          <AlertDescription>
+            PM에게 승인 요청을 보냈습니다. 승인되면 이 화면에서 바로 발송할 수 있습니다.
+          </AlertDescription>
         </Alert>
       )}
 

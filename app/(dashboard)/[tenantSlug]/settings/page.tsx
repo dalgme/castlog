@@ -19,6 +19,8 @@ import {
   requestableModules,
 } from "@/lib/modules/requests";
 
+import { SettingsTabs } from "@/components/layout/settings-tabs";
+
 import { SmsConfigForm } from "./sms-config-form";
 import { SmsConnectionPanel } from "./sms-connection-panel";
 import { ModuleRequestPanel, type OpenRequest } from "./module-request-panel";
@@ -95,6 +97,12 @@ export default async function SettingsPage({
   return (
     <div>
       <PageHeader title="설정" />
+      <SettingsTabs
+        tenantSlug={params.tenantSlug}
+        showSms={canManageSending}
+        showOrg={canRequestModules}
+        showRules={modules.approvals && canRequestModules}
+      />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
         {canRequestModules && (
         <Card>
@@ -198,6 +206,23 @@ export default async function SettingsPage({
           </CardContent>
         </Card>
         )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">최초 설정 점검</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            가입 직후 반드시 잡아야 하는 설정(사용 기능·개인정보 보호책임자·임직원·
+            문자 발송·전결규정 등)이 남아 있는지{" "}
+            <Link
+              href={`/${params.tenantSlug}/setup`}
+              className="text-brand underline-offset-4 hover:underline"
+            >
+              최초 설정
+            </Link>{" "}
+            화면에서 한 번에 확인할 수 있습니다.
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-3">

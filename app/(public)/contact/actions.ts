@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { inquirySchema, type InquiryInput } from "@/lib/inquiries/schemas";
+import { LEGAL_VERSION } from "@/lib/legal/documents";
 
 export type InquiryResult = { ok: true } | { ok: false; error: string };
 
@@ -40,6 +41,11 @@ export async function submitInquiry(
     phone: d.phone ? d.phone : null,
     message: d.message ? d.message : null,
     source: d.source ? d.source : null,
+    // 동의 시각과 동의 시점의 문서 버전을 함께 남긴다 — 버전 없이 남기면
+    // 나중에 "무엇에 동의했는지"를 재구성할 수 없다.
+    privacy_consent_at: new Date().toISOString(),
+    marketing_consent_at: d.marketingConsent ? new Date().toISOString() : null,
+    terms_version: LEGAL_VERSION,
   });
 
   if (error) {

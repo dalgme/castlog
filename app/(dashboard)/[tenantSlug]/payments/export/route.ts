@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireRole } from "@/lib/auth/session";
+import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -26,6 +27,12 @@ export async function GET(
 ) {
   const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
+  if (!(await canManagePayments())) {
+    return NextResponse.json(
+      { error: "지급 권한이 없습니다." },
+      { status: 403 }
+    );
+  }
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(
       new URL(`/${params.tenantSlug}/payments`, request.url)

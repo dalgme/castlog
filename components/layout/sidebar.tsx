@@ -15,6 +15,7 @@ import {
   LogOut,
   Handshake,
   BookOpen,
+  ListChecks,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -29,10 +30,14 @@ const NAV_ITEMS: readonly {
   icon: typeof LayoutDashboard;
   module: ModuleKey | null;
   orgAdminOnly?: boolean;
+  /** 지급(금액) 권한자에게만 — 대표·이사 또는 finance 위임자 */
+  financeOnly?: boolean;
 }[] = [
   { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
+  // 여러 프로젝트를 맡은 사람이 마감을 놓치지 않게 — 공통 기반
+  { label: "내 업무", path: "my-work", icon: ListChecks, module: null },
   {
-    label: "임원 현황",
+    label: "업무배정 현황",
     path: "executive",
     icon: BarChart3,
     module: null, // 프로젝트 기초 위의 통계 — 공통 기반
@@ -48,7 +53,13 @@ const NAV_ITEMS: readonly {
     icon: Handshake,
     module: "experts",
   },
-  { label: "비용·지급", path: "payments", icon: Wallet, module: "experts" },
+  {
+    label: "비용·지급",
+    path: "payments",
+    icon: Wallet,
+    module: "experts",
+    financeOnly: true,
+  },
   { label: "보고서", path: "reports", icon: FileText, module: "operations" },
   { label: "발송", path: "messages", icon: Send, module: null },
   { label: "섭외 안내", path: "guide", icon: BookOpen, module: "experts" },
@@ -60,16 +71,19 @@ export function Sidebar({
   tenantSlug,
   modules,
   isOrgAdmin,
+  canManagePayments,
 }: {
   tenantSlug: string;
   modules: ModuleFlags;
   isOrgAdmin: boolean;
+  canManagePayments: boolean;
 }) {
   const pathname = usePathname();
   const visibleItems = NAV_ITEMS.filter(
     (item) =>
       (item.module === null || modules[item.module]) &&
-      (!item.orgAdminOnly || isOrgAdmin)
+      (!item.orgAdminOnly || isOrgAdmin) &&
+      (!item.financeOnly || canManagePayments)
   );
 
   return (

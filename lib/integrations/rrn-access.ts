@@ -46,3 +46,36 @@ export function isOverProjectLimit(usedCount: number): boolean {
 export function isRateLimited(countInWindow: number): boolean {
   return countInWindow >= RRN_RATE_LIMIT_PER_HOUR;
 }
+
+/** 조회 형태 (tax_access_logs.access_type) */
+export const RRN_ACCESS_TYPES = {
+  file_generation: "지급명세서 파일 생성",
+  screen: "화면 조회(예외)",
+} as const;
+
+/** 초과 조회 요청 상태 (tax_access_requests.status) */
+export const RRN_REQUEST_STATUS = {
+  pending: "대표 승인 대기",
+  approved: "승인됨(미사용)",
+  denied: "반려됨",
+  fulfilled: "승인 후 조회 완료",
+} as const;
+export type RrnRequestStatus = keyof typeof RRN_REQUEST_STATUS;
+
+export function rrnRequestStatusLabel(status: string): string {
+  return status in RRN_REQUEST_STATUS
+    ? RRN_REQUEST_STATUS[status as RrnRequestStatus]
+    : status;
+}
+
+export function rrnAccessTypeLabel(accessType: string): string {
+  return accessType in RRN_ACCESS_TYPES
+    ? RRN_ACCESS_TYPES[accessType as keyof typeof RRN_ACCESS_TYPES]
+    : accessType;
+}
+
+export function rrnAccessReasonLabel(reason: string): string {
+  return reason in RRN_ACCESS_REASONS
+    ? RRN_ACCESS_REASONS[reason as RrnAccessReason]
+    : reason;
+}

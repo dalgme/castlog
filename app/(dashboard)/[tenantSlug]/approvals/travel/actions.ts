@@ -11,6 +11,7 @@ import {
   createApprovalWithSteps,
   matchApprovalRule,
 } from "@/lib/approvals/engine";
+import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { formatKrw } from "@/lib/approvals/constants";
 import {
   FUEL_TYPE_LABELS,
@@ -50,6 +51,8 @@ export type EstimateResult =
       distanceKm: number | null;
       fuelPrice: number | null;
       source: string | null;
+      /** 자동 계산이 안 된 항목의 사유 — 화면에 그대로 보여준다 */
+      issues: string[];
     }
   | { ok: false; error: string };
 
@@ -64,21 +67,32 @@ export async function estimateTravel(input: {
 
   const fuelType = isFuelType(input.fuelType) ? input.fuelType : "gasoline";
 
-  const [distanceKm, fuelPrice] = await Promise.all([
-    input.origin?.trim() && input.destination?.trim()
-      ? fetchDrivingDistanceKm(input.origin.trim(), input.destination.trim())
-      : Promise.resolve(null),
+  const hasRoute = Boolean(input.origin?.trim() && input.destination?.trim());
+  const [distance, fuel] = await Promise.all([
+    hasRoute
+      ? fetchDrivingDistanceKm(input.origin!.trim(), input.destination!.trim())
+      : Promise.resolve({
+          value: null,
+          reason: "출발지와 도착지를 입력하면 거리를 자동 계산합니다.",
+        }),
     fetchFuelPrice(fuelType),
   ]);
 
   const parts: string[] = [];
-  if (distanceKm !== null) parts.push("naver");
-  if (fuelPrice !== null) parts.push("opinet");
+  if (distance.value !== null) parts.push("naver");
+  if (fuel.value !== null) parts.push("opinet");
+
+  // 실패 사유를 삼키지 않는다 — 연결이 왜 안 되는지 알아야 고칠 수 있다.
+  const issues = [distance.reason, fuel.reason].filter(
+    (v): v is string => v !== null
+  );
+
   return {
     ok: true,
-    distanceKm,
-    fuelPrice,
+    distanceKm: distance.value,
+    fuelPrice: fuel.value,
     source: parts.length > 0 ? parts.join("+") : null,
+    issues,
   };
 }
 
@@ -136,14 +150,24 @@ export async function submitTravelRequest(
   );
   const total = fuelCost + d.tollCost + d.otherCost;
 
+  // 전결규정이 있으면 그 결재선을 쓰고, 없으면 직급 체계를 따라 위로 올린다.
+  // 규정 미등록을 이유로 상신 자체를 막으면 실무가 멈춘다 — 그렇다고 무결재로
+  // 통과시키지도 않는다.
   const matched = await matchApprovalRule("expense", total);
-  if (!matched) {
+  const escalation = matched
+    ? null
+    : await buildGradeEscalationLine(session.userId, total);
+  if (!matched && !escalation) {
     return {
       ok: false,
       error:
-        "지출 품의에 적용할 전결규정이 없습니다. 전결규정(유형: 지출 품의)을 등록한 뒤 다시 상신하세요.",
+        "결재할 상위직급자가 없습니다. 전결규정(유형: 지출 품의)을 등록하거나, 상위 직급 계정을 먼저 만들어 주세요.",
     };
   }
+  const line = matched ? matched.steps : escalation!.steps;
+  const lineNote = matched
+    ? null
+    : `(전결규정 미등록 — 상위직급 결재선 자동 구성: ${escalation!.description})`;
 
   const body = [
     `출장 목적: ${d.purpose}`,
@@ -157,6 +181,7 @@ export async function submitTravelRequest(
     `유류비 ${formatKrw(fuelCost)} + 통행료 ${formatKrw(d.tollCost)} + 기타 ${formatKrw(d.otherCost)}`,
     `합계 ${formatKrw(total)}`,
     d.autoSource ? `(거리·유가 자동계산: ${d.autoSource})` : "(수동 입력)",
+    lineNote,
   ]
     .filter((v): v is string => v !== null)
     .join("\n");
@@ -169,8 +194,8 @@ export async function submitTravelRequest(
     approvalType: "expense",
     amount: total,
     projectId: null,
-    appliedRuleId: matched.ruleId,
-    steps: matched.steps,
+    appliedRuleId: matched?.ruleId ?? null,
+    steps: line,
   });
   if (!created.ok) return created;
 

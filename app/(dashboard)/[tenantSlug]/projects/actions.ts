@@ -65,6 +65,7 @@ export async function createProject(
       name: data.name,
       business_year: parseInt(data.businessYear, 10),
       client_name: data.clientName || null,
+      category_id: data.categoryId || null,
       code: data.code || null,
       starts_on: data.startsOn || null,
       ends_on: data.endsOn || null,

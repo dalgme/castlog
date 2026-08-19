@@ -22,8 +22,21 @@ import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { isUserGrade, type UserGrade } from "@/lib/auth/grades";
 import { isAdminScope } from "@/lib/auth/admin-scope-keys";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
+import { getTenantModules } from "@/lib/modules/server";
+import { buildStaffJoinLink } from "@/lib/routing/links";
+
+import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { CreateStaffDialog } from "./staff-dialog";
+import { CompanyProfileForm } from "./company-profile-form";
+import {
+  CategoriesPanel,
+  type CategoryRow,
+} from "./categories-panel";
+import {
+  JoinRequestsPanel,
+  type JoinRequestRow,
+} from "./join-requests-panel";
 import { StaffActiveToggle } from "./staff-active-toggle";
 import { PositionsPanel } from "./positions-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
@@ -53,15 +66,16 @@ export default async function OrgAdminPage({
 }) {
   // 대표(org_admin)·플랫폼관리자 또는 관리 스코프를 위임받은 직원만 진입
   const gateUser = await requireUser();
+  const scopeSet = await getAdminScopes();
   if (gateUser) {
     const role = roleFromUser(gateUser);
-    const scopes = await getAdminScopes();
     const allowed =
       role === "org_admin" ||
       role === "platform_admin" ||
-      Object.values(scopes).some(Boolean);
+      Object.values(scopeSet).some(Boolean);
     if (!allowed) redirect(postLoginPath(gateUser));
   }
+  const modules = await getTenantModules();
 
   if (!hasSupabaseEnv()) {
     return (
@@ -145,6 +159,67 @@ export default async function OrgAdminPage({
     rrnKeySet = (count ?? 0) > 0;
   }
 
+  // 기업 가입정보 + 임직원 셀프 가입 신청
+  const [{ data: tenantRow }, { data: joinRecords }] = await Promise.all([
+    supabase
+      .from("tenants")
+      .select(
+        "business_registration_number, representative_name, address, contact_phone, industry, privacy_officer_name, privacy_officer_email, privacy_officer_phone"
+      )
+      .maybeSingle(),
+    supabase
+      .from("staff_join_requests")
+      .select("id, name, email, phone, department, note, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
+  ]);
+  const companyProfile = {
+    businessRegistrationNumber: tenantRow?.business_registration_number ?? "",
+    representativeName: tenantRow?.representative_name ?? "",
+    address: tenantRow?.address ?? "",
+    contactPhone: tenantRow?.contact_phone ?? "",
+    industry: tenantRow?.industry ?? "",
+    privacyOfficerName: tenantRow?.privacy_officer_name ?? "",
+    privacyOfficerEmail: tenantRow?.privacy_officer_email ?? "",
+    privacyOfficerPhone: tenantRow?.privacy_officer_phone ?? "",
+  };
+  const joinRequests: JoinRequestRow[] = (joinRecords ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    department: r.department,
+    note: r.note,
+    createdAt: r.created_at,
+  }));
+  const joinUrl = buildStaffJoinLink(params.tenantSlug);
+
+  // 프로젝트 분야 카테고리 + 카테고리별 프로젝트 수(비활성화 판단 근거)
+  const [{ data: categoryRecords }, { data: categorizedProjects }] =
+    await Promise.all([
+      supabase
+        .from("project_categories")
+        .select("id, name, description, is_active")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase.from("projects").select("category_id").not("category_id", "is", null),
+    ]);
+  const projectCountByCategory = new Map<string, number>();
+  for (const row of categorizedProjects ?? []) {
+    if (!row.category_id) continue;
+    projectCountByCategory.set(
+      row.category_id,
+      (projectCountByCategory.get(row.category_id) ?? 0) + 1
+    );
+  }
+  const categoryRows: CategoryRow[] = (categoryRecords ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    isActive: c.is_active,
+    projectCount: projectCountByCategory.get(c.id) ?? 0,
+  }));
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
@@ -153,6 +228,9 @@ export default async function OrgAdminPage({
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/admin/org/export`}>엑셀</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href={`/${params.tenantSlug}/admin/org/security`}>보안 현황</a>
             </Button>
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/admin/org/audit`}>감사로그</a>
@@ -164,7 +242,49 @@ export default async function OrgAdminPage({
           </div>
         }
       />
+      <SettingsTabs
+        tenantSlug={params.tenantSlug}
+        showSms={isCeo || scopeSet.sending}
+        showOrg
+        showRules={modules.approvals && (isCeo || scopeSet.settings)}
+      />
       <main className="space-y-5 p-5">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">
+              임직원 가입 신청 ({joinRequests.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <JoinRequestsPanel
+              joinUrl={joinUrl}
+              requests={joinRequests}
+              positions={positionRows}
+              canGrantCeo={isCeo}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">프로젝트 분야 카테고리</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CategoriesPanel categories={categoryRows} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">
+              기업 정보 · 개인정보 보호책임자
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CompanyProfileForm initial={companyProfile} />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">직원 계정 ({staffRows.length})</CardTitle>

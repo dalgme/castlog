@@ -12,6 +12,9 @@ export const projectCreateSchema = z.object({
     .string()
     .regex(/^\d{4}$/, "사업연도는 4자리 숫자로 입력하세요 (예: 2026)."),
   clientName: z.string().max(100, "100자 이내로 입력하세요.").optional(),
+  // 분야별 카테고리 — 대표가 설정한 목록에서 고른다(하드코딩 없음).
+  // 카테고리를 아직 만들지 않은 테넌트도 프로젝트를 열 수 있어야 하므로 선택이다.
+  categoryId: z.string().uuid().optional().or(z.literal("")),
   code: z.string().max(30, "관리 코드는 30자 이내로 입력하세요.").optional(),
   startsOn: z
     .string()
