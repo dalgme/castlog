@@ -66,6 +66,39 @@ export const staffCreateSchema = z.object({
 });
 export type StaffCreateInput = z.infer<typeof staffCreateSchema>;
 
+/**
+ * 직원 정보 수정 — 권한단계(grade)는 여기 없다.
+ * 등급 변경은 별도 화면·별도 액션이다. 정보 수정과 권한 조정을 한 폼에 섞으면
+ * 부서 오타를 고치다가 등급을 잘못 건드리는 일이 생긴다.
+ */
+export const staffProfileSchema = z.object({
+  userId: z.string().uuid(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "이름을 입력하세요.")
+    .max(50, "이름은 50자 이내로 입력하세요."),
+  email: z
+    .string()
+    .trim()
+    .min(1, "이메일을 입력하세요.")
+    .email("올바른 이메일 형식이 아닙니다."),
+  phone: z
+    .string()
+    .trim()
+    .max(30, "30자 이내로 입력하세요.")
+    .optional()
+    .or(z.literal("")),
+  department: z
+    .string()
+    .trim()
+    .max(50, "50자 이내로 입력하세요.")
+    .optional()
+    .or(z.literal("")),
+  positionId: z.string().uuid().optional().or(z.literal("")),
+});
+export type StaffProfileInput = z.infer<typeof staffProfileSchema>;
+
 /** 권한단계 변경 */
 export const staffGradeSchema = z.object({
   userId: z.string().uuid(),

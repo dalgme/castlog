@@ -11,10 +11,12 @@ import {
   positionCreateSchema,
   staffCreateSchema,
   staffGradeSchema,
+  staffProfileSchema,
   type AdminGrantInput,
   type PositionCreateInput,
   type StaffCreateInput,
   type StaffGradeInput,
+  type StaffProfileInput,
 } from "@/lib/admin/schemas";
 import { roleFromGrade } from "@/lib/auth/grades";
 import {
@@ -419,6 +421,222 @@ export async function revokeAdminGrant(
     resource_type: "user",
     resource_id: grant.user_id,
     before_data: { scope: grant.scope },
+  });
+
+  revalidatePath("/[tenantSlug]/admin/org", "page");
+  return { ok: true };
+}
+
+/**
+ * 직원 정보 수정 — 이름·이메일·연락처·부서·직급.
+ *
+ * 권한단계(grade)는 여기서 다루지 않는다. 정보 수정과 권한 조정을 한 폼에 섞으면
+ * 부서 오타를 고치다가 등급을 잘못 건드린다. 그래서 본인 것도 여기서는 고칠 수
+ * 있다 — 이름·부서를 바꾸는 일에 위험이 없기 때문이다.
+ *
+ * 이메일은 **로그인 아이디**다. 바꾸면 다음 로그인부터 새 주소로 들어와야 하므로
+ * auth 계정까지 함께 옮긴다. 한쪽만 바꾸면 로그인은 되는데 화면에는 옛 주소가
+ * 남거나, 그 반대가 된다.
+ */
+export async function updateStaffProfile(
+  input: StaffProfileInput
+): Promise<StaffActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const session = await requireStaffAdmin();
+  if (!session.ok) return session;
+
+  const parsed = staffProfileSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
+    };
+  }
+  const data = parsed.data;
+
+  const admin = createAdminClient();
+
+  // 같은 테넌트 소속인지 검증 (다른 테넌트 계정 조작 차단)
+  const { data: target } = await admin
+    .from("users")
+    .select("id, tenant_id, email")
+    .eq("id", data.userId)
+    .maybeSingle();
+  if (!target || target.tenant_id !== session.tenantId) {
+    return { ok: false, error: "대상 직원을 찾을 수 없습니다." };
+  }
+
+  const nextEmail = data.email.toLowerCase();
+  const emailChanged = nextEmail !== target.email.toLowerCase();
+
+  if (emailChanged) {
+    // 같은 주소를 쓰는 계정이 이미 있으면 로그인이 겹친다
+    const { data: duplicate } = await admin
+      .from("users")
+      .select("id")
+      .eq("email", nextEmail)
+      .neq("id", data.userId)
+      .maybeSingle();
+    if (duplicate) {
+      return { ok: false, error: "이미 사용 중인 이메일입니다." };
+    }
+
+    const { error: authError } = await admin.auth.admin.updateUserById(
+      data.userId,
+      { email: nextEmail, email_confirm: true }
+    );
+    if (authError) {
+      return {
+        ok: false,
+        error: "로그인 계정의 이메일 변경에 실패했습니다. 주소를 확인하세요.",
+      };
+    }
+  }
+
+  const { error } = await admin
+    .from("users")
+    .update({
+      name: data.name,
+      email: nextEmail,
+      phone: data.phone ? data.phone : null,
+      department: data.department ? data.department : null,
+      position_id: data.positionId ? data.positionId : null,
+    })
+    .eq("id", data.userId);
+  if (error) {
+    return { ok: false, error: "정보 수정에 실패했습니다." };
+  }
+
+  await admin.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.isCeo ? "org_admin" : "manager",
+    action: "user.update_profile",
+    resource_type: "user",
+    resource_id: data.userId,
+    after_data: emailChanged ? { email_changed: true } : null,
+  });
+
+  revalidatePath("/[tenantSlug]/admin/org", "page");
+  return { ok: true };
+}
+
+export type DeleteStaffResult =
+  | { ok: true }
+  | { ok: false; error: string; blockedBy?: string[] };
+
+/**
+ * 직원 계정 삭제.
+ *
+ * **업무 이력이 남아 있으면 지우지 않는다.** 결재·배정·감사로그에 이름이 걸린
+ * 계정을 지우면 "누가 승인했는지 모르는 결재건"이 생긴다. 그건 기록을 없애는
+ * 것이지 계정을 정리하는 게 아니다. 그런 계정은 **비활성화**가 정답이고,
+ * 화면에도 그렇게 안내한다 (CLAUDE.md §14-4: 삭제보다 비활성화).
+ *
+ * 그래서 실제로 지워지는 것은 '잘못 만든 계정'뿐이다 — 오타로 만들었거나
+ * 입사가 취소된 사람. 그건 남겨 둘 이유가 없다.
+ */
+export async function deleteStaffUser(
+  targetUserId: string
+): Promise<DeleteStaffResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const session = await requireStaffAdmin();
+  if (!session.ok) return { ok: false, error: session.error };
+
+  if (targetUserId === session.userId) {
+    return { ok: false, error: "본인 계정은 삭제할 수 없습니다." };
+  }
+
+  const admin = createAdminClient();
+  const { data: target } = await admin
+    .from("users")
+    .select("id, tenant_id, name, grade")
+    .eq("id", targetUserId)
+    .maybeSingle();
+  if (!target || target.tenant_id !== session.tenantId) {
+    return { ok: false, error: "대상 직원을 찾을 수 없습니다." };
+  }
+  if (target.grade === "ceo") {
+    return {
+      ok: false,
+      error:
+        "대표 계정은 삭제할 수 없습니다. 대표를 바꾸려면 다른 직원을 대표로 지정한 뒤 이 계정을 비활성화하세요.",
+    };
+  }
+
+  // 업무 이력 확인 — 하나라도 있으면 삭제 대신 비활성화를 안내한다
+  const [assignments, approvals, approvalSteps, auditLogs, projects] =
+    await Promise.all([
+      admin
+        .from("project_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", targetUserId),
+      admin
+        .from("approvals")
+        .select("id", { count: "exact", head: true })
+        .eq("requester_user_id", targetUserId),
+      admin
+        .from("approval_steps")
+        .select("id", { count: "exact", head: true })
+        .eq("approver_user_id", targetUserId),
+      admin
+        .from("audit_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("actor_auth_user_id", targetUserId),
+      admin
+        .from("projects")
+        .select("id", { count: "exact", head: true })
+        .eq("created_by", targetUserId),
+    ]);
+
+  const blockedBy: string[] = [];
+  if ((assignments.count ?? 0) > 0) blockedBy.push("프로젝트 담당자 배정");
+  if ((approvals.count ?? 0) > 0) blockedBy.push("본인이 올린 결재건");
+  if ((approvalSteps.count ?? 0) > 0) blockedBy.push("결재선에 지정된 이력");
+  if ((auditLogs.count ?? 0) > 0) blockedBy.push("시스템 사용 기록(감사로그)");
+  if ((projects.count ?? 0) > 0) blockedBy.push("본인이 개설한 프로젝트");
+
+  if (blockedBy.length > 0) {
+    return {
+      ok: false,
+      error:
+        "업무 이력이 남아 있어 삭제할 수 없습니다. 이력을 지우면 ‘누가 했는지 모르는 기록’이 생깁니다. 대신 비활성화하면 로그인은 막히고 기록은 그대로 남습니다.",
+      blockedBy,
+    };
+  }
+
+  // 위임받은 관리 권한이 있으면 함께 회수 (계정이 사라지면 회수할 방법이 없다)
+  await admin
+    .from("tenant_admin_grants")
+    .delete()
+    .eq("user_id", targetUserId)
+    .eq("tenant_id", session.tenantId);
+
+  const { error } = await admin.from("users").delete().eq("id", targetUserId);
+  if (error) {
+    return {
+      ok: false,
+      error: "삭제에 실패했습니다. 남아 있는 기록이 있는지 확인하세요.",
+    };
+  }
+
+  // 로그인 계정도 함께 지운다 — 남겨 두면 로그인은 되는데 소속이 없는 상태가 된다
+  await admin.auth.admin.deleteUser(targetUserId);
+
+  await admin.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.isCeo ? "org_admin" : "manager",
+    action: "user.delete",
+    resource_type: "user",
+    resource_id: targetUserId,
+    before_data: { name: target.name, grade: target.grade },
   });
 
   revalidatePath("/[tenantSlug]/admin/org", "page");
