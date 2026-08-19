@@ -166,6 +166,46 @@ export async function parseExpertImport(
   return { ok: true, rows: classifyImportRows(rawRows, linkedPhones, pendingPhones) };
 }
 
+const rowsInputSchema = z.object({
+  rows: z
+    .array(z.object({ name: z.string(), phone: z.string() }))
+    .min(1, "입력한 행이 없습니다.")
+    .max(IMPORT_MAX_ROWS),
+});
+
+/**
+ * 1단계(직접 입력): 화면에서 한 줄씩 채운 명단을 그대로 검증한다.
+ *
+ * 몇 명 안 되는데 엑셀을 내려받아 채우고 다시 올리는 것은 과한 일이다. 검증·중복
+ * 판정·등록은 업로드 경로와 **똑같은 함수**를 쓴다 — 입력 수단만 다르고 규칙이
+ * 갈라지면 어느 쪽이 맞는지 아무도 모르게 된다.
+ */
+export async function parseExpertRowsInput(input: {
+  rows: { name: string; phone: string }[];
+}): Promise<ParseImportResult> {
+  const g = await gate();
+  if (!g.ok) return g;
+
+  const parsed = rowsInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
+    };
+  }
+
+  // 아무것도 안 적은 빈 줄은 오류로 세지 않고 그냥 버린다
+  const rows = parsed.data.rows.filter(
+    (r) => r.name.trim() !== "" || r.phone.trim() !== ""
+  );
+  if (rows.length === 0) {
+    return { ok: false, error: "이름과 휴대폰을 한 행 이상 입력하세요." };
+  }
+
+  const { linkedPhones, pendingPhones } = await loadDupSets(g.supabase);
+  return { ok: true, rows: classifyImportRows(rows, linkedPhones, pendingPhones) };
+}
+
 const commitSchema = z.object({
   rows: z
     .array(z.object({ name: z.string(), phone: z.string() }))
