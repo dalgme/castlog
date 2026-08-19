@@ -4,13 +4,37 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { PUBLIC_LINK_PATHS } from "@/lib/routing/reserved-slugs";
 import { isTenantSlugSegment } from "@/lib/routing/slug";
 
-/** 인증 없이 접근 가능한 공개 경로 prefix (매직링크는 로그인 없이 열려야 한다) */
+/**
+ * 인증 없이 접근 가능한 공개 경로 prefix.
+ *
+ * 판단 기준은 하나다 — **로그인하지 않은 사람이 열어야 하는 화면인가.**
+ * 매직링크(섭외 동의·서류 제출)뿐 아니라, 아직 계정이 없는 사람(도입 문의),
+ * 로그인을 못 하는 사람(비밀번호 찾기), 계정과 무관한 사람(약관·공개 프로필)이
+ * 여기 해당한다. 이 목록에서 빠지면 그 화면은 로그인 페이지로 튕겨 나가고,
+ * 사용자에게는 '갑자기 안 된다'로 보인다.
+ *
+ * 새 공개 화면을 만들면 반드시 여기에 함께 추가한다.
+ */
 const PUBLIC_PATH_PREFIXES = [
   ...Object.values(PUBLIC_LINK_PATHS).map((p) => `/${p}/`),
   "/login",
   "/signup",
   "/auth",
   "/expert/login",
+  // 계정이 없는 사람이 여는 화면 — 도입 문의·체험 신청(기업회원 가입 입구)
+  "/contact",
+  // 로그인을 못 하는 사람이 여는 화면 — 여기서 막으면 복구 경로가 사라진다
+  "/forgot-password",
+  "/reset-password",
+  // 임직원 가입 요청 링크 — 아직 계정이 없는 사람이 연다
+  "/join/",
+  // 약관·개인정보 — 법적 고지는 누구나 볼 수 있어야 한다
+  "/legal/",
+  // 전문가 공개 프로필·QR — 명함에 찍히는 주소다
+  "/p/",
+  // 공개 화면(섭외 동의·수락서 등)에 박히는 회사 로고. 경로 자체가 tenantId만
+  // 받고 로고 바이트만 내보낸다 — 인증을 요구하면 그 화면에서 로고가 깨진다.
+  "/api/tenant-logo/",
   // 크론 실행기 — 세션이 없다. 자체 시크릿(CRON_SECRET)으로 인증한다.
   "/api/cron/",
 ];
