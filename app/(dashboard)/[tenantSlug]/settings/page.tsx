@@ -107,7 +107,9 @@ export default async function SettingsPage({
         showOrg={canRequestModules}
         showRules={modules.approvals && canRequestModules}
       />
-      <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
+      {/* 기업관리·전결규정 탭과 같은 폭을 쓴다 — 탭을 옮길 때마다 본문 폭이
+          달라지면 같은 화면이 아닌 것처럼 읽힌다 */}
+      <main className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-2">
         {canRequestModules && (
         <Card>
           <CardHeader className="pb-3">

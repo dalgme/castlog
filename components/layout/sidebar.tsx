@@ -75,11 +75,16 @@ export function Sidebar({
   modules,
   isOrgAdmin,
   canManagePayments,
+  tenantName,
+  logoSrc,
 }: {
   tenantSlug: string;
   modules: ModuleFlags;
   isOrgAdmin: boolean;
   canManagePayments: boolean;
+  tenantName: string | null;
+  /** 등록된 회사 로고 — 없으면 캐스트로그 심볼을 쓴다 */
+  logoSrc: string | null;
 }) {
   const pathname = usePathname();
   const visibleItems = NAV_ITEMS.filter(
@@ -95,8 +100,26 @@ export function Sidebar({
         href={buildTenantPath(tenantSlug, "dashboard")}
         className="flex items-center gap-2 px-4 py-5"
       >
-        <LogoMark width={20} height={25} />
-        <Wordmark invert className="hidden text-sm md:inline" />
+        {/* 회사 로고가 등록돼 있으면 그것이 먼저다 — 직원이 매일 보는 화면은
+            자기 회사의 화면이어야 한다. 없으면 캐스트로그 심볼로 돌아간다 */}
+        {logoSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoSrc}
+              alt={tenantName ?? "회사 로고"}
+              className="h-6 w-6 shrink-0 rounded bg-white object-contain p-0.5"
+            />
+            <span className="hidden truncate text-sm font-bold text-white md:inline">
+              {tenantName ?? ""}
+            </span>
+          </>
+        ) : (
+          <>
+            <LogoMark width={20} height={25} />
+            <Wordmark invert className="hidden text-sm md:inline" />
+          </>
+        )}
       </Link>
       <nav className="flex flex-col gap-1 px-2">
         {visibleItems.map(({ label, path, icon: Icon }) => {

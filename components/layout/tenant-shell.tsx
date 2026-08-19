@@ -6,6 +6,7 @@ import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
 import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
 import { createClient } from "@/lib/supabase/server";
+import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 import { Sidebar } from "./sidebar";
@@ -60,6 +61,8 @@ export async function TenantShell({
     const { data } = await supabase.from("tenants").select("name").maybeSingle();
     tenantName = data?.name ?? null;
   }
+  // 회사 로고 — 사이드바와 챗봇이 함께 쓴다
+  const logoSrc = await tenantLogoSrc();
 
   // 최초 설정 안내 — 설정을 실제로 할 수 있는 사람에게만.
   // 연습모드에서는 띄우지 않는다(연습 환경의 설정 상태가 아니다).
@@ -75,6 +78,8 @@ export async function TenantShell({
         modules={modules}
         isOrgAdmin={isOrgAdmin}
         canManagePayments={payments}
+        tenantName={tenantName}
+        logoSrc={logoSrc}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
         <TopBar
@@ -82,6 +87,7 @@ export async function TenantShell({
           tenantName={tenantName}
           practice={practice}
           canPractice={canPractice}
+          logoSrc={logoSrc}
         />
         {canPractice && <PracticeBar practice={practice} />}
         {setup && (
