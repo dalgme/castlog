@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import { requireRole } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
+import { formatKrw } from "@/lib/approvals/constants";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +62,7 @@ export default async function ExecutivePage({
   const [{ data: projectsData }, { data: usersData }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, status, closed_at")
+      .select("id, name, status, closed_at, budget_amount, category_id")
       .eq("business_year", year)
       .order("created_at", { ascending: false }),
     supabase.from("users").select("id, name, department").order("name"),
@@ -147,6 +149,70 @@ export default async function ExecutivePage({
     );
   }
 
+  // ── CEO 축: 카테고리별 · 담당 편중 · 전사 예산 ─────────────────────────────
+  const { data: categoryRows } = await supabase
+    .from("project_categories")
+    .select("id, name");
+  const categoryNameById = new Map(
+    (categoryRows ?? []).map((c) => [c.id, c.name])
+  );
+
+  type CategoryAgg = { name: string; projects: number; budget: number };
+  const categoryAgg = new Map<string, CategoryAgg>();
+  for (const p of projects) {
+    const key = p.category_id ?? "__none__";
+    const name = p.category_id
+      ? (categoryNameById.get(p.category_id) ?? "(삭제된 분야)")
+      : "미분류";
+    const agg = categoryAgg.get(key) ?? { name, projects: 0, budget: 0 };
+    agg.projects += 1;
+    agg.budget += p.budget_amount ?? 0;
+    categoryAgg.set(key, agg);
+  }
+  const categoryRowsAgg = Array.from(categoryAgg.values()).sort(
+    (a, b) => b.projects - a.projects
+  );
+
+  const totalBudget = projects.reduce((sum, p) => sum + (p.budget_amount ?? 0), 0);
+  const activeProjects = projects.filter((p) => p.status === "active").length;
+  const closedProjects = projects.filter((p) => p.closed_at).length;
+
+  // PM 편중 — 한 사람이 진행 중 프로젝트를 몇 개나 이고 있는가.
+  // 인원 배분이 무너진 상태는 숫자로 보이지 않으면 아무도 손대지 않는다.
+  const liveProjectIds = projects
+    .filter((p) => p.status !== "completed" && p.status !== "canceled")
+    .map((p) => p.id);
+  const { data: pmAssignments } = liveProjectIds.length
+    ? await supabase
+        .from("project_assignments")
+        .select("user_id, project_id, assignment_role")
+        .in("project_id", liveProjectIds)
+        .in("assignment_role", ["pm", "deputy_pm"])
+    : { data: [] };
+  const loadByUser = new Map<string, { pm: number; deputy: number }>();
+  for (const a of pmAssignments ?? []) {
+    const cur = loadByUser.get(a.user_id) ?? { pm: 0, deputy: 0 };
+    if (a.assignment_role === "pm") cur.pm += 1;
+    else cur.deputy += 1;
+    loadByUser.set(a.user_id, cur);
+  }
+  const loadRows = Array.from(loadByUser.entries())
+    .map(([userId, load]) => ({
+      userId,
+      name: users.find((u) => u.id === userId)?.name ?? "(직원)",
+      ...load,
+      total: load.pm + load.deputy,
+    }))
+    .sort((a, b) => b.pm - a.pm || b.total - a.total);
+  const maxPmLoad = loadRows.length > 0 ? Math.max(...loadRows.map((r) => r.pm)) : 0;
+  // PM을 아무도 맡지 않은 진행 프로젝트 — 책임자 공백이다.
+  const projectsWithPm = new Set(
+    (pmAssignments ?? [])
+      .filter((a) => a.assignment_role === "pm")
+      .map((a) => a.project_id)
+  );
+  const pmlessProjects = liveProjectIds.filter((id) => !projectsWithPm.has(id));
+
   const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
 
   return (
@@ -175,6 +241,88 @@ export default async function ExecutivePage({
         <p className="text-sm text-muted-foreground">
           {year}년 사업연도 기준 직원별·프로젝트별 업무현황입니다.
         </p>
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <ExecTile label="프로젝트" value={`${projects.length}건`} />
+          <ExecTile label="진행 중" value={`${activeProjects}건`} />
+          <ExecTile label="종료" value={`${closedProjects}건`} />
+          <ExecTile label="전사 예산" value={formatKrw(totalBudget)} />
+        </div>
+
+        {pmlessProjects.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
+            <span>
+              PM이 지정되지 않은 진행 프로젝트가 <b>{pmlessProjects.length}건</b>{" "}
+              있습니다. 책임자가 없으면 마감·섭외가 아무에게도 잡히지 않습니다.
+            </span>
+          </div>
+        )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">분야 카테고리별 현황</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryRowsAgg.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {year}년 프로젝트가 없습니다.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {categoryRowsAgg.map((c) => (
+                  <li
+                    key={c.name}
+                    className="flex flex-wrap items-center gap-2 rounded-md border p-2.5 text-sm"
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-muted-foreground">{c.projects}건</span>
+                    <span className="ml-auto tabular-nums text-muted-foreground">
+                      예산 {formatKrw(c.budget)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              분야는 기업 관리 화면에서 설정합니다. ‘미분류’가 많으면 개설 시 분야를
+              고르지 않고 있다는 뜻입니다.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">PM·부PM 담당 편중 (진행 중 기준)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                진행 중 프로젝트에 배정된 PM·부PM이 없습니다.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {loadRows.map((r) => (
+                  <li
+                    key={r.userId}
+                    className="flex flex-wrap items-center gap-2 rounded-md border p-2.5 text-sm"
+                  >
+                    <span className="font-medium">{r.name}</span>
+                    <span className="text-muted-foreground">
+                      PM {r.pm} · 부PM {r.deputy}
+                    </span>
+                    {maxPmLoad >= 3 && r.pm === maxPmLoad && (
+                      <Badge variant="destructive">최다 PM</Badge>
+                    )}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      합계 {r.total}건
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-3">
@@ -304,6 +452,16 @@ export default async function ExecutivePage({
           </CardContent>
         </Card>
       </main>
+    </div>
+  );
+}
+
+/** 임원 요약 타일 */
+function ExecTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-white p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-bold tabular-nums text-brand-navy">{value}</p>
     </div>
   );
 }

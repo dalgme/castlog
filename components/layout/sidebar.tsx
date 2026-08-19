@@ -15,6 +15,7 @@ import {
   LogOut,
   Handshake,
   BookOpen,
+  ListChecks,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ const NAV_ITEMS: readonly {
   financeOnly?: boolean;
 }[] = [
   { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
+  // 여러 프로젝트를 맡은 사람이 마감을 놓치지 않게 — 공통 기반
+  { label: "내 업무", path: "my-work", icon: ListChecks, module: null },
   {
     label: "임원 현황",
     path: "executive",

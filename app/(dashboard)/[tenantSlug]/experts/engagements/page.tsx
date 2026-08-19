@@ -16,6 +16,8 @@ import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow
 import { resolvePage, totalPages, withParams } from "@/lib/ui/paging";
 import { Pagination } from "@/components/layout/list-controls";
 import { PageHeader } from "@/components/layout/header";
+
+import { RemindButton } from "./remind-button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -259,7 +261,16 @@ export default async function EngagementStatusPage({
                           )}
                         </TableCell>
                         <TableCell>
-                          {acceptanceStatus ? (
+                          {e.status === "requested" ? (
+                            <RemindButton
+                              engagementId={e.id}
+                              expertName={e.experts?.name ?? "전문가"}
+                              daysWaiting={Math.floor(
+                                (Date.now() - new Date(e.created_at).getTime()) /
+                                  86400000
+                              )}
+                            />
+                          ) : acceptanceStatus ? (
                             <Link
                               href={`/${params.tenantSlug}/experts/acceptances/${e.id}`}
                               className="inline-flex items-center gap-1 text-sm text-brand underline"
