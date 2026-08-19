@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   recommendExperts,
   draftEngagementRationale,
+  shortlistExperts,
 } from "./recommend-actions";
 import type { ExpertCandidate } from "@/lib/integrations/recommendations";
 
@@ -29,9 +31,12 @@ import type { ExpertCandidate } from "@/lib/integrations/recommendations";
  * 결정·비용은 담당자 몫 — 초안은 검토·수정 후 사용.
  */
 export function ExpertRecommendDialog() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [candidates, setCandidates] = useState<ExpertCandidate[] | null>(null);
+  // 추천은 '읽고 끝'이 아니라 '골라서 남기는' 자리다 — 고른 사람을 담아 둔다
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [aiConfigured, setAiConfigured] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
@@ -44,6 +49,7 @@ export function ExpertRecommendDialog() {
       if (res.ok) {
         setCandidates(res.candidates);
         setAiConfigured(res.aiConfigured);
+        setSelected(new Set());
       } else {
         toast({ variant: "destructive", description: res.error });
       }
@@ -64,6 +70,62 @@ export function ExpertRecommendDialog() {
         toast({ variant: "destructive", description: res.error });
       }
     });
+  }
+
+  function toggle(expertId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(expertId)) next.delete(expertId);
+      else next.add(expertId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (!candidates) return;
+    setSelected((prev) =>
+      prev.size === candidates.length
+        ? new Set()
+        : new Set(candidates.map((c) => c.expertId))
+    );
+  }
+
+  function onShortlist() {
+    startTransition(async () => {
+      const res = await shortlistExperts({ expertIds: Array.from(selected) });
+      if (!res.ok) {
+        toast({ variant: "destructive", description: res.error });
+        return;
+      }
+      const skippedNote = res.skipped.length
+        ? ` 제외 ${res.skipped.length}명 — ${res.skipped
+            .map((s) => `${s.name}(${s.reason})`)
+            .join(", ")}`
+        : "";
+      toast({
+        description: `즐겨찾기 ${res.added}명 지정.${skippedNote}`,
+      });
+      setSelected(new Set());
+      router.refresh();
+    });
+  }
+
+  async function copySelected() {
+    if (!candidates) return;
+    const text = candidates
+      .filter((c) => selected.has(c.expertId))
+      .map((c) =>
+        [c.name, c.specialty ?? "", c.avgScore !== null ? `평판 ${c.avgScore.toFixed(1)}/10` : "평가 없음"]
+          .filter(Boolean)
+          .join("\t")
+      )
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ description: `선택한 ${selected.size}명을 복사했습니다.` });
+    } catch {
+      toast({ variant: "destructive", description: "복사에 실패했습니다." });
+    }
   }
 
   async function copy(text: string) {
@@ -113,14 +175,41 @@ export function ExpertRecommendDialog() {
         )}
 
         {candidates && candidates.length > 0 && (
+          <div className="flex items-center justify-between border-b pb-2">
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs font-medium text-brand hover:underline"
+            >
+              {selected.size === candidates.length ? "전체 해제" : "전체 선택"}
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {selected.size}명 선택
+            </span>
+          </div>
+        )}
+
+        {candidates && candidates.length > 0 && (
           <ul className="space-y-3">
             {candidates.map((c, i) => (
               <li key={c.expertId} className="rounded-md border p-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`cand-${c.expertId}`}
+                    checked={selected.has(c.expertId)}
+                    onChange={() => toggle(c.expertId)}
+                    className="h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"
+                  />
                   <span className="text-xs font-mono text-muted-foreground">
                     {i + 1}
                   </span>
-                  <span className="font-semibold">{c.name}</span>
+                  <label
+                    htmlFor={`cand-${c.expertId}`}
+                    className="cursor-pointer font-semibold"
+                  >
+                    {c.name}
+                  </label>
                   {c.specialty && (
                     <span className="text-sm text-muted-foreground">
                       {c.specialty}
@@ -189,6 +278,33 @@ export function ExpertRecommendDialog() {
               </li>
             ))}
           </ul>
+        )}
+
+        {candidates && candidates.length > 0 && (
+          <div className="sticky bottom-0 -mx-6 flex flex-wrap items-center gap-2 border-t bg-white px-6 pt-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending || selected.size === 0}
+              onClick={onShortlist}
+            >
+              <Star className="mr-1.5 h-4 w-4" />
+              선택 {selected.size}명 즐겨찾기
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={selected.size === 0}
+              onClick={copySelected}
+            >
+              명단 복사
+            </Button>
+            <p className="w-full text-xs text-muted-foreground">
+              즐겨찾기로 담아 두면 코드넘버에서 후보를 고를 때 위쪽에 먼저
+              보입니다. 실제 섭외 요청은 프로젝트의 코드넘버에서 보냅니다.
+            </p>
+          </div>
         )}
       </DialogContent>
     </Dialog>

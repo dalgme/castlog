@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, Copy, Download, FileUp } from "lucide-react";
+import { Check, Copy, Download, FileUp, Plus, Trash2 } from "lucide-react";
 
 import {
   IMPORT_STATUS_LABEL,
@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -33,6 +34,7 @@ import {
 import {
   commitExpertImport,
   parseExpertImport,
+  parseExpertRowsInput,
   type CommitImportResult,
 } from "./actions";
 
@@ -47,11 +49,21 @@ const STATUS_VARIANT: Record<
   dup_pending: "secondary",
 };
 
+type ManualRow = { name: string; phone: string };
+
+/** 직접 입력 시작 줄 수 — 빈 줄은 검증에서 그냥 버려지므로 넉넉히 열어 둔다 */
+const MANUAL_INITIAL_ROWS = 3;
+
 export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImportPreviewRow[] | null>(null);
+  // 직접 입력이 기본 — 몇 명 안 되는데 엑셀을 오가는 것이 대부분의 경우다
+  const [mode, setMode] = useState<"manual" | "file">("manual");
+  const [manualRows, setManualRows] = useState<ManualRow[]>(
+    Array.from({ length: MANUAL_INITIAL_ROWS }, () => ({ name: "", phone: "" }))
+  );
   const [dupMode, setDupMode] = useState<ImportDupMode>("skip");
   const [result, setResult] = useState<
     Extract<CommitImportResult, { ok: true }> | null
@@ -71,6 +83,67 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
     formData.set("file", file);
     startTransition(async () => {
       const parsed = await parseExpertImport(formData);
+      if (parsed.ok) {
+        setPreview(parsed.rows);
+      } else {
+        setPreview(null);
+        setError(parsed.error);
+      }
+    });
+  }
+
+  function setManualCell(index: number, key: keyof ManualRow, value: string) {
+    setManualRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, [key]: value } : row))
+    );
+  }
+
+  function addRow() {
+    setManualRows((rows) => [...rows, { name: "", phone: "" }]);
+  }
+
+  function removeRow(index: number) {
+    setManualRows((rows) =>
+      rows.length === 1 ? rows : rows.filter((_, i) => i !== index)
+    );
+  }
+
+  /**
+   * 엑셀에서 두 칸(이름·휴대폰)을 여러 줄 복사해 붙여넣는 경우를 받아 준다.
+   * 붙여넣은 내용에 줄바꿈이나 탭이 없으면 평범한 붙여넣기이므로 건드리지 않는다.
+   */
+  function onPasteRows(
+    e: React.ClipboardEvent<HTMLInputElement>,
+    index: number
+  ) {
+    const text = e.clipboardData.getData("text");
+    if (!/[\t\n]/.test(text)) return;
+    e.preventDefault();
+
+    const parsed = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [name = "", phone = ""] = line.split(/\t|,/);
+        return { name: name.trim(), phone: phone.trim() };
+      });
+    if (parsed.length === 0) return;
+
+    setManualRows((rows) => {
+      const next = [...rows];
+      for (let i = 0; i < parsed.length; i++) {
+        next[index + i] = parsed[i]!;
+      }
+      return next;
+    });
+  }
+
+  function onParseManual() {
+    setError(null);
+    setResult(null);
+    startTransition(async () => {
+      const parsed = await parseExpertRowsInput({ rows: manualRows });
       if (parsed.ok) {
         setPreview(parsed.rows);
       } else {
@@ -202,46 +275,118 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
 
   return (
     <div className="space-y-5">
+      {/* 명단을 만드는 일과 검증하는 일은 한 호흡이다 — 카드를 나누면 사용자가
+          '템플릿을 받아야만 하는가'로 읽는다. 한 카드 안에 두 가지 입력 수단을 둔다 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">1. 템플릿 작성</CardTitle>
+          <CardTitle className="text-base">1. 명단 작성 · 검증</CardTitle>
           <CardDescription>
-            템플릿(이름·휴대폰)을 내려받아 명단을 채웁니다. 행마다 등록 요청
-            링크(/j)가 생성되며, 전문분야·경력 등 프로필은 전문가 본인이 등록
-            시 직접 입력합니다.
+            이름과 휴대폰만 있으면 됩니다. 행마다 등록 요청 링크(/j)가 생성되며,
+            전문분야·경력 등 프로필은 전문가 본인이 등록 시 직접 입력합니다.
+            검증 단계에서는 아무것도 등록되지 않습니다.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" size="sm">
-            <a href={`/${tenantSlug}/experts/import/template`}>
-              <Download className="mr-1.5 h-4 w-4" />
-              템플릿 다운로드
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">2. 업로드·검증</CardTitle>
-          <CardDescription>
-            업로드하면 행별 검증 결과를 먼저 보여드립니다. 이 단계에서는
-            아무것도 등록되지 않습니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:font-medium"
-            />
-            <Button size="sm" onClick={onParse} disabled={pending}>
-              <FileUp className="mr-1.5 h-4 w-4" />
-              {pending && !preview ? "검증 중..." : "업로드·검증"}
-            </Button>
+        <CardContent className="space-y-4">
+          <div className="flex gap-1 border-b">
+            {(
+              [
+                ["manual", "직접 입력"],
+                ["file", "엑셀 업로드"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setMode(key);
+                  setError(null);
+                }}
+                aria-current={mode === key ? "true" : undefined}
+                className={
+                  "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors " +
+                  (mode === key
+                    ? "border-brand text-brand"
+                    : "border-transparent text-muted-foreground hover:text-brand")
+                }
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          {mode === "manual" ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-[1fr_1.2fr_auto] items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span>이름</span>
+                <span>휴대폰</span>
+                <span className="w-8" />
+              </div>
+              {manualRows.map((row, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-[1fr_1.2fr_auto] items-center gap-2"
+                >
+                  <Input
+                    value={row.name}
+                    placeholder="홍길동"
+                    onChange={(e) => setManualCell(index, "name", e.target.value)}
+                    onPaste={(e) => onPasteRows(e, index)}
+                  />
+                  <Input
+                    value={row.phone}
+                    placeholder="010-1234-5678"
+                    inputMode="tel"
+                    onChange={(e) => setManualCell(index, "phone", e.target.value)}
+                    onPaste={(e) => onPasteRows(e, index)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`${index + 1}행 삭제`}
+                    disabled={manualRows.length === 1}
+                    onClick={() => removeRow(index)}
+                    className="rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-30"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={addRow}>
+                  <Plus className="mr-1.5 h-4 w-4" />행 추가
+                </Button>
+                <Button size="sm" onClick={onParseManual} disabled={pending}>
+                  {pending && !preview ? "검증 중..." : "검증하기"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  엑셀에서 이름·휴대폰 두 칸을 복사해 붙여넣으면 여러 행이 한 번에
+                  채워집니다.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Button asChild variant="outline" size="sm">
+                <a href={`/${tenantSlug}/experts/import/template`}>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  템플릿 다운로드
+                </a>
+              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                />
+                <Button size="sm" onClick={onParse} disabled={pending}>
+                  <FileUp className="mr-1.5 h-4 w-4" />
+                  {pending && !preview ? "검증 중..." : "업로드·검증"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -253,7 +398,7 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
       {preview && counts && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">3. 검증 결과 확인 후 등록</CardTitle>
+            <CardTitle className="text-base">2. 검증 결과 확인 후 등록</CardTitle>
             <CardDescription>
               전체 {preview.length}행 — 등록 대상 {counts.ok ?? 0} · 오류{" "}
               {counts.error ?? 0} · 이미 연결됨 {counts.dup_linked ?? 0} ·
