@@ -56,11 +56,14 @@ export function PositionRequestDialog({
   code,
   tenantSlug,
   projectId,
+  variant = "button",
 }: {
   positionId: string;
   code: string;
   tenantSlug: string;
   projectId: string;
+  /** chip = 세션 표의 코드 조각 자리에 그대로 놓는 형태 */
+  variant?: "button" | "chip";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -189,10 +192,20 @@ export function PositionRequestDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          <Search className="mr-1.5 h-3.5 w-3.5" />
-          전문가 탐색/요청
-        </Button>
+        {variant === "chip" ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-brand hover:text-brand"
+          >
+            <span className="font-mono font-semibold">{code}</span>
+            <span>섭외하기 →</span>
+          </button>
+        ) : (
+          <Button size="sm">
+            <Search className="mr-1.5 h-3.5 w-3.5" />
+            전문가 탐색/요청
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>

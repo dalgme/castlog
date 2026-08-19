@@ -28,6 +28,8 @@ export type ExpertEvaluationRow = {
   expertId: string;
   engagementId: string;
   name: string;
+  /** 이 프로젝트에서 참여한 세션 이름들 — 평가 맥락 */
+  sessions: string[];
   score: number | null;
   reason: string | null;
   /** 정성 후기 — 정량 점수와 별개로 여러 건 누적된다 */
@@ -100,6 +102,12 @@ export function ExpertEvaluationForm({
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">{row.name}</span>
+        {/* 참여 세션 — 이름만 보고는 무슨 일을 한 분인지 떠오르지 않는다 */}
+        {row.sessions.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {row.sessions.join(" · ")}
+          </span>
+        )}
         {evaluated ? (
           <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700">
             평가 완료 · {row.score}점
