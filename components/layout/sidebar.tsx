@@ -37,7 +37,7 @@ const NAV_ITEMS: readonly {
   // 여러 프로젝트를 맡은 사람이 마감을 놓치지 않게 — 공통 기반
   { label: "내 업무", path: "my-work", icon: ListChecks, module: null },
   {
-    label: "임원 현황",
+    label: "업무배정 현황",
     path: "executive",
     icon: BarChart3,
     module: null, // 프로젝트 기초 위의 통계 — 공통 기반

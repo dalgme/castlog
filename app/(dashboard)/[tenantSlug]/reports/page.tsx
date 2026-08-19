@@ -55,7 +55,7 @@ export default async function ReportsPage({
                     </Link>
                   </Button>
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/${params.tenantSlug}/executive`}>임원 현황</Link>
+                    <Link href={`/${params.tenantSlug}/executive`}>업무배정 현황</Link>
                   </Button>
                 </div>
               </div>

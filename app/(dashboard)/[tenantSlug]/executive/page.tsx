@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export const metadata = { title: "임원 현황" };
+export const metadata = { title: "업무배정 현황" };
 
 /**
  * 단계 24: 총괄 임원 대시보드 — 직원별·프로젝트별 업무현황 (org_admin 전용).
@@ -34,12 +34,12 @@ export default async function ExecutivePage({
   searchParams: { year?: string };
 }) {
   await requireRole(["platform_admin", "org_admin"]);
-  // 임원 현황은 프로젝트 기초 위의 통계 — 공통 기반
+  // 업무배정 현황은 프로젝트 기초 위의 통계 — 공통 기반
 
   if (!hasSupabaseEnv()) {
     return (
       <div>
-        <PageHeader title="임원 현황" />
+        <PageHeader title="업무배정 현황" />
         <main className="p-5">
           <EmptyState
             title="서버 설정 대기 중"
@@ -218,7 +218,7 @@ export default async function ExecutivePage({
   return (
     <div>
       <PageHeader
-        title="임원 현황"
+        title="업무배정 현황"
         actions={
           <div className="flex items-center gap-1">
             {yearOptions.map((y) => (
