@@ -22,10 +22,17 @@ import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { isUserGrade, type UserGrade } from "@/lib/auth/grades";
 import { isAdminScope } from "@/lib/auth/admin-scope-keys";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
+import { getTenantModules } from "@/lib/modules/server";
 import { buildStaffJoinLink } from "@/lib/routing/links";
+
+import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { CreateStaffDialog } from "./staff-dialog";
 import { CompanyProfileForm } from "./company-profile-form";
+import {
+  CategoriesPanel,
+  type CategoryRow,
+} from "./categories-panel";
 import {
   JoinRequestsPanel,
   type JoinRequestRow,
@@ -59,15 +66,16 @@ export default async function OrgAdminPage({
 }) {
   // 대표(org_admin)·플랫폼관리자 또는 관리 스코프를 위임받은 직원만 진입
   const gateUser = await requireUser();
+  const scopeSet = await getAdminScopes();
   if (gateUser) {
     const role = roleFromUser(gateUser);
-    const scopes = await getAdminScopes();
     const allowed =
       role === "org_admin" ||
       role === "platform_admin" ||
-      Object.values(scopes).some(Boolean);
+      Object.values(scopeSet).some(Boolean);
     if (!allowed) redirect(postLoginPath(gateUser));
   }
+  const modules = await getTenantModules();
 
   if (!hasSupabaseEnv()) {
     return (
@@ -186,6 +194,32 @@ export default async function OrgAdminPage({
   }));
   const joinUrl = buildStaffJoinLink(params.tenantSlug);
 
+  // 프로젝트 분야 카테고리 + 카테고리별 프로젝트 수(비활성화 판단 근거)
+  const [{ data: categoryRecords }, { data: categorizedProjects }] =
+    await Promise.all([
+      supabase
+        .from("project_categories")
+        .select("id, name, description, is_active")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase.from("projects").select("category_id").not("category_id", "is", null),
+    ]);
+  const projectCountByCategory = new Map<string, number>();
+  for (const row of categorizedProjects ?? []) {
+    if (!row.category_id) continue;
+    projectCountByCategory.set(
+      row.category_id,
+      (projectCountByCategory.get(row.category_id) ?? 0) + 1
+    );
+  }
+  const categoryRows: CategoryRow[] = (categoryRecords ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    isActive: c.is_active,
+    projectCount: projectCountByCategory.get(c.id) ?? 0,
+  }));
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
@@ -208,6 +242,12 @@ export default async function OrgAdminPage({
           </div>
         }
       />
+      <SettingsTabs
+        tenantSlug={params.tenantSlug}
+        showSms={isCeo || scopeSet.sending}
+        showOrg
+        showRules={modules.approvals && (isCeo || scopeSet.settings)}
+      />
       <main className="space-y-5 p-5">
         <Card>
           <CardHeader className="pb-3">
@@ -222,6 +262,15 @@ export default async function OrgAdminPage({
               positions={positionRows}
               canGrantCeo={isCeo}
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">프로젝트 분야 카테고리</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CategoriesPanel categories={categoryRows} />
           </CardContent>
         </Card>
 

@@ -19,6 +19,8 @@ import {
   requestableModules,
 } from "@/lib/modules/requests";
 
+import { SettingsTabs } from "@/components/layout/settings-tabs";
+
 import { SmsConfigForm } from "./sms-config-form";
 import { SmsConnectionPanel } from "./sms-connection-panel";
 import { ModuleRequestPanel, type OpenRequest } from "./module-request-panel";
@@ -95,6 +97,12 @@ export default async function SettingsPage({
   return (
     <div>
       <PageHeader title="설정" />
+      <SettingsTabs
+        tenantSlug={params.tenantSlug}
+        showSms={canManageSending}
+        showOrg={canRequestModules}
+        showRules={modules.approvals && canRequestModules}
+      />
       <main className="mx-auto max-w-2xl space-y-4 p-4 sm:p-5">
         {canRequestModules && (
         <Card>

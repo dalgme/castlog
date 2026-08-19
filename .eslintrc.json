@@ -1,3 +1,23 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "@typescript-eslint/no-use-before-define": [
+      "error",
+      {
+        "functions": false,
+        "classes": false,
+        "variables": true,
+        "enums": false,
+        "typedefs": false,
+        "ignoreTypeReferences": true
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "comment": "shadcn 폼 프리미티브 — 훅 본문에서 아래에 선언된 Context를 참조한다. 훅은 모듈 평가가 끝난 뒤에만 호출되므로 런타임 TDZ가 아니다.",
+      "files": ["components/ui/form.tsx"],
+      "rules": { "@typescript-eslint/no-use-before-define": "off" }
+    }
+  ]
 }

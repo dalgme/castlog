@@ -2899,8 +2899,45 @@ export type Database = {
         }
         Relationships: []
       }
+      project_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          slug: string | null
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          slug?: string | null
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string | null
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
+          category_id: string | null
           is_practice: boolean
           business_year: number
           client_name: string | null
@@ -2921,6 +2958,7 @@ export type Database = {
           budget_amount: number | null
         }
         Insert: {
+          category_id?: string | null
           is_practice?: boolean
           business_year: number
           client_name?: string | null
@@ -2941,6 +2979,7 @@ export type Database = {
           budget_amount?: number | null
         }
         Update: {
+          category_id?: string | null
           is_practice?: boolean
           business_year?: number
           client_name?: string | null

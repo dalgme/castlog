@@ -376,6 +376,26 @@ export default async function ProjectDetailPage({
   const expertNameById = new Map(
     (positionExperts ?? []).map((e) => [e.id, e.name])
   );
+  // 세션 안내문자 — 템플릿(테넌트 공용) + 세션별 발송 내역
+  const [{ data: noticeTemplateRows }, { data: noticeRows }] = modules.experts
+    ? await Promise.all([
+        supabase
+          .from("session_notice_templates")
+          .select("id, name, body")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+        slotIds.length
+          ? supabase
+              .from("session_notices")
+              .select(
+                "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error"
+              )
+              .in("slot_id", slotIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: null }),
+      ])
+    : [{ data: null }, { data: null }];
+
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
     slotDate: s.slot_date,
@@ -444,26 +464,6 @@ export default async function ProjectDetailPage({
   const confirmedCost = engagements
     .filter((e) => e.status === "accepted")
     .reduce((sum, e) => sum + (e.fee_amount ?? 0), 0);
-
-  // 세션 안내문자 — 템플릿(테넌트 공용) + 세션별 발송 내역
-  const [{ data: noticeTemplateRows }, { data: noticeRows }] = modules.experts
-    ? await Promise.all([
-        supabase
-          .from("session_notice_templates")
-          .select("id, name, body")
-          .eq("is_active", true)
-          .order("name", { ascending: true }),
-        slotIds.length
-          ? supabase
-              .from("session_notices")
-              .select(
-                "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error"
-              )
-              .in("slot_id", slotIds)
-              .order("created_at", { ascending: false })
-          : Promise.resolve({ data: null }),
-      ])
-    : [{ data: null }, { data: null }];
 
   const noticeTemplates = (noticeTemplateRows ?? []).map((t) => ({
     id: t.id,

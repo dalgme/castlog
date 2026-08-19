@@ -66,6 +66,18 @@ export default async function ProjectsPage({
 
   const rows = projects ?? [];
 
+  // 분야 카테고리 — 대표가 설정한 활성 항목만 개설 폼에 노출한다.
+  const { data: categoryRows } = await supabase
+    .from("project_categories")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  const categoryOptions = (categoryRows ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
+
   // PM·부PM 표기 (RLS가 이미 볼 수 있는 배정만 돌려준다)
   const { data: assignments } = rows.length
     ? await supabase
@@ -106,7 +118,10 @@ export default async function ProjectsPage({
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/projects/export`}>엑셀</a>
             </Button>
-            <CreateProjectDialog tenantSlug={params.tenantSlug} />
+            <CreateProjectDialog
+              tenantSlug={params.tenantSlug}
+              categories={categoryOptions}
+            />
           </div>
         }
       />
