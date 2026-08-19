@@ -1,15 +1,27 @@
 import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
+import { gradeFromUser } from "@/lib/auth/tenant";
+import { canViewAllProjects, gradeLabel, gradeRank } from "@/lib/auth/grades";
 import { getTenantModules } from "@/lib/modules/server";
-import { createClient } from "@/lib/supabase/server";
+import { canManagePayments } from "@/lib/auth/admin-scopes";
+import { getTenantDashboard } from "@/lib/integrations/tenant-dashboard";
+import { getMyWork } from "@/lib/integrations/my-work";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
+import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarList } from "@/components/charts/bar-list";
+import { Donut } from "@/components/charts/donut";
 
 export const metadata = { title: "대시보드" };
+
+/** 프로젝트 진행 현황 목록에 한 번에 보여 줄 최대 건수 */
+const PROGRESS_ROW_LIMIT = 8;
 
 function StatCard({
   label,
@@ -23,7 +35,7 @@ function StatCard({
   href?: string;
 }) {
   const body = (
-    <Card className={href ? "transition-colors hover:border-brand/50" : ""}>
+    <Card className={href ? "h-full transition-colors hover:border-brand/50" : "h-full"}>
       <CardContent className="pt-5">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <p className="mt-1 text-2xl font-extrabold">{value}</p>
@@ -34,9 +46,59 @@ function StatCard({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
+/** 비용 묶음 안의 한 줄 — 금액은 오른쪽 정렬로 자릿수를 맞춘다 */
+function MoneyRow({
+  label,
+  amount,
+  note,
+  strong,
+}: {
+  label: string;
+  amount: number;
+  note?: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+      <span className={strong ? "font-semibold" : "text-muted-foreground"}>
+        {label}
+        {note && (
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+            {note}
+          </span>
+        )}
+      </span>
+      <span
+        className={
+          strong
+            ? "shrink-0 tabular-nums font-extrabold"
+            : "shrink-0 tabular-nums font-medium"
+        }
+      >
+        {formatKrw(amount)}
+      </span>
+    </div>
+  );
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "hsl(var(--brand))",
+  planned: "hsl(var(--brand-sky))",
+  on_hold: "hsl(var(--brand-amber))",
+  completed: "hsl(var(--brand-navy))",
+  cancelled: "hsl(var(--destructive))",
+};
+
 /**
- * 테넌트 대시보드 — 사업연도 축 통계 (CLAUDE.md 12-7).
- * 활성 모듈의 카드만 표시한다 (모듈 구조 1-2).
+ * 테넌트 대시보드 — 보는 사람의 등급에 따라 무엇을 먼저 보여 줄지 달라진다.
+ *
+ *  · 대표·이사   전사 통계·비용 총괄이 본업이다. 그래프 중심으로 전체를 편다.
+ *  · 팀장        맡은 프로젝트의 진행과 비용. 통계는 자기 범위 안에서만 뜬다
+ *                (RLS가 이미 범위를 좁힌다 — 화면에서 따로 거르지 않는다).
+ *  · 대리 이하   통계보다 '오늘 내가 할 일'이 먼저다. 마감·결재 대기부터 띄운다.
+ *
+ * 집계 자체는 한 벌(getTenantDashboard)이고 배치만 다르다. 등급별로 집계를 따로
+ * 만들면 한쪽만 고쳐지는 사고가 난다.
  */
 export default async function DashboardPage({
   params,
@@ -45,7 +107,12 @@ export default async function DashboardPage({
   params: { tenantSlug: string };
   searchParams: { year?: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole([
+    "platform_admin",
+    "org_admin",
+    "manager",
+    "staff",
+  ]);
 
   if (!hasSupabaseEnv()) {
     return (
@@ -65,82 +132,76 @@ export default async function DashboardPage({
   const year = /^\d{4}$/.test(searchParams.year ?? "")
     ? parseInt(searchParams.year!, 10)
     : currentYear;
-  const yearStart = `${year}-01-01T00:00:00Z`;
-  const yearEnd = `${year + 1}-01-01T00:00:00Z`;
 
-  const supabase = createClient();
-  const modules = await getTenantModules();
   const slug = params.tenantSlug;
+  const grade = gradeFromUser(user);
+  // 대표·이사 = 전사 축. 팀장 이하는 배정분만 보이므로 같은 화면이 자연히 좁아진다.
+  const isExecutive = canViewAllProjects(grade);
+  // 대리 이하 — 통계보다 개인 업무가 먼저 오는 배치
+  const isJunior = grade !== null && gradeRank(grade) < gradeRank("team_lead");
 
-  // 모듈별 통계 병렬 조회 (count는 head 요청 — 데이터 미전송)
-  const [
-    projectsTotal,
-    projectsActive,
-    expertsLinked,
-    engagementsAccepted,
-    approvalsInProgress,
-    approvalsCompleted,
-    batchesConfirmed,
-  ] = await Promise.all([
-    // 프로젝트 통계는 공통 기반 — 모듈 조합과 무관하게 항상 집계한다
-    supabase
-      .from("projects")
-      .select("id", { count: "exact", head: true })
-      .eq("business_year", year),
-    supabase
-      .from("projects")
-      .select("id", { count: "exact", head: true })
-      .eq("business_year", year)
-      .eq("status", "active"),
-    modules.experts
-      ? supabase
-          .from("expert_tenant_links")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "active")
-      : Promise.resolve({ count: null }),
-    modules.experts
-      ? supabase
-          .from("expert_engagements")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "accepted")
-          .gte("created_at", yearStart)
-          .lt("created_at", yearEnd)
-      : Promise.resolve({ count: null }),
-    modules.approvals
-      ? supabase
-          .from("approvals")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "in_progress")
-      : Promise.resolve({ count: null }),
-    modules.approvals
-      ? supabase
-          .from("approvals")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "approved")
-          .gte("completed_at", yearStart)
-          .lt("completed_at", yearEnd)
-      : Promise.resolve({ count: null }),
-    modules.experts
-      ? supabase
-          .from("expert_payment_batches")
-          .select("total_gross, total_net, status")
-          .in("status", ["confirmed", "paid"])
-          .gte("created_at", yearStart)
-          .lt("created_at", yearEnd)
-      : Promise.resolve({ data: null }),
+  const modules = await getTenantModules();
+  const [data, payments, myWork] = await Promise.all([
+    getTenantDashboard(year, modules),
+    canManagePayments(),
+    getMyWork(user?.id ?? "", slug, modules),
   ]);
 
-  const paymentRows =
-    "data" in batchesConfirmed ? (batchesConfirmed.data ?? []) : [];
-  const paymentTotals = paymentRows.reduce(
-    (acc, b) => ({
-      gross: acc.gross + b.total_gross,
-      net: acc.net + b.total_net,
-    }),
-    { gross: 0, net: 0 }
-  );
-
   const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
+
+  const statusSlices = Object.entries(data.projects.byStatus)
+    .map(([status, count]) => ({
+      label: PROJECT_STATUS_LABELS[status] ?? status,
+      value: count,
+      color: STATUS_COLORS[status] ?? "hsl(var(--muted-foreground))",
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const progressRows = data.projects.rows.slice(0, PROGRESS_ROW_LIMIT);
+  const budgetUsedPct =
+    data.cost.budgetTotal > 0
+      ? Math.round(
+          ((data.cost.confirmedCost + data.cost.requestedCost) /
+            data.cost.budgetTotal) *
+            100
+        )
+      : null;
+
+  // 비용 묶음은 지급 권한자에게만 전액을 편다 (finance 위임 — CLAUDE.md §3-1)
+  const showCost = payments || isExecutive;
+
+  const myWorkCard = (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+        <CardTitle className="text-sm">내 업무</CardTitle>
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/${slug}/my-work`}>전체 보기</Link>
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-2xl font-extrabold text-destructive">
+              {myWork.overdue.length}
+            </p>
+            <p className="text-xs text-muted-foreground">기한 지남</p>
+          </div>
+          <div>
+            <p className="text-2xl font-extrabold text-brand-amber">
+              {myWork.dueSoon.length}
+            </p>
+            <p className="text-xs text-muted-foreground">마감 임박</p>
+          </div>
+          <div>
+            <p className="text-2xl font-extrabold">
+              {myWork.awaitingReply.length}
+            </p>
+            <p className="text-xs text-muted-foreground">회신 대기 섭외</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <>
@@ -167,63 +228,295 @@ export default async function DashboardPage({
       <main className="space-y-5 p-5">
         <p className="text-sm text-muted-foreground">
           {year}년 사업연도 기준 현황입니다.
+          {!isExecutive && " 배정된 프로젝트만 집계됩니다."}
+          {grade && (
+            <span className="ml-1.5 text-xs">({gradeLabel(grade)} 화면)</span>
+          )}
         </p>
+
+        {/* 대리 이하 — 오늘 할 일부터 */}
+        {isJunior && myWorkCard}
+
+        {/* ---- 요약 숫자 ---------------------------------------------------- */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             label={`${year}년 프로젝트`}
-            value={String(("count" in projectsTotal ? projectsTotal.count : 0) ?? 0)}
-            sub={`진행중 ${("count" in projectsActive ? projectsActive.count : 0) ?? 0}건`}
+            value={`${data.projects.total}건`}
+            sub={`진행중 ${data.projects.byStatus.active ?? 0} · 완료 ${
+              data.projects.byStatus.completed ?? 0
+            }`}
             href={`/${slug}/projects`}
           />
-          {modules.experts && (
+          {data.experts && (
             <>
               <StatCard
                 label="연결 전문가"
-                value={String(("count" in expertsLinked ? expertsLinked.count : 0) ?? 0)}
+                value={`${data.experts.linked}명`}
                 sub="활성 연결 기준"
                 href={`/${slug}/experts`}
               />
               <StatCard
-                label={`${year}년 섭외 성사`}
-                value={String(
-                  ("count" in engagementsAccepted ? engagementsAccepted.count : 0) ?? 0
-                )}
-                sub="수락(계약 성립) 건"
+                label={`${year}년 섭외 확정`}
+                value={`${data.experts.engagements.accepted}건`}
+                sub={`요청 중 ${data.experts.engagements.requested}건`}
+                href={`/${slug}/experts/engagements`}
               />
             </>
           )}
-          {modules.approvals && (
+          {data.approvals && (
             <StatCard
               label="결재 진행중"
-              value={String(
-                ("count" in approvalsInProgress ? approvalsInProgress.count : 0) ?? 0
-              )}
-              sub={`${year}년 승인 완료 ${("count" in approvalsCompleted ? approvalsCompleted.count : 0) ?? 0}건`}
+              value={`${data.approvals.inProgress}건`}
+              sub={`${year}년 승인 ${data.approvals.approvedThisYear} · 반려 ${data.approvals.rejectedThisYear}`}
               href={`/${slug}/approvals`}
             />
           )}
         </div>
 
-        {modules.experts && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatCard
-              label={`${year}년 확정 지급 건`}
-              value={`${paymentRows.length}건`}
-              href={`/${slug}/payments`}
-            />
-            <StatCard
-              label="확정 총비용"
-              value={formatKrw(paymentTotals.gross)}
-              sub="원천징수 포함 (참고)"
-            />
-            <StatCard
-              label="확정 실지급액"
-              value={formatKrw(paymentTotals.net)}
-            />
-          </div>
+        {/* ---- 프로젝트 진행 현황 (그래프) ------------------------------------ */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">프로젝트 상태 구성</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.projects.total === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {year}년 프로젝트가 없습니다.
+                </p>
+              ) : (
+                <Donut
+                  slices={statusSlices}
+                  centerValue={String(data.projects.total)}
+                  centerLabel="전체"
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">분야(카테고리) 구성</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BarList
+                items={data.categories.map((c) => ({
+                  label: c.name,
+                  value: c.count,
+                  display: `${c.count}건`,
+                  tone: c.name === "미지정" ? "gray" : "brand",
+                }))}
+                emptyText={`${year}년 프로젝트가 없습니다.`}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm">
+              프로젝트 진행률 (21스텝 기준)
+            </CardTitle>
+            {data.projects.rows.length > PROGRESS_ROW_LIMIT && (
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`/${slug}/projects`}>
+                  전체 {data.projects.rows.length}건
+                </Link>
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            {progressRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                표시할 프로젝트가 없습니다.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {progressRows.map((row) => (
+                  <li key={row.id}>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                      <Link
+                        href={`/${slug}/projects/${row.id}`}
+                        className="truncate font-medium text-brand underline-offset-4 hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <Badge variant="secondary">
+                          {PROJECT_STATUS_LABELS[row.status] ?? row.status}
+                        </Badge>
+                        <span className="tabular-nums text-xs text-muted-foreground">
+                          {row.progress === null ? "스텝 없음" : `${row.progress}%`}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-brand"
+                        style={{ width: `${row.progress ?? 0}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ---- 비용 묶음 ------------------------------------------------------ */}
+        {showCost && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">{year}년 비용 현황</CardTitle>
+              {modules.experts && payments && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/${slug}/payments`}>지급 관리</Link>
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                  예산 대비 집행
+                </p>
+                <div className="divide-y">
+                  <MoneyRow label="총 예산" amount={data.cost.budgetTotal} strong />
+                  <MoneyRow
+                    label="계획 섭외비"
+                    amount={data.cost.plannedCost}
+                    note="세션 × 필요인원"
+                  />
+                  <MoneyRow
+                    label="확정 섭외비"
+                    amount={data.cost.confirmedCost}
+                    note="수락 완료"
+                  />
+                  <MoneyRow
+                    label="요청 중"
+                    amount={data.cost.requestedCost}
+                    note="수락 대기"
+                  />
+                </div>
+                {budgetUsedPct !== null && (
+                  <div className="mt-3">
+                    <div className="flex items-baseline justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        예산 소진율 (확정 + 요청 중)
+                      </span>
+                      <span
+                        className={
+                          budgetUsedPct > 100
+                            ? "font-bold text-destructive"
+                            : "font-bold"
+                        }
+                      >
+                        {budgetUsedPct}%
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className={
+                          budgetUsedPct > 100
+                            ? "h-full rounded-full bg-destructive"
+                            : "h-full rounded-full bg-brand"
+                        }
+                        style={{ width: `${Math.min(100, budgetUsedPct)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {modules.experts && (
+                  <div className="mt-4">
+                    <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                      지급 확정
+                    </p>
+                    <div className="divide-y">
+                      <MoneyRow
+                        label="확정 총비용"
+                        amount={data.cost.paidGross}
+                        note={`${data.cost.paidBatches}건 · 원천징수 포함`}
+                      />
+                      <MoneyRow
+                        label="실지급액"
+                        amount={data.cost.paidNet}
+                        strong
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                  프로젝트별 확정 섭외비
+                </p>
+                <BarList
+                  items={progressRows
+                    .filter((r) => r.confirmedCost + r.requestedCost > 0)
+                    .map((r) => ({
+                      label: r.name,
+                      value: r.confirmedCost,
+                      display: formatKrw(r.confirmedCost),
+                      tone: r.budget > 0 && r.confirmedCost > r.budget
+                        ? ("amber" as const)
+                        : ("navy" as const),
+                    }))}
+                  emptyText="확정된 섭외비가 없습니다."
+                />
+                <p className="mt-3 text-xs text-muted-foreground">
+                  예산을 넘긴 프로젝트는 막대가 주황으로 표시됩니다. 금액은 섭외
+                  수락 시점의 의뢰비용 기준이며, 실제 지급액은 지급 확정 단계에서
+                  정해집니다.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
+        {/* ---- 섭외 현황 ------------------------------------------------------ */}
+        {data.experts && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">{year}년 섭외 결과 구성</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Donut
+                slices={[
+                  {
+                    label: "수락(확정)",
+                    value: data.experts.engagements.accepted,
+                    color: "hsl(var(--brand))",
+                  },
+                  {
+                    label: "요청 중",
+                    value: data.experts.engagements.requested,
+                    color: "hsl(var(--brand-sky))",
+                  },
+                  {
+                    label: "거절",
+                    value: data.experts.engagements.declined,
+                    color: "hsl(var(--brand-amber))",
+                  },
+                  {
+                    label: "취소",
+                    value: data.experts.engagements.canceled,
+                    color: "hsl(var(--destructive))",
+                  },
+                ]}
+                centerValue={String(
+                  data.experts.engagements.accepted +
+                    data.experts.engagements.requested +
+                    data.experts.engagements.declined +
+                    data.experts.engagements.canceled
+                )}
+                centerLabel="섭외 건"
+              />
+            </CardContent>
+          </Card>
+        )}
 
+        {/* 팀장 이상 — 통계를 먼저 보고 개인 업무는 아래에 둔다 */}
+        {!isJunior && myWorkCard}
       </main>
     </>
   );

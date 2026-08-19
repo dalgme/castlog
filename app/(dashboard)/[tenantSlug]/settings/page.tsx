@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { redirect } from "next/navigation";
 
-import { requireUser, postLoginPath } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
@@ -53,7 +53,11 @@ export default async function SettingsPage({
     const isCeo = role === "org_admin" || role === "platform_admin";
     canManageSending = isCeo || scopes.sending;
     canRequestModules = isCeo || scopes.settings;
-    if (!canManageSending && !canRequestModules) redirect(postLoginPath(gateUser));
+    // 관리 권한이 없는 직원은 로그인 화면으로 튕겨내지 않는다 — '설정'을 눌렀는데
+    // 대시보드로 되돌아가면 고장으로 읽힌다. 누구에게나 있는 '내 설정'으로 보낸다.
+    if (!canManageSending && !canRequestModules) {
+      redirect(`/${params.tenantSlug}/settings/me`);
+    }
   }
 
   if (!hasSupabaseEnv()) {
