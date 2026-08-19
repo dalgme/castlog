@@ -64,11 +64,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 4) 플랫폼관리자 전역 경로 — 역할 불일치 시 홈으로
+  // 4) 플랫폼관리자 전역 경로 — 역할이 아니면 진단 화면으로.
+  //    홈으로 되돌려보내면 '눌렀는데 아무 일도 안 일어난다'만 남는다.
+  //    왜 못 들어가는지 보여 주는 자리로 보낸다.
   if (isUnderPath(pathname, "/platform-admin")) {
     if (user.app_metadata?.role !== "platform_admin") {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/account/admin-mode";
       url.search = "";
       return NextResponse.redirect(url);
     }

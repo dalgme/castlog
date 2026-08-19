@@ -13,6 +13,7 @@ import { getTenantModules } from "@/lib/modules/server";
 import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
 import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
+import { canEnterPlatformMode } from "@/lib/auth/platform-mode";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -74,6 +75,8 @@ export default async function MySettingsPage({
     canManagePayments(),
   ]);
   const logoSrc = await tenantLogoSrc();
+  // 넥스트랩 운영자에게만 — 전환이 안 될 때 원인을 볼 수 있는 자리
+  const canSwitchPlatform = canEnterPlatformMode(user);
 
   const role = roleFromUser(user);
   const grade = gradeFromUser(user);
@@ -138,6 +141,23 @@ export default async function MySettingsPage({
             </Button>
           </CardContent>
         </Card>
+
+        {canSwitchPlatform && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">캐스트로그 관리자 모드</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                운영사 계정입니다. 상단 바의 ‘관리자 모드’ 버튼으로 전환하며,
+                전환이 되지 않으면 아래에서 원인을 확인할 수 있습니다.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/account/admin-mode">관리자 모드 진단</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">
