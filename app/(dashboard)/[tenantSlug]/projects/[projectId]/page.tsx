@@ -830,6 +830,7 @@ export default async function ProjectDetailPage({
               assigned: engagementState?.assigned ?? 0,
               total: engagementState?.total ?? 0,
               open: engagementState?.open ?? 0,
+              filled: engagementState?.filled ?? 0,
               fullyAssigned: engagementState?.fullyAssigned ?? false,
             }}
             planPreview={{
@@ -852,6 +853,26 @@ export default async function ProjectDetailPage({
                 experts={assignedExpertOptions}
                 attachments={(attachmentRows ?? [])
                   .filter((a) => a.purpose === "engagement")
+                  .map((a) => ({
+                    id: a.id,
+                    scope: a.scope,
+                    expertId: a.expert_id,
+                    expertName: a.expert_id
+                      ? (expertNameById.get(a.expert_id) ?? null)
+                      : null,
+                    fileName: a.file_name,
+                  }))}
+              />
+            }
+            acceptanceAttachmentPanel={
+              <AttachmentPanel
+                projectId={project.id}
+                purpose="acceptance"
+                title="수락서 동봉 자료"
+                description="수락서를 보내는 순간 각 전문가의 수락서로 복사됩니다. 공통은 전원에게, 개별은 고른 전문가의 수락서에만 붙습니다."
+                experts={assignedExpertOptions}
+                attachments={(attachmentRows ?? [])
+                  .filter((a) => a.purpose === "acceptance")
                   .map((a) => ({
                     id: a.id,
                     scope: a.scope,

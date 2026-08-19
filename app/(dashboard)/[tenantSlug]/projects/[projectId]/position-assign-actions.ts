@@ -12,6 +12,16 @@ import {
   getProjectEngagementState,
   buildEngagementPlanDraft,
 } from "@/lib/integrations/project-engagement";
+import {
+  createEngagementAcceptance,
+  copyProjectAttachmentsToAcceptance,
+} from "@/lib/integrations/acceptance";
+import { notifyExpert } from "@/lib/experts/notifications";
+import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
+import {
+  sendEngagementEmail,
+  portalUrl,
+} from "@/lib/integrations/engagement-email";
 import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
 
 const MANAGER_ROLES = ["org_admin", "manager"];
@@ -342,4 +352,242 @@ export async function dispatchProjectEngagements(input: {
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true, sent, failed };
+}
+
+export type AcceptanceSendResult =
+  | {
+      ok: true;
+      sent: number;
+      /** 이미 확인까지 끝난 건 — 다시 보내지 않는다 */
+      skipped: number;
+      attached: number;
+      failed: { name: string; reason: string }[];
+    }
+  | { ok: false; error: string };
+
+/**
+ * 수락서 일괄 송신 — 전원 수락 후, 프로젝트의 전문가 전원에게 한 번에 보낸다.
+ *
+ * **수락서 자체는 파일로 나가지 않는다.** 캐스트로그 화면에서만 열린다. 문자·
+ * 이메일은 '수락서가 도착했으니 캐스트로그에서 확인하라'는 안내일 뿐이다.
+ * (사용자 확정 사항: 수락서는 화면으로만 볼 수 있도록 한다)
+ *
+ * 동봉 자료(공통·개별 첨부)는 이 시점에 각 수락서로 **스냅샷 복사**된다. 보낸
+ * 문서는 보낸 그대로 남아야 하기 때문이다 — 프로젝트 첨부를 나중에 지워도
+ * 이미 나간 수락서의 자료는 사라지지 않는다.
+ *
+ * 한 명이 실패해도 나머지는 보낸다(섭외 발송과 같은 원칙). 이미 확인까지 끝난
+ * 수락서는 상태를 되돌리지 않고 건너뛴다.
+ */
+export async function sendAcceptanceLetters(input: {
+  projectId: string;
+  channel: DispatchChannel;
+  memo?: string;
+}): Promise<AcceptanceSendResult> {
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const state = await getProjectEngagementState(input.projectId);
+  if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (state.stage !== "accepted_all" && state.stage !== "letters_sent") {
+    return {
+      ok: false,
+      error:
+        state.stage === "confirmed"
+          ? "전원이 수락서 확인까지 마쳤습니다. 다시 보낼 필요가 없습니다."
+          : "아직 전원이 섭외를 수락하지 않았습니다. 전원 수락 후 열립니다.",
+    };
+  }
+
+  const supabase = createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("id", input.projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+
+  const { data: slots } = await supabase
+    .from("engagement_slots")
+    .select("id")
+    .eq("project_id", input.projectId);
+  const slotIds = (slots ?? []).map((s) => s.id);
+  const { data: positions } = slotIds.length
+    ? await supabase
+        .from("engagement_slot_positions")
+        .select("id, code, engagement_id, expert_id, status")
+        .in("slot_id", slotIds)
+        .eq("status", "filled")
+    : { data: [] };
+
+  // 코드넘버에 붙지 않은 수락 건도 같은 프로젝트의 전문가다 — 빠뜨리지 않는다
+  const { data: looseEngagements } = await supabase
+    .from("expert_engagements")
+    .select("id, expert_id")
+    .eq("project_id", input.projectId)
+    .eq("status", "accepted");
+
+  const byEngagement = new Map<string, string>();
+  for (const p of positions ?? []) {
+    if (p.engagement_id && p.expert_id) byEngagement.set(p.engagement_id, p.expert_id);
+  }
+  for (const e of looseEngagements ?? []) {
+    if (!byEngagement.has(e.id)) byEngagement.set(e.id, e.expert_id);
+  }
+
+  const targets = Array.from(byEngagement, ([engagementId, expertId]) => ({
+    engagementId,
+    expertId,
+  }));
+  if (targets.length === 0) {
+    return { ok: false, error: "송신할 수락 건이 없습니다." };
+  }
+
+  const { data: experts } = await supabase
+    .from("experts")
+    .select("id, name")
+    .in(
+      "id",
+      targets.map((t) => t.expertId)
+    );
+  const nameById = new Map((experts ?? []).map((e) => [e.id, e.name]));
+
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", auth.session.tenantId)
+    .maybeSingle();
+  const tenantName = tenant?.name ?? "";
+
+  const failed: { name: string; reason: string }[] = [];
+  let sent = 0;
+  let skipped = 0;
+  let attached = 0;
+
+  for (const target of targets) {
+    const expertName = nameById.get(target.expertId) ?? "전문가";
+
+    // 수락 시점에 이미 만들어졌지만, 없으면 여기서 만든다 (멱등)
+    await createEngagementAcceptance(target.engagementId, "portal");
+
+    const { data: acceptance } = await supabase
+      .from("engagement_acceptances")
+      .select("id, status")
+      .eq("engagement_id", target.engagementId)
+      .maybeSingle();
+    if (!acceptance) {
+      failed.push({ name: expertName, reason: "수락서를 만들지 못했습니다." });
+      continue;
+    }
+    if (acceptance.status === "confirmed") {
+      skipped += 1;
+      continue;
+    }
+
+    attached += await copyProjectAttachmentsToAcceptance({
+      tenantId: auth.session.tenantId,
+      projectId: input.projectId,
+      acceptanceId: acceptance.id,
+      expertId: target.expertId,
+      uploadedBy: auth.session.userId,
+    });
+
+    // 이미 서명한 건은 상태를 되돌리지 않는다 — 서명 사실이 사라지면 안 된다
+    if (acceptance.status !== "signed") {
+      const { error } = await supabase
+        .from("engagement_acceptances")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", acceptance.id);
+      if (error) {
+        failed.push({ name: expertName, reason: "송신 처리에 실패했습니다." });
+        continue;
+      }
+    }
+
+    const letterPath = `/expert/engagements/${target.engagementId}/acceptance`;
+
+    await notifyExpert({
+      expertId: target.expertId,
+      category: "engagement_request",
+      title: "수락서가 도착했습니다 — 확인 및 승인(서명)이 필요합니다",
+      body: project.name,
+      link: letterPath,
+      tenantId: auth.session.tenantId,
+    });
+
+    if (input.channel === "sms" || input.channel === "both") {
+      await sendEngagementSms({
+        tenantId: auth.session.tenantId,
+        senderUserId: auth.session.userId,
+        expertId: target.expertId,
+        body: [
+          `[${tenantName}] 수락서 도착`,
+          project.name,
+          input.memo?.trim() || null,
+          "※ 수락서는 캐스트로그에서 확인·승인하셔야 합니다.",
+          portalUrl(letterPath),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    }
+
+    if (input.channel === "email" || input.channel === "both") {
+      await sendEngagementEmail({
+        tenantId: auth.session.tenantId,
+        senderUserId: auth.session.userId,
+        expertId: target.expertId,
+        subject: `[수락서] ${project.name} — 확인 및 승인(서명) 요청`,
+        body: [
+          `${tenantName}에서 수락서를 보내드립니다.`,
+          "",
+          "수락서는 캐스트로그 화면에서 확인하실 수 있습니다. 이 메일은 수락서가",
+          "도착했다는 안내이며, 수락서 자체는 첨부되지 않습니다.",
+          "",
+          `확인·승인: ${portalUrl(letterPath)}`,
+          input.memo?.trim() ? `\n${input.memo.trim()}` : "",
+          "",
+          "※ 포털 로그인 후 확인하실 수 있습니다.",
+        ].join("\n"),
+      });
+    }
+
+    sent += 1;
+  }
+
+  if (sent === 0 && skipped === 0) {
+    return {
+      ok: false,
+      error: `한 건도 송신되지 않았습니다. (${failed[0]?.reason ?? "원인 미상"})`,
+    };
+  }
+
+  await supabase
+    .from("projects")
+    .update({
+      engagement_stage: "letters_sent",
+      acceptance_channel: input.channel,
+      acceptance_sent_at: new Date().toISOString(),
+    })
+    .eq("id", input.projectId);
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.session.tenantId,
+    actor_auth_user_id: auth.session.userId,
+    actor_role: auth.session.role,
+    action: "engagement_acceptance.send_batch",
+    resource_type: "project",
+    resource_id: input.projectId,
+    after_data: {
+      sent,
+      skipped,
+      attached,
+      failed: failed.length,
+      channel: input.channel,
+    },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, sent, skipped, attached, failed };
 }

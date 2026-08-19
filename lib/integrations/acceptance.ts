@@ -166,6 +166,86 @@ export async function createEngagementAcceptance(
 }
 
 /**
+ * 프로젝트 첨부(수락서용)를 각 수락서에 스냅샷 복사한다.
+ *
+ * 왜 복사하는가: 프로젝트 첨부를 지우면 스토리지 파일까지 지워진다. 수락서가
+ * 같은 파일을 가리키고 있으면, 이미 보낸 문서의 동봉 자료가 나중에 사라진다.
+ * 보낸 문서는 보낸 그대로 남아야 한다 — 서명·날인을 스냅샷하는 이유와 같다.
+ *
+ * 같은 이름의 파일이 이미 붙어 있으면 건너뛴다(재송신 시 중복 방지).
+ *
+ * @returns 새로 붙인 첨부 수
+ */
+export async function copyProjectAttachmentsToAcceptance(params: {
+  tenantId: string;
+  projectId: string;
+  acceptanceId: string;
+  expertId: string;
+  uploadedBy: string | null;
+}): Promise<number> {
+  const admin = createAdminClient();
+
+  const { data: sources } = await admin
+    .from("project_engagement_attachments")
+    .select("id, scope, expert_id, file_name, storage_path, mime_type, file_size_bytes")
+    .eq("project_id", params.projectId)
+    .eq("purpose", "acceptance")
+    .order("created_at", { ascending: true });
+
+  const targets = (sources ?? []).filter(
+    (a) => a.scope === "common" || a.expert_id === params.expertId
+  );
+  if (targets.length === 0) return 0;
+
+  const { data: existing } = await admin
+    .from("engagement_acceptance_attachments")
+    .select("file_name")
+    .eq("acceptance_id", params.acceptanceId);
+  const already = new Set((existing ?? []).map((a) => a.file_name));
+
+  let copied = 0;
+  for (const source of targets) {
+    if (already.has(source.file_name)) continue;
+
+    const { data: file } = await admin.storage
+      .from(EXPERT_DOCUMENT_BUCKET)
+      .download(source.storage_path);
+    if (!file) continue;
+
+    const extension = source.storage_path.split(".").pop() ?? "bin";
+    const destPath = `acceptances/${params.tenantId}/${params.acceptanceId}-att-${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await admin.storage
+      .from(EXPERT_DOCUMENT_BUCKET)
+      .upload(destPath, Buffer.from(await file.arrayBuffer()), {
+        contentType: source.mime_type ?? "application/octet-stream",
+        upsert: false,
+      });
+    if (uploadError) continue;
+
+    const { error } = await admin
+      .from("engagement_acceptance_attachments")
+      .insert({
+        tenant_id: params.tenantId,
+        acceptance_id: params.acceptanceId,
+        file_name: source.file_name,
+        storage_path: destPath,
+        mime_type: source.mime_type,
+        file_size_bytes: source.file_size_bytes,
+        uploaded_by: params.uploadedBy,
+      });
+    if (error) {
+      // 행을 못 만들었으면 올린 파일도 지운다 — 주인 없는 파일을 남기지 않는다
+      await admin.storage.from(EXPERT_DOCUMENT_BUCKET).remove([destPath]);
+      continue;
+    }
+    already.add(source.file_name);
+    copied += 1;
+  }
+
+  return copied;
+}
+
+/**
  * 연습모드 가상 수락서 보장 (멱등).
  *
  * 연습 데이터의 섭외 건은 '확정' 상태로 심어지지만 수락서 행은 없었다. 그래서
