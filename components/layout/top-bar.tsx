@@ -5,6 +5,7 @@ import { gradeFromUser } from "@/lib/auth/tenant";
 import { gradeLabel } from "@/lib/auth/grades";
 
 import { LocationCrumbs } from "./location-crumbs";
+import { PracticeToggle } from "./practice-toggle";
 
 /**
  * 대시보드 상단 바 — 왼쪽 현재 위치, 오른쪽 계정·로그아웃.
@@ -16,9 +17,14 @@ import { LocationCrumbs } from "./location-crumbs";
 export async function TopBar({
   tenantSlug,
   tenantName,
+  practice,
+  canPractice,
 }: {
   tenantSlug: string;
   tenantName: string | null;
+  practice: boolean;
+  /** 연습모드를 쓸 수 있는 사람인가 (플랫폼관리자는 테넌트 소속이 아니라 제외) */
+  canPractice: boolean;
 }) {
   const user = await getSessionUser();
   const grade = gradeFromUser(user);
@@ -30,6 +36,8 @@ export async function TopBar({
       <LocationCrumbs tenantSlug={tenantSlug} tenantName={tenantName} />
 
       <div className="flex shrink-0 items-center gap-2">
+        {/* 연습모드는 '지금 내가 어떤 자리에 있는가'라서 계정 옆이 제자리다 */}
+        {canPractice && <PracticeToggle practice={practice} />}
         {user?.email && (
           <span className="hidden max-w-[220px] truncate text-xs text-muted-foreground sm:inline">
             {user.email}
