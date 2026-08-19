@@ -1854,6 +1854,69 @@ export type Database = {
         }
         Relationships: []
       }
+      help_feedback: {
+        Row: {
+          admin_note: string | null
+          created_at: string
+          id: string
+          is_practice: boolean
+          kind: string
+          path: string | null
+          status: string
+          summary: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          admin_note?: string | null
+          created_at?: string
+          id?: string
+          is_practice?: boolean
+          kind: string
+          path?: string | null
+          status?: string
+          summary: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          admin_note?: string | null
+          created_at?: string
+          id?: string
+          is_practice?: boolean
+          kind?: string
+          path?: string | null
+          status?: string
+          summary?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_tour_acks: {
+        Row: {
+          acked_at: string
+          tour_key: string
+          user_id: string
+        }
+        Insert: {
+          acked_at?: string
+          tour_key: string
+          user_id: string
+        }
+        Update: {
+          acked_at?: string
+          tour_key?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       expert_reviews: {
         Row: {
           is_practice: boolean

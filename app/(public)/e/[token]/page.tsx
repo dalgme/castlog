@@ -1,4 +1,11 @@
-import { LogoMark, Wordmark } from "@/components/brand/logo";
+import {
+  TenantBrand,
+  PoweredByCastlog,
+} from "@/components/brand/tenant-brand";
+import {
+  getPublicTenantBrand,
+  type TenantBrand as TenantBrandData,
+} from "@/lib/branding/tenant-logo";
 import {
   Card,
   CardContent,
@@ -32,18 +39,21 @@ const INVALID_MESSAGES: Record<string, string> = {
  * 섭외 동의 공개 페이지 (설계문서 5.2 /e) — 로그인 불필요, 모바일 완전 대응.
  * 토큰 검증·응답 처리는 서버(service_role) 전용 (lib/integrations/engagements).
  */
+const EMPTY_BRAND: TenantBrandData = { name: null, logoSrc: null };
+
 export default async function EngagementConsentPage({
   params,
 }: {
   params: { token: string };
 }) {
-  const shell = (body: React.ReactNode) => (
+  const shell = (
+    body: React.ReactNode,
+    brand: TenantBrandData = EMPTY_BRAND
+  ) => (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary/50 p-4">
-      <div className="flex items-center gap-2.5">
-        <LogoMark width={26} height={32} />
-        <Wordmark className="text-lg" />
-      </div>
+      <TenantBrand name={brand.name} logoSrc={brand.logoSrc} />
       {body}
+      <PoweredByCastlog />
     </main>
   );
 
@@ -74,6 +84,8 @@ export default async function EngagementConsentPage({
   }
 
   const { engagement, tenantName, projectName, expertName } = lookup;
+  // 전문가가 이 화면에서 만나는 상대는 캐스트로그가 아니라 그 회사다 (§16)
+  const brand = await getPublicTenantBrand(engagement.tenant_id);
   const schedule = formatEventSchedule(
     engagement.starts_on,
     engagement.ends_on,
@@ -162,6 +174,7 @@ export default async function EngagementConsentPage({
         </div>
         <EngagementRespondForm token={params.token} />
       </CardContent>
-    </Card>
+    </Card>,
+    brand
   );
 }

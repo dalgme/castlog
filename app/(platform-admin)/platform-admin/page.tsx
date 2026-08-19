@@ -66,6 +66,9 @@ export default async function PlatformAdminPage() {
       {/* 원래 회사 화면으로 — 관리모드에서 나가는 문이 없으면 로그아웃밖에 없다 */}
       {backToTenant && <PlatformModeButton mode="exit" />}
       <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/help-board">챗봇 상담게시판</a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/usage">사용 현황</a>
       </Button>
       <Button asChild variant="outline" size="sm">

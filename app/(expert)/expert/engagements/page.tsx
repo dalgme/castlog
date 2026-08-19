@@ -17,6 +17,8 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+import { getPublicTenantBrand } from "@/lib/branding/tenant-logo";
+
 import { EngagementRespondButtons } from "./respond-buttons";
 import { ExpertUrgentCancelButton } from "./urgent-cancel-button";
 
@@ -67,7 +69,7 @@ export default async function ExpertEngagementsPage() {
   const { data: engagements } = await supabase
     .from("expert_engagements")
     .select(
-      `id, role_description, message, fee_amount, starts_on, ends_on, status,
+      `id, tenant_id, role_description, message, fee_amount, starts_on, ends_on, status,
        responded_at, response_note, created_at, token_expires_at,
        program_name, role_type, starts_time, ends_time,
        location_name, location_address, event_summary,
@@ -77,6 +79,14 @@ export default async function ExpertEngagementsPage() {
     .order("created_at", { ascending: false });
 
   const rows = engagements ?? [];
+
+  // 기업 로고 — 전문가에게 이 목록은 '여러 회사에서 온 요청'이다. 회사를
+  // 구분하는 가장 빠른 단서는 이름보다 로고다 (CLAUDE.md §16)
+  const brandByTenant = new Map<string, string | null>();
+  for (const tenantId of Array.from(new Set(rows.map((e) => e.tenant_id)))) {
+    const brand = await getPublicTenantBrand(tenantId);
+    brandByTenant.set(tenantId, brand.logoSrc);
+  }
 
   // 수락서 상태 — '수락'과 '참여 확정'은 다르다. 수락서를 승인해야 확정이다.
   const acceptedIds = rows.filter((e) => e.status === "accepted").map((e) => e.id);
@@ -130,7 +140,18 @@ export default async function ExpertEngagementsPage() {
                 {answerable && <div className="h-1 bg-brand-amber" />}
                 <CardContent className="pt-5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Inbox className="h-4 w-4 text-brand" aria-hidden />
+                    {brandByTenant.get(engagement.tenant_id) ? (
+                      <span className="flex h-6 w-6 items-center justify-center rounded border bg-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={brandByTenant.get(engagement.tenant_id) ?? ""}
+                          alt={engagement.tenants?.name ?? "기업 로고"}
+                          className="max-h-5 max-w-5 object-contain"
+                        />
+                      </span>
+                    ) : (
+                      <Inbox className="h-4 w-4 text-brand" aria-hidden />
+                    )}
                     <span className="font-bold text-brand-navy">
                       {engagement.tenants?.name ?? "(기업)"}
                     </span>

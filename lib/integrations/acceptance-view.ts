@@ -6,6 +6,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { EXPERT_DOCUMENT_BUCKET } from "@/lib/experts/documents";
 import { ensurePracticeAcceptance } from "@/lib/integrations/acceptance";
+import { getPublicTenantBrand } from "@/lib/branding/tenant-logo";
 import type { Tables } from "@/lib/supabase/database.types";
 
 const SIGNED_URL_EXPIRES_SECONDS = 120;
@@ -25,6 +26,8 @@ export type AcceptanceAttachmentView = {
 
 export type AcceptanceView = {
   acceptance: Tables<"engagement_acceptances">;
+  /** 발행 기업 로고 (화이트라벨 — CLAUDE.md §16) */
+  logoSrc: string | null;
   signatureUrl: string | null;
   sealUrl: string | null;
   /** 찾아오는 길(약도) 이미지 — 서명 만료 URL */
@@ -117,5 +120,14 @@ export async function getAcceptanceView(
     resource_id: acceptance.id,
   });
 
-  return { acceptance, signatureUrl, sealUrl, mapUrl, attachments };
+  const brand = await getPublicTenantBrand(acceptance.tenant_id);
+
+  return {
+    acceptance,
+    logoSrc: brand.logoSrc,
+    signatureUrl,
+    sealUrl,
+    mapUrl,
+    attachments,
+  };
 }

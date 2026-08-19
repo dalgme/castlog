@@ -1,6 +1,13 @@
 import Link from "next/link";
 
-import { LogoMark, Wordmark } from "@/components/brand/logo";
+import {
+  TenantBrand,
+  PoweredByCastlog,
+} from "@/components/brand/tenant-brand";
+import {
+  getPublicTenantBrand,
+  type TenantBrand as TenantBrandData,
+} from "@/lib/branding/tenant-logo";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,18 +30,21 @@ export const metadata = {
  * 서류 제출·갱신 공개 착지 페이지 (설계문서 5.2 /d)
  * 업로드 자체는 서류 소유자(전문가) 로그인 후 포털 서류함에서 진행한다.
  */
+const EMPTY_BRAND: TenantBrandData = { name: null, logoSrc: null };
+
 export default async function DocumentSubmitPage({
   params,
 }: {
   params: { token: string };
 }) {
-  const shell = (body: React.ReactNode) => (
+  const shell = (
+    body: React.ReactNode,
+    brand: TenantBrandData = EMPTY_BRAND
+  ) => (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary/50 p-4">
-      <div className="flex items-center gap-2.5">
-        <LogoMark width={26} height={32} />
-        <Wordmark className="text-lg" />
-      </div>
+      <TenantBrand name={brand.name} logoSrc={brand.logoSrc} />
       {body}
+      <PoweredByCastlog />
     </main>
   );
 
@@ -55,7 +65,7 @@ export default async function DocumentSubmitPage({
   const { data: request } = await admin
     .from("document_requests")
     .select(
-      "id, requested_types, message, status, token_expires_at, tenants (name), experts (name)"
+      "id, tenant_id, requested_types, message, status, token_expires_at, tenants (name), experts (name)"
     )
     .eq("token_hash", hashLinkToken(params.token))
     .maybeSingle();
@@ -78,6 +88,7 @@ export default async function DocumentSubmitPage({
   const expired =
     request.status !== "completed" &&
     new Date(request.token_expires_at).getTime() < Date.now();
+  const brand = await getPublicTenantBrand(request.tenant_id);
 
   return shell(
     <Card className="w-full max-w-md">
@@ -129,6 +140,7 @@ export default async function DocumentSubmitPage({
           </>
         )}
       </CardContent>
-    </Card>
+    </Card>,
+    brand
   );
 }

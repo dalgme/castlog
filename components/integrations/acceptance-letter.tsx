@@ -7,6 +7,8 @@ import {
 import type { AcceptanceAttachmentView } from "@/lib/integrations/acceptance-view";
 import type { Tables } from "@/lib/supabase/database.types";
 
+import { TenantBrand } from "@/components/brand/tenant-brand";
+
 import { AcceptanceAttachments } from "./acceptance-attachments";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -28,12 +30,15 @@ export function AcceptanceLetter({
   sealUrl,
   mapUrl = null,
   attachments = [],
+  logoSrc = null,
 }: {
   acceptance: Tables<"engagement_acceptances">;
   signatureUrl: string | null;
   sealUrl: string | null;
   mapUrl?: string | null;
   attachments?: AcceptanceAttachmentView[];
+  /** 발행 기업 로고 — 이 문서의 주체는 캐스트로그가 아니라 그 회사다 (§16) */
+  logoSrc?: string | null;
 }) {
   const a = acceptance;
   const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR");
@@ -46,7 +51,12 @@ export function AcceptanceLetter({
 
   return (
     <div className="rounded-lg border bg-white p-6 text-sm text-foreground shadow-sm">
-      <div className="text-center">
+      {/* 발행 주체를 문서 맨 위에 — 전문가는 '그 회사'의 수락서를 받는다 */}
+      <div className="flex items-center justify-between gap-3 border-b pb-3">
+        <TenantBrand name={a.tenant_name} logoSrc={logoSrc} size="sm" />
+      </div>
+
+      <div className="mt-4 text-center">
         <h1 className="text-lg font-bold tracking-tight">섭외 수락서</h1>
         <p className="mt-1 text-xs text-muted-foreground">
           문서번호 {a.letter_no}
