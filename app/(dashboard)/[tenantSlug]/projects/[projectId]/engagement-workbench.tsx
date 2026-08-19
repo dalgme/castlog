@@ -31,6 +31,7 @@ import {
   EngagementPlanButton,
   type PlanPreviewLine,
 } from "./engagement-plan-button";
+import { DispatchDialog } from "./dispatch-dialog";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -95,6 +96,8 @@ export function EngagementWorkbench({
   unlinked,
   projectState,
   planPreview,
+  projectName,
+  attachmentPanel,
   headerActions,
 }: {
   tenantSlug: string;
@@ -117,6 +120,9 @@ export function EngagementWorkbench({
   };
   /** 품의서 미리보기 (상신 전 확인용) */
   planPreview: { lines: PlanPreviewLine[]; amount: number };
+  projectName: string;
+  /** 섭외요청 첨부 패널 — 서버 컴포넌트에서 내려받는다 */
+  attachmentPanel?: React.ReactNode;
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
 }) {
@@ -150,6 +156,17 @@ export function EngagementWorkbench({
               amount={planPreview.amount}
             />
           )}
+          {canManage &&
+            (projectState.stage === "plan_approved" ||
+              projectState.stage === "plan_review") && (
+              <DispatchDialog
+                projectId={projectId}
+                projectName={projectName}
+                targetCount={projectState.assigned}
+                disabled={projectState.stage !== "plan_approved"}
+                disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
+              />
+            )}
           {headerActions}
           <Button asChild variant="ghost" size="sm">
             <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
@@ -233,6 +250,11 @@ export function EngagementWorkbench({
             </Button>
           </div>
         )}
+
+        {/* 결재가 끝나면 보내기 전에 첨부를 붙인다 — 보낸 뒤에는 못 붙인다 */}
+        {canManage &&
+          projectState.stage === "plan_approved" &&
+          attachmentPanel}
 
         {reengageCount > 0 && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3">

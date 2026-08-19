@@ -5,6 +5,7 @@ import { hashLinkToken } from "@/lib/auth/tokens";
 import { parseModuleFlags } from "@/lib/modules/modules";
 import type { Tables } from "@/lib/supabase/database.types";
 import { createEngagementAcceptance } from "./acceptance";
+import { refreshProjectEngagementStage } from "./project-engagement";
 
 /**
  * 전문가 섭외 연동 로직 (experts ↔ operations — CLAUDE.md 1-2-6)
@@ -153,6 +154,16 @@ export async function applyEngagementResponse(
     }
   } catch {
     // 포지션 동기화 실패가 수락·거절 처리를 막지 않는다.
+  }
+
+  // 프로젝트 단계 재판정 — 전원 수락이면 '수락서 송신 가능'으로 저절로 넘어간다.
+  // 포지션 상태를 바꾼 뒤에 불러야 정확하다.
+  if (updated.project_id) {
+    try {
+      await refreshProjectEngagementStage(updated.project_id);
+    } catch {
+      // 단계 갱신 실패가 수락·거절 처리를 막지 않는다.
+    }
   }
 
   await admin.from("audit_logs").insert({

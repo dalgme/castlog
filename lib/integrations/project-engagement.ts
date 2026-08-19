@@ -267,3 +267,97 @@ export async function onProjectEngagementApprovalResolved(
     })
     .eq("id", project.id);
 }
+
+/**
+ * 전문가 응답 후 프로젝트 단계 재판정.
+ *
+ * 전원이 수락하면 '수락서 송신 가능'으로, 전원이 수락서까지 확인하면 '확정'으로
+ * 저절로 넘어간다. 담당자가 매번 몇 명이 남았는지 세어 보고 버튼을 눌러야 한다면
+ * 그건 시스템이 할 일을 사람에게 미룬 것이다.
+ *
+ * 되돌아가는 경우도 처리한다 — 확정 뒤 긴급 취소가 나면 자리가 다시 비므로
+ * 요청 단계로 내린다. 그래야 재섭외 버튼이 다시 열린다.
+ */
+export async function refreshProjectEngagementStage(
+  projectId: string
+): Promise<void> {
+  const admin = createAdminClient();
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("id, engagement_stage")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return;
+
+  const stage = projectStage(project.engagement_stage);
+  // 배정·품의 단계와 종료 이후 단계는 여기서 건드리지 않는다.
+  // 이 함수는 '전문가 응답에 따라 움직이는 구간'만 책임진다.
+  const MANAGED: ProjectStage[] = [
+    "requesting",
+    "accepted_all",
+    "letters_sent",
+    "confirmed",
+  ];
+  if (!MANAGED.includes(stage)) return;
+
+  const { data: slots } = await admin
+    .from("engagement_slots")
+    .select("id")
+    .eq("project_id", projectId);
+  const slotIds = (slots ?? []).map((s) => s.id);
+  if (slotIds.length === 0) return;
+
+  const { data: positions } = await admin
+    .from("engagement_slot_positions")
+    .select("status, engagement_id")
+    .in("slot_id", slotIds);
+
+  const live = (positions ?? []).filter((p) => p.status !== "canceled");
+  if (live.length === 0) return;
+
+  const allFilled = live.every((p) => p.status === "filled");
+  if (!allFilled) {
+    // 한 자리라도 비었으면 요청 단계로 되돌린다 (긴급 취소·거절 후)
+    if (stage !== "requesting") {
+      await admin
+        .from("projects")
+        .update({ engagement_stage: "requesting" })
+        .eq("id", projectId);
+    }
+    return;
+  }
+
+  // 전원 확정 — 수락서가 모두 '확인 완료'면 확정 단계까지 올린다
+  const engagementIds = live
+    .map((p) => p.engagement_id)
+    .filter((id): id is string => id !== null);
+  const { data: acceptances } = engagementIds.length
+    ? await admin
+        .from("engagement_acceptances")
+        .select("status")
+        .in("engagement_id", engagementIds)
+    : { data: [] };
+
+  const rows = acceptances ?? [];
+  const allConfirmed =
+    rows.length === engagementIds.length &&
+    rows.length > 0 &&
+    rows.every((a) => a.status === "confirmed");
+  const anySent = rows.some(
+    (a) => a.status === "sent" || a.status === "signed" || a.status === "confirmed"
+  );
+
+  const next: ProjectStage = allConfirmed
+    ? "confirmed"
+    : anySent
+      ? "letters_sent"
+      : "accepted_all";
+
+  if (next !== stage) {
+    await admin
+      .from("projects")
+      .update({ engagement_stage: next })
+      .eq("id", projectId);
+  }
+}

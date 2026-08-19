@@ -12,6 +12,7 @@ import {
   getProjectEngagementState,
   buildEngagementPlanDraft,
 } from "@/lib/integrations/project-engagement";
+import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
 
 const MANAGER_ROLES = ["org_admin", "manager"];
 
@@ -231,4 +232,114 @@ export async function submitEngagementPlan(
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/approvals", "page");
   return { ok: true, approvalId: created.approvalId, autoApproved: false };
+}
+
+export type DispatchChannel = "sms" | "email" | "both";
+
+export type DispatchResult =
+  | { ok: true; sent: number; failed: { code: string; reason: string }[] }
+  | { ok: false; error: string };
+
+/**
+ * 섭외 진행 — 배정된 전원에게 한 번에 섭외 요청을 보낸다.
+ *
+ * 결재가 끝난 뒤에만 열린다. 한 명씩 보내지 않는 이유는 실제 일이 그렇기
+ * 때문이다: 같은 사업의 전문가들에게 같은 안내를 같은 마감으로 보낸다.
+ *
+ * 한 명이 실패해도 나머지는 보낸다. 전체를 되돌리면 이미 나간 사람에게 두 번
+ * 가거나, 아무도 못 받는다. 실패한 자리는 그대로 배정 상태로 남고 화면에
+ * 이유와 함께 표시된다 — 조용히 넘어가지 않는다.
+ */
+export async function dispatchProjectEngagements(input: {
+  projectId: string;
+  channel: DispatchChannel;
+  /** 회신 마감일시 (ISO). 없으면 기본 기한 */
+  deadline?: string;
+  programName?: string;
+  eventSummary?: string;
+  memo?: string;
+}): Promise<DispatchResult> {
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const state = await getProjectEngagementState(input.projectId);
+  if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (state.stage !== "plan_approved") {
+    return {
+      ok: false,
+      error:
+        state.stage === "assigning"
+          ? "섭외 품의를 먼저 상신·승인받아야 합니다."
+          : state.stage === "plan_review"
+            ? "섭외 품의가 결재 진행 중입니다. 승인 후 발송할 수 있습니다."
+            : "이미 섭외 요청이 발송되었습니다.",
+    };
+  }
+
+  const supabase = createClient();
+
+  const { data: slots } = await supabase
+    .from("engagement_slots")
+    .select("id")
+    .eq("project_id", input.projectId);
+  const slotIds = (slots ?? []).map((s) => s.id);
+  const { data: positions } = slotIds.length
+    ? await supabase
+        .from("engagement_slot_positions")
+        .select("id, code, assigned_expert_id, status")
+        .in("slot_id", slotIds)
+        .eq("status", "assigned")
+    : { data: [] };
+
+  const targets = (positions ?? []).filter((p) => p.assigned_expert_id);
+  if (targets.length === 0) {
+    return { ok: false, error: "발송할 배정 건이 없습니다." };
+  }
+
+  const failed: { code: string; reason: string }[] = [];
+  let sent = 0;
+
+  for (const position of targets) {
+    const result = await requestEngagementForPosition({
+      positionId: position.id,
+      expertId: position.assigned_expert_id!,
+      programName: input.programName,
+      eventSummary: input.eventSummary,
+      specialNotes: input.memo,
+      responseDeadline: input.deadline,
+      channel: input.channel,
+    });
+    if (result.ok) sent += 1;
+    else failed.push({ code: position.code, reason: result.error });
+  }
+
+  if (sent === 0) {
+    return {
+      ok: false,
+      error: `한 건도 발송되지 않았습니다. (${failed[0]?.reason ?? "원인 미상"})`,
+    };
+  }
+
+  await supabase
+    .from("projects")
+    .update({
+      engagement_stage: "requesting",
+      engagement_channel: input.channel,
+      engagement_deadline: input.deadline ?? null,
+      engagement_requested_at: new Date().toISOString(),
+    })
+    .eq("id", input.projectId);
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.session.tenantId,
+    actor_auth_user_id: auth.session.userId,
+    actor_role: auth.session.role,
+    action: "engagement.dispatch_batch",
+    resource_type: "project",
+    resource_id: input.projectId,
+    after_data: { sent, failed: failed.length, channel: input.channel },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, sent, failed };
 }

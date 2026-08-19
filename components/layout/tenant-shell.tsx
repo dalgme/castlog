@@ -77,7 +77,12 @@ export async function TenantShell({
         canManagePayments={payments}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-secondary/50">
-        <TopBar tenantSlug={tenantSlug} tenantName={tenantName} />
+        <TopBar
+          tenantSlug={tenantSlug}
+          tenantName={tenantName}
+          practice={practice}
+          canPractice={canPractice}
+        />
         {canPractice && <PracticeBar practice={practice} />}
         {setup && (
           <SetupBanner

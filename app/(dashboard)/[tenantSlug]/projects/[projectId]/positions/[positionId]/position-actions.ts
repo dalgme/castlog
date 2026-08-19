@@ -37,6 +37,8 @@ export async function requestEngagementForPosition(input: {
   specialNotes?: string;
   message?: string;
   responseDeadline?: string;
+  /** 발송 수단 — 일괄 발송에서 지정한다. 없으면 문자·이메일 모두 */
+  channel?: "sms" | "email" | "both";
 }): Promise<RequestFromPositionResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
 
@@ -56,7 +58,9 @@ export async function requestEngagementForPosition(input: {
     .eq("id", input.positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
-  if (position.status !== "open") {
+  // 임의 배정된 자리에서 일괄 발송으로 나가는 것이 기본 경로다.
+  // 배정 없이 바로 보내는 경로(open)도 남겨 둔다 — 급한 한 자리 보충에 쓴다.
+  if (position.status !== "open" && position.status !== "assigned") {
     return { ok: false, error: "이미 섭외가 진행 중이거나 확정된 인원입니다." };
   }
 
@@ -143,7 +147,7 @@ export async function requestEngagementForPosition(input: {
       expert_id: input.expertId,
     })
     .eq("id", position.id)
-    .eq("status", "open");
+    .in("status", ["open", "assigned"]);
   if (linkError) {
     return { ok: false, error: "인원 연결에 실패했습니다." };
   }
@@ -192,6 +196,11 @@ export async function requestEngagementForPosition(input: {
     slot.starts_time,
     slot.ends_time
   );
+  const channel = input.channel ?? "both";
+  const useEmail = channel === "email" || channel === "both";
+  const useSms = channel === "sms" || channel === "both";
+
+  if (useEmail)
   await sendEngagementEmail({
     tenantId,
     senderUserId: user.id,
@@ -223,6 +232,7 @@ export async function requestEngagementForPosition(input: {
     .select("name")
     .eq("id", tenantId)
     .maybeSingle();
+  if (useSms)
   await sendEngagementSms({
     tenantId,
     senderUserId: user.id,

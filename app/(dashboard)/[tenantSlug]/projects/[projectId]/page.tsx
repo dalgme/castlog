@@ -44,6 +44,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
 
+import { AttachmentPanel } from "./attachment-panel";
+
 import { StepStatusSelect } from "./step-status-select";
 import {
   ExpertEvaluationForm,
@@ -605,6 +607,15 @@ export default async function ProjectDetailPage({
     }));
 
 
+  // 섭외요청 첨부 (공통/개별)
+  const { data: attachmentRows } = modules.experts
+    ? await supabase
+        .from("project_engagement_attachments")
+        .select("id, scope, expert_id, file_name, purpose")
+        .eq("project_id", project.id)
+        .order("created_at", { ascending: true })
+    : { data: null };
+
   // 프로젝트 단위 진행 단계 + 품의서 미리보기 — 버튼 활성 조건의 단일 근거
   const [engagementState, planDraft] = modules.experts
     ? await Promise.all([
@@ -612,6 +623,15 @@ export default async function ProjectDetailPage({
         buildEngagementPlanDraft(project.id),
       ])
     : [null, null];
+
+  // 첨부 대상 후보 — 이 프로젝트에 배정·섭외된 전문가 (id로 다룬다)
+  const assignedExpertOptions = Array.from(
+    new Set(
+      (positionRecords ?? [])
+        .flatMap((p) => [p.assigned_expert_id, p.expert_id])
+        .filter((id): id is string => id !== null)
+    )
+  ).map((id) => ({ id, name: expertNameById.get(id) ?? "전문가" }));
 
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
@@ -822,6 +842,27 @@ export default async function ProjectDetailPage({
               })),
               amount: planDraft?.amount ?? 0,
             }}
+            projectName={project.name}
+            attachmentPanel={
+              <AttachmentPanel
+                projectId={project.id}
+                purpose="engagement"
+                title="섭외 요청 첨부"
+                description="보내기 전에 붙이세요. 공통 첨부는 전원에게, 개별 첨부는 고른 전문가에게만 함께 전달됩니다."
+                experts={assignedExpertOptions}
+                attachments={(attachmentRows ?? [])
+                  .filter((a) => a.purpose === "engagement")
+                  .map((a) => ({
+                    id: a.id,
+                    scope: a.scope,
+                    expertId: a.expert_id,
+                    expertName: a.expert_id
+                      ? (expertNameById.get(a.expert_id) ?? null)
+                      : null,
+                    fileName: a.file_name,
+                  }))}
+              />
+            }
             headerActions={
               canManage ? (
                 <>
