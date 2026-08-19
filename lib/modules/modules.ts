@@ -49,6 +49,20 @@ export const DEFAULT_MODULES: ModuleFlags = {
   operations: true,
 };
 
+/**
+ * 모듈 번호 — 관리모드에서 한눈에 읽기 위한 짧은 식별자.
+ *
+ * 이름표(전문가 섭외/전자결재/행사 운영 심화)는 목록에서 줄을 잡아먹어 기업이
+ * 열 곳만 되어도 표가 무너진다. 번호는 자리를 거의 쓰지 않으면서 조합을
+ * 비교하게 해 준다 — '1·2'와 '1·2·3'의 차이가 즉시 보인다.
+ * 순서는 MODULE_KEYS와 같다. 새 모듈은 뒤에 붙인다(기존 번호를 바꾸지 않는다).
+ */
+export const MODULE_NUMBERS: Record<ModuleKey, number> = {
+  experts: 1,
+  approvals: 2,
+  operations: 3,
+};
+
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   experts: "전문가 섭외·관리",
   approvals: "품의·전자결재",
