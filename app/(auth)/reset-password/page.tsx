@@ -8,7 +8,7 @@ import { ResetPasswordForm } from "./reset-form";
 export const metadata = { title: "비밀번호 재설정" };
 
 /**
- * 새 비밀번호 설정 — 이메일 재설정 링크가 /auth/callback 에서 세션으로 교환된 뒤 착지.
+ * 새 비밀번호 설정 — 이메일 링크가 /auth/confirm 에서 확인된 뒤 착지.
  * 세션이 없으면(직접 접근·만료) 재요청을 안내한다.
  */
 export default async function ResetPasswordPage() {
