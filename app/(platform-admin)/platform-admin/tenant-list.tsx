@@ -11,6 +11,7 @@ import {
 
 import { TenantModulesDialog } from "./modules-dialog";
 import { TenantStatusButton } from "./tenant-status-button";
+import { ResendInviteButton } from "./resend-invite-button";
 
 export type TenantAdminRow = {
   id: string;
@@ -195,7 +196,12 @@ export function TenantList({ rows }: { rows: TenantAdminRow[] }) {
                   </span>
                 )}
 
-                <div className="ml-auto flex flex-wrap gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {/* 대표가 비밀번호를 못 정해 못 들어오는 상황을 여기서 푼다 */}
+                  <ResendInviteButton
+                    tenantId={tenant.id}
+                    disabled={!tenant.ceoEmail || tenant.ceoActive === false}
+                  />
                   <TenantModulesDialog
                     tenantId={tenant.id}
                     tenantName={tenant.name}
