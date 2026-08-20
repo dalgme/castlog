@@ -163,6 +163,22 @@ export async function createTenant(
     tenantName: data.name,
   });
 
+  // 보냈는지 여부를 기록으로 남긴다. 화면에 한 번 띄우고 마는 정보는
+  // "그 회사에 메일이 갔나?"라는 질문이 나왔을 때 아무 데도 없다 — 실제로
+  // 그 질문을 받고서야 답할 수 없다는 걸 알았다.
+  await admin.from("audit_logs").insert({
+    tenant_id: tenant.id,
+    actor_auth_user_id: session.userId,
+    actor_role: "platform_admin",
+    action: invite.ok ? "account.invite_sent" : "account.invite_failed",
+    resource_type: "auth_user",
+    resource_id: created.user.id,
+    after_data: {
+      email: data.orgAdminEmail,
+      error: invite.ok ? null : invite.error,
+    },
+  });
+
   revalidatePath("/platform-admin");
   return {
     ok: true,
@@ -300,4 +316,75 @@ export async function setTenantStatus(input: {
 
   revalidatePath("/platform-admin");
   return { ok: true };
+}
+
+export type ResendInviteResult =
+  | { ok: true; email: string }
+  | { ok: false; error: string };
+
+/**
+ * 비밀번호 설정 메일 다시 보내기.
+ *
+ * 계정을 만들어 놨는데 대표가 못 들어오는 상황은 생각보다 자주 생긴다 —
+ * 메일이 스팸함으로 갔거나, 메일 발송이 붙기 전에 만든 테넌트이거나,
+ * 링크가 만료됐거나. 그때 운영자가 할 수 있는 일이 "임시 비밀번호를 다시
+ * 만들어 알려 준다"뿐이면 그 비밀번호가 또 메신저를 타고 흐른다.
+ *
+ * 대표 본인에게 다시 보내는 길을 열어 둔다. 링크는 매번 새로 발급되므로
+ * 만료된 링크 문제도 함께 풀린다.
+ */
+export async function resendOrgAdminInvite(
+  tenantId: string
+): Promise<ResendInviteResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const session = await requirePlatformAdminSession();
+  if (!session.ok) return session;
+
+  const admin = createAdminClient();
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("id, name, status")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (!tenant) return { ok: false, error: "테넌트를 찾을 수 없습니다." };
+  if (tenant.status === "terminated") {
+    return { ok: false, error: "해지된 기업입니다." };
+  }
+
+  // 그 회사의 대표(org_admin) 계정 — 여러 명이면 가장 먼저 만들어진 계정
+  const { data: ceo } = await admin
+    .from("users")
+    .select("id, name, email, is_active")
+    .eq("tenant_id", tenantId)
+    .eq("role", "org_admin")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!ceo) return { ok: false, error: "대표 계정이 없습니다." };
+  if (!ceo.is_active) {
+    return { ok: false, error: "비활성 계정에는 보낼 수 없습니다." };
+  }
+
+  const invite = await sendAccountInviteEmail({
+    email: ceo.email,
+    name: ceo.name,
+    tenantName: tenant.name,
+  });
+
+  await admin.from("audit_logs").insert({
+    tenant_id: tenant.id,
+    actor_auth_user_id: session.userId,
+    actor_role: "platform_admin",
+    action: invite.ok ? "account.invite_resent" : "account.invite_failed",
+    resource_type: "auth_user",
+    resource_id: ceo.id,
+    after_data: { email: ceo.email, error: invite.ok ? null : invite.error },
+  });
+
+  if (!invite.ok) return { ok: false, error: invite.error };
+
+  revalidatePath("/platform-admin");
+  return { ok: true, email: ceo.email };
 }
