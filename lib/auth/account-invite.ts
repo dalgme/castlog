@@ -48,15 +48,51 @@ export async function sendAccountInviteEmail(input: {
   }
 
   const admin = createAdminClient();
+  const redirectTo = `${baseUrl}/auth/callback?next=/reset-password`;
   const { data, error } = await admin.auth.admin.generateLink({
     type: "recovery",
     email: input.email,
-    options: { redirectTo: `${baseUrl}/auth/callback?next=/reset-password` },
+    options: { redirectTo },
   });
   if (error || !data?.properties?.action_link) {
     return {
       ok: false,
       error: error?.message ?? "비밀번호 설정 링크를 만들지 못했습니다.",
+    };
+  }
+
+  const actionLink = data.properties.action_link;
+
+  /**
+   * 발급된 링크가 우리가 요청한 곳으로 돌아오는지 확인한다.
+   *
+   * Supabase는 요청한 redirect_to가 허용 목록(Authentication > URL Configuration >
+   * Redirect URLs)에 없으면 **거부하지 않고 조용히 Site URL로 바꿔치기한다.**
+   * 그래서 링크는 정상으로 보이고 메일도 정상 발송되지만, 받는 사람이 누르면
+   * 엉뚱한 곳으로 간다. 실제로 그렇게 나갔다 — Site URL이 scheme 없이
+   * 'castlog.kr'로 저장되어 있어서, Supabase가 그것을 자기 도메인의 상대 경로로
+   * 읽고 `{"error":"requested path is invalid"}`를 띄웠다.
+   *
+   * 깨진 링크를 보내는 것은 안 보내는 것보다 나쁘다. 받는 사람은 우리 서비스가
+   * 고장 났다고 판단하고, 우리는 무엇이 잘못됐는지 알 길이 없다. 그래서 여기서
+   * 잡아 **보내지 않고** 원인을 그대로 돌려준다.
+   */
+  const carried = (() => {
+    try {
+      return new URL(actionLink).searchParams.get("redirect_to");
+    } catch {
+      return null;
+    }
+  })();
+  if (!carried || !carried.startsWith(`${baseUrl}/auth/callback`)) {
+    return {
+      ok: false,
+      error:
+        `Supabase가 복귀 주소를 '${carried ?? "(없음)"}'로 바꿨습니다. ` +
+        `요청한 값은 '${redirectTo}' 입니다. 링크를 눌러도 로그인 화면으로 오지 ` +
+        "못하므로 발송하지 않았습니다. Supabase 대시보드 > Authentication > " +
+        `URL Configuration에서 Site URL을 '${baseUrl}'(scheme 포함)로 고치고, ` +
+        `Redirect URLs에 '${baseUrl}/**'를 추가하세요.`,
     };
   }
 
@@ -71,7 +107,7 @@ export async function sendAccountInviteEmail(input: {
     `캐스트로그에 ${input.tenantName}의 대표 계정이 만들어졌습니다.`,
     "아래 링크에서 비밀번호를 직접 설정하신 뒤 로그인해 주세요.",
     "",
-    data.properties.action_link,
+    actionLink,
     "",
     `로그인 주소: ${baseUrl}/login`,
     `계정(이메일): ${input.email}`,
