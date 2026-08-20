@@ -157,6 +157,35 @@ export async function sendPasswordResetEmail(email: string): Promise<InviteResul
     };
   }
 
+  /**
+   * 이메일당 60초 쿨다운.
+   *
+   * Supabase 내장 발송에서 자체 발송으로 옮기면서 내장 레이트리밋이 함께
+   * 사라졌다. /forgot-password는 로그인 없이 열리는 공개 표면이라, 이 가드가
+   * 없으면 가입된 이메일 하나를 겨냥한 무한 반복 요청이 가능하다 — 메일함
+   * 폭탄에 더해, generateLink가 호출마다 이전 토큰을 무효화하므로 피해자의
+   * 정상 링크까지 계속 죽는다.
+   *
+   * 쿨다운에 걸려도 **성공으로 응답한다.** 다르게 응답하면 그 차이가
+   * "이 이메일은 가입되어 있다"를 알려 주는 신호가 된다.
+   *
+   * 조회가 실패하면(테이블 미생성 등) 쿨다운 없이 발송을 진행한다 —
+   * 남용 방지 장치가 정상 사용자의 재설정을 막는 쪽으로 죽어서는 안 된다.
+   */
+  const normalized = email.trim().toLowerCase();
+  const admin = createAdminClient();
+  const { data: cooldown, error: cooldownError } = await admin
+    .from("auth_email_cooldowns")
+    .select("last_sent_at")
+    .eq("email", normalized)
+    .maybeSingle();
+  if (!cooldownError && cooldown?.last_sent_at) {
+    const elapsed = Date.now() - Date.parse(cooldown.last_sent_at);
+    if (Number.isFinite(elapsed) && elapsed < 60_000) {
+      return { ok: true };
+    }
+  }
+
   const built = await buildRecoveryLink(email, baseUrl);
   if (!built.ok) return built;
 
@@ -185,6 +214,14 @@ export async function sendPasswordResetEmail(email: string): Promise<InviteResul
     text: body,
     replyTo: "hello@castlog.kr",
   });
+
+  if (sent.ok) {
+    // 발송 성공 후에만 쿨다운을 갱신한다 — 발송이 실패했는데 60초를 태우면
+    // 정상 사용자가 재시도조차 못 한다.
+    await admin
+      .from("auth_email_cooldowns")
+      .upsert({ email: normalized, last_sent_at: new Date().toISOString() });
+  }
 
   return sent.ok ? { ok: true } : { ok: false, error: sent.error };
 }
