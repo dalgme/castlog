@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { sendAccountInviteEmail } from "@/lib/auth/account-invite";
+
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -15,7 +17,15 @@ import {
 } from "@/lib/admin/schemas";
 
 export type CreateTenantResult =
-  | { ok: true; tempPassword: string; orgAdminEmail: string }
+  | {
+      ok: true;
+      tempPassword: string;
+      orgAdminEmail: string;
+      /** 비밀번호 설정 안내 메일이 실제로 나갔는가 */
+      inviteSent: boolean;
+      /** 메일이 실패했다면 그 이유 — 임시 비밀번호를 직접 전달해야 한다 */
+      inviteError?: string;
+    }
   | { ok: false; error: string };
 
 /** 현재 세션이 플랫폼관리자인지 확인 (JWT app_metadata 기준) */
@@ -143,8 +153,24 @@ export async function createTenant(
     revalidatePath("/platform-admin/inquiries");
   }
 
+  // 대표에게 비밀번호 설정 메일을 보낸다. 임시 비밀번호를 사람 손으로 옮기는
+  // 경로는 반드시 빠지고, 빠지면 그 회사는 계정이 있는데도 못 들어온다.
+  // 실패해도 테넌트 생성은 되돌리지 않는다 — 계정은 이미 살아 있고, 화면에
+  // 표시되는 임시 비밀번호로 들어올 수 있다.
+  const invite = await sendAccountInviteEmail({
+    email: data.orgAdminEmail,
+    name: data.orgAdminName,
+    tenantName: data.name,
+  });
+
   revalidatePath("/platform-admin");
-  return { ok: true, tempPassword, orgAdminEmail: data.orgAdminEmail };
+  return {
+    ok: true,
+    tempPassword,
+    orgAdminEmail: data.orgAdminEmail,
+    inviteSent: invite.ok,
+    inviteError: invite.ok ? undefined : invite.error,
+  };
 }
 
 export type UpdateModulesResult = { ok: true } | { ok: false; error: string };

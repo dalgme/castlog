@@ -63,6 +63,66 @@ export default function ContactPage({
           <InquiryForm initialType={initialType} source={source} />
         </div>
 
+        {/* 이 화면에 비밀번호 입력이 없는 이유를 먼저 말해 준다.
+            캐스트로그는 계약(사용 기능 조합)을 확인한 뒤 계정을 발급하는
+            구조라 셀프 회원가입이 아니다. 그런데 화면에 그 말이 없으면
+            "가입했는데 비밀번호를 못 정했다"로 읽힌다 — 실제로 그랬다. */}
+        {!isExpert && (
+          <section className="mt-6 rounded-2xl border bg-card p-5">
+            <h2 className="text-sm font-bold text-foreground">
+              계정은 이렇게 만들어집니다
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              이 화면은 회원가입이 아니라 <b>도입 신청</b>입니다. 그래서
+              비밀번호를 여기서 정하지 않습니다.
+            </p>
+            <ol className="mt-3 space-y-2.5">
+              {[
+                {
+                  t: "신청서 제출",
+                  d: "지금 이 화면입니다. 결제·카드 등록은 없습니다.",
+                },
+                {
+                  t: "캐스트로그 확인 · 계정 발급",
+                  d: "담당자가 연락드려 사용할 기능 조합을 확인한 뒤 대표 계정을 만듭니다.",
+                },
+                {
+                  t: "비밀번호 설정 메일 수신",
+                  d: "계정이 만들어지면 신청하신 이메일로 링크가 갑니다. 그 링크에서 비밀번호를 직접 정하십니다.",
+                },
+                {
+                  t: "로그인",
+                  d: "정하신 비밀번호로 로그인합니다. 임직원은 대표가 초대하거나 승인합니다.",
+                },
+              ].map((step, i) => (
+                <li key={step.t} className="flex gap-2.5">
+                  <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brand text-[11px] font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">
+                      {step.t}
+                    </span>
+                    <span className="block text-xs leading-relaxed text-muted-foreground">
+                      {step.d}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-xs text-muted-foreground">
+              메일이 오지 않으면 로그인 화면의{" "}
+              <Link
+                href="/forgot-password"
+                className="font-medium text-brand underline-offset-4 hover:underline"
+              >
+                비밀번호 찾기
+              </Link>
+              로도 받으실 수 있습니다.
+            </p>
+          </section>
+        )}
+
         <p className="mt-6 text-center text-sm text-muted-foreground">
           이미 계정이 있으신가요?{" "}
           <Link

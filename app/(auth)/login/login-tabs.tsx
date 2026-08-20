@@ -31,13 +31,20 @@ export function LoginTabs({
         <StaffLoginForm next={next} />
         <div className="space-y-2 border-t pt-4 text-center text-sm text-muted-foreground">
           <p>
-            아직 도입 전이신가요?{" "}
+            아직 계정이 없으신가요?{" "}
             <Link
               href="/contact?type=trial&source=login"
               className="font-medium text-brand underline-offset-4 hover:underline"
             >
-              기업회원 가입
+              도입 신청하기
             </Link>
+          </p>
+          {/* 계정을 받은 대표가 비밀번호를 못 찾는 일이 실제로 생긴다 —
+              계정은 캐스트로그가 발급하고 비밀번호는 메일 링크로 정하는
+              구조라, 메일을 놓치면 들어올 길이 안 보인다 */}
+          <p className="text-xs">
+            계정을 발급받았는데 비밀번호를 정하지 않으셨다면 아래 ‘비밀번호
+            찾기’로 설정하실 수 있습니다.
           </p>
           <p>
             <Link

@@ -59,6 +59,8 @@ export function CreateTenantDialog({
   const [result, setResult] = useState<{
     email: string;
     tempPassword: string;
+    inviteSent: boolean;
+    inviteError?: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -79,7 +81,12 @@ export function CreateTenantDialog({
     startTransition(async () => {
       const res = await createTenant(values, inquiryId);
       if (res.ok) {
-        setResult({ email: res.orgAdminEmail, tempPassword: res.tempPassword });
+        setResult({
+          email: res.orgAdminEmail,
+          tempPassword: res.tempPassword,
+          inviteSent: res.inviteSent,
+          inviteError: res.inviteError,
+        });
       } else {
         setServerError(res.error);
       }
@@ -122,20 +129,38 @@ export function CreateTenantDialog({
 
         {result ? (
           <div className="space-y-3">
-            <Alert>
-              <AlertDescription>
-                테넌트가 생성되었습니다. 아래 임시 비밀번호는{" "}
-                <strong>이 화면에서만 표시</strong>되며 저장되지 않습니다.
-                총괄관리자에게 안전한 경로로 전달하세요.
-              </AlertDescription>
-            </Alert>
+            {/* 정상 경로: 본인이 메일 링크로 비밀번호를 정한다.
+                임시 비밀번호는 그 경로가 막혔을 때를 위한 예비 수단이다 */}
+            {result.inviteSent ? (
+              <Alert>
+                <AlertDescription>
+                  테넌트가 생성되었고, <strong>{result.email}</strong> 으로
+                  비밀번호 설정 안내 메일을 보냈습니다. 대표가 메일의 링크에서
+                  직접 비밀번호를 정하면 바로 로그인할 수 있습니다.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  테넌트는 생성되었지만 <strong>안내 메일 발송에 실패</strong>
+                  했습니다. 아래 임시 비밀번호를 안전한 경로로 직접 전달하세요.
+                  {result.inviteError && (
+                    <span className="mt-1 block text-xs opacity-80">
+                      사유: {result.inviteError}
+                    </span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="space-y-1.5 rounded-md border p-3 text-sm">
               <p>
                 <span className="text-muted-foreground">이메일:</span>{" "}
                 {result.email}
               </p>
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">임시 비밀번호:</span>
+                <span className="text-muted-foreground">
+                  임시 비밀번호{result.inviteSent ? " (예비)" : ""}:
+                </span>
                 <code className="rounded bg-muted px-1.5 py-0.5 font-mono">
                   {result.tempPassword}
                 </code>
@@ -143,6 +168,10 @@ export function CreateTenantDialog({
                   {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                이 화면에서만 표시되며 저장되지 않습니다. 메일이 도착하지 않았다면
+                대표가 로그인 화면의 ‘비밀번호 찾기’로 직접 받을 수도 있습니다.
+              </p>
             </div>
             <Button
               type="button"
