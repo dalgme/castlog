@@ -129,7 +129,7 @@ export default async function ProjectsPage({
         {rows.length === 0 ? (
           <EmptyState
             title="프로젝트가 없습니다"
-            description="우측 상단 ‘프로젝트 생성’으로 첫 프로젝트를 만드세요. 기본 21스텝이 자동 구성됩니다."
+            description="우측 상단 ‘프로젝트 생성’으로 첫 프로젝트를 만드세요."
           />
         ) : (
           <Card>
