@@ -13,6 +13,15 @@ export const smsConfigSchema = z.object({
 });
 export type SmsConfigInput = z.infer<typeof smsConfigSchema>;
 
+/** 캐스트로그 발송(b) 신청 — 자사 발신번호 + 담당자가 알려준 이용코드 */
+export const platformSmsSchema = z.object({
+  senderNumber: z
+    .string()
+    .regex(/^[\d-]{8,13}$/, "자사 발신번호를 입력하세요 (예: 02-123-4567)."),
+  accessCode: z.string().max(100).optional(),
+});
+export type PlatformSmsInput = z.infer<typeof platformSmsSchema>;
+
 /** 발송 실행 (관리자 이상) — 유형 선택 필수, 기본값은 광고성(안전한 쪽) */
 export const messageSendSchema = z
   .object({

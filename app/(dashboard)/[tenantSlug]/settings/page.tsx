@@ -15,8 +15,8 @@ import { getTenantModules } from "@/lib/modules/server";
 
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
-import { SmsConfigForm } from "./sms-config-form";
 import { SmsConnectionPanel } from "./sms-connection-panel";
+import { SmsModePanel, type SmsMode } from "./sms-mode-panel";
 
 export const metadata = { title: "설정" };
 
@@ -76,8 +76,10 @@ export default async function SettingsPage({
   const supabase = createClient();
   const { data: config } = await supabase
     .from("tenant_sms_configs")
-    .select("provider, sender_number, is_active")
+    .select("provider, mode, sender_number, is_active, platform_access_granted_at")
     .maybeSingle();
+  const smsMode: SmsMode | null =
+    config?.mode === "platform" ? "platform" : config ? "byo" : null;
 
   // 사용 기능(모듈) 현황·추가 요청은 '기업관리' 탭으로 옮겼다 — 발송 설정 옆에
   // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
@@ -106,7 +108,11 @@ export default async function SettingsPage({
               configured={Boolean(config)}
               isActive={config?.is_active ?? false}
               provider={
-                config ? (PROVIDER_LABELS[config.provider] ?? config.provider) : null
+                config
+                  ? smsMode === "platform"
+                    ? "캐스트로그 발송 (솔라피)"
+                    : (PROVIDER_LABELS[config.provider] ?? config.provider)
+                  : null
               }
               senderNumber={config?.sender_number ?? null}
             />
@@ -117,12 +123,15 @@ export default async function SettingsPage({
         {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">SMS 발송 설정 (자사 공급자)</CardTitle>
+            <CardTitle className="text-sm">SMS 발송 설정</CardTitle>
           </CardHeader>
           <CardContent>
-            <SmsConfigForm
-              current={
-                config
+            <SmsModePanel
+              currentMode={smsMode}
+              platformGranted={Boolean(config?.platform_access_granted_at)}
+              currentSenderNumber={config?.sender_number ?? null}
+              byoCurrent={
+                config && smsMode === "byo"
                   ? {
                       provider: config.provider,
                       senderNumber: config.sender_number,
@@ -131,11 +140,10 @@ export default async function SettingsPage({
               }
             />
             <p className="mt-3 text-xs text-muted-foreground">
-              대표가 ‘발송 설정·템플릿’ 관리 권한을 위임하면 해당 직원도 이 설정을
-              변경할 수 있습니다 (기업 관리 → 시스템 설정·관리 권한 위임).
-              업무·광고 문자는 여기 등록한 자사 공급자 계정으로 발송됩니다.
-              전문가 로그인 인증번호는 플랫폼이 발송하므로 별도 설정이 필요
-              없습니다.
+              어느 방식이든 문자는 <b>자사 발신번호</b>로 나갑니다. 대표가 ‘문자
+              발송 자격증명’ 권한을 위임하면 해당 직원도 이 설정을 변경할 수
+              있습니다. 전문가 로그인 인증번호는 플랫폼이 발송하므로 별도 설정이
+              필요 없습니다.
             </p>
           </CardContent>
         </Card>
@@ -144,7 +152,7 @@ export default async function SettingsPage({
         {canManageSending && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">솔라피 연결 방법</CardTitle>
+            <CardTitle className="text-sm">솔라피 연결 방법 (자사 계정 방식)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <ol className="list-decimal space-y-1.5 pl-4">
