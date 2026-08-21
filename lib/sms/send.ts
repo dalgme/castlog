@@ -8,6 +8,7 @@ import { decryptSecret } from "@/lib/crypto/secrets";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { isPracticeMode } from "@/lib/practice/server";
+import { isMissingColumnError } from "@/lib/supabase/db-errors";
 import {
   isSmsTestMode,
   sendSms,
@@ -149,13 +150,41 @@ async function loadCredentials(
 > {
   // service_role은 RLS가 걸리지 않으므로 tenant_id를 반드시 명시한다
   const supabase = systemContext ? createAdminClient() : createClient();
-  const { data: config } = await supabase
+  let config:
+    | {
+        provider: string;
+        mode: string;
+        api_key_encrypted: string | null;
+        api_secret_encrypted: string | null;
+        sender_number: string;
+        is_active: boolean;
+        platform_access_granted_at: string | null;
+      }
+    | null = null;
+  const full = await supabase
     .from("tenant_sms_configs")
     .select(
       "provider, mode, api_key_encrypted, api_secret_encrypted, sender_number, is_active, platform_access_granted_at"
     )
     .eq("tenant_id", tenantId)
     .maybeSingle();
+  if (full.error && isMissingColumnError(full.error.message)) {
+    // mode 컬럼은 보류 중인 b(캐스트로그 발송) 마이그레이션 소속이다.
+    // 그 마이그레이션이 아직 적용되지 않은 DB에서 **기존 자사 발송이 죽으면
+    // 안 된다** — 구버전 스키마로 재조회하고 전부 byo로 간주한다.
+    const legacy = await supabase
+      .from("tenant_sms_configs")
+      .select(
+        "provider, api_key_encrypted, api_secret_encrypted, sender_number, is_active"
+      )
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    config = legacy.data
+      ? { ...legacy.data, mode: "byo", platform_access_granted_at: null }
+      : null;
+  } else {
+    config = full.data;
+  }
 
   if (!config || !config.is_active) {
     return {

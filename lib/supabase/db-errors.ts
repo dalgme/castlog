@@ -21,3 +21,13 @@ export function describeDbError(message: string | undefined, fallback: string): 
   }
   return `${fallback} (${message.slice(0, 160)})`;
 }
+
+/**
+ * '컬럼이 없다' 계열 오류인가 — 마이그레이션 미적용 DB에서 새 컬럼을 참조하면
+ * PostgREST가 "Could not find the ... column ... in the schema cache" 또는
+ * "column ... does not exist"를 돌려준다. 보류 중인 기능의 컬럼이 현행 기능을
+ * 인질로 잡지 않도록, 이 오류에 한해 구버전 경로로 물러날 때 쓴다.
+ */
+export function isMissingColumnError(message: string | undefined): boolean {
+  return /column .* does not exist|schema cache/i.test(message ?? "");
+}

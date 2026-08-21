@@ -7,6 +7,7 @@ import { roleFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/db-errors";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,10 +75,30 @@ export default async function SettingsPage({
   }
 
   const supabase = createClient();
-  const { data: config } = await supabase
+  // mode 컬럼은 보류 중인 b(캐스트로그 발송) 마이그레이션 소속 — 미적용 DB에서
+  // 기존 설정 화면이 '미설정'으로 보이면 안 된다. 컬럼이 없으면 구버전으로 조회.
+  let config: {
+    provider: string;
+    mode: string;
+    sender_number: string;
+    is_active: boolean;
+    platform_access_granted_at: string | null;
+  } | null = null;
+  const full = await supabase
     .from("tenant_sms_configs")
     .select("provider, mode, sender_number, is_active, platform_access_granted_at")
     .maybeSingle();
+  if (full.error && isMissingColumnError(full.error.message)) {
+    const legacy = await supabase
+      .from("tenant_sms_configs")
+      .select("provider, sender_number, is_active")
+      .maybeSingle();
+    config = legacy.data
+      ? { ...legacy.data, mode: "byo", platform_access_granted_at: null }
+      : null;
+  } else {
+    config = full.data;
+  }
   const smsMode: SmsMode | null =
     config?.mode === "platform" ? "platform" : config ? "byo" : null;
 

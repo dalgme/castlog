@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { describeDbError } from "@/lib/supabase/db-errors";
+import { describeDbError, isMissingColumnError } from "@/lib/supabase/db-errors";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   platformSmsSchema,
@@ -59,20 +59,32 @@ export async function saveSmsConfig(
   const { userId, tenantId } = auth;
 
   const supabase = createClient();
-  const { error } = await supabase.from("tenant_sms_configs").upsert(
-    {
-      tenant_id: tenantId,
-      // 자사 키를 저장하는 행위 = 자사 계정 방식 선택. platform이던 회사가
-      // 돌아올 때 모드를 함께 바꾸지 않으면 발송은 계속 캐스트로그 계정으로 나간다.
-      mode: "byo",
-      provider: data.provider,
-      api_key_encrypted: encryptSecret(data.apiKey),
-      api_secret_encrypted: data.apiSecret ? encryptSecret(data.apiSecret) : null,
-      sender_number: data.senderNumber,
-      is_active: true,
-    },
-    { onConflict: "tenant_id" }
-  );
+  const payload = {
+    tenant_id: tenantId,
+    // 자사 키를 저장하는 행위 = 자사 계정 방식 선택. platform이던 회사가
+    // 돌아올 때 모드를 함께 바꾸지 않으면 발송은 계속 캐스트로그 계정으로 나간다.
+    mode: "byo",
+    provider: data.provider,
+    api_key_encrypted: encryptSecret(data.apiKey),
+    api_secret_encrypted: data.apiSecret ? encryptSecret(data.apiSecret) : null,
+    sender_number: data.senderNumber,
+    is_active: true,
+  };
+  let { error } = await supabase
+    .from("tenant_sms_configs")
+    .upsert(payload, { onConflict: "tenant_id" });
+
+  if (error && isMissingColumnError(error.message)) {
+    // mode 컬럼은 보류 중인 b 마이그레이션 소속이다. 그 마이그레이션이 아직
+    // 적용되지 않은 DB에서 **기존 자사 키 저장이 인질로 잡히면 안 된다** —
+    // mode 없이 재시도한다(구버전 스키마 그대로). b를 재개하는 시점에는
+    // 마이그레이션이 전제이므로 이 우회는 자연히 쓰이지 않게 된다.
+    const { mode: _mode, ...legacyPayload } = payload;
+    void _mode;
+    ({ error } = await supabase
+      .from("tenant_sms_configs")
+      .upsert(legacyPayload, { onConflict: "tenant_id" }));
+  }
 
   if (error) {
     return { ok: false, error: describeDbError(error.message, "설정 저장에 실패했습니다.") };
