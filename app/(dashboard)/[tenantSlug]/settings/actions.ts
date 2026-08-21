@@ -1,11 +1,18 @@
 "use server";
 
+import { createHash, timingSafeEqual } from "crypto";
+
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
-import { smsConfigSchema, type SmsConfigInput } from "@/lib/messaging/schemas";
+import {
+  platformSmsSchema,
+  smsConfigSchema,
+  type PlatformSmsInput,
+  type SmsConfigInput,
+} from "@/lib/messaging/schemas";
 import { sendTenantSms } from "@/lib/sms/send";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 
@@ -54,6 +61,9 @@ export async function saveSmsConfig(
   const { error } = await supabase.from("tenant_sms_configs").upsert(
     {
       tenant_id: tenantId,
+      // 자사 키를 저장하는 행위 = 자사 계정 방식 선택. platform이던 회사가
+      // 돌아올 때 모드를 함께 바꾸지 않으면 발송은 계속 캐스트로그 계정으로 나간다.
+      mode: "byo",
       provider: data.provider,
       api_key_encrypted: encryptSecret(data.apiKey),
       api_secret_encrypted: data.apiSecret ? encryptSecret(data.apiSecret) : null,
@@ -171,6 +181,104 @@ export async function setSmsConfigActive(
     actor_role: auth.isCeo ? "org_admin" : "manager",
     action: active ? "sms_config.activate" : "sms_config.deactivate",
     resource_type: "tenant_sms_config",
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/**
+ * 캐스트로그 발송(b) 신청 — 캐스트로그(넥스트랩) 솔라피 계정으로 발송.
+ *
+ * 자사 솔라피 가입이 도입의 첫 관문에서 이탈 지점이 되는 작은 기업을 위한
+ * 길이다. 자격증명은 서버 환경변수에만 있고 이 테넌트 행에는 저장되지 않는다.
+ *
+ * 진입은 캐스트로그 담당자가 알려준 **이용코드**로 한 번 인증한다. 코드는
+ * 저장하지 않고 승인 시각만 남긴다 — 이후 담당자가 코드를 바꿔도 이미 승인된
+ * 기업은 계속 쓴다("최초 기입하면 계속 사용"). 발신번호 변경도 재인증이 없다.
+ *
+ * 발신번호는 그 기업의 번호다. 다만 발신번호 사전등록제(전기통신사업법
+ * 제84조의2) 때문에 그 번호를 **캐스트로그 솔라피 계정에 등록**하는 절차가
+ * 기업마다 한 번 필요하다 — 화면에서 안내하고, 등록 전 발송은 공급자가
+ * 거부하므로 테스트 발송으로 확인한다.
+ */
+export async function savePlatformSmsMode(
+  input: PlatformSmsInput
+): Promise<SaveSmsConfigResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const parsed = platformSmsSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
+    };
+  }
+  const data = parsed.data;
+
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const { userId, tenantId } = auth;
+
+  const supabase = createClient();
+  const { data: existing } = await supabase
+    .from("tenant_sms_configs")
+    .select("platform_access_granted_at")
+    .maybeSingle();
+  const alreadyGranted = Boolean(existing?.platform_access_granted_at);
+
+  // 최초 1회만 이용코드를 요구한다. 이미 승인된 회사는 발신번호 변경·재저장에
+  // 코드가 필요 없다.
+  if (!alreadyGranted) {
+    const expected = process.env.PLATFORM_SMS_ACCESS_CODE;
+    if (!expected) {
+      return {
+        ok: false,
+        error:
+          "캐스트로그 발송 이용코드가 아직 운영에 설정되지 않았습니다. 캐스트로그에 문의하세요.",
+      };
+    }
+    const supplied = data.accessCode?.trim() ?? "";
+    if (!supplied) {
+      return { ok: false, error: "캐스트로그가 알려드린 이용코드를 입력하세요." };
+    }
+    // 해시 후 비교 — 길이 차이로 timingSafeEqual이 던지는 것을 막고,
+    // 비교 시간으로 코드 길이가 새는 것도 막는다
+    const a = createHash("sha256").update(supplied).digest();
+    const b = createHash("sha256").update(expected).digest();
+    if (!timingSafeEqual(a, b)) {
+      return { ok: false, error: "이용코드가 올바르지 않습니다." };
+    }
+  }
+
+  const { error } = await supabase.from("tenant_sms_configs").upsert(
+    {
+      tenant_id: tenantId,
+      mode: "platform",
+      provider: "solapi",
+      // 플랫폼 발송은 자사 키가 없다 — 남아 있던 옛 키도 지운다
+      api_key_encrypted: null,
+      api_secret_encrypted: null,
+      sender_number: data.senderNumber,
+      platform_access_granted_at:
+        existing?.platform_access_granted_at ?? new Date().toISOString(),
+      is_active: true,
+    },
+    { onConflict: "tenant_id" }
+  );
+  if (error) {
+    return { ok: false, error: "설정 저장에 실패했습니다." };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_auth_user_id: userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: alreadyGranted ? "sms_config.platform_update" : "sms_config.platform_enroll",
+    resource_type: "tenant_sms_config",
+    after_data: { sender_number: data.senderNumber },
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");

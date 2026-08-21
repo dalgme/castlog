@@ -3625,33 +3625,39 @@ export type Database = {
       }
       tenant_sms_configs: {
         Row: {
-          api_key_encrypted: string
+          api_key_encrypted: string | null
           api_secret_encrypted: string | null
           created_at: string
           id: string
           is_active: boolean
+          mode: string
+          platform_access_granted_at: string | null
           provider: string
           sender_number: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
-          api_key_encrypted: string
+          api_key_encrypted?: string | null
           api_secret_encrypted?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          mode?: string
+          platform_access_granted_at?: string | null
           provider: string
           sender_number: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
-          api_key_encrypted?: string
+          api_key_encrypted?: string | null
           api_secret_encrypted?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          mode?: string
+          platform_access_granted_at?: string | null
           provider?: string
           sender_number?: string
           tenant_id?: string

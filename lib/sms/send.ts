@@ -130,7 +130,16 @@ export type TenantSmsSendParams = {
   systemContext?: boolean;
 };
 
-/** 테넌트 설정 조회 + 복호화 */
+/**
+ * 테넌트 설정 조회 + 자격증명 해석.
+ *
+ * 발송 방식이 둘이다 (CLAUDE.md 5-2 개정):
+ *  - byo      — 자사 공급자 계정. 암호화 저장된 자사 키를 복호화해 쓴다.
+ *  - platform — 캐스트로그(넥스트랩) 솔라피 계정. 자격증명은 서버 환경변수에만
+ *               있고 DB에는 저장하지 않는다 — 테넌트 행이 탈취돼도 플랫폼 키는
+ *               나가지 않는다. 발신번호는 **그 기업의 번호**를 그대로 쓴다
+ *               (캐스트로그 솔라피 계정에 사전등록된 번호여야 발송이 통과된다).
+ */
 async function loadCredentials(
   tenantId: string,
   systemContext: boolean
@@ -142,14 +151,47 @@ async function loadCredentials(
   const supabase = systemContext ? createAdminClient() : createClient();
   const { data: config } = await supabase
     .from("tenant_sms_configs")
-    .select("provider, api_key_encrypted, api_secret_encrypted, sender_number, is_active")
+    .select(
+      "provider, mode, api_key_encrypted, api_secret_encrypted, sender_number, is_active, platform_access_granted_at"
+    )
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (!config || !config.is_active) {
     return {
       ok: false,
-      error: "SMS 공급자가 설정되지 않았습니다. 설정 화면에서 자사 API 키를 등록하세요.",
+      error:
+        "SMS 발송이 설정되지 않았습니다. 설정 화면에서 자사 API 키를 등록하거나 캐스트로그 발송을 신청하세요.",
+    };
+  }
+
+  if (config.mode === "platform") {
+    if (!config.platform_access_granted_at) {
+      return {
+        ok: false,
+        error: "캐스트로그 발송 이용이 아직 승인되지 않았습니다.",
+      };
+    }
+    const apiKey = process.env.PLATFORM_SOLAPI_API_KEY;
+    const apiSecret = process.env.PLATFORM_SOLAPI_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      return {
+        ok: false,
+        error:
+          "캐스트로그 발송 계정이 서버에 설정되지 않았습니다 (PLATFORM_SOLAPI_API_KEY/SECRET). 캐스트로그에 문의하세요.",
+      };
+    }
+    return {
+      ok: true,
+      creds: { provider: "solapi", apiKey, apiSecret },
+      senderNumber: config.sender_number,
+    };
+  }
+
+  if (!config.api_key_encrypted) {
+    return {
+      ok: false,
+      error: "자사 API 키가 등록되지 않았습니다. 설정 화면에서 등록하세요.",
     };
   }
 
