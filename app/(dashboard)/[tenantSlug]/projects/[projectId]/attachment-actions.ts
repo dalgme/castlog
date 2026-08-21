@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getTenantModules } from "@/lib/modules/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -32,6 +33,11 @@ async function requireManager(): Promise<
 > {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  // 섭외 첨부는 experts 모듈 소속 — 화면만 게이트하면 POST 직접 호출이 뚫린다(§1-2-3)
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 섭외 기능을 사용하지 않는 회사입니다." };
   }
   const supabase = createClient();
   const {

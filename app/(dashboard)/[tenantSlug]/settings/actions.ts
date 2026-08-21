@@ -46,6 +46,13 @@ export async function saveSmsConfig(
   }
   const data = parsed.data;
 
+  if (data.provider === "nhncloud") {
+    // 어댑터 미구현 — 저장을 허용하면 발송이 전부 실패하는 설정이 생긴다
+    return {
+      ok: false,
+      error: "NHN Cloud 연동은 준비 중입니다. 솔라피 또는 알리고를 사용하세요.",
+    };
+  }
   if (data.provider === "solapi" && !data.apiSecret) {
     return { ok: false, error: "솔라피는 API Secret이 필요합니다." };
   }

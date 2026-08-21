@@ -151,6 +151,81 @@ export async function createProject(
 
 export type StepActionResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * 기존 프로젝트에 기본 21스텝 채우기.
+ *
+ * 스텝은 프로젝트 '생성 시'에만 복사됐다. 그래서 operations 모듈을 나중에 켠
+ * 회사의 기존 프로젝트는 스텝이 0개인데 만들 방법이 없었고, 온보딩 안내는
+ * "스텝을 생성하세요"라며 존재하지 않는 기능을 가리켰다(§1-2-8 위반 — 검수로
+ * 확인). 이 액션이 그 잇는 경로다. 이미 스텝이 있으면 거부한다 — 중복 스텝은
+ * 진행률을 망가뜨린다.
+ */
+export async function createDefaultSteps(
+  projectId: string
+): Promise<StepActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const modules = await getTenantModules();
+  if (!modules.operations) {
+    return { ok: false, error: "행사 운영 기능을 사용하지 않는 회사입니다." };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
+    return { ok: false, error: "스텝 생성 권한이 없습니다." };
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+
+  const { count } = await supabase
+    .from("project_lifecycle_steps")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
+  if ((count ?? 0) > 0) {
+    return { ok: false, error: "이미 스텝이 있는 프로젝트입니다." };
+  }
+
+  const { error } = await supabase.from("project_lifecycle_steps").insert(
+    DEFAULT_LIFECYCLE_STEPS.map((step) => ({
+      tenant_id: tenantId,
+      project_id: projectId,
+      step_no: step.stepNo,
+      step_type: step.stepType,
+      title: step.title,
+    }))
+  );
+  if (error) {
+    return {
+      ok: false,
+      error: describeDbError(error.message, "기본 스텝 생성에 실패했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_auth_user_id: user.id,
+    actor_role: role,
+    action: "project.create_default_steps",
+    resource_type: "project",
+    resource_id: projectId,
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
 /** 스텝 상태 변경 — 완료 시각 기록, 완료 해제 시 초기화 */
 export async function updateStepStatus(
   input: StepStatusInput

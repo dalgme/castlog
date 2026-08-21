@@ -252,14 +252,19 @@ export default async function SettingsPage({
             >
               임직원 설정
             </Link>
-            에서, 전결규정은{" "}
-            <Link
-              href={`/${params.tenantSlug}/approvals/rules`}
-              className="text-brand underline-offset-4 hover:underline"
-            >
-              전결규정
-            </Link>
             에서 관리합니다.
+            {modules.approvals && (
+              <>
+                {" "}전결규정은{" "}
+                <Link
+                  href={`/${params.tenantSlug}/approvals/rules`}
+                  className="text-brand underline-offset-4 hover:underline"
+                >
+                  전결규정
+                </Link>
+                에서 관리합니다.
+              </>
+            )}
           </CardContent>
         </Card>
       </main>
