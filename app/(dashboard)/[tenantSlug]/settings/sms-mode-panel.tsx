@@ -42,6 +42,7 @@ export type SmsMode = "byo" | "platform";
 export function SmsModePanel({
   currentMode,
   platformGranted,
+  platformOffered,
   currentSenderNumber,
   byoCurrent,
 }: {
@@ -49,10 +50,22 @@ export function SmsModePanel({
   currentMode: SmsMode | null;
   /** b 이용코드 승인을 이미 받았는가 — 받았다면 코드 입력을 다시 요구하지 않는다 */
   platformGranted: boolean;
+  /**
+   * b 방식을 제공 중인가 (기획 보류 상태 관리).
+   * 운영에서 이용코드(PLATFORM_SMS_ACCESS_CODE)를 설정하기 전에는 false —
+   * 신청해도 진행할 수 없는 선택지를 보여 주면 그게 곧 막다른 길이다(§14-7).
+   * 이미 platform 모드인 회사에는 보류와 무관하게 계속 보여 준다.
+   */
+  platformOffered: boolean;
   currentSenderNumber: string | null;
   byoCurrent: { provider: string; senderNumber: string } | null;
 }) {
   const [mode, setMode] = useState<SmsMode>(currentMode ?? "byo");
+  const showPlatform = platformOffered || currentMode === "platform";
+
+  if (!showPlatform) {
+    return <SmsConfigForm current={byoCurrent} />;
+  }
 
   return (
     <div className="space-y-4">
