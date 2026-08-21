@@ -40,7 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { createProject } from "./actions";
 
-/** 프로젝트 생성 다이얼로그 — 생성 시 기본 21스텝이 복사된다 */
+/** 프로젝트 생성 다이얼로그 — 공통 기반. (21스텝 구성은 operations 영역 몫 — §15) */
 export function CreateProjectDialog({
   tenantSlug,
   categories,
@@ -104,7 +104,7 @@ export function CreateProjectDialog({
         <DialogHeader>
           <DialogTitle>프로젝트 생성</DialogTitle>
           <DialogDescription>
-            생성 시 기본 21스텝 라이프사이클이 자동 구성됩니다.
+            행사명·기간·예산 등 기본 정보로 프로젝트를 엽니다. 세부 정보는 생성 후 언제든 수정할 수 있습니다.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

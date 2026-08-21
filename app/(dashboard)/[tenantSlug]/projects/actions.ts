@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { describeDbError } from "@/lib/supabase/db-errors";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -78,7 +79,10 @@ export async function createProject(
     .single();
 
   if (projectError || !project) {
-    return { ok: false, error: "프로젝트 생성에 실패했습니다." };
+    return {
+      ok: false,
+      error: describeDbError(projectError?.message, "프로젝트 생성에 실패했습니다."),
+    };
   }
 
   // 기본 21스텝 복사 — operations 모듈 활성 테넌트만 (구성 정보만, 실적 없음)
@@ -98,7 +102,13 @@ export async function createProject(
     if (stepsError) {
       // 스텝 생성 실패 시 프로젝트도 취소 상태로 표시하지 않고 제거 시도는 하지 않는다
       // (RLS에 delete 정책 없음) — 오류 반환으로 재시도 유도
-      return { ok: false, error: "기본 스텝 생성에 실패했습니다. 다시 시도해 주세요." };
+      return {
+        ok: false,
+        error: describeDbError(
+          stepsError.message,
+          "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다."
+        ),
+      };
     }
   }
 
