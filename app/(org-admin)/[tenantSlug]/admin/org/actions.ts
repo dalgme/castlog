@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { describeDbError } from "@/lib/supabase/db-errors";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { generateTempPassword } from "@/lib/admin/passwords";
 import {
   adminGrantSchema,
@@ -386,7 +386,7 @@ export async function grantAdminScopes(
   if (failed.length > 0) {
     return {
       ok: false,
-      error: describeDbError(
+      error: await explainActionError(
         lastError,
         `일부 위임에 실패했습니다 (${failed.join(", ")}).`
       ),

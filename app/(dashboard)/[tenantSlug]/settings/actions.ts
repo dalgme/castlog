@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { describeDbError, isMissingColumnError } from "@/lib/supabase/db-errors";
+import { isMissingColumnError } from "@/lib/supabase/db-errors";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   platformSmsSchema,
@@ -94,7 +95,7 @@ export async function saveSmsConfig(
   }
 
   if (error) {
-    return { ok: false, error: describeDbError(error.message, "설정 저장에 실패했습니다.") };
+    return { ok: false, error: await explainActionError(error.message, "설정을 저장하지 못했습니다.") };
   }
 
   await supabase.from("audit_logs").insert({
@@ -193,7 +194,7 @@ export async function setSmsConfigActive(
     .from("tenant_sms_configs")
     .update({ is_active: active })
     .eq("tenant_id", tenantId);
-  if (error) return { ok: false, error: describeDbError(error.message, "상태 변경에 실패했습니다.") };
+  if (error) return { ok: false, error: await explainActionError(error.message, "상태를 변경하지 못했습니다.") };
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenantId,
@@ -289,7 +290,7 @@ export async function savePlatformSmsMode(
     { onConflict: "tenant_id" }
   );
   if (error) {
-    return { ok: false, error: describeDbError(error.message, "설정 저장에 실패했습니다.") };
+    return { ok: false, error: await explainActionError(error.message, "설정을 저장하지 못했습니다.") };
   }
 
   await supabase.from("audit_logs").insert({

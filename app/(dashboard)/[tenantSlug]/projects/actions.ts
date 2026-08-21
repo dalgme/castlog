@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { describeDbError } from "@/lib/supabase/db-errors";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -103,7 +103,10 @@ export async function createProject(
   if (projectError) {
     return {
       ok: false,
-      error: describeDbError(projectError.message, "프로젝트 생성에 실패했습니다."),
+      error: await explainActionError(
+        projectError.message,
+        "프로젝트를 만들지 못했습니다."
+      ),
     };
   }
   const project = { id: projectId };
@@ -127,7 +130,7 @@ export async function createProject(
       // (RLS에 delete 정책 없음) — 오류 반환으로 재시도 유도
       return {
         ok: false,
-        error: describeDbError(
+        error: await explainActionError(
           stepsError.message,
           "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다. 프로젝트를 다시 만들지 마시고, 목록을 새로고침해 확인하세요."
         ),
@@ -209,7 +212,7 @@ export async function createDefaultSteps(
   if (error) {
     return {
       ok: false,
-      error: describeDbError(error.message, "기본 스텝 생성에 실패했습니다."),
+      error: await explainActionError(error.message, "기본 스텝을 만들지 못했습니다."),
     };
   }
 
