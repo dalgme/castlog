@@ -160,7 +160,7 @@ export default async function StaffSettingsPage({
         showStaff
         showSms={isCeo || scopeSet.sending}
         showOrg={isCeo || Object.values(scopeSet).some(Boolean)}
-        showRules={modules.approvals && (isCeo || scopeSet.settings)}
+        showRules={modules.approvals && (isCeo || scopeSet.approvals)}
       />
       <main className="space-y-5 p-5">
         {/* 요약 — 지금 몇 명이고 무엇이 밀려 있는지가 첫 줄이어야 한다 */}
@@ -222,8 +222,11 @@ export default async function StaffSettingsPage({
               <>
                 <p className="mb-3 text-xs text-muted-foreground">
                   권한단계를 바꾸면 볼 수 있는 화면과 할 수 있는 일이 함께
-                  바뀝니다. 퇴사·휴직은 삭제가 아니라 <b>비활성</b>으로 처리합니다
-                  — 그 사람이 남긴 결재·섭외 이력이 그대로 남아야 합니다.
+                  바뀝니다. <b>변경은 본인이 다시 로그인할 때(늦어도 1시간 안에)
+                  적용됩니다</b> — 바꾼 직후 본인 화면에서 권한 오류가 보이면
+                  로그아웃 후 다시 로그인하도록 안내하세요. 퇴사·휴직은 삭제가
+                  아니라 <b>비활성</b>으로 처리합니다 — 그 사람이 남긴 결재·섭외
+                  이력이 그대로 남아야 합니다.
                 </p>
                 <div className="overflow-x-auto">
                   <Table>

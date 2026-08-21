@@ -103,7 +103,10 @@ export function SmsConfigForm({
                 <SelectContent>
                   <SelectItem value="solapi">솔라피 (Solapi)</SelectItem>
                   <SelectItem value="aligo">알리고 (Aligo)</SelectItem>
-                  <SelectItem value="nhncloud">NHN Cloud (준비 중)</SelectItem>
+                  {/* 어댑터가 아직 없다 — 고르게 두면 저장은 되고 발송만 전부 실패한다(§14-7) */}
+                  <SelectItem value="nhncloud" disabled>
+                    NHN Cloud (준비 중)
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

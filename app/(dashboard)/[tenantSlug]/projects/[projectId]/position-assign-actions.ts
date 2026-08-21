@@ -6,12 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
-import { matchApprovalRule, createApprovalWithSteps } from "@/lib/approvals/engine";
-import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
+import { getProjectEngagementState } from "@/lib/integrations/project-engagement";
 import {
-  getProjectEngagementState,
-  buildEngagementPlanDraft,
-} from "@/lib/integrations/project-engagement";
+  getActivePlan,
+  buildPlanSnapshot,
+} from "@/lib/integrations/engagement-plans";
+import { submitEngagementPlan as submitPlanRecord } from "./plan-actions";
 import {
   createEngagementAcceptance,
   copyProjectAttachmentsToAcceptance,
@@ -183,9 +183,6 @@ export async function submitEngagementPlan(
     };
   }
 
-  const draft = await buildEngagementPlanDraft(projectId);
-  if (!draft) return { ok: false, error: "품의서를 만들지 못했습니다." };
-
   const modules = await getTenantModules();
   if (!modules.approvals) {
     await supabase
@@ -196,36 +193,58 @@ export async function submitEngagementPlan(
     return { ok: true, approvalId: null, autoApproved: true };
   }
 
-  // 전결규정이 있으면 그 라인, 없으면 직급 체계를 따라 위로 올린다
-  const rule = await matchApprovalRule("project", draft.amount);
-  const line =
-    rule ?? (await buildGradeEscalationLine(auth.session.userId, draft.amount));
-  if (!line || line.steps.length === 0) {
-    return {
-      ok: false,
-      error:
-        "결재선을 정할 수 없습니다. 상위 결재자가 없거나 전결규정이 등록되지 않았습니다.",
-    };
+  /**
+   * 품의는 **한 벌**만 만든다.
+   *
+   * 원래 이 버튼은 자체적으로 결재를 만들고 projects.engagement_stage만
+   * 움직였고, 화면 아래 계획 패널은 engagement_plans(지문 게이트)로 따로
+   * 결재를 만들었다 — 같은 행위의 상신 창구가 둘이라 어느 쪽으로 승인받아도
+   * 반대쪽 잠금이 안 풀렸다(검수에서 확인된 이중 구현). 이제 이 버튼이
+   * 계획 레코드 상신(plan-actions)에 위임하고, 단계 기계는 **같은 결재건**을
+   * 바라본다. 승인 한 번에 지문 게이트와 단계가 함께 열린다.
+   */
+  const [activePlan, snapshot] = await Promise.all([
+    getActivePlan(projectId),
+    buildPlanSnapshot(projectId),
+  ]);
+
+  // 예전 패널 경로로 이미 승인·결재중인 계획이 있는 프로젝트 — 새 결재를
+  // 만들지 않고 단계만 그 결재건에 연결한다 (기존 데이터 구제)
+  if (
+    activePlan?.status === "approved" &&
+    activePlan.planSignature === snapshot.signature
+  ) {
+    await supabase
+      .from("projects")
+      .update({
+        engagement_stage: "plan_approved",
+        engagement_plan_approval_id: activePlan.approvalId,
+      })
+      .eq("id", projectId);
+    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+    return { ok: true, approvalId: activePlan.approvalId, autoApproved: true };
+  }
+  if (activePlan?.status === "in_progress") {
+    await supabase
+      .from("projects")
+      .update({
+        engagement_stage: "plan_review",
+        engagement_plan_approval_id: activePlan.approvalId,
+      })
+      .eq("id", projectId);
+    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+    return { ok: true, approvalId: activePlan.approvalId, autoApproved: false };
   }
 
-  const created = await createApprovalWithSteps({
-    tenantId: auth.session.tenantId,
-    requesterUserId: auth.session.userId,
-    title: draft.title,
-    body: draft.body,
-    approvalType: "project",
-    amount: draft.amount,
-    projectId,
-    appliedRuleId: "ruleId" in line ? line.ruleId : null,
-    steps: line.steps,
-  });
-  if (!created.ok) return { ok: false, error: created.error };
+  const submitted = await submitPlanRecord(projectId, "");
+  if (!submitted.ok) return submitted;
+  const approvalId = submitted.approvalId ?? null;
 
   await supabase
     .from("projects")
     .update({
       engagement_stage: "plan_review",
-      engagement_plan_approval_id: created.approvalId,
+      engagement_plan_approval_id: approvalId,
     })
     .eq("id", projectId);
 
@@ -236,12 +255,12 @@ export async function submitEngagementPlan(
     action: "engagement_plan.submit",
     resource_type: "project",
     resource_id: projectId,
-    after_data: { approval_id: created.approvalId, amount: draft.amount },
+    after_data: { approval_id: approvalId, amount: snapshot.plannedAmount },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/approvals", "page");
-  return { ok: true, approvalId: created.approvalId, autoApproved: false };
+  return { ok: true, approvalId, autoApproved: false };
 }
 
 export type DispatchChannel = "sms" | "email" | "both";

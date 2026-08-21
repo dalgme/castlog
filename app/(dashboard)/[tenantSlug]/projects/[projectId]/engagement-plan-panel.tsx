@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { submitEngagementPlan, submitEngagementPlanChange } from "./plan-actions";
+import { submitEngagementPlanChange } from "./plan-actions";
 
 export type PlanPanelState = {
   required: boolean;
@@ -81,9 +81,11 @@ export function EngagementPlanPanel({
   function submit() {
     setError(null);
     startTransition(async () => {
-      const res = isChange
-        ? await submitEngagementPlanChange(projectId, note, approverIds)
-        : await submitEngagementPlan(projectId, note, approverIds);
+      // 최초 상신은 이 패널에서 하지 않는다 — 위 '섭외 품의' 버튼이 유일한
+      // 창구다. 같은 행위의 상신 UI가 둘이면 어느 쪽으로 승인받아도 반대쪽
+      // 잠금이 안 풀리는 이중 구현이 됐었다(검수로 확인). 여기는 승인 후
+      // 테이블이 바뀐 경우의 '변경 품의'만 담당한다.
+      const res = await submitEngagementPlanChange(projectId, note, approverIds);
       if (res.ok) {
         setNote("");
         setApproverIds([]);
@@ -158,25 +160,26 @@ export function EngagementPlanPanel({
           </Button>
         )}
 
-        {canSubmit && plan.state !== "in_progress" && plan.state !== "approved" && (
+        {canSubmit && !isChange && plan.state !== "in_progress" && plan.state !== "approved" && (
+          <p className="rounded-md bg-secondary/50 p-2.5 text-xs text-muted-foreground">
+            상신은 화면 위 <b>‘섭외 품의’</b> 버튼으로 합니다. 자리 배정을 모두
+            마치면 버튼이 활성화됩니다.
+          </p>
+        )}
+
+        {canSubmit && isChange && (
           <div className="space-y-2 rounded-md border p-3">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <label className="text-sm font-medium">
-              {isChange ? "변경 사유 (필수)" : "계획 설명 (선택)"}
-            </label>
+            <label className="text-sm font-medium">변경 사유 (필수)</label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={3}
-              placeholder={
-                isChange
-                  ? "예: 멘토링 세션 2회 추가로 멘토 2명 증원, 예산 400만원 증액"
-                  : "예: 2026년 창업도약패키지 본교육 섭외계획"
-              }
+              placeholder="예: 멘토링 세션 2회 추가로 멘토 2명 증원, 예산 400만원 증액"
             />
             {!hasProjectRule && (
               <div className="space-y-2 rounded-md border border-dashed p-2.5">
@@ -225,11 +228,7 @@ export function EngagementPlanPanel({
             )}
 
             <Button size="sm" onClick={submit} disabled={pending}>
-              {pending
-                ? "상신 중..."
-                : isChange
-                  ? "계획 변경 품의 상신"
-                  : "섭외계획 품의 상신"}
+              {pending ? "상신 중..." : "계획 변경 품의 상신"}
             </Button>
           </div>
         )}

@@ -53,6 +53,7 @@ import {
   ActionRequestPanel,
   type ActionRequestRow,
 } from "./action-request-panel";
+import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { BudgetPanel } from "./budget-panel";
@@ -879,6 +880,26 @@ export default async function ProjectDetailPage({
         )}
 
 
+
+        {/* operations를 나중에 켠 회사의 기존 프로젝트 — 스텝을 잇는 경로(§1-2-8) */}
+        {tab === "overview" &&
+          modules.operations &&
+          stepRows.length === 0 &&
+          canManage && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">21스텝 라이프사이클</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  이 프로젝트에는 아직 스텝이 없습니다. 행사 운영 기능을 켜기
+                  전에 만든 프로젝트입니다 — 기본 21스텝을 채워 이어서 관리할
+                  수 있습니다.
+                </p>
+                <CreateStepsButton projectId={project.id} />
+              </CardContent>
+            </Card>
+          )}
 
         {tab === "overview" &&
           STEP_TYPE_ORDER.map((stepType) => {

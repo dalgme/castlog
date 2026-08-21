@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { requireRole, postLoginPath } from "@/lib/auth/session";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
+import { roleFromUser } from "@/lib/auth/tenant";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -43,6 +44,9 @@ export default async function ApprovalRulesPage({
   ]);
   const scopes = await getAdminScopes();
   if (gateUser && !scopes.approvals) redirect(postLoginPath(gateUser));
+  const isCeoHere =
+    gateUser !== null &&
+    ["org_admin", "platform_admin"].includes(roleFromUser(gateUser) ?? "");
   await requireModule("approvals");
 
   if (!hasSupabaseEnv()) {
@@ -165,9 +169,9 @@ export default async function ApprovalRulesPage({
       />
       <SettingsTabs
         tenantSlug={params.tenantSlug}
-        showStaff
-        showSms
-        showOrg
+        showStaff={isCeoHere || scopes.staff}
+        showSms={isCeoHere || scopes.sending}
+        showOrg={isCeoHere || Object.values(scopes).some(Boolean)}
         showRules
       />
       <main className="space-y-5 p-5">

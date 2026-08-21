@@ -28,6 +28,7 @@ export const NAV_LABELS: Record<string, string> = {
   settings: "설정",
   "settings/me": "내 설정",
   setup: "최초 설정",
+  "admin/staff": "임직원 설정",
   "admin/org": "기업관리",
   "admin/org/security": "보안 현황",
   "admin/org/audit": "감사로그",

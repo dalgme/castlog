@@ -18,7 +18,9 @@ import {
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 
-export type PlanActionResult = { ok: true } | { ok: false; error: string };
+export type PlanActionResult =
+  | { ok: true; approvalId?: string | null }
+  | { ok: false; error: string };
 
 const MANAGER_ROLES = ["org_admin", "manager"];
 
@@ -281,7 +283,7 @@ export async function submitEngagementPlan(
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  return { ok: true };
+  return { ok: true, approvalId: approval.approvalId };
 }
 
 /**

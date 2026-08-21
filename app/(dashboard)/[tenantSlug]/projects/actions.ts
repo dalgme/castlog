@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "crypto";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -60,30 +62,51 @@ export async function createProject(
     return { ok: false, error: "프로젝트 생성 권한이 없습니다." };
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      tenant_id: tenantId,
-      name: data.name,
-      business_year: parseInt(data.businessYear, 10),
-      client_name: data.clientName || null,
-      category_id: data.categoryId || null,
-      code: data.code || null,
-      starts_on: data.startsOn || null,
-      ends_on: data.endsOn || null,
-      budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
-      description: data.description || null,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  // 분류는 자사 카테고리만 — FK는 RLS를 우회하므로 소유를 직접 확인한다.
+  // 정상 UI에서는 자사 목록에서만 고르지만, 요청은 조작될 수 있다.
+  if (data.categoryId) {
+    const { data: category } = await supabase
+      .from("project_categories")
+      .select("id")
+      .eq("id", data.categoryId)
+      .maybeSingle();
+    if (!category) {
+      return { ok: false, error: "선택한 분야 카테고리를 찾을 수 없습니다." };
+    }
+  }
 
-  if (projectError || !project) {
+  /**
+   * id를 앱에서 생성하고 RETURNING(.select)을 쓰지 않는다.
+   *
+   * PostgreSQL은 RLS 테이블에서 INSERT … RETURNING의 반환 행에 SELECT 정책을
+   * 적용한다. 이 테이블의 INSERT 정책은 role 기준(팀장 포함)인데 SELECT 정책은
+   * grade 기준(이사 이상 or 배정자)이라, 팀장이 만들면 **삽입 자체가 되돌려졌다**
+   * — 방금 만든 프로젝트에 배정 행이 있을 리 없기 때문이다. 렛츠에서 실제로
+   * 터진 결함이다. 반환을 요구하지 않으면 SELECT 정책은 관여하지 않는다.
+   */
+  const projectId = randomUUID();
+  const { error: projectError } = await supabase.from("projects").insert({
+    id: projectId,
+    tenant_id: tenantId,
+    name: data.name,
+    business_year: parseInt(data.businessYear, 10),
+    client_name: data.clientName || null,
+    category_id: data.categoryId || null,
+    code: data.code || null,
+    starts_on: data.startsOn || null,
+    ends_on: data.endsOn || null,
+    budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
+    description: data.description || null,
+    created_by: user.id,
+  });
+
+  if (projectError) {
     return {
       ok: false,
-      error: describeDbError(projectError?.message, "프로젝트 생성에 실패했습니다."),
+      error: describeDbError(projectError.message, "프로젝트 생성에 실패했습니다."),
     };
   }
+  const project = { id: projectId };
 
   // 기본 21스텝 복사 — operations 모듈 활성 테넌트만 (구성 정보만, 실적 없음)
   if (modules.operations) {
@@ -106,7 +129,7 @@ export async function createProject(
         ok: false,
         error: describeDbError(
           stepsError.message,
-          "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다."
+          "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다. 프로젝트를 다시 만들지 마시고, 목록을 새로고침해 확인하세요."
         ),
       };
     }
@@ -127,6 +150,81 @@ export async function createProject(
 }
 
 export type StepActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 기존 프로젝트에 기본 21스텝 채우기.
+ *
+ * 스텝은 프로젝트 '생성 시'에만 복사됐다. 그래서 operations 모듈을 나중에 켠
+ * 회사의 기존 프로젝트는 스텝이 0개인데 만들 방법이 없었고, 온보딩 안내는
+ * "스텝을 생성하세요"라며 존재하지 않는 기능을 가리켰다(§1-2-8 위반 — 검수로
+ * 확인). 이 액션이 그 잇는 경로다. 이미 스텝이 있으면 거부한다 — 중복 스텝은
+ * 진행률을 망가뜨린다.
+ */
+export async function createDefaultSteps(
+  projectId: string
+): Promise<StepActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+
+  const modules = await getTenantModules();
+  if (!modules.operations) {
+    return { ok: false, error: "행사 운영 기능을 사용하지 않는 회사입니다." };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
+    return { ok: false, error: "스텝 생성 권한이 없습니다." };
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+
+  const { count } = await supabase
+    .from("project_lifecycle_steps")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
+  if ((count ?? 0) > 0) {
+    return { ok: false, error: "이미 스텝이 있는 프로젝트입니다." };
+  }
+
+  const { error } = await supabase.from("project_lifecycle_steps").insert(
+    DEFAULT_LIFECYCLE_STEPS.map((step) => ({
+      tenant_id: tenantId,
+      project_id: projectId,
+      step_no: step.stepNo,
+      step_type: step.stepType,
+      title: step.title,
+    }))
+  );
+  if (error) {
+    return {
+      ok: false,
+      error: describeDbError(error.message, "기본 스텝 생성에 실패했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_auth_user_id: user.id,
+    actor_role: role,
+    action: "project.create_default_steps",
+    resource_type: "project",
+    resource_id: projectId,
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
 
 /** 스텝 상태 변경 — 완료 시각 기록, 완료 해제 시 초기화 */
 export async function updateStepStatus(

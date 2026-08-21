@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
+import { roleFromUser } from "@/lib/auth/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PROJECT_STATUS_LABELS } from "@/lib/operations/steps";
@@ -38,8 +39,11 @@ export default async function ProjectsPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   // 프로젝트 목록은 공통 기반 — 모듈 게이트 없음
+  // 생성은 대표·이사·팀장(role=manager 이상)만 — 사원·주임·대리에게 버튼을
+  // 보여 주면 폼을 다 채운 뒤에야 서버에서 거부당한다(§14-7 죽은 버튼 금지)
+  const canCreate = ["org_admin", "manager"].includes(roleFromUser(user) ?? "");
 
   if (!hasSupabaseEnv()) {
     return (
@@ -118,10 +122,12 @@ export default async function ProjectsPage({
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/projects/export`}>엑셀</a>
             </Button>
-            <CreateProjectDialog
-              tenantSlug={params.tenantSlug}
-              categories={categoryOptions}
-            />
+            {canCreate && (
+              <CreateProjectDialog
+                tenantSlug={params.tenantSlug}
+                categories={categoryOptions}
+              />
+            )}
           </div>
         }
       />

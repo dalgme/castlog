@@ -108,7 +108,7 @@ export default async function MySettingsPage({
         showStaff={isCeo || scopes.staff}
         showSms={canManageSending}
         showOrg={canRequestModules}
-        showRules={modules.approvals && canRequestModules}
+        showRules={modules.approvals && (isCeo || scopes.approvals)}
       />
       <main className="space-y-6 p-4 sm:p-5">
         {/* ── 1. 내 계정 ──────────────────────────────────────────────────
