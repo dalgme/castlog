@@ -129,6 +129,7 @@ export default async function SettingsPage({
             <SmsModePanel
               currentMode={smsMode}
               platformGranted={Boolean(config?.platform_access_granted_at)}
+              platformOffered={Boolean(process.env.PLATFORM_SMS_ACCESS_CODE)}
               currentSenderNumber={config?.sender_number ?? null}
               byoCurrent={
                 config && smsMode === "byo"
@@ -159,7 +160,15 @@ export default async function SettingsPage({
               <li>
                 솔라피(solapi.com)에 로그인 → <strong>발신번호 관리</strong>에서
                 자사 번호를 사전등록합니다. 통신사 심사가 있어 즉시 완료되지
-                않습니다.
+                않습니다.{" "}
+                <a
+                  href="https://solapi.com/guides/senderid"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-brand underline-offset-4 hover:underline"
+                >
+                  발신번호 등록 가이드 ↗
+                </a>
               </li>
               <li>
                 <strong>개발/연동 → API Key 관리</strong>에서 새 API 키를

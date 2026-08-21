@@ -147,7 +147,16 @@ export function SmsConfigForm({
               </FormControl>
               <FormDescription>
                 통신사에 사전등록된 자사 발신번호만 사용할 수 있습니다 (법적
-                의무).
+                의무). 등록 방법은{" "}
+                <a
+                  href="https://solapi.com/guides/senderid"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-brand underline-offset-4 hover:underline"
+                >
+                  솔라피 발신번호 등록 가이드 ↗
+                </a>
+                를 참고하세요.
               </FormDescription>
               <FormMessage />
             </FormItem>
