@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "crypto";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -60,30 +62,51 @@ export async function createProject(
     return { ok: false, error: "프로젝트 생성 권한이 없습니다." };
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      tenant_id: tenantId,
-      name: data.name,
-      business_year: parseInt(data.businessYear, 10),
-      client_name: data.clientName || null,
-      category_id: data.categoryId || null,
-      code: data.code || null,
-      starts_on: data.startsOn || null,
-      ends_on: data.endsOn || null,
-      budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
-      description: data.description || null,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  // 분류는 자사 카테고리만 — FK는 RLS를 우회하므로 소유를 직접 확인한다.
+  // 정상 UI에서는 자사 목록에서만 고르지만, 요청은 조작될 수 있다.
+  if (data.categoryId) {
+    const { data: category } = await supabase
+      .from("project_categories")
+      .select("id")
+      .eq("id", data.categoryId)
+      .maybeSingle();
+    if (!category) {
+      return { ok: false, error: "선택한 분야 카테고리를 찾을 수 없습니다." };
+    }
+  }
 
-  if (projectError || !project) {
+  /**
+   * id를 앱에서 생성하고 RETURNING(.select)을 쓰지 않는다.
+   *
+   * PostgreSQL은 RLS 테이블에서 INSERT … RETURNING의 반환 행에 SELECT 정책을
+   * 적용한다. 이 테이블의 INSERT 정책은 role 기준(팀장 포함)인데 SELECT 정책은
+   * grade 기준(이사 이상 or 배정자)이라, 팀장이 만들면 **삽입 자체가 되돌려졌다**
+   * — 방금 만든 프로젝트에 배정 행이 있을 리 없기 때문이다. 렛츠에서 실제로
+   * 터진 결함이다. 반환을 요구하지 않으면 SELECT 정책은 관여하지 않는다.
+   */
+  const projectId = randomUUID();
+  const { error: projectError } = await supabase.from("projects").insert({
+    id: projectId,
+    tenant_id: tenantId,
+    name: data.name,
+    business_year: parseInt(data.businessYear, 10),
+    client_name: data.clientName || null,
+    category_id: data.categoryId || null,
+    code: data.code || null,
+    starts_on: data.startsOn || null,
+    ends_on: data.endsOn || null,
+    budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
+    description: data.description || null,
+    created_by: user.id,
+  });
+
+  if (projectError) {
     return {
       ok: false,
-      error: describeDbError(projectError?.message, "프로젝트 생성에 실패했습니다."),
+      error: describeDbError(projectError.message, "프로젝트 생성에 실패했습니다."),
     };
   }
+  const project = { id: projectId };
 
   // 기본 21스텝 복사 — operations 모듈 활성 테넌트만 (구성 정보만, 실적 없음)
   if (modules.operations) {
@@ -106,7 +129,7 @@ export async function createProject(
         ok: false,
         error: describeDbError(
           stepsError.message,
-          "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다."
+          "프로젝트는 만들어졌지만 기본 스텝 구성에 실패했습니다. 프로젝트를 다시 만들지 마시고, 목록을 새로고침해 확인하세요."
         ),
       };
     }

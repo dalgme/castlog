@@ -42,6 +42,7 @@ export default async function SettingsPage({
   // 모듈 추가 요청은 '설정' 위임 범위다 — 발송 위임만 받은 직원에게는 숨긴다.
   let canRequestModules = false;
   let canManageStaff = false;
+  let canManageRules = false;
   if (gateUser) {
     const role = roleFromUser(gateUser);
     const scopes = await getAdminScopes();
@@ -49,6 +50,9 @@ export default async function SettingsPage({
     canManageSending = isCeo || scopes.sending;
     canRequestModules = isCeo || scopes.settings || scopes.modules;
     canManageStaff = isCeo || scopes.staff;
+    // 전결규정 탭은 그 화면의 게이트와 같은 조건이어야 한다 — 다르면
+    // '탭을 눌렀는데 대시보드로 튕긴다'가 된다
+    canManageRules = isCeo || scopes.approvals;
     // 사이드바 '설정'은 이 화면(SMS)으로 온다. 발송 권한이 없는 위임자에게는
     // 빈 화면이 되므로, 그 사람이 실제로 쓸 수 있는 첫 탭으로 보낸다.
     // 아무 권한도 없으면 누구에게나 있는 '내 설정'으로 — 대시보드로 되돌리면
@@ -114,7 +118,7 @@ export default async function SettingsPage({
         showStaff={canManageStaff}
         showSms={canManageSending}
         showOrg={canRequestModules}
-        showRules={modules.approvals && canRequestModules}
+        showRules={modules.approvals && canManageRules}
       />
       {/* 기업관리·전결규정 탭과 같은 폭을 쓴다 — 탭을 옮길 때마다 본문 폭이
           달라지면 같은 화면이 아닌 것처럼 읽힌다 */}

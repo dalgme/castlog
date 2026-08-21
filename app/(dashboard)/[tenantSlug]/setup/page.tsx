@@ -194,17 +194,30 @@ function SetupGroup({
                     대표 전용
                   </Badge>
                 )}
-                {!item.done && !item.note && (
-                  <Button
-                    asChild
-                    size="sm"
-                    variant={item.required ? "default" : "outline"}
-                    className="ml-auto"
-                    disabled={item.ceoOnly && !isCeo}
-                  >
-                    <Link href={setupHref(item)}>설정하기</Link>
-                  </Button>
-                )}
+                {!item.done &&
+                  !item.note &&
+                  (item.ceoOnly && !isCeo ? (
+                    // asChild+Link에는 disabled가 듣지 않는다 — 눌리는 링크를
+                    // 두면 도착한 화면에 해당 카드가 없어 '눌렀는데 아무것도
+                    // 없음'이 된다. 진짜 비활성 버튼으로 그린다.
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto"
+                      disabled
+                    >
+                      대표만 가능
+                    </Button>
+                  ) : (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant={item.required ? "default" : "outline"}
+                      className="ml-auto"
+                    >
+                      <Link href={setupHref(item)}>설정하기</Link>
+                    </Button>
+                  ))}
               </div>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 {item.why}

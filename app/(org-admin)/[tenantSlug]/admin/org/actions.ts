@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { describeDbError } from "@/lib/supabase/db-errors";
 import { generateTempPassword } from "@/lib/admin/passwords";
 import {
   adminGrantSchema,
@@ -364,16 +365,33 @@ export async function grantAdminScopes(
   const toGrant = scopes.filter((scope) => !held.has(scope));
   if (toGrant.length === 0) return { ok: true };
 
-  const { error } = await supabase.from("tenant_admin_grants").insert(
-    toGrant.map((scope) => ({
+  // 스코프별로 따로 넣는다. 한 배치로 넣으면 하나가 DB 제약(예: 마이그레이션
+  // 미적용으로 신 스코프가 check에 걸림)에 걸릴 때 나머지 정상 스코프까지
+  // 통째로 실패한다 — 실제로 그렇게 죽는 경로가 검수에서 확인됐다.
+  const failed: string[] = [];
+  let lastError: string | undefined;
+  for (const scope of toGrant) {
+    const { error } = await supabase.from("tenant_admin_grants").insert({
       tenant_id: session.tenantId,
       user_id: targetUserId,
       scope,
       note: note?.trim() || null,
       granted_by: session.userId,
-    }))
-  );
-  if (error) return { ok: false, error: "위임에 실패했습니다." };
+    });
+    if (error) {
+      failed.push(ADMIN_SCOPE_LABELS[scope]);
+      lastError = error.message;
+    }
+  }
+  if (failed.length > 0) {
+    return {
+      ok: false,
+      error: describeDbError(
+        lastError,
+        `일부 위임에 실패했습니다 (${failed.join(", ")}).`
+      ),
+    };
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: session.tenantId,
