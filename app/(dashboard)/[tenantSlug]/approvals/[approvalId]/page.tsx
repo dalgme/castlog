@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ActPanel } from "./act-panel";
+import { PlanReviewPanel, type ReviewSlot } from "./plan-review-panel";
 
 export const metadata = { title: "결재 상세" };
 
@@ -121,6 +122,114 @@ export default async function ApprovalDetailPage({
   const canCancel =
     isRequester && approval.status === "in_progress" && nothingActed;
   const canResubmit = isRequester && approval.status === "rejected";
+
+  // 섭외계획 품의라면 후보 검토(결재권자 수정) + 변경 내역을 붙인다
+  // (기획 확정 2026-08-22 — 후보 순위 모델)
+  let reviewSlots: ReviewSlot[] = [];
+  type ReviewChange = {
+    actorName: string;
+    kind: string;
+    positionCode: string | null;
+    expertName: string | null;
+    before: string | null;
+    after: string | null;
+    createdAt: string;
+  };
+  let reviewChanges: ReviewChange[] = [];
+  let isPlanApproval = false;
+  {
+    const { data: plan } = await supabase
+      .from("engagement_plans")
+      .select("id, project_id")
+      .eq("approval_id", approval.id)
+      .maybeSingle();
+    if (plan) {
+      isPlanApproval = true;
+      const { data: planSlots } = await supabase
+        .from("engagement_slots")
+        .select("id, slot_date, starts_time, session_name, role_type, required_count")
+        .eq("project_id", plan.project_id)
+        .order("slot_date", { ascending: true })
+        .order("starts_time", { ascending: true });
+      const planSlotIds = (planSlots ?? []).map((s) => s.id);
+      const { data: candidates } = planSlotIds.length
+        ? await supabase
+            .from("engagement_slot_positions")
+            .select(
+              "id, slot_id, code, status, engagement_id, assigned_expert_id, rank, position_no, expected_fee"
+            )
+            .in("slot_id", planSlotIds)
+            .neq("status", "canceled")
+        : { data: [] as never[] };
+      const candidateExpertIds = Array.from(
+        new Set(
+          (candidates ?? [])
+            .map((c) => c.assigned_expert_id)
+            .filter((id): id is string => id !== null)
+        )
+      );
+      const { data: candidateExperts } = candidateExpertIds.length
+        ? await supabase
+            .from("experts")
+            .select("id, name")
+            .in("id", candidateExpertIds)
+        : { data: [] as never[] };
+      const expertNameById = new Map(
+        (candidateExperts ?? []).map((e) => [e.id, e.name])
+      );
+      reviewSlots = (planSlots ?? []).map((slot) => ({
+        slotId: slot.id,
+        label: `${slot.session_name ?? slot.role_type} · ${slot.slot_date}${
+          slot.starts_time ? ` ${slot.starts_time.slice(0, 5)}` : ""
+        }`,
+        requiredCount: slot.required_count,
+        candidates: (candidates ?? [])
+          .filter((c) => c.slot_id === slot.id)
+          .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
+          .map((c) => ({
+            id: c.id,
+            code: c.code,
+            expertName: c.assigned_expert_id
+              ? (expertNameById.get(c.assigned_expert_id) ?? null)
+              : null,
+            expectedFee: c.expected_fee,
+            editable:
+              c.engagement_id === null &&
+              (c.status === "open" || c.status === "assigned"),
+          })),
+      }));
+
+      const { data: changeRows } = await supabase
+        .from("plan_review_changes")
+        .select(
+          "change_kind, position_code, expert_name, before_text, after_text, created_at, actor:users!plan_review_changes_actor_user_id_fkey (name)"
+        )
+        .eq("approval_id", approval.id)
+        .order("created_at", { ascending: true });
+      reviewChanges = (changeRows ?? []).map((c) => ({
+        actorName: c.actor?.name ?? "(알 수 없음)",
+        kind: c.change_kind,
+        positionCode: c.position_code,
+        expertName: c.expert_name,
+        before: c.before_text,
+        after: c.after_text,
+        createdAt: c.created_at,
+      }));
+    }
+  }
+  const canEditPlan =
+    canAct && !actingAsDelegate && approval.status === "in_progress";
+  const changesByActor = new Map<string, ReviewChange[]>();
+  for (const c of reviewChanges) {
+    const list = changesByActor.get(c.actorName) ?? [];
+    list.push(c);
+    changesByActor.set(c.actorName, list);
+  }
+  const CHANGE_KIND_LABELS: Record<string, string> = {
+    reorder: "순위 변경",
+    remove: "후보 제외",
+    fee: "예정가 수정",
+  };
 
   return (
     <div>
@@ -255,6 +364,70 @@ export default async function ApprovalDetailPage({
             </p>
           </CardContent>
         </Card>
+
+        {isPlanApproval && (
+          <Card className="border-orange-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">
+                섭외 후보 검토
+                {canEditPlan && (
+                  <span className="ml-2 rounded-full bg-orange-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                    수정 가능 — 순위·금액·후보
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PlanReviewPanel
+                approvalId={approval.id}
+                slots={reviewSlots}
+                canEdit={canEditPlan}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {isPlanApproval && changesByActor.size > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">결재권자 변경 내역</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from(changesByActor.entries()).map(([actor, changes]) => (
+                <div key={actor} className="rounded-md border p-3">
+                  <p className="text-sm font-semibold">{actor}</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {changes.map((c, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">
+                        <Badge variant="outline" className="mr-1.5 text-[10px]">
+                          {CHANGE_KIND_LABELS[c.kind] ?? c.kind}
+                        </Badge>
+                        {c.positionCode && (
+                          <span className="mr-1 font-mono">[{c.positionCode}]</span>
+                        )}
+                        {c.expertName && <span className="mr-1">{c.expertName}</span>}
+                        {c.before && c.after && (
+                          <span>
+                            {c.before} <span className="mx-0.5">→</span> {c.after}
+                          </span>
+                        )}
+                        <span className="ml-1.5">
+                          {new Date(c.createdAt).toLocaleString("ko-KR", {
+                            timeZone: "Asia/Seoul",
+                          })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <p className="text-[11px] text-muted-foreground">
+                담당자는 이 내역으로 어떤 결재권자가 무엇을 변경했는지 확인할 수
+                있습니다. 결재 의견은 위 결재라인의 따옴표 문구입니다.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <ActPanel
           tenantSlug={params.tenantSlug}

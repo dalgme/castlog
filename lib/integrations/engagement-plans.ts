@@ -39,6 +39,8 @@ export type PlanLine = {
   feeAmount: number;
   locationName: string | null;
   subtotal: number;
+  /** 지문용 — 상위 후보(코드:전문가:예정가:순위) 목록. 저장 대상 아님 */
+  candidateSignature?: string;
 };
 
 export type PlanSnapshot = {
@@ -50,9 +52,16 @@ export type PlanSnapshot = {
 };
 
 /**
- * 현재 섭외 테이블에서 계획 스냅샷을 만든다.
- * 지문은 슬롯 정렬 후 '조건에 해당하는 값만' 이어 붙인다 — 메모·장소주소처럼
- * 예산·인원과 무관한 값이 바뀌었다고 변경 품의를 요구하지는 않는다.
+ * 현재 섭외 테이블에서 계획 스냅샷을 만든다 (후보 순위 모델 — 개정 2026-08-22).
+ *
+ * 세션마다 후보(임시후보 코드)가 여러 명이고 각자 예정가를 갖는다. 계획 금액은
+ * **섭외 순위 상위 '필요인원'명(배정된 후보 기준)의 예정가 합**이다 — 후보
+ * 전원의 합이 아니다(실제 섭외 예정 인원 기준). 예정가가 비어 있으면 세션의
+ * 1인 비용(레거시)으로 폴백한다.
+ *
+ * 지문에는 상위 후보들의 (코드|전문가|예정가|순위)까지 넣는다 — 결재 중
+ * 결재권자가 순위·금액·후보를 바꾸면 지문이 달라지므로, 그 변경 후에는
+ * 계획 레코드를 재동기화해야 한다 (plan-review-actions가 수행).
  */
 export async function buildPlanSnapshot(
   projectId: string
@@ -67,8 +76,47 @@ export async function buildPlanSnapshot(
     .order("slot_date", { ascending: true })
     .order("starts_time", { ascending: true });
 
+  type CandidateRow = {
+    id: string;
+    slot_id: string;
+    code: string;
+    position_no: number;
+    rank: number | null;
+    expected_fee: number | null;
+    status: string;
+    assigned_expert_id: string | null;
+  };
+  const slotIds = (slots ?? []).map((s) => s.id);
+  const { data: positions } = slotIds.length
+    ? await supabase
+        .from("engagement_slot_positions")
+        .select(
+          "id, slot_id, code, position_no, rank, expected_fee, status, assigned_expert_id"
+        )
+        .in("slot_id", slotIds)
+        .neq("status", "canceled")
+    : { data: [] as CandidateRow[] };
+
+  const bySlot = new Map<string, CandidateRow[]>();
+  for (const p of positions ?? []) {
+    const list = bySlot.get(p.slot_id) ?? [];
+    list.push(p);
+    bySlot.set(p.slot_id, list);
+  }
+
   const lines: PlanLine[] = (slots ?? []).map((slot) => {
-    const fee = slot.fee_amount ?? 0;
+    const legacyFee = slot.fee_amount ?? 0;
+    const candidates = (bySlot.get(slot.id) ?? []).sort(
+      (a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no)
+    );
+    // 섭외 대상 = 배정된 후보 중 순위 상위 '필요인원'명
+    const selected = candidates
+      .filter((c) => c.assigned_expert_id)
+      .slice(0, slot.required_count);
+    const subtotal = selected.reduce(
+      (sum, c) => sum + (c.expected_fee ?? legacyFee),
+      0
+    );
     return {
       slotId: slot.id,
       slotDate: slot.slot_date,
@@ -77,9 +125,15 @@ export async function buildPlanSnapshot(
       roleType: slot.role_type,
       roleDescription: slot.role_description,
       requiredCount: slot.required_count,
-      feeAmount: fee,
+      feeAmount: legacyFee,
       locationName: slot.location_name,
-      subtotal: fee * slot.required_count,
+      subtotal,
+      candidateSignature: selected
+        .map(
+          (c) =>
+            `${c.code}:${c.assigned_expert_id ?? ""}:${c.expected_fee ?? legacyFee}:${c.rank ?? c.position_no}`
+        )
+        .join(","),
     };
   });
 
@@ -91,7 +145,8 @@ export async function buildPlanSnapshot(
         l.endsTime ?? "",
         l.roleType,
         l.requiredCount,
-        l.feeAmount,
+        l.subtotal,
+        l.candidateSignature,
       ].join("|")
     )
     .sort()

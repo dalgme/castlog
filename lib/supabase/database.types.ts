@@ -941,7 +941,9 @@ export type Database = {
           engagement_id: string | null
           expert_id: string | null
           id: string
+          expected_fee: number | null
           position_no: number
+          rank: number | null
           slot_id: string
           status: string
           tenant_id: string
@@ -956,7 +958,9 @@ export type Database = {
           engagement_id?: string | null
           expert_id?: string | null
           id?: string
+          expected_fee?: number | null
           position_no: number
+          rank?: number | null
           slot_id: string
           status?: string
           tenant_id: string
@@ -971,7 +975,9 @@ export type Database = {
           engagement_id?: string | null
           expert_id?: string | null
           id?: string
+          expected_fee?: number | null
           position_no?: number
+          rank?: number | null
           slot_id?: string
           status?: string
           tenant_id?: string
@@ -3850,6 +3856,56 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_review_changes: {
+        Row: {
+          actor_user_id: string
+          after_text: string | null
+          approval_id: string
+          before_text: string | null
+          change_kind: string
+          created_at: string
+          expert_name: string | null
+          id: string
+          position_code: string | null
+          project_id: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          after_text?: string | null
+          approval_id: string
+          before_text?: string | null
+          change_kind: string
+          created_at?: string
+          expert_name?: string | null
+          id?: string
+          position_code?: string | null
+          project_id: string
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          after_text?: string | null
+          approval_id?: string
+          before_text?: string | null
+          change_kind?: string
+          created_at?: string
+          expert_name?: string | null
+          id?: string
+          position_code?: string | null
+          project_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_review_changes_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
