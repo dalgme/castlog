@@ -55,6 +55,7 @@ export async function requestExpertOtp(
       .from("experts")
       .select("id, auth_user_id")
       .eq("phone", phone)
+      .eq("is_practice", false) // 연습모드 가상 전문가는 실계정 대상이 아니다
       .maybeSingle();
     allowCreate = Boolean(existingExpert && !existingExpert.auth_user_id);
   } catch {
@@ -129,6 +130,7 @@ export async function verifyExpertOtp(
       .from("experts")
       .select("id")
       .eq("phone", phone)
+      .eq("is_practice", false) // 연습모드 가상 전문가는 이어받기 대상 제외
       .is("auth_user_id", null)
       .maybeSingle();
     if (unclaimed) {
