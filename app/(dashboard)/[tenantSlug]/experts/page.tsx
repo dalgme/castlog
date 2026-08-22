@@ -44,15 +44,16 @@ const LINK_STATUS_LABEL: Record<
 };
 
 /**
- * 전문가 목록 (기획 개정 2026-08-22 — 플랫폼 전체 풀 공개)
+ * 전문가 목록 (기획 재개정 2026-08-22 — 등록플랫폼 전면 공개)
  *
- * - '전체': 캐스트로그(전문가 등록플랫폼)에 등록된 모든 전문가.
- *   **미연결 전문가의 연락처(휴대폰·이메일)는 비공개** — 이름·지역·분야·경력
- *   같은 프로필만 보이고, 연결(등록 요청 수락·보유자료 등록) 후에 공개된다.
- *   섭외이력·평가·등급은 자사 데이터만 (§4 테넌트 격리 유지).
- * - '연결됨': 관계기업에 자사가 있는(expert_tenant_links) 전문가.
+ * 캐스트로그는 전문가 등록플랫폼이다: 등록한 전문가는 "여러 기업이 나를
+ * 찾아 섭외한다"는 기대로 등록하므로, **섭외에 필요한 정보(프로필 + 연락처)는
+ * 전 테넌트에 공개**한다. 비밀정보만 게이트를 유지한다 —
+ * 주민번호(프로젝트 계약 게이트)·계좌(지급 단계)·서류/이력서(전문가의 열람
+ * 허용 grants)·자사 평가·등급·섭외이력(테넌트 격리).
+ * - '전체': 플랫폼에 등록된 모든 전문가 / '연결됨': 관계기업에 자사가 있는 전문가
  * - 지역 / 날짜(기간) / 분야(내부용=섭외분야) / 분야(전문가용=강의분야) 필터와
- *   성명·지역·분야 정렬을 제공한다. 필터 선택지는 데이터에서 자동 추출.
+ *   성명·지역·분야 정렬. 필터 선택지는 데이터에서 자동 추출.
  */
 const PAGE_SIZE = 30;
 const POOL_FETCH_LIMIT = 2000;
@@ -157,13 +158,13 @@ export default async function TenantExpertsPage({
   ] = await Promise.all([
     admin
       .from("experts")
-      .select("id, name, specialty, region, career_years, created_at")
+      .select("id, name, phone, email, specialty, region, career_years, created_at")
       .eq("is_practice", practice)
       .order("created_at", { ascending: false })
       .limit(POOL_FETCH_LIMIT),
     supabase
       .from("expert_tenant_links")
-      .select("status, experts (id, name, phone, email)"),
+      .select("status, experts (id)"),
     supabase
       .from("expert_invitations")
       .select("id, invited_name, invited_phone, status, expires_at, created_at")
@@ -186,22 +187,15 @@ export default async function TenantExpertsPage({
     admin.from("expert_expertise_fields").select("expert_id, field_id"),
   ]);
 
-  // 자사 연결 상태·연락처 (RLS 범위)
-  const linkByExpert = new Map<
-    string,
-    { status: string; phone: string | null; email: string | null }
-  >();
+  // 자사 연결 상태 (RLS 범위 — 관계기업 판정)
+  const linkByExpert = new Map<string, { status: string }>();
   for (const link of linkRows ?? []) {
     if (!link.experts) continue;
     const prev = linkByExpert.get(link.experts.id);
     // active > pending > revoked 우선
     if (prev && prev.status === "active") continue;
     if (prev && prev.status === "pending" && link.status === "revoked") continue;
-    linkByExpert.set(link.experts.id, {
-      status: link.status,
-      phone: link.experts.phone,
-      email: link.experts.email,
-    });
+    linkByExpert.set(link.experts.id, { status: link.status });
   }
 
   // 섭외분야(내부용) — 테넌트 격리
@@ -257,16 +251,15 @@ export default async function TenantExpertsPage({
         expert.name,
         expert.specialty ?? "",
         expert.region ?? "",
+        expert.email ?? "",
         ...(expertiseByExpert.get(expert.id) ?? []),
         ...(recruitByExpert.get(expert.id) ?? []),
-        // 연락처는 연결된 전문가만 검색 대상 (미연결은 비공개)
-        link?.email ?? "",
       ]
         .join(" ")
         .toLowerCase();
       const phoneHit =
         queryDigits.length >= 4 &&
-        Boolean(link?.phone?.replace(/\D/g, "").includes(queryDigits));
+        expert.phone.replace(/\D/g, "").includes(queryDigits);
       if (!haystack.includes(lowered) && !phoneHit) return false;
     }
     return true;
@@ -625,29 +618,14 @@ export default async function TenantExpertsPage({
                       return (
                         <TableRow key={expert.id}>
                           <TableCell className="font-medium">
-                            {isLinked ? (
-                              <Link
-                                href={`/${params.tenantSlug}/experts/${expert.id}`}
-                                className="underline-offset-4 hover:underline"
-                              >
-                                {expert.name}
-                              </Link>
-                            ) : (
-                              expert.name
-                            )}
+                            <Link
+                              href={`/${params.tenantSlug}/experts/${expert.id}`}
+                              className="underline-offset-4 hover:underline"
+                            >
+                              {expert.name}
+                            </Link>
                           </TableCell>
-                          <TableCell>
-                            {link?.phone ? (
-                              formatKrMobile(link.phone)
-                            ) : (
-                              <span
-                                className="text-xs text-muted-foreground"
-                                title="연락처는 연결(등록 요청 수락) 후 공개됩니다"
-                              >
-                                비공개
-                              </span>
-                            )}
-                          </TableCell>
+                          <TableCell>{formatKrMobile(expert.phone)}</TableCell>
                           <TableCell>{expert.specialty ?? "-"}</TableCell>
                           <TableCell className="max-w-[180px] truncate text-xs">
                             {expertiseNames.length > 0
@@ -715,9 +693,10 @@ export default async function TenantExpertsPage({
                 </Table>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                미연결 전문가의 연락처는 비공개입니다 — ‘전문가 등록 요청’ 링크를
-                보내 전문가가 수락(연결)하면 공개됩니다. 평가·등급·섭외이력은
-                우리 회사 데이터만 표시됩니다.
+                등록플랫폼의 모든 전문가에게 연락해 섭외를 시작할 수 있습니다.
+                서류(이력서·통장사본 등)는 전문가가 열람을 허용해야 보이고,
+                주민등록번호·계좌는 계약·지급 단계에서만 열립니다.
+                평가·등급·섭외이력은 우리 회사 데이터만 표시됩니다.
               </p>
             </CardContent>
           </Card>
