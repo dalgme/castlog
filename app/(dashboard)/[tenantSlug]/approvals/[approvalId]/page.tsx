@@ -48,17 +48,24 @@ export default async function ApprovalDetailPage({
   const user = await getSessionUser();
   const supabase = createClient();
 
-  const { data: approval } = await supabase
+  // projects 임베드는 FK 힌트 필수 — projects.closing_approval_id(종료 품의)가
+  // 생긴 뒤로 approvals↔projects 관계가 둘이라, 힌트 없는 임베드는 모호성
+  // 오류(PGRST201)로 조회 전체가 죽고 화면은 404가 됐다 (렛츠 실사고).
+  const { data: approval, error: approvalError } = await supabase
     .from("approvals")
     .select(
       `id, title, body, approval_type, amount, status, created_at, completed_at,
        requester_user_id, resubmitted_from_id, project_id,
        requester:users!approvals_requester_user_id_fkey (name),
-       projects (name)`
+       projects!approvals_project_id_fkey (name)`
     )
     .eq("id", params.approvalId)
     .maybeSingle();
 
+  if (approvalError) {
+    // 쿼리 결함을 '없는 문서(404)'로 위장하면 원인 추적이 막힌다 (§12-9)
+    console.error("approval detail query failed:", approvalError.message);
+  }
   if (!approval) notFound();
 
   const { data: steps } = await supabase
