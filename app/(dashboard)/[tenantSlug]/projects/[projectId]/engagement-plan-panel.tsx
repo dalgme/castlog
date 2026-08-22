@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -95,54 +94,85 @@ export function EngagementPlanPanel({
     });
   }
 
-  const badge =
-    plan.state === "approved" ? (
-      <Badge className="gap-1">
-        <CheckCircle2 className="h-3 w-3" />
-        승인 (R{plan.revision})
-      </Badge>
-    ) : plan.state === "in_progress" ? (
-      <Badge variant="secondary" className="gap-1">
-        <Clock className="h-3 w-3" />
-        결재 진행중
-      </Badge>
-    ) : plan.state === "changed" ? (
-      <Badge variant="destructive" className="gap-1">
-        <AlertTriangle className="h-3 w-3" />
-        변경 품의 필요
-      </Badge>
-    ) : plan.state === "rejected" ? (
-      <Badge variant="destructive">반려</Badge>
-    ) : (
-      <Badge variant="outline">미상신</Badge>
-    );
+  // 상태별 구역 색 (기획 확정 2026-08-22) — 이 섹션이 화면에서 한눈에 잡히고,
+  // 결재 진행 중/완료가 색으로 먼저 읽히게 한다
+  const style =
+    plan.state === "approved"
+      ? {
+          card: "border-emerald-300 bg-emerald-50/70",
+          title: "text-emerald-900",
+          chip: "bg-emerald-600 text-white",
+          chipIcon: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
+          chipLabel: `결재 완료 (R${plan.revision})`,
+        }
+      : plan.state === "in_progress"
+        ? {
+            card: "border-amber-300 bg-amber-50/70",
+            title: "text-amber-900",
+            chip: "bg-amber-500 text-white",
+            chipIcon: <Clock className="h-3.5 w-3.5 animate-pulse" aria-hidden />,
+            chipLabel: "결재 진행 중",
+          }
+        : plan.state === "changed"
+          ? {
+              card: "border-rose-300 bg-rose-50/70",
+              title: "text-rose-900",
+              chip: "bg-rose-600 text-white",
+              chipIcon: <AlertTriangle className="h-3.5 w-3.5" aria-hidden />,
+              chipLabel: "변경 품의 필요",
+            }
+          : plan.state === "rejected"
+            ? {
+                card: "border-red-300 bg-red-50/70",
+                title: "text-red-900",
+                chip: "bg-red-600 text-white",
+                chipIcon: <AlertTriangle className="h-3.5 w-3.5" aria-hidden />,
+                chipLabel: "반려됨",
+              }
+            : {
+                card: "border-violet-300 bg-violet-50/60",
+                title: "text-violet-900",
+                chip: "bg-violet-600 text-white",
+                chipIcon: <ClipboardCheck className="h-3.5 w-3.5" aria-hidden />,
+                chipLabel: "미상신",
+              };
 
   return (
-    <Card>
+    <Card className={style.card}>
       <CardHeader className="pb-3">
-        <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-          <ClipboardCheck className="h-4 w-4" />
+        <CardTitle
+          className={`flex flex-wrap items-center gap-2 text-sm ${style.title}`}
+        >
+          <ClipboardCheck className="h-4 w-4" aria-hidden />
           섭외계획 품의
-          {badge}
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${style.chip}`}
+          >
+            {style.chipIcon}
+            {style.chipLabel}
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Alert variant={plan.allowed ? "default" : "destructive"}>
+        <Alert
+          variant={plan.allowed ? "default" : "destructive"}
+          className="bg-background"
+        >
           <AlertDescription>{plan.message}</AlertDescription>
         </Alert>
 
         <div className="grid gap-2 text-sm sm:grid-cols-3">
-          <div className="rounded-md border p-2.5">
+          <div className="rounded-md border bg-background p-2.5">
             <p className="text-xs text-muted-foreground">현재 섭외 테이블</p>
             <p className="font-medium">
               {plan.currentPositionCount}명 / {plan.currentSlotCount}건
             </p>
           </div>
-          <div className="rounded-md border p-2.5">
+          <div className="rounded-md border bg-background p-2.5">
             <p className="text-xs text-muted-foreground">현재 계획 섭외비</p>
             <p className="font-medium">{won(plan.currentPlannedAmount)}</p>
           </div>
-          <div className="rounded-md border p-2.5">
+          <div className="rounded-md border bg-background p-2.5">
             <p className="text-xs text-muted-foreground">승인된 계획</p>
             <p className="font-medium">
               {plan.plannedAmount === null
@@ -161,14 +191,14 @@ export function EngagementPlanPanel({
         )}
 
         {canSubmit && !isChange && plan.state !== "in_progress" && plan.state !== "approved" && (
-          <p className="rounded-md bg-secondary/50 p-2.5 text-xs text-muted-foreground">
+          <p className="rounded-md border bg-background p-2.5 text-xs text-muted-foreground">
             상신은 화면 위 <b>‘섭외 품의’</b> 버튼으로 합니다. 자리 배정을 모두
             마치면 버튼이 활성화됩니다.
           </p>
         )}
 
         {canSubmit && isChange && (
-          <div className="space-y-2 rounded-md border p-3">
+          <div className="space-y-2 rounded-md border bg-background p-3">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>

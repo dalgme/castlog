@@ -10,6 +10,8 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProjectTodoTicker } from "@/components/projects/todo-ticker";
+import { projectStage } from "@/lib/integrations/project-stage";
 import {
   Table,
   TableBody,
@@ -63,7 +65,7 @@ export default async function ProjectsPage({
   const { data: projects } = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, project_lifecycle_steps (status)"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, engagement_stage, project_lifecycle_steps (status)"
     )
     .order("business_year", { ascending: false })
     .order("created_at", { ascending: false });
@@ -177,6 +179,10 @@ export default async function ProjectsPage({
                                 {project.code}
                               </span>
                             )}
+                            {/* 지금 할 일 전광판 — 단계 색 컬러바 + 흐르는 안내 */}
+                            <ProjectTodoTicker
+                              stage={projectStage(project.engagement_stage)}
+                            />
                           </TableCell>
                           <TableCell>{project.client_name ?? "-"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
