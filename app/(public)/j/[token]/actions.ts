@@ -64,9 +64,15 @@ export async function requestJoinOtp(
   });
 
   if (error) {
+    // 원인 단서를 함께 보여 준다(§12-9). 특히 인증 문자 인프라(Supabase Send
+    // SMS Hook + 운영사 솔라피) 미설정은 여기서만 드러난다 — 삼키면 "문자가
+    // 안 와요"라는 신고로만 돌아온다.
+    const infra = /sms provider|hook|not enabled|unsupported/i.test(error.message);
     return {
       ok: false,
-      error: "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+      error: infra
+        ? "인증 문자 발송 설정이 아직 완료되지 않았습니다. 회사가 아니라 캐스트로그 운영 설정 문제이니 캐스트로그에 알려 주세요."
+        : `인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요. (${error.message.slice(0, 120)})`,
     };
   }
 

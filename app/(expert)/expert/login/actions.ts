@@ -58,9 +58,12 @@ export async function requestExpertOtp(
           "등록되지 않은 번호입니다. 기업에서 받은 전문가 등록 링크로 먼저 가입해 주세요.",
       };
     }
+    const infra = /sms provider|hook|not enabled|unsupported/i.test(error.message);
     return {
       ok: false,
-      error: "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+      error: infra
+        ? "인증 문자 발송 설정이 아직 완료되지 않았습니다. 캐스트로그 운영 설정 문제이니 캐스트로그에 알려 주세요."
+        : `인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요. (${error.message.slice(0, 120)})`,
     };
   }
 
