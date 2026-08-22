@@ -3854,6 +3854,36 @@ export type Database = {
           },
         ]
       }
+      tenant_message_templates: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          template_key: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          template_key: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          template_key?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       tenant_sms_senders: {
         Row: {
           created_at: string

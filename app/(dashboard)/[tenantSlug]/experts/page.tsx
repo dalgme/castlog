@@ -28,7 +28,7 @@ import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 
 import { InviteExpertDialog } from "./invite-dialog";
 import { ExpertRecommendDialog } from "./recommend-dialog";
-import { RevokeInvitationButton } from "./revoke-button";
+import { InvitationActions } from "./invitation-actions";
 import { ExpertTagCell } from "./expert-tag-cell";
 
 export const metadata = { title: "전문가" };
@@ -557,7 +557,7 @@ export default async function TenantExpertsPage({
                       <TableHead>이름</TableHead>
                       <TableHead>휴대폰</TableHead>
                       <TableHead>만료일</TableHead>
-                      <TableHead className="w-20" />
+                      <TableHead className="w-72" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -573,7 +573,10 @@ export default async function TenantExpertsPage({
                           {new Date(inv.expires_at).toLocaleDateString("ko-KR")}
                         </TableCell>
                         <TableCell>
-                          <RevokeInvitationButton invitationId={inv.id} />
+                          <InvitationActions
+                            invitationId={inv.id}
+                            hasPhone={Boolean(inv.invited_phone)}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}

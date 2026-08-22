@@ -16,6 +16,10 @@ import {
   type SmsConfigInput,
 } from "@/lib/messaging/schemas";
 import { normalizeSenderDigits, sendTenantSms } from "@/lib/sms/send";
+import {
+  EXPERT_INVITE_SMS_KEY,
+  inviteTemplateHasUrl,
+} from "@/lib/messaging/templates";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 
 export type SaveSmsConfigResult = { ok: true } | { ok: false; error: string };
@@ -392,6 +396,60 @@ export async function removeSmsSender(
     action: "sms_sender.remove",
     resource_type: "tenant_sms_sender",
     after_data: { phone: removed?.phone ?? null },
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/**
+ * 등록 요청 문자 문구 저장 (기획 확정 2026-08-22 — §14-2 운영 설정화).
+ * {URL} 토큰이 없으면 링크 없는 문자가 나가므로 저장을 거부한다.
+ */
+export async function saveInviteSmsTemplate(
+  body: string
+): Promise<SmsSenderResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const auth = await requireAdminScope("templates");
+  if (!auth.ok) return auth;
+
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.length > 800) {
+    return { ok: false, error: "문구는 1~800자로 입력하세요." };
+  }
+  if (!inviteTemplateHasUrl(trimmed)) {
+    return {
+      ok: false,
+      error: "문구에 {URL}이 반드시 포함되어야 합니다 — 등록 링크가 들어가는 자리입니다.",
+    };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from("tenant_message_templates").upsert(
+    {
+      tenant_id: auth.tenantId,
+      template_key: EXPERT_INVITE_SMS_KEY,
+      body: trimmed,
+      updated_by: auth.userId,
+    },
+    { onConflict: "tenant_id,template_key" }
+  );
+  if (error) {
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "문구 저장에 실패했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: "message_template.save",
+    resource_type: "tenant_message_template",
+    after_data: { template_key: EXPERT_INVITE_SMS_KEY },
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");

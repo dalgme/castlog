@@ -20,6 +20,11 @@ import { SettingsTabs } from "@/components/layout/settings-tabs";
 import { SmsConnectionPanel } from "./sms-connection-panel";
 import { SmsModePanel, type SmsMode } from "./sms-mode-panel";
 import { SmsSendersPanel, type SmsSenderRow } from "./sms-senders-panel";
+import { InviteTemplatePanel } from "./invite-template-panel";
+import {
+  EXPERT_INVITE_SMS_DEFAULT,
+  EXPERT_INVITE_SMS_KEY,
+} from "@/lib/messaging/templates";
 
 export const metadata = { title: "설정" };
 
@@ -124,6 +129,17 @@ export default async function SettingsPage({
     }
   }
 
+  // 등록 요청 문자 문구 — 저장분이 없으면 기본 문구 (마이그레이션 미적용도 기본)
+  let inviteTemplateBody = EXPERT_INVITE_SMS_DEFAULT;
+  {
+    const { data: templateRow, error: templateError } = await supabase
+      .from("tenant_message_templates")
+      .select("body")
+      .eq("template_key", EXPERT_INVITE_SMS_KEY)
+      .maybeSingle();
+    if (!templateError && templateRow?.body) inviteTemplateBody = templateRow.body;
+  }
+
   // 사용 기능(모듈) 현황·추가 요청은 '기업관리' 탭으로 옮겼다 — 발송 설정 옆에
   // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
   const modules = await getTenantModules();
@@ -215,6 +231,17 @@ export default async function SettingsPage({
               defaultSender={config?.sender_number ?? null}
               senders={senderRows}
             />
+          </CardContent>
+        </Card>
+        )}
+
+        {canManageSending && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">등록 요청 문자 문구</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InviteTemplatePanel body={inviteTemplateBody} />
           </CardContent>
         </Card>
         )}
