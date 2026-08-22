@@ -3623,6 +3623,32 @@ export type Database = {
           },
         ]
       }
+      auth_otp_routing: {
+        Row: {
+          created_at: string
+          phone: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          phone: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          phone?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auth_otp_routing_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_sms_configs: {
         Row: {
           api_key_encrypted: string | null
