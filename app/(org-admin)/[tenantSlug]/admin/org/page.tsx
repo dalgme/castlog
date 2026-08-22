@@ -30,6 +30,10 @@ import {
   CategoriesPanel,
   type CategoryRow,
 } from "./categories-panel";
+import {
+  RecruitFieldsPanel,
+  type RecruitFieldRow,
+} from "./recruit-fields-panel";
 import { TaxAccessGrantsPanel } from "./tax-access-grants-panel";
 import { RrnKeySetupPanel } from "./rrn-key-setup-panel";
 import { RrnRevealPanel } from "./rrn-reveal-panel";
@@ -189,6 +193,32 @@ export default async function OrgAdminPage({
     projectCount: projectCountByCategory.get(c.id) ?? 0,
   }));
 
+  // 섭외분야 사전 + 분야별 배정 전문가 수 (삭제 영향 표시용).
+  // 마이그레이션 미적용 DB에서는 조용히 빈 목록 — 화면이 죽으면 안 된다.
+  let recruitFieldRows: RecruitFieldRow[] = [];
+  {
+    const [{ data: fieldRecords }, { data: assignments }] = await Promise.all([
+      supabase
+        .from("tenant_recruit_fields")
+        .select("id, name")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase.from("expert_tenant_recruit_fields").select("field_id"),
+    ]);
+    const expertCountByField = new Map<string, number>();
+    for (const row of assignments ?? []) {
+      expertCountByField.set(
+        row.field_id,
+        (expertCountByField.get(row.field_id) ?? 0) + 1
+      );
+    }
+    recruitFieldRows = (fieldRecords ?? []).map((f) => ({
+      id: f.id,
+      name: f.name,
+      expertCount: expertCountByField.get(f.id) ?? 0,
+    }));
+  }
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
@@ -252,6 +282,17 @@ export default async function OrgAdminPage({
           </CardHeader>
           <CardContent>
             <CategoriesPanel categories={categoryRows} />
+          </CardContent>
+        </Card>
+        )}
+
+        {canEditCompany && modules.experts && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">섭외분야 (전문가 관리)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RecruitFieldsPanel fields={recruitFieldRows} />
           </CardContent>
         </Card>
         )}

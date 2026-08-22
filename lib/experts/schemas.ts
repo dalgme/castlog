@@ -33,6 +33,10 @@ export const expertProfileSchema = z.object({
     .regex(/^\d{0,2}$/, "경력은 0~99 사이 숫자로 입력하세요.")
     .optional(),
   bio: z.string().max(2000, "소개는 2000자 이내로 입력하세요.").optional(),
+  degreeCertifications: z
+    .string()
+    .max(500, "최종학위·자격증은 500자 이내로 입력하세요.")
+    .optional(),
   secondaryPhone: z
     .string()
     .optional()

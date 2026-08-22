@@ -125,6 +125,22 @@ export async function applyEngagementResponse(
   // Phase 2 훅: decision === 'accepted' 시점에 해당 프로젝트·기업 권한자용
   // 주민번호 키 래핑(tax_project_grants)을 생성한다 (설계문서 4.4).
 
+  // 관계기업 실증 — 이 기업의 섭외를 처음 수락한 시각을 링크에 남긴다
+  // (개정 2026-08-22). 링크는 섭외 전제조건이라 이미 존재한다. 컬럼 미적용
+  // DB에서도 수락 처리가 죽으면 안 되므로 실패는 삼킨다.
+  if (decision === "accepted") {
+    try {
+      await admin
+        .from("expert_tenant_links")
+        .update({ engaged_at: new Date().toISOString() })
+        .eq("expert_id", updated.expert_id)
+        .eq("tenant_id", updated.tenant_id)
+        .is("engaged_at", null);
+    } catch {
+      // 관계 실증 기록 실패는 수락 처리를 막지 않는다
+    }
+  }
+
   // 단계 28-B: 수락 시 등록된 서명·날인으로 섭외수락서 자동 생성 (멱등).
   //  실패해도 수락 자체는 유지 — 예외를 삼킨다.
   if (decision === "accepted") {

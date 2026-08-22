@@ -1784,8 +1784,10 @@ export type Database = {
           is_practice: boolean
           accepted_at: string | null
           created_at: string
+          engaged_at: string | null
           expert_id: string
           id: string
+          relation_source: string
           requested_at: string
           revoked_at: string | null
           status: string
@@ -1796,8 +1798,10 @@ export type Database = {
           is_practice?: boolean
           accepted_at?: string | null
           created_at?: string
+          engaged_at?: string | null
           expert_id: string
           id?: string
+          relation_source?: string
           requested_at?: string
           revoked_at?: string | null
           status?: string
@@ -1808,8 +1812,10 @@ export type Database = {
           is_practice?: boolean
           accepted_at?: string | null
           created_at?: string
+          engaged_at?: string | null
           expert_id?: string
           id?: string
+          relation_source?: string
           requested_at?: string
           revoked_at?: string | null
           status?: string
@@ -1975,7 +1981,9 @@ export type Database = {
           bio: string | null
           career_years: number | null
           created_at: string
+          degree_certifications: string | null
           email: string | null
+          expertise_other: string | null
           id: string
           name: string
           phone: string
@@ -1990,7 +1998,9 @@ export type Database = {
           bio?: string | null
           career_years?: number | null
           created_at?: string
+          degree_certifications?: string | null
           email?: string | null
+          expertise_other?: string | null
           id?: string
           name: string
           phone: string
@@ -2005,7 +2015,9 @@ export type Database = {
           bio?: string | null
           career_years?: number | null
           created_at?: string
+          degree_certifications?: string | null
           email?: string | null
+          expertise_other?: string | null
           id?: string
           name?: string
           phone?: string
@@ -2013,6 +2025,155 @@ export type Database = {
           secondary_phone?: string | null
           specialty?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      expertise_fields: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      expert_expertise_fields: {
+        Row: {
+          created_at: string
+          expert_id: string
+          field_id: string
+        }
+        Insert: {
+          created_at?: string
+          expert_id: string
+          field_id: string
+        }
+        Update: {
+          created_at?: string
+          expert_id?: string
+          field_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_expertise_fields_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_expertise_fields_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "expertise_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_recruit_fields: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      expert_tenant_recruit_fields: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expert_id: string
+          field_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expert_id: string
+          field_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expert_id?: string
+          field_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_tenant_recruit_fields_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_recruit_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expert_tenant_profiles: {
+        Row: {
+          created_at: string
+          expert_id: string
+          id: string
+          memo: string | null
+          rating: number | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          expert_id: string
+          id?: string
+          memo?: string | null
+          rating?: number | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          expert_id?: string
+          id?: string
+          memo?: string | null
+          rating?: number | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }

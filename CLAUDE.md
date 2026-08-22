@@ -129,6 +129,18 @@
 ## 4. 전문가 신원 모델 (v1.2 핵심)
 - experts / expert_documents 는 **전역 테이블** (전문가가 소유)
 - 기업은 expert_tenant_links 가 있는 전문가만 조회 가능
+- **예외 — 보유자료 일괄등록 (개정 2026-08-22)**: 기업이 적법 보유한 명단
+  (10항목 엑셀)으로 experts를 직접 생성할 수 있다 (전문가 > 일괄 등록 >
+  보유자료). 생성된 레코드는 auth_user_id가 비어 있고, 본인이 그 번호로
+  휴대폰 인증 로그인하는 순간 이어받는다(claim). 이미 있는 전문가는
+  **데이터를 덮어쓰지 않고 관계만 추가**한다. 관계기업은 expert_tenant_links
+  (relation_source: self_join/bulk_registered, engaged_at=첫 섭외 수락)로
+  판정하며, 기업에는 자사 관계만 보인다.
+- 강의(멘토링) 분야는 전역 마스터 expertise_fields(캐스트로그 관리모드 CRUD)
+  + expert_expertise_fields(전문가 중복 선택) + experts.expertise_other(기타).
+  테넌트별 섭외분야는 tenant_recruit_fields(CEO 설정 CRUD) +
+  expert_tenant_recruit_fields, 테넌트별 평점·메모는 expert_tenant_profiles —
+  셋 다 테넌트 격리 + 전문가 본인 비노출.
 - 서류 열람은 expert_document_grants 허용 범위 내에서만
 - 섭외이력·의뢰비용·평판점수·프로젝트 정보는 **테넌트 격리** — 절대 교차 노출 금지
 - 전문가 본인은 자신의 전 기업 통합 이력을 볼 수 있음

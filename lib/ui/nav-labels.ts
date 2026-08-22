@@ -21,6 +21,7 @@ export const NAV_LABELS: Record<string, string> = {
   "experts/cancellations": "섭외 취소 내역",
   "experts/documents": "전문가 서류",
   "experts/import": "전문가 가져오기",
+  "experts/manage": "전문가 관리",
   payments: "비용·지급",
   reports: "보고서",
   messages: "발송",

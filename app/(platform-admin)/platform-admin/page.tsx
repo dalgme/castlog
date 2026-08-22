@@ -83,6 +83,9 @@ export default async function PlatformAdminPage() {
       <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/support">전문가 문의</a>
       </Button>
+      <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/expertise-fields">강의 분야</a>
+      </Button>
       <CreateTenantDialog />
       <form method="post" action="/auth/logout">
         <Button type="submit" variant="ghost" size="sm">
