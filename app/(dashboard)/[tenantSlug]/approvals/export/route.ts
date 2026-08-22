@@ -28,7 +28,7 @@ export async function GET(
   const { data: approvals } = await supabase
     .from("approvals")
     .select(
-      "title, approval_type, amount, status, created_at, completed_at, users!approvals_requester_user_id_fkey (name), projects (name)"
+      "title, approval_type, amount, status, created_at, completed_at, users!approvals_requester_user_id_fkey (name), projects!approvals_project_id_fkey (name)"
     )
     .order("created_at", { ascending: false })
     .limit(1000);
