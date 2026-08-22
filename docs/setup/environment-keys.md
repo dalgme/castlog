@@ -402,6 +402,62 @@ b를 쓰려면 캐스트로그 솔라피 자격증명이 서버에 있어야 합
 
 ---
 
+## 7. 전문가 인증번호(OTP) 발송 — Supabase Send SMS Hook
+
+### 왜 필요한가
+
+전문가 로그인·등록의 **인증번호 문자**는 기업(테넌트) 솔라피로 나가지 않습니다.
+아직 어느 회사 소속인지도 모르는 사람에게 보내는 전역 발송이라, **캐스트로그
+(넥스트랩) 솔라피 계정**으로 나갑니다 (CLAUDE.md §5-2). 이 경로는 앱 환경변수가
+아니라 **Supabase 쪽 설정 3가지**로 구성됩니다. 하나라도 빠지면 인증번호가
+오지 않고, 화면에는 "인증 문자 발송 설정이 아직 완료되지 않았습니다"가 뜹니다.
+
+### 작업 순서 (한 번만)
+
+1. **엣지 함수 배포** — 로컬 터미널에서(supabase CLI 로그인 상태):
+   ```
+   supabase functions deploy send-sms-hook --no-verify-jwt --project-ref tvltecsvtozijotmcoqs
+   ```
+   `--no-verify-jwt`가 필요합니다 — 훅 호출에는 사용자 토큰이 없고,
+   대신 함수 안에서 훅 서명(SEND_SMS_HOOK_SECRET)을 검증합니다.
+
+2. **대시보드에서 훅 활성화** — Supabase → Authentication → **Hooks** →
+   `Send SMS hook` → Enable → 유형 `HTTPS`(또는 Edge Function 선택) →
+   방금 배포한 `send-sms-hook` 지정 → 저장하면 **Secret**(`v1,whsec_...`)이
+   생성됩니다. 이 값을 복사해 두세요.
+
+3. **함수 시크릿 설정** — 터미널에서:
+   ```
+   supabase functions secrets set --project-ref tvltecsvtozijotmcoqs \
+     SOLAPI_API_KEY=넥스트랩_솔라피_API_Key \
+     SOLAPI_API_SECRET=넥스트랩_솔라피_API_Secret \
+     SOLAPI_SENDER=넥스트랩_발신번호 \
+     SEND_SMS_HOOK_SECRET=v1,whsec_...   # 2번에서 복사한 값
+   ```
+   `SOLAPI_SENDER`는 **넥스트랩 솔라피 계정에 사전등록된 발신번호**여야
+   합니다(발신번호 사전등록제 — 렛츠 번호가 아니라 넥스트랩 번호).
+
+4. **전화 로그인 활성 확인** — Authentication → Sign In / Providers →
+   **Phone** 이 켜져 있는지 확인.
+
+### 확인
+
+전문가 로그인 화면(캐스트로그 로그인 → 전문가 탭)에서 실제 휴대폰 번호로
+인증번호를 요청합니다.
+- 문자 도착 → 완료.
+- "인증 문자 발송 설정이 아직 완료되지 않았습니다" → 1·2번이 안 된 상태.
+- 다른 오류 문구 → 괄호 안 원문이 함께 표시되므로 그 문구로 판단
+  (예: 솔라피 잔액·발신번호 미등록).
+
+### 주의
+
+- 이 경로는 **테넌트 SMS 설정·SMS_TEST_MODE와 무관**합니다. 렛츠 솔라피를
+  연결해도, 테스트 모드를 꺼도 OTP에는 영향이 없습니다.
+- 요금은 넥스트랩 솔라피 계정에 청구됩니다. 발송 건수는 사용량 계측에
+  기록됩니다.
+
+---
+
 ## 정리 — 지금 하실 일
 
 | 순서 | 작업 | 걸리는 시간 |
