@@ -98,3 +98,16 @@
     animation: none;
   }
 }
+
+/* 프로젝트 '지금 할 일' 전광판 (components/projects/todo-ticker.tsx) */
+@keyframes castlog-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.castlog-marquee-track {
+  width: max-content;
+  animation: castlog-marquee 16s linear infinite;
+}
+.castlog-marquee:hover .castlog-marquee-track {
+  animation-play-state: paused;
+}
