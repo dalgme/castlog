@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
