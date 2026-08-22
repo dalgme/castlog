@@ -60,7 +60,7 @@ async function logOtpSend(phone: string, status: string, error: string | null) {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return;
   try {
-    await fetch(`${url}/rest/v1/sms_logs`, {
+    const res = await fetch(`${url}/rest/v1/sms_logs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -78,8 +78,18 @@ async function logOtpSend(phone: string, status: string, error: string | null) {
         error_message: error,
       }),
     });
-  } catch {
+    if (!res.ok) {
+      // fetch는 4xx에서 throw하지 않는다 — 기록 실패가 조용히 사라지면
+      // 운영 진단이 막히므로 함수 로그에는 남긴다 (OTP·키 미포함)
+      console.error(
+        "sms_logs insert failed:",
+        res.status,
+        (await res.text().catch(() => "")).slice(0, 300)
+      );
+    }
+  } catch (err) {
     // 로그 실패는 발송 자체를 막지 않는다
+    console.error("sms_logs insert error:", String(err));
   }
 }
 
@@ -143,7 +153,15 @@ Deno.serve(async (req) => {
     });
 
     if (!response.ok) {
-      await logOtpSend(phone, "failed", `solapi ${response.status}`);
+      // 솔라피 오류 응답에는 errorCode/errorMessage만 있다 (OTP·키 없음) —
+      // 원인(발신번호 미등록·잔액·키 오류)이 여기 실려 오므로 로그에 남긴다
+      const errBody = (await response.text().catch(() => "")).slice(0, 300);
+      console.error("solapi rejected:", response.status, errBody);
+      await logOtpSend(
+        phone,
+        "failed",
+        `solapi ${response.status} ${errBody.slice(0, 160)}`.trim()
+      );
       return errorResponse(500, "인증번호 발송에 실패했습니다.");
     }
 
@@ -152,7 +170,8 @@ Deno.serve(async (req) => {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  } catch {
+  } catch (err) {
+    console.error("solapi request error:", String(err));
     await logOtpSend(phone, "failed", "network");
     return errorResponse(500, "인증번호 발송 중 오류가 발생했습니다.");
   }
