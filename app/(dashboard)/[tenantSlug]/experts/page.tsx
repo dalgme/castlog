@@ -200,6 +200,11 @@ export default async function TenantExpertsPage({
               <Link href={`/${params.tenantSlug}/experts/import`}>일괄 등록</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
+              <Link href={`/${params.tenantSlug}/experts/manage`}>
+                전문가 관리
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
               <Link href={`/${params.tenantSlug}/experts/cancellations`}>
                 취소 내역
               </Link>

@@ -279,7 +279,7 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
           '템플릿을 받아야만 하는가'로 읽는다. 한 카드 안에 두 가지 입력 수단을 둔다 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">1. 명단 작성 · 검증</CardTitle>
+          <CardTitle className="text-base">1. 신규 전문가 등록 요청</CardTitle>
           <CardDescription>
             이름과 휴대폰만 있으면 됩니다. 행마다 등록 요청 링크(/j)가 생성되며,
             전문분야·경력 등 프로필은 전문가 본인이 등록 시 직접 입력합니다.
@@ -291,7 +291,7 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
             {(
               [
                 ["manual", "직접 입력"],
-                ["file", "엑셀 업로드"],
+                ["file", "엑셀업로드 일괄 요청"],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -398,7 +398,7 @@ export function ExpertImportClient({ tenantSlug }: { tenantSlug: string }) {
       {preview && counts && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2. 검증 결과 확인 후 등록</CardTitle>
+            <CardTitle className="text-base">1-2. 검증 결과 확인 후 요청 발급</CardTitle>
             <CardDescription>
               전체 {preview.length}행 — 등록 대상 {counts.ok ?? 0} · 오류{" "}
               {counts.error ?? 0} · 이미 연결됨 {counts.dup_linked ?? 0} ·

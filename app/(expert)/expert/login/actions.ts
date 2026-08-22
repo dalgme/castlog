@@ -20,8 +20,10 @@ export type OtpVerifyError = { error: string };
 /**
  * 전문가 휴대폰 OTP 발송 (설계문서 3.2 — 전문가 계정은 휴대폰 인증 기반)
  *
- * shouldCreateUser=false: 로그인은 기존 계정만. 신규 전문가 가입은
- * 기업이 발송한 등록 링크(/j)를 통해서만 이뤄진다 (단계 6).
+ * 로그인은 원칙적으로 기존 계정만(shouldCreateUser=false). 신규 가입은
+ * 등록 링크(/j) 경유가 기본이나, 예외로 **보유자료로 등록된 전문가**
+ * (experts 행 존재 + auth_user_id 없음)는 첫 로그인에서 계정을 만들고
+ * 인증 직후 레코드를 이어받는다 (개정 2026-08-22).
  * SMS 발송 자체는 Supabase Auth(SMS Hook — 알리고/NHN Cloud 연동)가 수행한다.
  */
 export async function requestExpertOtp(
@@ -44,10 +46,25 @@ export async function requestExpertOtp(
     return { ok: false, error: "올바른 휴대폰 번호가 아닙니다." };
   }
 
+  // 보유자료로 등록된 전문가(experts 행은 있으나 인증 계정이 없는 경우)는
+  // 첫 로그인에서 계정을 만들어야 한다 — 그 외에는 종전대로 기존 계정만.
+  // 등록 여부 확인은 전역 판정이라 admin 클라이언트를 쓴다.
+  let allowCreate = false;
+  try {
+    const { data: existingExpert } = await createAdminClient()
+      .from("experts")
+      .select("id, auth_user_id")
+      .eq("phone", phone)
+      .maybeSingle();
+    allowCreate = Boolean(existingExpert && !existingExpert.auth_user_id);
+  } catch {
+    // 판정 실패 시 기존 동작(생성 불가) 유지
+  }
+
   const supabase = createClient();
   const { error } = await supabase.auth.signInWithOtp({
     phone,
-    options: { shouldCreateUser: false, channel: "sms" },
+    options: { shouldCreateUser: allowCreate, channel: "sms" },
   });
 
   if (error) {
@@ -102,6 +119,27 @@ export async function verifyExpertOtp(
 
   if (error || !data.user) {
     return { error: "인증번호가 올바르지 않거나 만료되었습니다." };
+  }
+
+  // 보유자료로 등록된 전문가 레코드 이어받기(claim) — 휴대폰 인증이 곧
+  // 소유 증명이다. auth_user_id가 비어 있는 행만 잇는다 (탈취 불가 가드).
+  try {
+    const admin = createAdminClient();
+    const { data: unclaimed } = await admin
+      .from("experts")
+      .select("id")
+      .eq("phone", phone)
+      .is("auth_user_id", null)
+      .maybeSingle();
+    if (unclaimed) {
+      await admin
+        .from("experts")
+        .update({ auth_user_id: data.user.id })
+        .eq("id", unclaimed.id)
+        .is("auth_user_id", null);
+    }
+  } catch {
+    // 클레임 실패해도 로그인은 유효 — 다음 로그인에서 재시도된다
   }
 
   if (!data.user.app_metadata?.role) {

@@ -50,6 +50,7 @@ export async function updateExpertProfile(
         ? parseInt(parsed.data.careerYears, 10)
         : null,
       bio: parsed.data.bio || null,
+      degree_certifications: parsed.data.degreeCertifications || null,
       secondary_phone: parsed.data.secondaryPhone
         ? normalizeKrMobileE164(parsed.data.secondaryPhone)
         : null,

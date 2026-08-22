@@ -64,10 +64,39 @@ export default async function ExpertDetailPage({
   // 연결이 없는 전문가는 RLS가 막는다 — 그 경우 notFound로 떨어진다.
   const { data: expert } = await supabase
     .from("experts")
-    .select("id, name, phone, email, specialty, region, career_years, bio")
+    .select(
+      "id, name, phone, email, specialty, region, career_years, bio, degree_certifications, expertise_other"
+    )
     .eq("id", params.expertId)
     .maybeSingle();
   if (!expert) notFound();
+
+  // 강의(멘토링) 분야 (전역 마스터 선택분) + 계좌 정보(마스킹).
+  // 계좌는 본인 전용 RLS 테이블이라 admin으로 읽되, **끝 4자리만** 보여 준다 —
+  // 전체 계좌번호는 지급 단계 경로에서만 (CLAUDE.md §5 통장 정책과 일관).
+  const [{ data: expertiseRows }, bankMasked] = await Promise.all([
+    supabase
+      .from("expert_expertise_fields")
+      .select("field_id, expertise_fields (name)")
+      .eq("expert_id", expert.id),
+    (async () => {
+      try {
+        const { createAdminClient } = await import("@/lib/supabase/admin");
+        const { data } = await createAdminClient()
+          .from("expert_bank_accounts")
+          .select("bank_name, account_holder, account_last4")
+          .eq("expert_id", expert.id)
+          .maybeSingle();
+        return data;
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+  const expertiseNames = (expertiseRows ?? [])
+    .map((r) => r.expertise_fields?.name)
+    .filter((n): n is string => Boolean(n));
+  if (expert.expertise_other) expertiseNames.push(`기타: ${expert.expertise_other}`);
 
   const [
     { data: link },
@@ -202,6 +231,44 @@ export default async function ExpertDetailPage({
                 </span>
               )}
             </div>
+            {(expert.degree_certifications || expertiseNames.length > 0 || bankMasked) && (
+              <div className="mt-3 space-y-1.5 text-sm">
+                {expert.degree_certifications && (
+                  <p>
+                    <span className="mr-1.5 text-muted-foreground">
+                      최종학위·자격증
+                    </span>
+                    {expert.degree_certifications}
+                  </p>
+                )}
+                {expertiseNames.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="mr-0.5 text-muted-foreground">
+                      강의(멘토링) 분야
+                    </span>
+                    {expertiseNames.map((n) => (
+                      <Badge key={n} variant="secondary" className="text-[10px]">
+                        {n}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {bankMasked && (bankMasked.bank_name || bankMasked.account_last4) && (
+                  <p className="text-muted-foreground">
+                    지급 계좌 {bankMasked.bank_name ?? ""}{" "}
+                    {bankMasked.account_last4
+                      ? `····${bankMasked.account_last4}`
+                      : "(계좌번호 미등록)"}
+                    {bankMasked.account_holder
+                      ? ` · 예금주 ${bankMasked.account_holder}`
+                      : ""}
+                    <span className="ml-1 text-[11px]">
+                      — 전체 번호는 지급 단계에서만 표시됩니다
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
             {expert.bio && (
               <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[#33405A]">
                 {expert.bio}

@@ -117,7 +117,7 @@ export function ExpertProfileForm({
             name="region"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>활동지역 (선택)</FormLabel>
+                <FormLabel>거주지·활동지역 (선택)</FormLabel>
                 <FormControl>
                   <Input {...field} />
                 </FormControl>
@@ -134,6 +134,19 @@ export function ExpertProfileForm({
               <FormLabel>경력 연차 (선택)</FormLabel>
               <FormControl>
                 <Input inputMode="numeric" maxLength={2} {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="degreeCertifications"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>최종학위 및 자격증 (선택)</FormLabel>
+              <FormControl>
+                <Input placeholder="예: 경영학 석사, 경영지도사" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

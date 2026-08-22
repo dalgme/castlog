@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ExpertProfileForm } from "./profile-form";
+import { ExpertiseForm } from "./expertise-form";
 import { TaxTypeForm } from "./tax-type-form";
 import { BankAccountForm } from "./bank-account-form";
 import { SignaturePad } from "./signature-pad";
@@ -42,7 +43,7 @@ export default async function ExpertProfilePage() {
   const { data: expert } = await supabase
     .from("experts")
     .select(
-      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone"
+      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, expertise_other"
     )
     .eq("auth_user_id", user.id)
     .maybeSingle();
@@ -50,6 +51,20 @@ export default async function ExpertProfilePage() {
   if (!expert) {
     redirect("/expert");
   }
+
+  // 강의(멘토링) 분야 — 전역 마스터(활성만) + 내 선택
+  const [{ data: expertiseOptions }, { data: myExpertise }] = await Promise.all([
+    supabase
+      .from("expertise_fields")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("expert_expertise_fields")
+      .select("field_id")
+      .eq("expert_id", expert.id),
+  ]);
 
   const { data: bankAccount } = await supabase
     .from("expert_bank_accounts")
@@ -109,10 +124,27 @@ export default async function ExpertProfilePage() {
                 careerYears:
                   expert.career_years != null ? String(expert.career_years) : "",
                 bio: expert.bio ?? "",
+                degreeCertifications: expert.degree_certifications ?? "",
                 secondaryPhone: expert.secondary_phone
                   ? formatKrMobile(expert.secondary_phone)
                   : "",
               }}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">강의(멘토링) 가능분야</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ExpertiseForm
+              options={(expertiseOptions ?? []).map((o) => ({
+                id: o.id,
+                name: o.name,
+              }))}
+              selectedIds={(myExpertise ?? []).map((r) => r.field_id)}
+              otherText={expert.expertise_other ?? ""}
             />
           </CardContent>
         </Card>

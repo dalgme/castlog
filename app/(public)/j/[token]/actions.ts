@@ -57,6 +57,21 @@ export async function requestJoinOtp(
     };
   }
 
+  // 이 인증이 어느 회사의 등록 링크에서 시작됐는지 기록한다 — 인증 훅
+  // (send-sms-hook)이 이 행을 보고 그 회사의 BYO 솔라피 계정·발신번호로
+  // 인증번호를 발송한다. 기록이 실패해도 발송을 막지 않는다(플랫폼 계정 폴백).
+  try {
+    await createAdminClient()
+      .from("auth_otp_routing")
+      .upsert({
+        phone: phone.replace(/\D/g, ""),
+        tenant_id: lookup.invitation.tenant_id,
+        created_at: new Date().toISOString(),
+      });
+  } catch {
+    // 라우팅 미기록 = 플랫폼 계정 발송 (기능 저하일 뿐 차단 아님)
+  }
+
   const supabase = createClient();
   const { error } = await supabase.auth.signInWithOtp({
     phone,
