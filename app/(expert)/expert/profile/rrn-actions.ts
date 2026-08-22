@@ -162,9 +162,20 @@ export async function submitRrnEnvelope(input: {
       back_ciphertext: input.backCiphertext,
     });
     if (backErr) throw backErr;
-  } catch {
+  } catch (err) {
     await admin.from("rrn_fragments_front").delete().eq("id", front.id);
-    return { ok: false, error: "저장에 실패했습니다(뒷조각)." };
+    // 원인을 서버 로그에 남긴다 — 오류 메시지에는 암호문·주민번호가 없다.
+    // 저장소 B(별도 프로젝트)는 무료 플랜 자동 일시정지·키 회전 등 운영
+    // 사유로 끊길 수 있어, 삼키면 "저장 실패"라는 신고로만 돌아온다 (§12-9).
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("rrn store B insert failed:", message.slice(0, 300));
+    const unreachable = /fetch failed|network|ENOTFOUND|ECONN|timeout/i.test(message);
+    return {
+      ok: false,
+      error: unreachable
+        ? "저장에 실패했습니다(뒷조각) — 보안 저장소 연결이 끊겨 있습니다. 캐스트로그 운영에 알려 주세요 (저장소 일시정지 가능성)."
+        : `저장에 실패했습니다(뒷조각). 캐스트로그에 알려 주세요. (${message.slice(0, 100)})`,
+    };
   }
 
   revalidatePath("/expert/profile");
