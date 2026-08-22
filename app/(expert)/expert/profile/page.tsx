@@ -112,11 +112,8 @@ export default async function ExpertProfilePage() {
         />
         <Card className="shadow-sm">
           <CardContent className="pt-6">
-            <p className="mb-4 text-sm text-muted-foreground">
-              휴대폰 번호({formatKrMobile(expert.phone)})는 인증 수단이므로 여기서
-              변경할 수 없습니다.
-            </p>
             <ExpertProfileForm
+              phoneDisplay={formatKrMobile(expert.phone)}
               defaultValues={{
                 name: expert.name,
                 email: expert.email ?? "",

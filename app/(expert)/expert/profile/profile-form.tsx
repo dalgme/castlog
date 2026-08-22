@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Minus, Plus } from "lucide-react";
 
 import {
   DEGREE_LEVEL_OPTIONS,
@@ -34,8 +35,11 @@ import { updateExpertProfile } from "./actions";
 
 export function ExpertProfileForm({
   defaultValues,
+  phoneDisplay,
 }: {
   defaultValues: ExpertProfileInput;
+  /** 로그인 인증 수단인 휴대폰 번호 — 표시 전용, 수정 불가 */
+  phoneDisplay: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -74,39 +78,45 @@ export function ExpertProfileForm({
             </FormItem>
           )}
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>이메일 (선택)</FormLabel>
-                <FormControl>
-                  <Input type="email" autoComplete="email" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="secondaryPhone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>보조 연락처 (선택 · 휴대폰/일반번호)</FormLabel>
-                <FormControl>
-                  <Input
-                    inputMode="numeric"
-                    placeholder="010-0000-0000 또는 02-000-0000"
-                    autoComplete="tel"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>이메일</FormLabel>
+              <FormControl>
+                <Input type="email" autoComplete="email" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        {/* 휴대폰 번호 — 로그인 인증 수단이라 수정 불가, 표시만 (기획 확정 2026-08-22) */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">핸드폰 번호</p>
+          <Input value={phoneDisplay} readOnly disabled className="bg-muted" />
+          <p className="text-xs text-muted-foreground">
+            로그인 인증에 사용하는 번호라 여기서 변경할 수 없습니다.
+          </p>
         </div>
+        <FormField
+          control={form.control}
+          name="secondaryPhone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>보조 연락처 (선택 · 휴대폰/일반번호)</FormLabel>
+              <FormControl>
+                <Input
+                  inputMode="numeric"
+                  placeholder="010-0000-0000 또는 02-000-0000"
+                  autoComplete="tel"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         {/* 거주지 — 광역자치단체 선택 + 세부 주소 (기획 확정 2026-08-22) */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
           <FormField
@@ -193,18 +203,54 @@ export function ExpertProfileForm({
             )}
           />
         </div>
+        {/* 경력 연차 — 직접 타이핑 대신 +/- 선택 (기획 확정 2026-08-22) */}
         <FormField
           control={form.control}
           name="careerYears"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>경력 연차 (선택)</FormLabel>
-              <FormControl>
-                <Input inputMode="numeric" maxLength={2} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          render={({ field }) => {
+            const current = parseInt(field.value || "0", 10) || 0;
+            const step = (delta: number) =>
+              field.onChange(String(Math.min(99, Math.max(0, current + delta))));
+            return (
+              <FormItem>
+                <FormLabel>경력 연차 (선택)</FormLabel>
+                <FormControl>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => step(-1)}
+                      disabled={current <= 0}
+                      aria-label="경력 연차 줄이기"
+                    >
+                      <Minus className="h-4 w-4" aria-hidden />
+                    </Button>
+                    <Input
+                      readOnly
+                      inputMode="none"
+                      value={field.value ? `${current}년` : "미입력"}
+                      className="w-24 text-center"
+                      tabIndex={-1}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => step(1)}
+                      disabled={current >= 99}
+                      aria-label="경력 연차 늘리기"
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
         />
         <FormField
           control={form.control}

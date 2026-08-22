@@ -15,6 +15,25 @@ export type SignatureActionResult = { ok: true } | { ok: false; error: string };
 
 const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
 
+/** 파일 시그니처(매직 바이트)로 실제 이미지 형식 판별 — 확장자·MIME 신고값은 믿지 않는다 */
+function sniffImage(
+  bytes: Buffer
+): { mime: "image/png" | "image/jpeg"; extension: "png" | "jpg" } | null {
+  const pngSig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length >= 8 && pngSig.every((b, i) => bytes[i] === b)) {
+    return { mime: "image/png", extension: "png" };
+  }
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return { mime: "image/jpeg", extension: "jpg" };
+  }
+  return null;
+}
+
 /** 캔버스 PNG data URL → 바이트. 형식·용량 서버 검증 (CLAUDE.md 12-5). */
 function decodePngDataUrl(
   dataUrl: string
@@ -35,33 +54,23 @@ function decodePngDataUrl(
   if (bytes.length > MAX_SIGNATURE_BYTES) {
     return { ok: false, error: "서명 이미지 용량이 너무 큽니다." };
   }
-  // PNG 시그니처 확인 (89 50 4E 47 0D 0A 1A 0A)
-  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  if (bytes.length < 8 || sig.some((b, i) => bytes[i] !== b)) {
+  if (sniffImage(bytes)?.mime !== "image/png") {
     return { ok: false, error: "PNG 서명 이미지만 저장할 수 있습니다." };
   }
   return { ok: true, bytes };
 }
 
 /**
- * 단계 28-A: 전문가 서명·날인 등록 (본인만).
- * 서명 캔버스가 만든 PNG를 암호화 버킷에 저장하고 expert_documents로 관리한다.
- * 같은 유형의 기존 서명은 'replaced'로 전환(이력 보존). 리사이즈하지 않는다.
+ * 서명·날인 공통 저장 — 암호화 버킷 업로드 + expert_documents 등록.
+ * 같은 유형의 기존 건은 'replaced'로 전환(이력 보존). 리사이즈하지 않는다.
  */
-export async function registerExpertSignature(
+async function persistSignatureImage(
   kind: string,
-  dataUrl: string
+  bytes: Buffer,
+  mime: string,
+  extension: string,
+  fileName: string
 ): Promise<SignatureActionResult> {
-  if (!hasSupabaseEnv()) {
-    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  }
-  if (!isSignatureCanvasType(kind)) {
-    return { ok: false, error: "지원하지 않는 유형입니다." };
-  }
-
-  const decoded = decodePngDataUrl(dataUrl);
-  if (!decoded.ok) return decoded;
-
   const supabase = createClient();
   const {
     data: { user },
@@ -79,13 +88,13 @@ export async function registerExpertSignature(
     return { ok: false, error: "전문가 프로필이 없습니다." };
   }
 
-  const storagePath = `${expert.id}/${kind}/${crypto.randomUUID()}.png`;
+  const storagePath = `${expert.id}/${kind}/${crypto.randomUUID()}.${extension}`;
 
   const admin = createAdminClient();
   const { error: uploadError } = await admin.storage
     .from(EXPERT_DOCUMENT_BUCKET)
-    .upload(storagePath, decoded.bytes, {
-      contentType: "image/png",
+    .upload(storagePath, bytes, {
+      contentType: mime,
       upsert: false,
     });
   if (uploadError) {
@@ -105,9 +114,9 @@ export async function registerExpertSignature(
       expert_id: expert.id,
       document_type: kind,
       storage_path: storagePath,
-      file_name: `${kind}.png`,
-      file_size_bytes: decoded.bytes.length,
-      mime_type: "image/png",
+      file_name: fileName,
+      file_size_bytes: bytes.length,
+      mime_type: mime,
     })
     .select("id")
     .single();
@@ -147,4 +156,71 @@ export async function registerExpertSignature(
 
   revalidatePath("/expert/profile");
   return { ok: true };
+}
+
+/**
+ * 단계 28-A: 전문가 서명 등록 (캔버스 직접 서명 — 본인만).
+ * 서명 캔버스가 만든 PNG를 암호화 버킷에 저장하고 expert_documents로 관리한다.
+ */
+export async function registerExpertSignature(
+  kind: string,
+  dataUrl: string
+): Promise<SignatureActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  if (!isSignatureCanvasType(kind)) {
+    return { ok: false, error: "지원하지 않는 유형입니다." };
+  }
+
+  const decoded = decodePngDataUrl(dataUrl);
+  if (!decoded.ok) return decoded;
+
+  return persistSignatureImage(kind, decoded.bytes, "image/png", "png", `${kind}.png`);
+}
+
+/**
+ * 서명·날인 이미지 파일 업로드 등록 (기획 확정 2026-08-22).
+ * 서명은 직접 서명과 파일 업로드 겸용, 날인(도장)은 직접 찍을 수 없으니 업로드 전용.
+ * PNG/JPG만 허용 — 매직 바이트로 실제 형식을 검증한다.
+ */
+export async function registerExpertSignatureUpload(
+  kind: string,
+  formData: FormData
+): Promise<SignatureActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  if (!isSignatureCanvasType(kind)) {
+    return { ok: false, error: "지원하지 않는 유형입니다." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "이미지 파일을 선택하세요." };
+  }
+  if (file.size > MAX_SIGNATURE_BYTES) {
+    return { ok: false, error: "이미지 용량은 2MB 이하만 가능합니다." };
+  }
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const sniffed = sniffImage(bytes);
+  if (!sniffed) {
+    return { ok: false, error: "PNG 또는 JPG 이미지만 등록할 수 있습니다." };
+  }
+
+  // 한글 파일명 보전 — 클라이언트가 보낸 원본 파일명 우선
+  const clientFileName = formData.get("fileName");
+  const fileName =
+    typeof clientFileName === "string" && clientFileName.trim()
+      ? clientFileName.trim()
+      : `${kind}.${sniffed.extension}`;
+
+  return persistSignatureImage(
+    kind,
+    bytes,
+    sniffed.mime,
+    sniffed.extension,
+    fileName
+  );
 }
