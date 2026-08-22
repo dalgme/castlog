@@ -34,7 +34,11 @@ const SECRET_LABEL: Record<string, string> = {
   nhncloud: "Secret Key",
 };
 
-/** SMS 공급자 설정 폼 — 키는 저장 후 다시 표시하지 않는다 (마스킹) */
+/**
+ * SMS 공급자 설정 폼 — 키는 저장 후 다시 표시하지 않는다 (마스킹).
+ * 키가 등록되어 있으면 입력폼을 잠근다(기획 확정 2026-08-22) — '수정 입력'을
+ * 눌러야 열리고, 저장이 끝나면 다시 잠긴다. 실수로 키를 덮어쓰는 일을 막는다.
+ */
 export function SmsConfigForm({
   current,
 }: {
@@ -42,6 +46,8 @@ export function SmsConfigForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+  // 이미 등록돼 있으면 잠금 상태로 시작
+  const [locked, setLocked] = useState<boolean>(Boolean(current));
   const { toast } = useToast();
 
   const form = useForm<SmsConfigInput>({
@@ -65,6 +71,7 @@ export function SmsConfigForm({
         toast({ description: "발송 설정이 저장되었습니다." });
         form.setValue("apiKey", "");
         form.setValue("apiSecret", "");
+        setLocked(true); // 저장 완료 → 다시 잠금
       } else {
         setServerError(result.error);
       }
@@ -94,7 +101,11 @@ export function SmsConfigForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>공급자</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={field.onChange}
+                value={field.value}
+                disabled={locked}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue />
@@ -120,7 +131,13 @@ export function SmsConfigForm({
             <FormItem>
               <FormLabel>API 키</FormLabel>
               <FormControl>
-                <Input type="password" autoComplete="off" {...field} />
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  disabled={locked}
+                  placeholder={locked ? "•••••••• (암호화 저장됨)" : undefined}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -133,7 +150,13 @@ export function SmsConfigForm({
             <FormItem>
               <FormLabel>{SECRET_LABEL[provider] ?? "API Secret"}</FormLabel>
               <FormControl>
-                <Input type="password" autoComplete="off" {...field} />
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  disabled={locked}
+                  placeholder={locked ? "•••••••• (암호화 저장됨)" : undefined}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -146,7 +169,7 @@ export function SmsConfigForm({
             <FormItem>
               <FormLabel>발신번호</FormLabel>
               <FormControl>
-                <Input placeholder="02-123-4567" {...field} />
+                <Input placeholder="02-123-4567" disabled={locked} {...field} />
               </FormControl>
               <FormDescription>
                 통신사에 사전등록된 자사 발신번호만 사용할 수 있습니다 (법적
@@ -165,9 +188,20 @@ export function SmsConfigForm({
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={pending}>
-          {pending ? "저장 중..." : "발송 설정 저장"}
-        </Button>
+        {locked ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => setLocked(false)}
+          >
+            수정 입력
+          </Button>
+        ) : (
+          <Button type="submit" className="w-full" disabled={pending}>
+            {pending ? "저장 중..." : "등록/저장"}
+          </Button>
+        )}
       </form>
     </Form>
   );
