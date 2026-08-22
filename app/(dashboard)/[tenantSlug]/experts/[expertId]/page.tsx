@@ -60,29 +60,42 @@ export default async function ExpertDetailPage({
   }
 
   const supabase = createClient();
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const admin = createAdminClient();
 
-  // 연결이 없는 전문가는 RLS가 막는다 — 그 경우 notFound로 떨어진다.
-  const { data: expert } = await supabase
+  // 등록플랫폼 전면 공개 (재개정 2026-08-22): 미연결 전문가도 섭외용
+  // 프로필·연락처는 열람 가능하다. RLS(연결 기준)로 먼저 조회하고, 미연결이면
+  // admin으로 공개 컬럼만 재조회한다 — 비밀정보(서류·평가·계좌)는 아래에서
+  // 각자의 게이트를 그대로 탄다.
+  let { data: expert } = await supabase
     .from("experts")
     .select(
       "id, name, phone, email, specialty, region, career_years, bio, degree_certifications, expertise_other"
     )
     .eq("id", params.expertId)
     .maybeSingle();
+  if (!expert) {
+    ({ data: expert } = await admin
+      .from("experts")
+      .select(
+        "id, name, phone, email, specialty, region, career_years, bio, degree_certifications, expertise_other"
+      )
+      .eq("id", params.expertId)
+      .eq("is_practice", false)
+      .maybeSingle());
+  }
   if (!expert) notFound();
 
-  // 강의(멘토링) 분야 (전역 마스터 선택분) + 계좌 정보(마스킹).
-  // 계좌는 본인 전용 RLS 테이블이라 admin으로 읽되, **끝 4자리만** 보여 준다 —
-  // 전체 계좌번호는 지급 단계 경로에서만 (CLAUDE.md §5 통장 정책과 일관).
+  // 강의(멘토링) 분야 — 공개 디렉터리 정보라 admin으로 (미연결도 표시).
+  // 계좌는 **끝 4자리만** — 전체 계좌번호는 지급 단계 경로에서만 (§5).
   const [{ data: expertiseRows }, bankMasked] = await Promise.all([
-    supabase
+    admin
       .from("expert_expertise_fields")
       .select("field_id, expertise_fields (name)")
       .eq("expert_id", expert.id),
     (async () => {
       try {
-        const { createAdminClient } = await import("@/lib/supabase/admin");
-        const { data } = await createAdminClient()
+        const { data } = await admin
           .from("expert_bank_accounts")
           .select("bank_name, account_holder, account_last4")
           .eq("expert_id", expert.id)
@@ -180,7 +193,7 @@ export default async function ExpertDetailPage({
               <span className="text-lg font-bold text-brand-navy">
                 {expert.name}
               </span>
-              {link && (
+              {link ? (
                 <Badge
                   variant={link.status === "active" ? "default" : "secondary"}
                 >
@@ -190,6 +203,8 @@ export default async function ExpertDetailPage({
                       ? "대기중"
                       : "해제됨"}
                 </Badge>
+              ) : (
+                <Badge variant="outline">미연결 — 플랫폼 등록 전문가</Badge>
               )}
               {expertTagLabel(tag?.tag ?? null) && (
                 <Badge
@@ -253,7 +268,7 @@ export default async function ExpertDetailPage({
                     ))}
                   </div>
                 )}
-                {bankMasked && (bankMasked.bank_name || bankMasked.account_last4) && (
+                {link && bankMasked && (bankMasked.bank_name || bankMasked.account_last4) && (
                   <p className="text-muted-foreground">
                     지급 계좌 {bankMasked.bank_name ?? ""}{" "}
                     {bankMasked.account_last4
