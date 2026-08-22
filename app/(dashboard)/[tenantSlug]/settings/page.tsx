@@ -19,6 +19,7 @@ import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { SmsConnectionPanel } from "./sms-connection-panel";
 import { SmsModePanel, type SmsMode } from "./sms-mode-panel";
+import { SmsSendersPanel, type SmsSenderRow } from "./sms-senders-panel";
 
 export const metadata = { title: "설정" };
 
@@ -107,6 +108,22 @@ export default async function SettingsPage({
   const smsMode: SmsMode | null =
     config?.mode === "platform" ? "platform" : config ? "byo" : null;
 
+  // 추가 발신번호 목록 — 마이그레이션 미적용 DB에서는 조용히 빈 목록
+  let senderRows: SmsSenderRow[] = [];
+  {
+    const { data: senderRecords, error: sendersError } = await supabase
+      .from("tenant_sms_senders")
+      .select("id, phone, label")
+      .order("created_at", { ascending: true });
+    if (!sendersError) {
+      senderRows = (senderRecords ?? []).map((s) => ({
+        id: s.id,
+        phone: s.phone,
+        label: s.label,
+      }));
+    }
+  }
+
   // 사용 기능(모듈) 현황·추가 요청은 '기업관리' 탭으로 옮겼다 — 발송 설정 옆에
   // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
   const modules = await getTenantModules();
@@ -184,6 +201,20 @@ export default async function SettingsPage({
               있습니다. 전문가 로그인 인증번호는 플랫폼이 발송하므로 별도 설정이
               필요 없습니다.
             </p>
+          </CardContent>
+        </Card>
+        )}
+
+        {canManageSending && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">발신번호 관리</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SmsSendersPanel
+              defaultSender={config?.sender_number ?? null}
+              senders={senderRows}
+            />
           </CardContent>
         </Card>
         )}

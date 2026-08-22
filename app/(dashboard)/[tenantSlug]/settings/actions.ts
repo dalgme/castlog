@@ -15,7 +15,7 @@ import {
   type PlatformSmsInput,
   type SmsConfigInput,
 } from "@/lib/messaging/schemas";
-import { sendTenantSms } from "@/lib/sms/send";
+import { normalizeSenderDigits, sendTenantSms } from "@/lib/sms/send";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 
 export type SaveSmsConfigResult = { ok: true } | { ok: false; error: string };
@@ -300,6 +300,98 @@ export async function savePlatformSmsMode(
     action: alreadyGranted ? "sms_config.platform_update" : "sms_config.platform_enroll",
     resource_type: "tenant_sms_config",
     after_data: { sender_number: data.senderNumber },
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+export type SmsSenderResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * 발신번호 추가 (기획 확정 2026-08-22 — 발신번호 다중 등록).
+ * 여기 등록해도 공급자(솔라피) 계정에 사전등록되지 않은 번호는 발송이
+ * 거부된다 — 화면 문구로 안내하고, 저장은 막지 않는다 (사전등록이 먼저인
+ * 회사도, 나중인 회사도 있다).
+ */
+export async function addSmsSender(
+  phone: string,
+  label: string
+): Promise<SmsSenderResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+
+  const digits = normalizeSenderDigits(phone);
+  if (!/^0\d{7,10}$/.test(digits)) {
+    return { ok: false, error: "발신번호는 0으로 시작하는 8~11자리 숫자여야 합니다." };
+  }
+  const trimmedLabel = label.trim().slice(0, 30);
+
+  const supabase = createClient();
+  const { error } = await supabase.from("tenant_sms_senders").insert({
+    tenant_id: auth.tenantId,
+    phone: digits,
+    label: trimmedLabel || null,
+    created_by: auth.userId,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "이미 등록된 발신번호입니다." };
+    }
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "발신번호를 저장하지 못했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: "sms_sender.add",
+    resource_type: "tenant_sms_sender",
+    after_data: { phone: digits, label: trimmedLabel || null },
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/** 발신번호 삭제 — 대표번호(tenant_sms_configs.sender_number)는 여기서 못 지운다 */
+export async function removeSmsSender(
+  senderId: string
+): Promise<SmsSenderResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+
+  const supabase = createClient();
+  const { data: removed, error } = await supabase
+    .from("tenant_sms_senders")
+    .delete()
+    .eq("id", senderId)
+    .eq("tenant_id", auth.tenantId)
+    .select("phone")
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "발신번호를 삭제하지 못했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: "sms_sender.remove",
+    resource_type: "tenant_sms_sender",
+    after_data: { phone: removed?.phone ?? null },
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");

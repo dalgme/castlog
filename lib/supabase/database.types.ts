@@ -3810,6 +3810,33 @@ export type Database = {
           },
         ]
       }
+      tenant_sms_senders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          phone: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          phone: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          phone?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       tenant_sms_configs: {
         Row: {
           api_key_encrypted: string | null

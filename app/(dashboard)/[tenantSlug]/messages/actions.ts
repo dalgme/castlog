@@ -82,6 +82,7 @@ export async function sendMessage(
       messageType: data.messageType,
       body: data.body,
       recipients,
+      senderNumber: data.senderNumber ?? null,
     });
     if (!result.ok) return result;
     summary = result.summary;

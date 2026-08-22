@@ -33,6 +33,11 @@ export const messageSendSchema = z
       .min(1, "내용을 입력하세요.")
       .max(1800, "내용은 1800자 이내로 입력하세요."),
     expertIds: z.array(z.string().uuid()).min(1, "수신 대상을 선택하세요."),
+    // 발신번호 선택(선택) — 서버가 등록 목록과 대조해 목록 밖 값은 무시한다
+    senderNumber: z
+      .string()
+      .regex(/^[\d-]{8,13}$/)
+      .optional(),
   })
   .refine((v) => v.channel !== "email" || (v.subject && v.subject.length > 0), {
     message: "이메일은 제목이 필요합니다.",

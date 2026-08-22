@@ -24,8 +24,21 @@ export type RecipientOption = {
  * 발송 작성 폼 (CLAUDE.md 5-1 — 유형 선택 필수, 기본값 광고성=안전한 쪽)
  * 광고성 선택 시 (광고) 표기·수신거부 링크가 강제 삽입됨을 미리보기로 보여준다.
  */
-export function ComposeForm({ recipients }: { recipients: RecipientOption[] }) {
+export type SenderOption = { value: string; label: string };
+
+export function ComposeForm({
+  recipients,
+  senderOptions = [],
+  defaultSender = null,
+}: {
+  recipients: RecipientOption[];
+  /** 발신번호 선택지 (대표번호 + 추가 등록 번호) */
+  senderOptions?: SenderOption[];
+  /** 기본 발신번호 — 로그인 직원 본인 번호가 등록돼 있으면 그 번호 (기획 2026-08-22) */
+  defaultSender?: string | null;
+}) {
   const [channel, setChannel] = useState<"sms" | "email">("sms");
+  const [senderNumber, setSenderNumber] = useState<string>(defaultSender ?? "");
   // 기본값은 업무연락 (기획 변경 2026-08-22). 실제 발송의 대부분이 섭외·일정·
   // 지급 안내라 광고성 기본은 매번 바꾸는 클릭만 만들었다. 광고성을 고르면
   // 강제장치(미동의 제외·(광고) 표기·수신거부 링크·야간 차단)는 그대로 작동한다.
@@ -83,6 +96,8 @@ export function ComposeForm({ recipients }: { recipients: RecipientOption[] }) {
         subject: subject || undefined,
         body,
         expertIds: ids,
+        senderNumber:
+          channel === "sms" && senderNumber ? senderNumber : undefined,
       });
       if (result.ok) {
         toast({
@@ -145,6 +160,28 @@ export function ComposeForm({ recipients }: { recipients: RecipientOption[] }) {
           </span>
         </label>
       </div>
+
+      {channel === "sms" && senderOptions.length > 0 && (
+        <div className="space-y-1 rounded-md border p-3">
+          <p className="text-sm font-semibold">발신번호</p>
+          <select
+            value={senderNumber}
+            onChange={(e) => setSenderNumber(e.target.value)}
+            className="h-9 w-full max-w-xs rounded-md border bg-background px-2 text-sm"
+          >
+            {senderOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+                {o.value === defaultSender ? " — 기본" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            본인 휴대폰과 일치하는 등록 번호가 기본 선택됩니다. 발신번호
+            추가·삭제는 설정 &gt; SMS 설정 &gt; 발신번호 관리에서 합니다.
+          </p>
+        </div>
+      )}
 
       {channel === "email" && (
         <Input
