@@ -13,6 +13,8 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+// Deno 엣지 런타임에는 Buffer 전역이 없다 — 명시적으로 가져와야 한다
+import { Buffer } from "node:buffer";
 
 type HookPayload = {
   user?: { phone?: string; id?: string };
