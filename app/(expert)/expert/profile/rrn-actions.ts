@@ -167,7 +167,13 @@ export async function submitRrnEnvelope(input: {
     // 원인을 서버 로그에 남긴다 — 오류 메시지에는 암호문·주민번호가 없다.
     // 저장소 B(별도 프로젝트)는 무료 플랜 자동 일시정지·키 회전 등 운영
     // 사유로 끊길 수 있어, 삼키면 "저장 실패"라는 신고로만 돌아온다 (§12-9).
-    const message = err instanceof Error ? err.message : String(err);
+    // Supabase 오류는 Error 인스턴스가 아니라 {message, code, ...} 일반 객체다
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : String(err);
     console.error("rrn store B insert failed:", message.slice(0, 300));
     const unreachable = /fetch failed|network|ENOTFOUND|ECONN|timeout/i.test(message);
     return {
