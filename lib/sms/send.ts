@@ -125,6 +125,13 @@ export type TenantSmsSendParams = {
   body: string;
   recipients: SmsRecipient[];
   /**
+   * 발신번호 지정 (기획 확정 2026-08-22 — 발신번호 다중 등록).
+   * 등록된 번호(대표번호 + tenant_sms_senders)만 허용 — 목록에 없으면 무시하고
+   * 기본 규칙으로 떨어진다: 보내는 직원 본인의 휴대폰과 일치하는 등록 번호가
+   * 있으면 그 번호, 없으면 회사 대표번호.
+   */
+  senderNumber?: string | null;
+  /**
    * 세션이 없는 실행 경로(예약 발송 크론)에서 true. 설정 조회·로그 기록을
    * service_role로 수행한다. 화면에서 호출할 때는 지정하지 않는다.
    */
@@ -245,6 +252,54 @@ async function loadCredentials(
   }
 }
 
+/** 발신번호 비교용 정규화 — 숫자만, 국가번호 82는 0으로 */
+export function normalizeSenderDigits(input: string): string {
+  let digits = input.replace(/\D/g, "");
+  if (digits.startsWith("82")) digits = `0${digits.slice(2)}`;
+  return digits;
+}
+
+/**
+ * 실제 발신번호 결정 (기획 확정 2026-08-22 — 발신번호 다중 등록):
+ * 명시 지정(등록 목록 내) > 보내는 직원 본인 휴대폰과 일치하는 등록 번호 >
+ * 회사 대표번호. 등록 목록 밖의 번호는 서버에서 거른다 — 화면 값으로 임의
+ * 발신번호를 지정할 수 없어야 한다.
+ */
+async function resolveSenderNumber(
+  supabase: ReturnType<typeof createClient>,
+  params: TenantSmsSendParams,
+  defaultSender: string
+): Promise<string> {
+  const choices = new Set<string>([normalizeSenderDigits(defaultSender)]);
+  const { data: extra, error } = await supabase
+    .from("tenant_sms_senders")
+    .select("phone")
+    .eq("tenant_id", params.tenantId);
+  if (!error) {
+    for (const row of extra ?? []) choices.add(normalizeSenderDigits(row.phone));
+  }
+  // error(테이블 미생성 등)면 대표번호만 — 발송이 죽으면 안 된다
+
+  const requested = params.senderNumber
+    ? normalizeSenderDigits(params.senderNumber)
+    : null;
+  if (requested && choices.has(requested)) return requested;
+
+  if (!requested && params.senderUserId) {
+    const { data: senderUser } = await supabase
+      .from("users")
+      .select("phone")
+      .eq("id", params.senderUserId)
+      .maybeSingle();
+    const own = senderUser?.phone
+      ? normalizeSenderDigits(senderUser.phone)
+      : null;
+    if (own && choices.has(own)) return own;
+  }
+
+  return normalizeSenderDigits(defaultSender);
+}
+
 /** 발송 실행 — 전 건 sms_logs 기록 + 사용량 계측 */
 export async function sendTenantSms(
   params: TenantSmsSendParams
@@ -288,6 +343,10 @@ export async function sendTenantSms(
     : await loadCredentials(params.tenantId, systemContext);
   if (credsResult && !credsResult.ok) return credsResult;
 
+  const fromNumber = credsResult?.ok
+    ? await resolveSenderNumber(supabase, params, credsResult.senderNumber)
+    : null;
+
   let sent = 0;
   let failed = 0;
 
@@ -302,7 +361,7 @@ export async function sendTenantSms(
     const result = credsResult
       ? await sendSms(credsResult.creds, {
           to: recipient.phone,
-          from: credsResult.senderNumber,
+          from: fromNumber ?? credsResult.senderNumber,
           text: finalBody,
         })
       : ({ ok: true, test: true } as const);

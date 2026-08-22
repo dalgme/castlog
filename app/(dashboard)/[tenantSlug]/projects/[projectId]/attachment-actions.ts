@@ -97,7 +97,7 @@ export async function uploadProjectAttachment(
   const { error: uploadError } = await admin.storage
     .from(EXPERT_DOCUMENT_BUCKET)
     .upload(path, Buffer.from(await file.arrayBuffer()), {
-      contentType: file.type,
+      contentType: validation.contentType,
       upsert: false,
     });
   if (uploadError) return { ok: false, error: "업로드에 실패했습니다." };

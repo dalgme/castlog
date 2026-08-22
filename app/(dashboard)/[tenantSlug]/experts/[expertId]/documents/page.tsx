@@ -81,6 +81,29 @@ export default async function TenantExpertDocumentsPage({
   const docs = documents ?? [];
   const requestRows = requests ?? [];
 
+  // 자격증 사본에는 전문가가 작성한 정보(자격증명·발급일·발급기관)가 붙는다.
+  // 마이그레이션 미적용 DB에서는 조용히 빈 맵 — 화면이 죽으면 안 된다.
+  const certInfoByDocId = new Map<
+    string,
+    { certName: string | null; issuedOn: string | null; issuer: string | null; note: string | null }
+  >();
+  if (docs.some((d) => d.document_type === "certificate")) {
+    const { data: certs, error: certsError } = await supabase
+      .from("expert_certificates")
+      .select("document_id, cert_name, issued_on, issuer, note")
+      .eq("expert_id", expert.id);
+    if (!certsError) {
+      for (const c of certs ?? []) {
+        certInfoByDocId.set(c.document_id, {
+          certName: c.cert_name,
+          issuedOn: c.issued_on,
+          issuer: c.issuer,
+          note: c.note,
+        });
+      }
+    }
+  }
+
   // 요청 충족 여부: 요청 이후 업로드된 활성 서류가 유형별로 존재하는가
   const satisfiedTypes = (requestCreatedAt: string, types: string[]) =>
     types.filter((type) =>
@@ -171,7 +194,7 @@ export default async function TenantExpertDocumentsPage({
                       <TableHead>유형</TableHead>
                       <TableHead>파일명</TableHead>
                       <TableHead>등록일</TableHead>
-                      <TableHead className="w-20" />
+                      <TableHead className="w-44" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -190,22 +213,43 @@ export default async function TenantExpertDocumentsPage({
                             )}
                           </span>
                         </TableCell>
-                        <TableCell className="max-w-48 truncate">
-                          {doc.file_name}
+                        <TableCell className="max-w-48">
+                          <span className="block truncate">{doc.file_name}</span>
+                          {certInfoByDocId.has(doc.id) && (
+                            <span className="block text-xs text-muted-foreground">
+                              {[
+                                certInfoByDocId.get(doc.id)?.certName,
+                                certInfoByDocId.get(doc.id)?.issuedOn,
+                                certInfoByDocId.get(doc.id)?.issuer,
+                                certInfoByDocId.get(doc.id)?.note,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {new Date(doc.created_at).toLocaleDateString("ko-KR")}
                         </TableCell>
                         <TableCell>
-                          <Button asChild variant="outline" size="sm">
-                            <a
-                              href={`/${params.tenantSlug}/experts/documents/${doc.id}/view`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              열람
-                            </a>
-                          </Button>
+                          <span className="flex items-center gap-1">
+                            <Button asChild variant="outline" size="sm">
+                              <Link
+                                href={`/${params.tenantSlug}/experts/documents/${doc.id}/preview`}
+                              >
+                                미리보기
+                              </Link>
+                            </Button>
+                            <Button asChild variant="ghost" size="sm">
+                              <a
+                                href={`/${params.tenantSlug}/experts/documents/${doc.id}/view`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                원본
+                              </a>
+                            </Button>
+                          </span>
                         </TableCell>
                       </TableRow>
                     ))}

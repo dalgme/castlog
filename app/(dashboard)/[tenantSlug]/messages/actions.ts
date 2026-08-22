@@ -76,12 +76,23 @@ export async function sendMessage(
       expertId: e.id,
       name: e.name,
     }));
+    // 서명 문구 — 문자 하단 자동 추가 (기획 확정 2026-08-22)
+    const smsBody = data.signature
+      ? `${data.body}\n\n${data.signature}`
+      : data.body;
+    if (smsBody.length > 1800) {
+      return {
+        ok: false,
+        error: "내용과 서명 문구를 합쳐 1800자 이내여야 합니다. 내용을 줄여 주세요.",
+      };
+    }
     const result = await sendTenantSms({
       tenantId,
       senderUserId: user.id,
       messageType: data.messageType,
-      body: data.body,
+      body: smsBody,
       recipients,
+      senderNumber: data.senderNumber ?? null,
     });
     if (!result.ok) return result;
     summary = result.summary;

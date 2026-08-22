@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 
+import { DOCUMENT_ACCEPT_ATTR } from "@/lib/experts/documents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -44,7 +45,7 @@ export function DocumentUploadForm({
         ref={inputRef}
         type="file"
         name="file"
-        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        accept={DOCUMENT_ACCEPT_ATTR}
         className="text-xs file:mr-2 file:text-xs"
         onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
       />
@@ -55,7 +56,7 @@ export function DocumentUploadForm({
         disabled={pending || !fileName}
         className="shrink-0"
       >
-        {pending ? "업로드 중..." : hasExisting ? "교체" : "업로드"}
+        {pending ? "업로드 중..." : hasExisting ? "수정 등록" : "업로드"}
       </Button>
     </form>
   );

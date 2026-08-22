@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { DocumentUploadForm } from "./upload-form";
 import { DocumentGrantsPanel } from "./grants-panel";
+import { CertificatesPanel, type CertificateRow } from "./certificates-panel";
 
 export const metadata = { title: "서류함" };
 
@@ -86,6 +87,30 @@ export default async function ExpertDocumentsPage() {
   const activeDocs = new Map(
     (documents ?? []).map((d) => [d.document_type, d] as const)
   );
+
+  // 자격증 사본 (다건) — 마이그레이션 미적용 DB에서는 조용히 빈 목록
+  let certificateRows: CertificateRow[] = [];
+  {
+    const { data: certs, error: certsError } = await supabase
+      .from("expert_certificates")
+      .select(
+        "id, cert_name, issued_on, issuer, note, document_id, expert_documents (file_name, created_at)"
+      )
+      .eq("expert_id", expert.id)
+      .order("created_at", { ascending: true });
+    if (!certsError) {
+      certificateRows = (certs ?? []).map((c) => ({
+        id: c.id,
+        documentId: c.document_id,
+        fileName: c.expert_documents?.file_name ?? "(파일)",
+        createdAt: c.expert_documents?.created_at ?? "",
+        certName: c.cert_name ?? "",
+        issuedOn: c.issued_on ?? "",
+        issuer: c.issuer ?? "",
+        note: c.note ?? "",
+      }));
+    }
+  }
   const activeLinks = links ?? [];
   const now = Date.now();
   const pendingRequests = (docRequests ?? []).filter(
@@ -164,15 +189,22 @@ export default async function ExpertDocumentsPage() {
                       )}
                     </div>
                     {doc ? (
-                      <Button asChild variant="link" size="sm" className="h-auto p-0">
-                        <a
-                          href={`/expert/documents/${doc.id}/view`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          보기
-                        </a>
-                      </Button>
+                      <span className="flex items-center gap-2">
+                        <Button asChild variant="link" size="sm" className="h-auto p-0">
+                          <a href={`/expert/documents/${doc.id}/preview`}>
+                            미리보기
+                          </a>
+                        </Button>
+                        <Button asChild variant="link" size="sm" className="h-auto p-0">
+                          <a
+                            href={`/expert/documents/${doc.id}/view`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            원본
+                          </a>
+                        </Button>
+                      </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">미등록</span>
                     )}
@@ -188,8 +220,24 @@ export default async function ExpertDocumentsPage() {
               );
             })}
             <p className="text-xs text-muted-foreground">
-              PDF·JPG·PNG, 10MB 이하. 새 파일을 올리면 기존 파일은 교체 이력으로
+              PDF·이미지(JPG/PNG)·오피스(doc/docx/xls/xlsx/ppt/pptx)·한글(hwp/hwpx),
+              10MB 이하. ‘수정 등록’으로 새 파일을 올리면 기존 파일은 교체 이력으로
               보존됩니다. 민감 서류 열람은 전 건 기록됩니다.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">자격증 사본</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <CertificatesPanel rows={certificateRows} />
+            <p className="text-xs text-muted-foreground">
+              자격증은 여러 건 등록할 수 있습니다. 각 사본에 자격증명·급수,
+              발급일, 발급기관을 작성해 두면 기업이 확인하기 쉽습니다. 기업
+              열람은 아래 ‘기업별 열람 허용’에서 자격증 사본을 허용한 경우에만
+              가능합니다.
             </p>
           </CardContent>
         </Card>
