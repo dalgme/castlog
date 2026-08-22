@@ -259,18 +259,30 @@ export function normalizeSenderDigits(input: string): string {
   return digits;
 }
 
+/** 개인 휴대폰 번호인가 (01x) — 유선·대표번호(02/031/070/15xx 등)와 구분 */
+export function isPersonalMobileSender(digits: string): boolean {
+  return /^01[016789]/.test(digits);
+}
+
 /**
- * 실제 발신번호 결정 (기획 확정 2026-08-22 — 발신번호 다중 등록):
- * 명시 지정(등록 목록 내) > 보내는 직원 본인 휴대폰과 일치하는 등록 번호 >
- * 회사 대표번호. 등록 목록 밖의 번호는 서버에서 거른다 — 화면 값으로 임의
- * 발신번호를 지정할 수 없어야 한다.
+ * 실제 발신번호 결정 (기획 확정 2026-08-22, 개정 — 기본값은 회사 대표번호):
+ * - 기본값은 항상 **회사 대표번호** (자동 발송 포함).
+ * - 명시 지정은 등록 목록 안에 있어야 하고, **개인 휴대폰(01x) 번호는 보내는
+ *   직원 본인의 휴대폰과 일치할 때만** 허용한다 — 타인의 개인 번호로 발송할 수
+ *   없어야 한다. 조건에 어긋나면 대표번호로 떨어진다.
  */
 async function resolveSenderNumber(
   supabase: ReturnType<typeof createClient>,
   params: TenantSmsSendParams,
   defaultSender: string
 ): Promise<string> {
-  const choices = new Set<string>([normalizeSenderDigits(defaultSender)]);
+  const fallback = normalizeSenderDigits(defaultSender);
+  const requested = params.senderNumber
+    ? normalizeSenderDigits(params.senderNumber)
+    : null;
+  if (!requested || requested === fallback) return fallback;
+
+  const choices = new Set<string>([fallback]);
   const { data: extra, error } = await supabase
     .from("tenant_sms_senders")
     .select("phone")
@@ -280,12 +292,10 @@ async function resolveSenderNumber(
   }
   // error(테이블 미생성 등)면 대표번호만 — 발송이 죽으면 안 된다
 
-  const requested = params.senderNumber
-    ? normalizeSenderDigits(params.senderNumber)
-    : null;
-  if (requested && choices.has(requested)) return requested;
+  if (!choices.has(requested)) return fallback;
 
-  if (!requested && params.senderUserId) {
+  if (isPersonalMobileSender(requested)) {
+    if (!params.senderUserId) return fallback;
     const { data: senderUser } = await supabase
       .from("users")
       .select("phone")
@@ -294,10 +304,10 @@ async function resolveSenderNumber(
     const own = senderUser?.phone
       ? normalizeSenderDigits(senderUser.phone)
       : null;
-    if (own && choices.has(own)) return own;
+    return own === requested ? requested : fallback;
   }
 
-  return normalizeSenderDigits(defaultSender);
+  return requested;
 }
 
 /** 발송 실행 — 전 건 sms_logs 기록 + 사용량 계측 */
