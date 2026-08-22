@@ -27,7 +27,7 @@ async function snapshotSignatureImage(
 ): Promise<string | null> {
   const { data: doc } = await admin
     .from("expert_documents")
-    .select("storage_path")
+    .select("storage_path, mime_type")
     .eq("expert_id", expertId)
     .eq("document_type", documentType)
     .eq("status", "active")
@@ -42,7 +42,11 @@ async function snapshotSignatureImage(
   const bytes = Buffer.from(await file.arrayBuffer());
   const { error: uploadError } = await admin.storage
     .from(EXPERT_DOCUMENT_BUCKET)
-    .upload(destPath, bytes, { contentType: "image/png", upsert: true });
+    // 업로드 등록본은 JPG일 수 있다 — 원본의 형식 그대로 스냅샷
+    .upload(destPath, bytes, {
+      contentType: doc.mime_type ?? "image/png",
+      upsert: true,
+    });
   if (uploadError) return null;
 
   return destPath;

@@ -54,8 +54,8 @@ export function isGrantableDocumentType(value: string): boolean {
 }
 
 /**
- * 서명 캔버스로 수집하는 유형 (단계 28-A) — 파일 업로드가 아니라 PNG 캔버스.
- * 암호화 버킷 저장·서명 URL 열람은 다른 서류와 동일.
+ * 서명·날인 유형 (단계 28-A + 개정 2026-08-22) — 서명은 캔버스+이미지 업로드
+ * 겸용, 날인은 이미지 업로드 전용. 암호화 버킷 저장·서명 URL 열람은 동일.
  */
 export const SIGNATURE_CANVAS_TYPES = ["signature", "seal"] as const;
 export type SignatureCanvasType = (typeof SIGNATURE_CANVAS_TYPES)[number];
