@@ -24,21 +24,45 @@ export type RecipientOption = {
  * 발송 작성 폼 (CLAUDE.md 5-1 — 유형 선택 필수, 기본값 광고성=안전한 쪽)
  * 광고성 선택 시 (광고) 표기·수신거부 링크가 강제 삽입됨을 미리보기로 보여준다.
  */
-export type SenderOption = { value: string; label: string };
+export type SenderOption = {
+  value: string;
+  label: string;
+  /** 서명 문구에 쓸 이름 (발신번호 표시명) — 대표번호는 null */
+  signatureName: string | null;
+};
+
+/** 서명 문구 기본값 — "(주)렛츠 김예나 선임" 형태 (회사명 + 표시명) */
+function defaultSignature(
+  tenantName: string,
+  senderOptions: SenderOption[],
+  senderValue: string
+): string {
+  const option = senderOptions.find((o) => o.value === senderValue);
+  const name = option?.signatureName;
+  return [tenantName, name].filter(Boolean).join(" ");
+}
 
 export function ComposeForm({
   recipients,
   senderOptions = [],
   defaultSender = null,
+  tenantName = "",
 }: {
   recipients: RecipientOption[];
   /** 발신번호 선택지 (대표번호 + 추가 등록 번호) */
   senderOptions?: SenderOption[];
   /** 기본 발신번호 — 로그인 직원 본인 번호가 등록돼 있으면 그 번호 (기획 2026-08-22) */
   defaultSender?: string | null;
+  tenantName?: string;
 }) {
   const [channel, setChannel] = useState<"sms" | "email">("sms");
   const [senderNumber, setSenderNumber] = useState<string>(defaultSender ?? "");
+  // 서명 문구 — 발신번호를 바꾸면 그 번호의 표시명으로 자동 갱신되지만,
+  // 직접 고친 뒤에는 사용자의 문구를 유지한다
+  const [signature, setSignature] = useState<string>(
+    defaultSignature(tenantName, senderOptions, defaultSender ?? "")
+  );
+  const [signatureEdited, setSignatureEdited] = useState(false);
   // 기본값은 업무연락 (기획 변경 2026-08-22). 실제 발송의 대부분이 섭외·일정·
   // 지급 안내라 광고성 기본은 매번 바꾸는 클릭만 만들었다. 광고성을 고르면
   // 강제장치(미동의 제외·(광고) 표기·수신거부 링크·야간 차단)는 그대로 작동한다.
@@ -58,10 +82,14 @@ export function ComposeForm({
   );
   const selectedCount = eligible.filter((r) => selected.has(r.expertId)).length;
 
+  const signedBody =
+    channel === "sms" && signature.trim()
+      ? `${body || "…"}\n\n${signature.trim()}`
+      : body || "…";
   const preview =
     messageType === "advertising"
-      ? `(광고) ${body || "…"}\n무료수신거부: https://castlog.kr/u/****`
-      : body || "…";
+      ? `(광고) ${signedBody}\n무료수신거부: https://castlog.kr/u/****`
+      : signedBody;
 
   function toggle(expertId: string, checked: boolean) {
     setSelected((prev) => {
@@ -98,6 +126,8 @@ export function ComposeForm({
         expertIds: ids,
         senderNumber:
           channel === "sms" && senderNumber ? senderNumber : undefined,
+        signature:
+          channel === "sms" && signature.trim() ? signature.trim() : undefined,
       });
       if (result.ok) {
         toast({
@@ -166,7 +196,14 @@ export function ComposeForm({
           <p className="text-sm font-semibold">발신번호</p>
           <select
             value={senderNumber}
-            onChange={(e) => setSenderNumber(e.target.value)}
+            onChange={(e) => {
+              setSenderNumber(e.target.value);
+              if (!signatureEdited) {
+                setSignature(
+                  defaultSignature(tenantName, senderOptions, e.target.value)
+                );
+              }
+            }}
             className="h-9 w-full max-w-xs rounded-md border bg-background px-2 text-sm"
           >
             {senderOptions.map((o) => (
@@ -179,6 +216,23 @@ export function ComposeForm({
           <p className="text-xs text-muted-foreground">
             본인 휴대폰과 일치하는 등록 번호가 기본 선택됩니다. 발신번호
             추가·삭제는 설정 &gt; SMS 설정 &gt; 발신번호 관리에서 합니다.
+          </p>
+          <p className="pt-1 text-sm font-semibold">
+            서명 문구 (문자 하단 자동 추가)
+          </p>
+          <Input
+            value={signature}
+            onChange={(e) => {
+              setSignatureEdited(true);
+              setSignature(e.target.value);
+            }}
+            maxLength={100}
+            placeholder="예: (주)렛츠 김예나 선임연구원 — 비우면 붙지 않습니다"
+            className="max-w-md"
+          />
+          <p className="text-xs text-muted-foreground">
+            회사명 + 발신번호 표시명으로 자동 채워지며, 발송 전에 자유롭게
+            고치거나 지울 수 있습니다.
           </p>
         </div>
       )}

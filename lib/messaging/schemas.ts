@@ -38,6 +38,8 @@ export const messageSendSchema = z
       .string()
       .regex(/^[\d-]{8,13}$/)
       .optional(),
+    // 서명 문구(선택) — 문자 하단에 자동 추가 (예: "(주)렛츠 김예나 선임연구원")
+    signature: z.string().trim().max(100, "서명 문구는 100자 이내로 입력하세요.").optional(),
   })
   .refine((v) => v.channel !== "email" || (v.subject && v.subject.length > 0), {
     message: "이메일은 제목이 필요합니다.",

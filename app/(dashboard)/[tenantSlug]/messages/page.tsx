@@ -93,23 +93,33 @@ export default async function MessagesPage() {
   // 발신번호 선택지 = 대표번호 + 추가 등록 번호. 기본값은 로그인한 직원
   // 본인의 휴대폰과 일치하는 번호(있을 때), 없으면 대표번호 (기획 2026-08-22).
   const sessionUser = await getSessionUser();
-  const [{ data: smsConfig }, sendersResult, { data: me }] = await Promise.all([
-    supabase.from("tenant_sms_configs").select("sender_number").maybeSingle(),
-    supabase
-      .from("tenant_sms_senders")
-      .select("phone, label")
-      .order("created_at", { ascending: true }),
-    sessionUser
-      ? supabase.from("users").select("phone").eq("id", sessionUser.id).maybeSingle()
-      : Promise.resolve({ data: null as { phone: string | null } | null }),
-  ]);
+  const [{ data: smsConfig }, sendersResult, { data: me }, { data: tenant }] =
+    await Promise.all([
+      supabase.from("tenant_sms_configs").select("sender_number").maybeSingle(),
+      supabase
+        .from("tenant_sms_senders")
+        .select("phone, label")
+        .order("created_at", { ascending: true }),
+      sessionUser
+        ? supabase.from("users").select("phone").eq("id", sessionUser.id).maybeSingle()
+        : Promise.resolve({ data: null as { phone: string | null } | null }),
+      supabase.from("tenants").select("name").maybeSingle(),
+    ]);
 
-  const senderOptions: { value: string; label: string }[] = [];
+  const senderOptions: {
+    value: string;
+    label: string;
+    signatureName: string | null;
+  }[] = [];
   const seenSenders = new Set<string>();
   if (smsConfig?.sender_number) {
     const digits = normalizeSenderDigits(smsConfig.sender_number);
     seenSenders.add(digits);
-    senderOptions.push({ value: digits, label: `${formatKrMobile(digits)} (대표번호)` });
+    senderOptions.push({
+      value: digits,
+      label: `${formatKrMobile(digits)} (대표번호)`,
+      signatureName: null,
+    });
   }
   // 테이블 미생성(마이그레이션 미적용)이면 error — 대표번호만 노출
   for (const s of sendersResult.error ? [] : (sendersResult.data ?? [])) {
@@ -119,6 +129,7 @@ export default async function MessagesPage() {
     senderOptions.push({
       value: digits,
       label: s.label ? `${formatKrMobile(digits)} (${s.label})` : formatKrMobile(digits),
+      signatureName: s.label ?? null,
     });
   }
   const myDigits = me?.phone ? normalizeSenderDigits(me.phone) : null;
@@ -140,6 +151,7 @@ export default async function MessagesPage() {
               recipients={recipients}
               senderOptions={senderOptions}
               defaultSender={defaultSender}
+              tenantName={tenant?.name ?? ""}
             />
           </CardContent>
         </Card>
