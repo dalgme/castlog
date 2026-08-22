@@ -36,9 +36,13 @@ export function SignaturePad({
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [justRegistered, setJustRegistered] = useState(false);
   const { toast } = useToast();
 
   const canDraw = kind === "signature";
+  // 등록된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22)
+  const isRegistered = registered || justRegistered;
+  const savedButtonClass = "bg-emerald-600 text-white hover:bg-emerald-700";
 
   function saveDrawing() {
     if (!dataUrl) {
@@ -54,6 +58,7 @@ export function SignaturePad({
         toast({ description: `${label}을(를) 등록했습니다.` });
         setDataUrl(null);
         setResetKey((k) => k + 1);
+        setJustRegistered(true);
       } else {
         toast({ variant: "destructive", description: result.error });
       }
@@ -75,6 +80,7 @@ export function SignaturePad({
         toast({ description: `${label} 이미지를 등록했습니다.` });
         if (fileRef.current) fileRef.current.value = "";
         setFileName(null);
+        setJustRegistered(true);
       } else {
         toast({ variant: "destructive", description: result.error });
       }
@@ -85,7 +91,7 @@ export function SignaturePad({
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{label}</span>
-        {registered ? (
+        {isRegistered ? (
           <Badge>등록됨</Badge>
         ) : (
           <Badge variant="secondary">미등록</Badge>
@@ -99,12 +105,14 @@ export function SignaturePad({
             onChange={setDataUrl}
             disabled={pending}
           />
-          <Button type="button" size="sm" onClick={saveDrawing} disabled={pending}>
-            {pending
-              ? "저장 중..."
-              : registered
-                ? "새로 등록(교체)"
-                : "등록"}
+          <Button
+            type="button"
+            size="sm"
+            onClick={saveDrawing}
+            disabled={pending}
+            className={isRegistered ? savedButtonClass : undefined}
+          >
+            {pending ? "저장 중..." : isRegistered ? "수정하기" : "등록"}
           </Button>
         </>
       )}
@@ -129,15 +137,21 @@ export function SignaturePad({
             type="button"
             size="sm"
             variant={canDraw ? "outline" : "default"}
-            className="shrink-0"
+            className={
+              isRegistered && !canDraw
+                ? `shrink-0 ${savedButtonClass}`
+                : "shrink-0"
+            }
             disabled={pending || !fileName}
             onClick={saveUpload}
           >
             <Upload className="mr-1 h-3.5 w-3.5" aria-hidden />
             {pending
               ? "등록 중..."
-              : registered
-                ? "파일로 교체 등록"
+              : isRegistered
+                ? canDraw
+                  ? "파일로 수정하기"
+                  : "수정하기"
                 : "파일로 등록"}
           </Button>
         </div>

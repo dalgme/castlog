@@ -124,8 +124,17 @@ export function BankAccountForm({
           계좌번호는 암호화되어 안전하게 보관되며 화면에는 마지막 4자리만
           표시됩니다. 지급 단계에서 지정된 담당자만 열람할 수 있습니다.
         </p>
-        <Button type="submit" disabled={pending}>
-          {pending ? "저장 중..." : "계좌 정보 저장"}
+        {/* 저장된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22) */}
+        <Button
+          type="submit"
+          disabled={pending}
+          className={
+            maskedLast4 || saved
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : undefined
+          }
+        >
+          {pending ? "저장 중..." : maskedLast4 || saved ? "수정하기" : "계좌 정보 저장"}
         </Button>
       </form>
     </Form>

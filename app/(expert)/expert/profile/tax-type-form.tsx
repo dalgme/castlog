@@ -30,7 +30,10 @@ export function TaxTypeForm({
   const [selected, setSelected] = useState<string>(currentType ?? "");
   const [bizNumber, setBizNumber] = useState(currentBizNumber ?? "");
   const [pending, startTransition] = useTransition();
+  const [savedOnce, setSavedOnce] = useState(false);
   const { toast } = useToast();
+
+  const hasSaved = Boolean(currentType) || savedOnce;
 
   function onSave() {
     if (
@@ -48,6 +51,7 @@ export function TaxTypeForm({
           selected === "business" ? bizNumber || undefined : undefined,
       });
       if (result.ok) {
+        setSavedOnce(true);
         toast({ description: "소득유형이 저장되었습니다." });
       } else {
         toast({ variant: "destructive", description: result.error });
@@ -102,13 +106,18 @@ export function TaxTypeForm({
           />
         </div>
       )}
+      {/* 저장된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22) */}
       <Button
         type="button"
-        className="w-full"
+        className={
+          hasSaved
+            ? "w-full bg-emerald-600 text-white hover:bg-emerald-700"
+            : "w-full"
+        }
         disabled={pending}
         onClick={onSave}
       >
-        {pending ? "저장 중..." : "소득유형 저장"}
+        {pending ? "저장 중..." : hasSaved ? "수정하기" : "소득유형 저장"}
       </Button>
       <p className="text-xs text-muted-foreground">
         변경 사항은 이후 지급 건부터 적용되며, 이미 상신된 지급 품의에는
