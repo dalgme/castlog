@@ -214,8 +214,9 @@ export function ComposeForm({
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            본인 휴대폰과 일치하는 등록 번호가 기본 선택됩니다. 발신번호
-            추가·삭제는 설정 &gt; SMS 설정 &gt; 발신번호 관리에서 합니다.
+            기본은 회사 대표번호입니다. 본인 휴대폰으로 등록된 번호는
+            본인에게만 표시되며 선택해서 쓸 수 있습니다. 발신번호 추가·삭제는
+            설정 &gt; SMS 설정 &gt; 발신번호 관리에서 합니다.
           </p>
           <p className="pt-1 text-sm font-semibold">
             서명 문구 (문자 하단 자동 추가)

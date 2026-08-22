@@ -1,6 +1,6 @@
 import { requireRole, getSessionUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { normalizeSenderDigits } from "@/lib/sms/send";
+import { isPersonalMobileSender, normalizeSenderDigits } from "@/lib/sms/send";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrMobile } from "@/lib/auth/phone";
 import { PageHeader } from "@/components/layout/header";
@@ -90,8 +90,9 @@ export default async function MessagesPage() {
   const smsRows = smsLogs ?? [];
   const emailRows = emailLogs ?? [];
 
-  // 발신번호 선택지 = 대표번호 + 추가 등록 번호. 기본값은 로그인한 직원
-  // 본인의 휴대폰과 일치하는 번호(있을 때), 없으면 대표번호 (기획 2026-08-22).
+  // 발신번호 선택지 (기획 개정 2026-08-22): 기본값은 항상 **회사 대표번호**.
+  // 개인 휴대폰(01x)으로 등록된 번호는 그 번호의 본인(휴대폰 일치 직원)에게만
+  // 보이고, 본인만 대표번호와 선택적으로 쓸 수 있다. 유선·대표급 번호는 전원 노출.
   const sessionUser = await getSessionUser();
   const [{ data: smsConfig }, sendersResult, { data: me }, { data: tenant }] =
     await Promise.all([
@@ -121,10 +122,13 @@ export default async function MessagesPage() {
       signatureName: null,
     });
   }
+  const myDigits = me?.phone ? normalizeSenderDigits(me.phone) : null;
   // 테이블 미생성(마이그레이션 미적용)이면 error — 대표번호만 노출
   for (const s of sendersResult.error ? [] : (sendersResult.data ?? [])) {
     const digits = normalizeSenderDigits(s.phone);
     if (seenSenders.has(digits)) continue;
+    // 개인 휴대폰 번호는 본인에게만 — 타인의 개인 번호는 선택지에서 숨긴다
+    if (isPersonalMobileSender(digits) && digits !== myDigits) continue;
     seenSenders.add(digits);
     senderOptions.push({
       value: digits,
@@ -132,11 +136,8 @@ export default async function MessagesPage() {
       signatureName: s.label ?? null,
     });
   }
-  const myDigits = me?.phone ? normalizeSenderDigits(me.phone) : null;
-  const defaultSender =
-    myDigits && seenSenders.has(myDigits)
-      ? myDigits
-      : (senderOptions[0]?.value ?? null);
+  // 기본값은 항상 회사 대표번호 (목록 첫 항목)
+  const defaultSender = senderOptions[0]?.value ?? null;
 
   return (
     <div>
