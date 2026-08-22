@@ -157,7 +157,7 @@ export default async function ApprovalDetailPage({
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
               <span>상신 {approval.requester?.name ?? "-"}</span>
               <span>
-                {new Date(approval.created_at).toLocaleString("ko-KR")}
+                {new Date(approval.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
               </span>
               {approval.amount !== null && (
                 <span className="font-medium text-foreground">
@@ -233,7 +233,7 @@ export default async function ApprovalDetailPage({
                         {step.comment && <span>“{step.comment}”</span>}
                         {step.acted_at && (
                           <span>
-                            {new Date(step.acted_at).toLocaleString("ko-KR")}
+                            {new Date(step.acted_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                           </span>
                         )}
                       </div>

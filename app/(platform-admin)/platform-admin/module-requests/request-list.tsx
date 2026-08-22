@@ -73,7 +73,7 @@ export function ModuleRequestList({ requests }: { requests: ModuleRequest[] }) {
                 {MODULE_REQUEST_STATUS_LABELS[req.status]}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {new Date(req.createdAt).toLocaleString("ko-KR")}
+                {new Date(req.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                 {req.requesterName && ` · ${req.requesterName}`}
               </span>
             </div>
@@ -129,7 +129,7 @@ export function ModuleRequestList({ requests }: { requests: ModuleRequest[] }) {
                 <p className="rounded-md border p-2.5 text-xs text-muted-foreground">
                   처리 메모: {req.decisionNote}
                   {req.decidedAt &&
-                    ` (${new Date(req.decidedAt).toLocaleString("ko-KR")})`}
+                    ` (${new Date(req.decidedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`}
                 </p>
               )
             )}

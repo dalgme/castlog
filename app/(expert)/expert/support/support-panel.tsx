@@ -169,7 +169,7 @@ function TicketItem({ ticket }: { ticket: SupportTicket }) {
                   </p>
                   <p className="whitespace-pre-wrap">{m.body}</p>
                   <p className="mt-1 text-[10px] text-muted-foreground">
-                    {new Date(m.createdAt).toLocaleString("ko-KR")}
+                    {new Date(m.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                   </p>
                 </div>
               </div>

@@ -220,7 +220,7 @@ export function HelpBoardPanel({ rows }: { rows: BoardRow[] }) {
                       <code>{row.path}</code>
                     </span>
                   )}
-                  <span>{new Date(row.createdAt).toLocaleString("ko-KR")}</span>
+                  <span>{new Date(row.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</span>
                 </div>
 
                 <details className="mt-2">

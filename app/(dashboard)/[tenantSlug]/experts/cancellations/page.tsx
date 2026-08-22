@@ -107,7 +107,7 @@ export default async function EngagementCancellationsPage({
                       {row.users?.name ?? "-"}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {new Date(row.canceled_at).toLocaleString("ko-KR")}
+                      {new Date(row.canceled_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                     </TableCell>
                   </TableRow>
                 ))}

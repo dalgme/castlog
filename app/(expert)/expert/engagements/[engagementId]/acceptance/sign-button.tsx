@@ -48,7 +48,7 @@ export function AcceptanceSignButton({
           </span>
           {signedAt && (
             <span className="text-muted-foreground">
-              ({new Date(signedAt).toLocaleString("ko-KR")})
+              ({new Date(signedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})
             </span>
           )}
         </AlertDescription>

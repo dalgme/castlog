@@ -55,7 +55,7 @@ export default async function ExternalSendPage({
         <div className="flex items-start gap-2 rounded-lg border border-brand-amber/40 bg-brand-amber/10 p-3">
           <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-amber" aria-hidden />
           <p className="text-xs leading-relaxed text-brand-navy">
-            이 링크는 <b>임시 다운로드 URL</b>입니다. <b>{new Date(send.expiresAt).toLocaleString("ko-KR")}</b>
+            이 링크는 <b>임시 다운로드 URL</b>입니다. <b>{new Date(send.expiresAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</b>
             까지만 내려받을 수 있으며, 이후 자동으로 만료됩니다. 필요한 서류는 지금 저장해 주세요.
           </p>
         </div>

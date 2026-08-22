@@ -73,7 +73,7 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
   }, [revealed, countdown]);
 
   const csvDownload = (expertName: string, rrn: string, reasonKey: RrnAccessReason) => {
-    const now = new Date().toLocaleString("ko-KR");
+    const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
     const rows = [
       ["항목", "값"],
       ["전문가", expertName],
@@ -264,7 +264,7 @@ export function RrnRevealPanel({ accessorHint }: { accessorHint: string }) {
             className="pointer-events-none absolute inset-0 flex select-none items-center justify-center text-[11px] font-bold uppercase tracking-widest text-brand/10"
             aria-hidden
           >
-            {accessorHint} · {new Date().toLocaleString("ko-KR")}
+            {accessorHint} · {new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
           </div>
           <p className="relative text-2xl font-bold tracking-widest text-brand-navy">
             {fmtRrn(revealed)}

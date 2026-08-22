@@ -26,8 +26,11 @@ export type RecipientOption = {
  */
 export function ComposeForm({ recipients }: { recipients: RecipientOption[] }) {
   const [channel, setChannel] = useState<"sms" | "email">("sms");
+  // 기본값은 업무연락 (기획 변경 2026-08-22). 실제 발송의 대부분이 섭외·일정·
+  // 지급 안내라 광고성 기본은 매번 바꾸는 클릭만 만들었다. 광고성을 고르면
+  // 강제장치(미동의 제외·(광고) 표기·수신거부 링크·야간 차단)는 그대로 작동한다.
   const [messageType, setMessageType] = useState<"advertising" | "transactional">(
-    "advertising"
+    "transactional"
   );
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");

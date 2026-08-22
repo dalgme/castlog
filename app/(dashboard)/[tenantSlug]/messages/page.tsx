@@ -15,7 +15,7 @@ const LOG_STATUS_LABELS: Record<string, string> = {
   sent: "발송",
   failed: "실패",
   blocked: "차단",
-  test: "테스트",
+  test: "테스트 모드 — 실발송 안 됨",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -60,7 +60,7 @@ export default async function MessagesPage() {
         .order("created_at", { ascending: true }),
       supabase
         .from("sms_logs")
-        .select("id, message_type, recipient_phone, status, created_at, experts (name)")
+        .select("id, message_type, recipient_phone, status, error_message, created_at, experts (name)")
         .order("created_at", { ascending: false })
         .limit(15),
       supabase
@@ -129,8 +129,13 @@ export default async function MessagesPage() {
                       {LOG_STATUS_LABELS[log.status] ?? log.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString("ko-KR")}
+                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                     </span>
+                    {log.status === "failed" && log.error_message && (
+                      <span className="w-full text-xs text-destructive">
+                        사유: {log.error_message}
+                      </span>
+                    )}
                   </li>
                 ))}
                 {emailRows.map((log) => (
@@ -149,7 +154,7 @@ export default async function MessagesPage() {
                       {LOG_STATUS_LABELS[log.status] ?? log.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString("ko-KR")}
+                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                     </span>
                   </li>
                 ))}

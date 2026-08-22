@@ -155,7 +155,7 @@ export function SettlementPanel({
           {summary.submitted && (
             <p className="self-center text-xs text-muted-foreground">
               {summary.reviewedAt
-                ? `${new Date(summary.reviewedAt).toLocaleString("ko-KR")} 확인 완료 · 품의 송신됨`
+                ? `${new Date(summary.reviewedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 확인 완료 · 품의 송신됨`
                 : "확인 완료 · 품의 송신됨"}
             </p>
           )}
