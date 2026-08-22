@@ -5,9 +5,18 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
+  DEGREE_LEVEL_OPTIONS,
+  REGION_SIDO_OPTIONS,
   expertProfileSchema,
   type ExpertProfileInput,
 } from "@/lib/experts/schemas";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,11 +93,11 @@ export function ExpertProfileForm({
             name="secondaryPhone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>보조 연락처 (선택)</FormLabel>
+                <FormLabel>보조 연락처 (선택 · 휴대폰/일반번호)</FormLabel>
                 <FormControl>
                   <Input
                     inputMode="numeric"
-                    placeholder="010-0000-0000"
+                    placeholder="010-0000-0000 또는 02-000-0000"
                     autoComplete="tel"
                     {...field}
                   />
@@ -98,28 +107,86 @@ export function ExpertProfileForm({
             )}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {/* 거주지 — 광역자치단체 선택 + 세부 주소 (기획 확정 2026-08-22) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
           <FormField
             control={form.control}
-            name="specialty"
+            name="regionSido"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>전문분야 (선택)</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
+                <FormLabel>거주지 (선택)</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value ?? ""}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="광역자치단체" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {REGION_SIDO_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
           <FormField
             control={form.control}
-            name="region"
+            name="regionDetail"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>거주지·활동지역 (선택)</FormLabel>
+                <FormLabel className="sm:invisible sm:block">세부 주소</FormLabel>
                 <FormControl>
-                  <Input {...field} />
+                  <Input placeholder="세부 주소 (예: 강남구 테헤란로 …)" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+        {/* 최종학위 선택 + 전공명 (기획 확정 2026-08-22) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
+          <FormField
+            control={form.control}
+            name="degreeLevel"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>최종학위 (선택)</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value ?? ""}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="학위 선택" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {DEGREE_LEVEL_OPTIONS.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="degreeMajor"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sm:invisible sm:block">전공명</FormLabel>
+                <FormControl>
+                  <Input placeholder="전공명 (예: 경영학)" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -144,9 +211,9 @@ export function ExpertProfileForm({
           name="degreeCertifications"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>최종학위 및 자격증 (선택)</FormLabel>
+              <FormLabel>자격증 (선택)</FormLabel>
               <FormControl>
-                <Input placeholder="예: 경영학 석사, 경영지도사" {...field} />
+                <Input placeholder="예: 경영지도사, 기술사" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

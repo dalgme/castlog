@@ -39,6 +39,9 @@ type PositionRow = {
   status: string;
   assigned_expert_id: string | null;
   slot_id: string;
+  rank: number | null;
+  position_no: number;
+  expected_fee: number | null;
 };
 
 /** 프로젝트의 코드넘버 상태를 한 번에 읽는다 (RLS가 가시성을 판정) */
@@ -57,7 +60,7 @@ export async function getProjectEngagementState(
 
   const { data: slots } = await supabase
     .from("engagement_slots")
-    .select("id, fee_amount")
+    .select("id, fee_amount, required_count")
     .eq("project_id", projectId);
   const slotIds = (slots ?? []).map((s) => s.id);
   const feeBySlot = new Map((slots ?? []).map((s) => [s.id, s.fee_amount ?? 0]));
@@ -65,7 +68,9 @@ export async function getProjectEngagementState(
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("id, code, status, assigned_expert_id, slot_id")
+        .select(
+          "id, code, status, assigned_expert_id, slot_id, rank, position_no, expected_fee"
+        )
         .in("slot_id", slotIds)
     : { data: [] as PositionRow[] };
 
@@ -77,10 +82,29 @@ export async function getProjectEngagementState(
   const filled = live.filter((p) => p.status === "filled").length;
   const open = live.filter((p) => p.status === "open").length;
 
-  // 배정 명단 금액 — 세션의 1인당 비용을 자리 수만큼 더한다
-  const plannedAmount = live
-    .filter((p) => p.status !== "open")
-    .reduce((sum, p) => sum + (feeBySlot.get(p.slot_id) ?? 0), 0);
+  // 후보 순위 모델 (개정 2026-08-22): 세션마다 후보 여러 명 중 순위 상위
+  // '필요인원'명이 실제 섭외 대상이다. 금액도 그 기준으로 센다 — 예정가가
+  // 없으면 세션 1인 비용(레거시) 폴백.
+  const liveBySlot = new Map<string, PositionRow[]>();
+  for (const p of live) {
+    const list = liveBySlot.get(p.slot_id) ?? [];
+    list.push(p);
+    liveBySlot.set(p.slot_id, list);
+  }
+  let plannedAmount = 0;
+  let readySlots = 0;
+  for (const slot of slots ?? []) {
+    const candidates = (liveBySlot.get(slot.id) ?? []).sort(
+      (a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no)
+    );
+    const progressed = candidates.filter((c) => c.assigned_expert_id);
+    const selected = progressed.slice(0, slot.required_count);
+    plannedAmount += selected.reduce(
+      (sum, c) => sum + (c.expected_fee ?? feeBySlot.get(slot.id) ?? 0),
+      0
+    );
+    if (progressed.length >= slot.required_count) readySlots += 1;
+  }
 
   return {
     stage: projectStage(project.engagement_stage),
@@ -90,8 +114,10 @@ export async function getProjectEngagementState(
     requested,
     filled,
     open,
-    // 자리가 하나도 없으면 '전부 찼다'가 아니다 — 세션부터 만들어야 한다
-    fullyAssigned: live.length > 0 && open === 0,
+    // '전부 찼다' = 모든 세션에서 배정 후보가 필요인원 이상 (후보 슬롯이
+    // 비어 있어도 된다). 세션이 하나도 없으면 아니다 — 세션부터 만들어야 한다
+    fullyAssigned:
+      (slots ?? []).length > 0 && readySlots === (slots ?? []).length,
     plannedAmount,
   };
 }
@@ -104,6 +130,10 @@ export type PlanDraftLine = {
   code: string;
   expertName: string;
   fee: number;
+  /** 세션 내 섭외 순위 (1=최우선) */
+  rank: number;
+  /** 순위 상위 '필요인원'에 들어 실제 섭외·금액 대상인가 */
+  selected: boolean;
 };
 
 export type PlanDraft = {
@@ -137,7 +167,7 @@ export async function buildEngagementPlanDraft(
   const { data: slots } = await supabase
     .from("engagement_slots")
     .select(
-      "id, slot_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name"
+      "id, slot_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count"
     )
     .eq("project_id", projectId)
     .order("slot_date", { ascending: true })
@@ -147,7 +177,9 @@ export async function buildEngagementPlanDraft(
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("id, code, status, assigned_expert_id, expert_id, slot_id, position_no")
+        .select(
+          "id, code, status, assigned_expert_id, expert_id, slot_id, position_no, rank, expected_fee"
+        )
         .in("slot_id", slotIds)
         .order("position_no", { ascending: true })
     : { data: [] };
@@ -164,16 +196,27 @@ export async function buildEngagementPlanDraft(
     : { data: [] };
   const nameById = new Map((experts ?? []).map((e) => [e.id, e.name]));
 
+  // 후보 순위 모델 (개정 2026-08-22): 세션별로 후보를 순위순으로 나열하고,
+  // 금액은 배정된 후보 중 순위 상위 '필요인원'명의 예정가 합으로 계산한다.
   const lines: PlanDraftLine[] = [];
+  let amount = 0;
   for (const slot of slots ?? []) {
     const time =
       slot.starts_time && slot.ends_time
         ? ` ${slot.starts_time.slice(0, 5)}~${slot.ends_time.slice(0, 5)}`
         : "";
-    for (const position of positions ?? []) {
-      if (position.slot_id !== slot.id) continue;
-      if (position.status === "canceled") continue;
+    const candidates = (positions ?? [])
+      .filter((p) => p.slot_id === slot.id && p.status !== "canceled")
+      .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
+    let selectedCount = 0;
+    candidates.forEach((position, idx) => {
       const expertId = position.assigned_expert_id ?? position.expert_id;
+      const fee = position.expected_fee ?? slot.fee_amount ?? 0;
+      const selected = Boolean(expertId) && selectedCount < slot.required_count;
+      if (selected) {
+        selectedCount += 1;
+        amount += fee;
+      }
       lines.push({
         sessionName:
           slot.session_name ?? roleTypeLabel(slot.role_type) ?? slot.role_type,
@@ -182,12 +225,12 @@ export async function buildEngagementPlanDraft(
         role: slot.role_description ?? roleTypeLabel(slot.role_type) ?? "-",
         code: position.code,
         expertName: expertId ? (nameById.get(expertId) ?? "-") : "(미배정)",
-        fee: slot.fee_amount ?? 0,
+        fee,
+        rank: idx + 1,
+        selected,
       });
-    }
+    });
   }
-
-  const amount = lines.reduce((sum, l) => sum + l.fee, 0);
 
   const header = [
     `사업명: ${project.name}`,
@@ -198,16 +241,16 @@ export async function buildEngagementPlanDraft(
     project.budget_amount !== null
       ? `사업예산: ${formatKrw(project.budget_amount)}`
       : null,
-    `섭외 인원: ${lines.length}명`,
-    `섭외비 합계: ${formatKrw(amount)}`,
+    `섭외 인원: ${lines.filter((l) => l.selected).length}명 (후보 ${lines.length}명)`,
+    `계획 섭외비 합계(순위 상위 기준): ${formatKrw(amount)}`,
   ]
     .filter(Boolean)
     .join("\n");
 
   const table = lines
     .map(
-      (l, i) =>
-        `${i + 1}. [${l.code}] ${l.expertName} — ${l.sessionName} · ${l.schedule} · ${l.location} · ${l.role} · ${formatKrw(l.fee)}`
+      (l) =>
+        `${l.selected ? "★" : "예비"} ${l.rank}순위 [${l.code}] ${l.expertName} — ${l.sessionName} · ${l.schedule} · ${l.location} · ${l.role} · 예정가 ${formatKrw(l.fee)}`
     )
     .join("\n");
 
@@ -215,7 +258,7 @@ export async function buildEngagementPlanDraft(
     "【 사업 개요 】",
     header,
     "",
-    "【 세션별 전문가 배정(안) 】",
+    "【 세션별 섭외 후보 순위(안) — ★=섭외 대상, 예비=후순위 후보 】",
     table || "(배정된 인원이 없습니다)",
     "",
     "【 검토 요청 】",
@@ -227,7 +270,7 @@ export async function buildEngagementPlanDraft(
     .trim();
 
   return {
-    title: `[섭외 품의] ${project.name} — 전문가 ${lines.length}명`,
+    title: `[섭외 품의] ${project.name} — 전문가 ${lines.filter((l) => l.selected).length}명`,
     body,
     amount,
     lines,

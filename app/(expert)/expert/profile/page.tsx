@@ -11,6 +11,7 @@ import { PageIntro } from "@/components/expert/ui";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { splitRegion } from "@/lib/experts/schemas";
 import { ExpertProfileForm } from "./profile-form";
 import { ExpertiseForm } from "./expertise-form";
 import { TaxTypeForm } from "./tax-type-form";
@@ -43,7 +44,7 @@ export default async function ExpertProfilePage() {
   const { data: expert } = await supabase
     .from("experts")
     .select(
-      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, expertise_other"
+      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, degree_level, degree_major, expertise_other"
     )
     .eq("auth_user_id", user.id)
     .maybeSingle();
@@ -119,15 +120,15 @@ export default async function ExpertProfilePage() {
               defaultValues={{
                 name: expert.name,
                 email: expert.email ?? "",
-                specialty: expert.specialty ?? "",
-                region: expert.region ?? "",
+                regionSido: splitRegion(expert.region).sido,
+                regionDetail: splitRegion(expert.region).detail,
                 careerYears:
                   expert.career_years != null ? String(expert.career_years) : "",
                 bio: expert.bio ?? "",
                 degreeCertifications: expert.degree_certifications ?? "",
-                secondaryPhone: expert.secondary_phone
-                  ? formatKrMobile(expert.secondary_phone)
-                  : "",
+                degreeLevel: expert.degree_level ?? "",
+                degreeMajor: expert.degree_major ?? "",
+                secondaryPhone: expert.secondary_phone ?? "",
               }}
             />
           </CardContent>

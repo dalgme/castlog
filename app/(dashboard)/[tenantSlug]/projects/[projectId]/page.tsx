@@ -368,7 +368,7 @@ export default async function ProjectDetailPage({
     ? await supabase
         .from("engagement_slot_positions")
         .select(
-          "id, slot_id, position_no, code, status, expert_id, engagement_id, assigned_expert_id"
+          "id, slot_id, position_no, code, status, expert_id, engagement_id, assigned_expert_id, rank, expected_fee"
         )
         .in("slot_id", slotIds)
         .order("position_no", { ascending: true })
@@ -427,10 +427,13 @@ export default async function ProjectDetailPage({
     locationName: s.location_name,
     positions: (positionRecords ?? [])
       .filter((p) => p.slot_id === s.id)
+      .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
       .map((p) => ({
         id: p.id,
         code: p.code,
         positionNo: p.position_no,
+        rank: p.rank ?? p.position_no,
+        expectedFee: p.expected_fee,
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
         engagementId: p.engagement_id,

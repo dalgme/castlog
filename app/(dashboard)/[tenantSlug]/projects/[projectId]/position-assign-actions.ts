@@ -309,18 +309,38 @@ export async function dispatchProjectEngagements(input: {
 
   const { data: slots } = await supabase
     .from("engagement_slots")
-    .select("id")
+    .select("id, required_count")
     .eq("project_id", input.projectId);
   const slotIds = (slots ?? []).map((s) => s.id);
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("id, code, assigned_expert_id, status")
+        .select(
+          "id, code, assigned_expert_id, status, slot_id, rank, position_no"
+        )
         .in("slot_id", slotIds)
         .eq("status", "assigned")
     : { data: [] };
 
-  const targets = (positions ?? []).filter((p) => p.assigned_expert_id);
+  // 후보 순위 모델 (개정 2026-08-22): 세션마다 순위 상위 '필요인원'명에게만
+  // 요청을 보낸다. 후순위 후보는 예비로 남고, 거절 시 그 코드로 개별 요청한다.
+  type DispatchTarget = {
+    id: string;
+    code: string;
+    assigned_expert_id: string | null;
+    status: string;
+    slot_id: string;
+    rank: number | null;
+    position_no: number;
+  };
+  const targets: DispatchTarget[] = [];
+  for (const slot of slots ?? []) {
+    const slotTargets = (positions ?? [])
+      .filter((p) => p.slot_id === slot.id && p.assigned_expert_id)
+      .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
+      .slice(0, slot.required_count);
+    targets.push(...slotTargets);
+  }
   if (targets.length === 0) {
     return { ok: false, error: "발송할 배정 건이 없습니다." };
   }

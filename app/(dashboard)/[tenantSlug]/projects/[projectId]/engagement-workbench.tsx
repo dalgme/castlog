@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  ArrowRight,
   Search,
   CalendarCheck,
   FileText,
@@ -33,7 +32,7 @@ import {
 } from "@/lib/integrations/project-stage";
 
 import type { SlotRow } from "./slot-table";
-import { PositionRequestDialog } from "./position-request-dialog";
+import { CandidateList } from "./candidate-list";
 import {
   EngagementPlanButton,
   type PlanPreviewLine,
@@ -57,7 +56,7 @@ import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 const STEPS = [
   {
     icon: Search,
-    title: "① 전문가 탐색",
+    title: "① 후보 탐색·배정",
     body: "연결된 전문가를 이름·전문분야·지역으로 좁혀 봅니다.",
   },
   {
@@ -68,12 +67,12 @@ const STEPS = [
   {
     icon: FileText,
     title: "③ 임의 배정 → 품의",
-    body: "자리를 전부 채우면 ‘섭외 품의서 자동 작성 및 송신’이 열립니다. 배정은 아직 전문가에게 알려지지 않습니다.",
+    body: "세션마다 후보를 순위대로 배정하고 예정가를 적습니다. 필요인원만큼 배정되면 ‘섭외 품의서 자동 작성 및 송신’이 열립니다.",
   },
   {
     icon: Send,
     title: "④ 결재 후 섭외 진행",
-    body: "결재가 끝나면 전원에게 한 번에 요청을 보냅니다. 수락하면 수락서가 자동 생성됩니다.",
+    body: "결재가 끝나면 순위 상위 필요인원에게 한 번에 요청을 보냅니다. 거절 시 예비 후보로 개별 요청합니다.",
   },
   {
     icon: FileCheck2,
@@ -349,122 +348,22 @@ export function EngagementWorkbench({
                       {slot.locationName}
                     </span>
                   )}
-                  {slot.feeAmount !== null && (
-                    <span className="text-xs text-muted-foreground">
-                      1인 {formatKrw(slot.feeAmount)}
-                    </span>
-                  )}
+                  <span className="text-xs text-muted-foreground">
+                    필요 {slot.requiredCount}명 · 후보 {slot.positions.length}명
+                  </span>
                 </div>
 
-                <ul className="mt-2 divide-y">
-                  {slot.positions.map((p) => {
-                    const isOpen = p.status === "open" || p.status === "assigned";
-                    const isFilled = p.status === "filled";
-                    const stage = stageByPosition[p.id] ?? "assigned";
-                    return (
-                      <li
-                        key={p.id}
-                        className={cn(
-                          "flex flex-wrap items-center gap-2 py-2 text-sm",
-                          // 긴급 취소로 다시 비게 된 자리는 오렌지 배경으로 띄운다 —
-                          // 이 자리만 다시 섭외하면 된다는 것을 한눈에 보여 준다
-                          p.canceledExpertName !== null &&
-                            "-mx-2 rounded-md border-l-4 border-amber-500 bg-amber-50 px-2"
-                        )}
-                      >
-                        <span className="font-mono text-xs font-semibold">
-                          {p.code}
-                        </span>
-                        {p.canceledExpertName !== null && (
-                          <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[11px] font-bold text-destructive">
-                            긴급취소 · {p.canceledExpertName}
-                          </span>
-                        )}
-                        <span
-                          className={
-                            p.expertName ?? p.assignedExpertName
-                              ? "font-medium"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          {p.expertName ?? p.assignedExpertName ?? "미배정"}
-                        </span>
-                        <span
-                          title={ENGAGEMENT_STAGE_DESCRIPTIONS[stage]}
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                            STAGE_TONE_CLASS[ENGAGEMENT_STAGE_TONE[stage]]
-                          )}
-                        >
-                          {ENGAGEMENT_STAGE_LABELS[stage]}
-                        </span>
-
-                        <span className="ml-auto flex items-center gap-1.5">
-                          {isOpen && canManage && (
-                            <>
-                              {/* 자리를 보면서 그 자리에서 보낸다 — 페이지를 옮기면
-                                  어느 자리를 채우던 중이었는지 맥락이 끊긴다 */}
-                              <PositionRequestDialog
-                                positionId={p.id}
-                                code={p.code}
-                                currentExpertName={p.assignedExpertName}
-                              />
-                              <Button asChild size="sm" variant="ghost">
-                                <Link
-                                  href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
-                                >
-                                  자세히
-                                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                                </Link>
-                              </Button>
-                            </>
-                          )}
-                          {isOpen && !canManage && (
-                            <span className="text-xs text-muted-foreground">
-                              섭외 요청은 관리자 이상만 보낼 수 있습니다
-                            </span>
-                          )}
-                          {!isOpen && (
-                            <Button asChild size="sm" variant="outline">
-                              <Link
-                                href={`/${tenantSlug}/projects/${projectId}/positions/${p.id}`}
-                              >
-                                상세 요청사항
-                              </Link>
-                            </Button>
-                          )}
-                          {isFilled && p.engagementId && (
-                            <Button asChild size="sm" variant="ghost">
-                              <Link
-                                href={`/${tenantSlug}/experts/acceptances/${p.engagementId}`}
-                              >
-                                수락서
-                              </Link>
-                            </Button>
-                          )}
-                          {/* 취소는 이 자리에서 한다 — 별도 목록으로 빼 두면
-                              같은 건이 두 곳에 나와 어느 쪽이 최신인지 헷갈린다 */}
-                          {canManage &&
-                            p.engagementId &&
-                            stage === "requested" && (
-                              <EngagementCancelButton
-                                engagementId={p.engagementId}
-                              />
-                            )}
-                          {canManage &&
-                            p.engagementId &&
-                            isFilled &&
-                            stage !== "canceled" && (
-                              <EngagementUrgentCancel
-                                engagementId={p.engagementId}
-                                expertName={p.expertName ?? "전문가"}
-                              />
-                            )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                {/* 후보 순위 모델 — 드래그 순위·개별 예정가·후보 추가/삭제 */}
+                <CandidateList
+                  tenantSlug={tenantSlug}
+                  projectId={projectId}
+                  slotId={slot.id}
+                  requiredCount={slot.requiredCount}
+                  positions={slot.positions}
+                  stageByPosition={stageByPosition}
+                  canManage={canManage}
+                  editable={canManage && projectState.stage === "assigning"}
+                />
               </li>
             ))}
           </ul>

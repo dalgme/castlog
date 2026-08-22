@@ -26,6 +26,10 @@ export function DocumentUploadForm({
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
+    // 한글 파일명이 multipart 경계에서 깨지는 경우가 있다 — 브라우저의
+    // 문자열 값은 안전하므로 파일명을 별도 필드로 함께 보낸다
+    const picked = inputRef.current?.files?.[0];
+    if (picked) formData.set("fileName", picked.name);
     startTransition(async () => {
       const result = await uploadExpertDocument(formData);
       if (result.ok) {
@@ -46,7 +50,7 @@ export function DocumentUploadForm({
         type="file"
         name="file"
         accept={DOCUMENT_ACCEPT_ATTR}
-        className="text-xs file:mr-2 file:text-xs"
+        className="text-xs file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-coral file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-coral-dark"
         onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
       />
       <Button

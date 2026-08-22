@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatKrw } from "@/lib/approvals/constants";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { PositionRequestDialog } from "./position-request-dialog";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
@@ -31,6 +30,10 @@ export type SlotPositionRow = {
   id: string;
   code: string;
   positionNo: number;
+  /** 세션 내 섭외 순위 (1=최우선) */
+  rank: number;
+  /** 후보별 예정가 (없으면 미정) */
+  expectedFee: number | null;
   status: string;
   expertName: string | null;
   /** 확정 건의 수락서로 바로 가기 위한 섭외 건 id */
@@ -185,11 +188,7 @@ export function SlotTable({
                 <Users className="h-3.5 w-3.5" /> {filled}/{s.requiredCount} 확정
                 {requested > 0 && ` · ${requested} 요청중`}
               </span>
-              {s.feeAmount !== null && (
-                <span className="text-xs text-muted-foreground">
-                  1인 {formatKrw(s.feeAmount)}
-                </span>
-              )}
+              {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               {canManage && (
                 <span className="ml-auto flex items-center gap-1">
                   <SessionNoticeDialog
@@ -268,97 +267,132 @@ export function SlotTable({
       })}
 
       {canManage && !adding && (
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-          <Plus className="mr-1 h-4 w-4" /> 타임테이블 추가
+        <Button
+          size="sm"
+          className="bg-violet-600 text-white hover:bg-violet-700"
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="mr-1 h-4 w-4" /> 세션 추가
         </Button>
       )}
 
+      {/* 세션 추가 영역 — 전용 색 구획 (기획 확정 2026-08-22): 세션 탭 색(보라)과
+          맞추고, 일정/역할·인원/정보 묶음으로 나눠 가독성을 높인다 */}
       {adding && (
-        <div className="space-y-2 rounded-lg border border-brand/30 bg-brand/[0.03] p-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div>
-              <label className="text-[11px] text-muted-foreground">날짜</label>
-              <Input
-                type="date"
-                value={d.slotDate}
-                onChange={(e) => set("slotDate", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">시작</label>
-              <Input
-                type="time"
-                value={d.startsTime}
-                onChange={(e) => set("startsTime", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">종료</label>
-              <Input
-                type="time"
-                value={d.endsTime}
-                onChange={(e) => set("endsTime", e.target.value)}
-              />
-            </div>
+        <div className="overflow-hidden rounded-lg border-2 border-violet-300 bg-violet-50/60 shadow-sm">
+          <div className="flex items-center gap-2 bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
+            <Plus className="h-4 w-4" aria-hidden />
+            새 세션 추가
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div>
-              <label className="text-[11px] text-muted-foreground">역할</label>
-              <Select value={d.roleType} onValueChange={(v) => set("roleType", v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-3 p-3">
+            <div className="rounded-md border border-violet-200 bg-white p-3">
+              <p className="mb-2 text-xs font-semibold text-violet-800">① 일정</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <label className="text-[11px] font-medium text-violet-900">
+                    날짜 (필수)
+                  </label>
+                  <Input
+                    type="date"
+                    value={d.slotDate}
+                    onChange={(e) => set("slotDate", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-violet-900">시작</label>
+                  <Input
+                    type="time"
+                    value={d.startsTime}
+                    onChange={(e) => set("startsTime", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-violet-900">종료</label>
+                  <Input
+                    type="time"
+                    value={d.endsTime}
+                    onChange={(e) => set("endsTime", e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">필요 인원</label>
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={d.requiredCount}
-                onChange={(e) => set("requiredCount", e.target.value)}
-              />
+
+            <div className="rounded-md border border-violet-200 bg-white p-3">
+              <p className="mb-2 text-xs font-semibold text-violet-800">
+                ② 역할 · 인원
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="text-[11px] font-medium text-violet-900">역할</label>
+                  <Select value={d.roleType} onValueChange={(v) => set("roleType", v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
+                        <SelectItem key={k} value={k}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-violet-900">
+                    필요 인원 (실제 섭외할 인원)
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={d.requiredCount}
+                    onChange={(e) => set("requiredCount", e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
+                세션을 추가하면 <b>임시후보 코드 3개</b>가 자동 발급됩니다 (필요
+                인원이 3명을 넘으면 그만큼). 비용은 여기서 입력하지 않습니다 —
+                <b> 전문가 등록 탭에서 후보별 예정가</b>로 작성합니다.
+              </p>
             </div>
-            <div>
-              <label className="text-[11px] text-muted-foreground">1인 비용(원)</label>
-              <Input
-                inputMode="numeric"
-                value={d.feeAmount}
-                onChange={(e) => set("feeAmount", e.target.value)}
-                placeholder="500000"
-              />
+
+            <div className="rounded-md border border-violet-200 bg-white p-3">
+              <p className="mb-2 text-xs font-semibold text-violet-800">
+                ③ 세션 정보 (선택)
+              </p>
+              <div className="space-y-2">
+                <Input
+                  value={d.sessionName}
+                  onChange={(e) => set("sessionName", e.target.value)}
+                  placeholder="세션명 (예: 1일차 오전 강의, 데모데이 심사)"
+                />
+                <Input
+                  value={d.roleDescription}
+                  onChange={(e) => set("roleDescription", e.target.value)}
+                  placeholder="세부 역할 (예: IR 멘토링)"
+                />
+                <Input
+                  value={d.locationName}
+                  onChange={(e) => set("locationName", e.target.value)}
+                  placeholder="장소"
+                />
+              </div>
             </div>
-          </div>
-          <Input
-            value={d.sessionName}
-            onChange={(e) => set("sessionName", e.target.value)}
-            placeholder="세션명 (선택 · 예: 1일차 오전 강의, 데모데이 심사)"
-          />
-          <Input
-            value={d.roleDescription}
-            onChange={(e) => set("roleDescription", e.target.value)}
-            placeholder="세부 역할 (선택 · 예: IR 멘토링)"
-          />
-          <Input
-            value={d.locationName}
-            onChange={(e) => set("locationName", e.target.value)}
-            placeholder="장소 (선택)"
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={onCreate} disabled={pending || !d.slotDate}>
-              {pending ? "생성 중..." : "추가"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
-              취소
-            </Button>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="bg-violet-600 text-white hover:bg-violet-700"
+                onClick={onCreate}
+                disabled={pending || !d.slotDate}
+              >
+                {pending ? "생성 중..." : "세션 추가"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+                취소
+              </Button>
+            </div>
           </div>
         </div>
       )}

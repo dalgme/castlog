@@ -95,6 +95,9 @@ export async function createSlot(
     .single();
   if (error || !slot) return { ok: false, error: "슬롯 생성에 실패했습니다." };
 
+  // 후보 순위 모델 (개정 2026-08-22): 임시후보 코드를 기본 3개 발급한다
+  // (필요인원이 3명을 넘으면 필요인원만큼). 후보는 이후 추가할 수 있다.
+  const candidateCount = Math.max(3, d.requiredCount);
   const positionError = await createPositions(
     supabase,
     auth.tenantId,
@@ -102,7 +105,7 @@ export async function createSlot(
     d.slotDate,
     d.roleType,
     1,
-    d.requiredCount
+    candidateCount
   );
   if (positionError) {
     await supabase.from("engagement_slots").delete().eq("id", slot.id);
@@ -135,6 +138,7 @@ async function createPositions(
         tenant_id: tenantId,
         slot_id: slotId,
         position_no: no,
+        rank: no, // 초기 순위 = 발급 순번 (드래그로 조정)
         code,
       });
       if (!error) inserted = true;
@@ -192,37 +196,34 @@ export async function adjustSlotCount(
     .maybeSingle();
   if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
 
-  const current = slot.required_count;
-  if (nextCount > current) {
+  // 후보 순위 모델: 필요인원은 '실제 섭외 인원 수'일 뿐, 후보 수와 분리다.
+  // 늘릴 때 후보가 부족하면 그만큼 임시후보 코드를 추가 발급하고,
+  // 줄일 때는 후보를 지우지 않는다(초과 후보는 예비 후보로 남는다).
+  const { count: candidateCount } = await supabase
+    .from("engagement_slot_positions")
+    .select("id", { count: "exact", head: true })
+    .eq("slot_id", slotId)
+    .neq("status", "canceled");
+  const existing = candidateCount ?? 0;
+  if (nextCount > existing) {
+    const { data: maxRow } = await supabase
+      .from("engagement_slot_positions")
+      .select("position_no")
+      .eq("slot_id", slotId)
+      .order("position_no", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const from = (maxRow?.position_no ?? 0) + 1;
     const err = await createPositions(
       supabase,
       auth.tenantId,
       slotId,
       slot.slot_date,
       slot.role_type,
-      current + 1,
-      nextCount
+      from,
+      from + (nextCount - existing) - 1
     );
     if (err) return { ok: false, error: err };
-  } else if (nextCount < current) {
-    // 미섭외(open) 인원만 제거 — 요청·확정 인원은 보존
-    const { data: removable } = await supabase
-      .from("engagement_slot_positions")
-      .select("id, position_no")
-      .eq("slot_id", slotId)
-      .eq("status", "open")
-      .gt("position_no", nextCount)
-      .order("position_no", { ascending: false });
-    const ids = (removable ?? []).map((r) => r.id);
-    if (ids.length < current - nextCount) {
-      return {
-        ok: false,
-        error: "섭외가 진행된 인원이 있어 그만큼 줄일 수 없습니다.",
-      };
-    }
-    if (ids.length > 0) {
-      await supabase.from("engagement_slot_positions").delete().in("id", ids);
-    }
   }
 
   const { error } = await supabase
@@ -255,6 +256,135 @@ export async function updateProjectBudget(
     })
     .eq("id", projectId);
   if (error) return { ok: false, error: "예산 저장에 실패했습니다." };
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
+ * 후보 추가 (기획 확정 2026-08-22) — 임시후보 코드를 1개 더 발급한다.
+ * 순위는 맨 뒤로 붙는다(드래그로 조정).
+ */
+export async function addCandidate(slotId: string): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const supabase = createClient();
+  const { data: slot } = await supabase
+    .from("engagement_slots")
+    .select("id, slot_date, role_type")
+    .eq("id", slotId)
+    .maybeSingle();
+  if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
+
+  const { data: maxRow } = await supabase
+    .from("engagement_slot_positions")
+    .select("position_no")
+    .eq("slot_id", slotId)
+    .order("position_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const no = (maxRow?.position_no ?? 0) + 1;
+  if (no > 100) return { ok: false, error: "후보는 세션당 최대 100명입니다." };
+
+  const err = await createPositions(
+    supabase,
+    auth.tenantId,
+    slotId,
+    slot.slot_date,
+    slot.role_type,
+    no,
+    no
+  );
+  if (err) return { ok: false, error: err };
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/** 후보 삭제 — 섭외 요청이 나가기 전(open/assigned)의 후보만 지울 수 있다. */
+export async function removeCandidate(positionId: string): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const supabase = createClient();
+  const { data: removed, error } = await supabase
+    .from("engagement_slot_positions")
+    .delete()
+    .eq("id", positionId)
+    .in("status", ["open", "assigned"])
+    .is("engagement_id", null)
+    .select("id")
+    .maybeSingle();
+  if (error || !removed) {
+    return {
+      ok: false,
+      error: "이미 섭외가 진행된 후보는 삭제할 수 없습니다. 개별 취소 후 진행하세요.",
+    };
+  }
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/** 후보 순위 저장 — 드래그로 정한 순서(위→아래 = 1순위→후순위)를 기록한다. */
+export async function reorderCandidates(
+  slotId: string,
+  orderedPositionIds: string[]
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  if (!Array.isArray(orderedPositionIds) || orderedPositionIds.length === 0) {
+    return { ok: false, error: "순서가 비어 있습니다." };
+  }
+
+  const supabase = createClient();
+  // 대상 검증 — 이 세션의 후보만 (다른 세션·타 프로젝트 id 섞임 방지)
+  const { data: rows } = await supabase
+    .from("engagement_slot_positions")
+    .select("id")
+    .eq("slot_id", slotId);
+  const valid = new Set((rows ?? []).map((r) => r.id));
+  const ids = orderedPositionIds.filter((id) => valid.has(id));
+  if (ids.length !== valid.size) {
+    return { ok: false, error: "후보 목록이 갱신되었습니다. 새로고침 후 다시 시도하세요." };
+  }
+
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (!id) continue;
+    const { error } = await supabase
+      .from("engagement_slot_positions")
+      .update({ rank: i + 1 })
+      .eq("id", id);
+    if (error) return { ok: false, error: "순위 저장에 실패했습니다." };
+  }
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/** 후보별 예정가 저장 — 예정가이며 결재·정산 전까지 수정할 수 있다. */
+export async function setCandidateFee(
+  positionId: string,
+  fee: string
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  if (!/^\d*$/.test(fee)) {
+    return { ok: false, error: "예정가는 숫자만 입력하세요 (원 단위)." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("engagement_slot_positions")
+    .update({ expected_fee: fee ? parseInt(fee, 10) : null })
+    .eq("id", positionId);
+  if (error) return { ok: false, error: "예정가 저장에 실패했습니다." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

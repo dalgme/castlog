@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { normalizeKrMobileE164 } from "@/lib/auth/phone";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   expertProfileSchema,
@@ -39,21 +38,33 @@ export async function updateExpertProfile(
     return { error: "로그인이 필요합니다." };
   }
 
+  // 거주지 = 광역자치단체 + 세부 주소를 한 문자열로 저장 (splitRegion으로 복원)
+  const region =
+    [parsed.data.regionSido, parsed.data.regionDetail]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    parsed.data.region ||
+    null;
+  // 보조 연락처는 일반번호(02·031·070 등)도 허용 — 숫자만 저장
+  const secondaryDigits = parsed.data.secondaryPhone
+    ? parsed.data.secondaryPhone.replace(/\D/g, "")
+    : "";
+
   const { data: updated, error } = await supabase
     .from("experts")
     .update({
       name: parsed.data.name,
       email: parsed.data.email || null,
-      specialty: parsed.data.specialty || null,
-      region: parsed.data.region || null,
+      region,
       career_years: parsed.data.careerYears
         ? parseInt(parsed.data.careerYears, 10)
         : null,
       bio: parsed.data.bio || null,
       degree_certifications: parsed.data.degreeCertifications || null,
-      secondary_phone: parsed.data.secondaryPhone
-        ? normalizeKrMobileE164(parsed.data.secondaryPhone)
-        : null,
+      degree_level: parsed.data.degreeLevel || null,
+      degree_major: parsed.data.degreeMajor || null,
+      secondary_phone: secondaryDigits || null,
     })
     .eq("auth_user_id", user.id)
     .select("id")

@@ -53,9 +53,16 @@ export async function uploadExpertDocument(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "파일을 선택하세요." };
   }
+  // 한글 파일명 보전: multipart의 file.name이 인코딩 깨짐을 겪는 경우가 있어
+  // 클라이언트가 문자열 필드로 함께 보낸 원본 파일명을 우선 사용한다
+  const clientFileName = formData.get("fileName");
+  const fileName =
+    typeof clientFileName === "string" && clientFileName.trim()
+      ? clientFileName.trim()
+      : file.name;
 
   // 용량·확장자 서버 검증 (CLAUDE.md 12-5)
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) {
     return { ok: false, error: validation.error };
   }
@@ -87,7 +94,7 @@ export async function uploadExpertDocument(
       expert_id: expert.id,
       document_type: documentType,
       storage_path: storagePath,
-      file_name: file.name,
+      file_name: fileName,
       file_size_bytes: file.size,
       mime_type: validation.contentType,
     })
