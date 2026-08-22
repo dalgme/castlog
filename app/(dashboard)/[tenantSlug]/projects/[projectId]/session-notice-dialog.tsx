@@ -307,9 +307,9 @@ export function SessionNoticeDialog({
                 </Badge>
                 <span className="text-muted-foreground">
                   {n.sentAt
-                    ? new Date(n.sentAt).toLocaleString("ko-KR")
+                    ? new Date(n.sentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
                     : n.scheduledAt
-                      ? `예약 ${new Date(n.scheduledAt).toLocaleString("ko-KR")}`
+                      ? `예약 ${new Date(n.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
                       : "-"}
                 </span>
                 <span>

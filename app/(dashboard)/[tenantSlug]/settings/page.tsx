@@ -8,6 +8,7 @@ import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isMissingColumnError } from "@/lib/supabase/db-errors";
+import { isSmsTestMode } from "@/lib/sms/providers";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,6 +124,18 @@ export default async function SettingsPage({
       {/* 기업관리·전결규정 탭과 같은 폭을 쓴다 — 탭을 옮길 때마다 본문 폭이
           달라지면 같은 화면이 아닌 것처럼 읽힌다 */}
       <main className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-2">
+        {/* 서버가 테스트 모드면 모든 발송이 기록만 남고 실제로 나가지 않는다.
+            테스트 발송 결과에만 적으면 그때뿐이다 — 켜져 있는 동안 상시 표시 */}
+        {canManageSending && isSmsTestMode() && (
+          <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 lg:col-span-2">
+            <b>지금 서버가 SMS 테스트 모드입니다.</b> 모든 문자가 발송 이력에
+            ‘테스트 모드’로 기록만 되고 실제로는 나가지 않습니다. 실발송을
+            시작하려면 캐스트로그 운영에서 서버 환경변수{" "}
+            <code className="rounded bg-amber-100 px-1">SMS_TEST_MODE</code>를
+            제거해야 합니다.
+          </div>
+        )}
+
         {canManageSending && (
         <Card>
           <CardHeader className="pb-3">

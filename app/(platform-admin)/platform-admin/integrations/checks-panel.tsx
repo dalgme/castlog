@@ -107,7 +107,7 @@ export function ChecksPanel({
         </Button>
         <p className="text-xs text-muted-foreground">
           {ranAt
-            ? `마지막 점검 ${new Date(ranAt).toLocaleString("ko-KR")}`
+            ? `마지막 점검 ${new Date(ranAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
             : "각 서비스를 실제로 한 번씩 호출합니다. 소액의 호출 비용이 발생할 수 있습니다."}
         </p>
       </div>

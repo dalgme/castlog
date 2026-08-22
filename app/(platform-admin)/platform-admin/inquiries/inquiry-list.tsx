@@ -115,7 +115,7 @@ export function InquiryList({ inquiries }: { inquiries: AdminInquiry[] }) {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {inq.contactName} ·{" "}
-                      {new Date(inq.createdAt).toLocaleString("ko-KR")}
+                      {new Date(inq.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                       {inq.source && ` · 유입 ${inq.source}`}
                       {inq.handledByName && ` · 처리 ${inq.handledByName}`}
                     </p>

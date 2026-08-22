@@ -541,8 +541,8 @@ function HistoryItem({ row }: { row: SendHistoryRow }) {
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
         <span>{row.documentTypes.length}개 서류</span>
-        <span>{new Date(row.sentAt).toLocaleString("ko-KR")} 발송</span>
-        {row.openedAt && <span>{new Date(row.openedAt).toLocaleString("ko-KR")} 열람</span>}
+        <span>{new Date(row.sentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 발송</span>
+        {row.openedAt && <span>{new Date(row.openedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 열람</span>}
       </div>
 
       {editing ? (

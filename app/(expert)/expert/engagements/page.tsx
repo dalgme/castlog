@@ -219,13 +219,13 @@ export default async function ExpertEngagementsPage() {
                       </MetaRow>
                     )}
                     <MetaRow label="요청 일시">
-                      {new Date(engagement.created_at).toLocaleString("ko-KR")}
+                      {new Date(engagement.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                     </MetaRow>
                     {answerable && (
                       <p className="text-sm">
                         <span className="mr-2 text-muted-foreground">회신 마감</span>
                         <span className="font-semibold text-[#8A6A00]">
-                          {new Date(engagement.token_expires_at).toLocaleString("ko-KR")}
+                          {new Date(engagement.token_expires_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                         </span>
                       </p>
                     )}

@@ -130,7 +130,7 @@ export function ModuleRequestPanel({
               {openRequest.requested.map((m) => MODULE_LABELS[m]).join(" · ")}
             </span>
             <span className="text-xs text-muted-foreground">
-              {new Date(openRequest.createdAt).toLocaleString("ko-KR")} 요청
+              {new Date(openRequest.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 요청
             </span>
           </div>
           <p className="text-xs text-muted-foreground">

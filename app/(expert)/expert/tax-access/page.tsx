@@ -161,7 +161,7 @@ export default async function ExpertTaxAccessPage() {
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                         <span>
-                          {new Date(log.accessed_at).toLocaleString("ko-KR")}
+                          {new Date(log.accessed_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                         </span>
                         <span>
                           {ACCESS_TYPE_LABEL[log.access_type] ?? log.access_type}

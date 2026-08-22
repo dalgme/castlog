@@ -344,10 +344,10 @@ export default async function ExpertPortalPage({
                         </span>
                       )}
                       <span className="rounded bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                        요청 {new Date(e.created_at).toLocaleString("ko-KR")}
+                        요청 {new Date(e.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                       </span>
                       <span className="rounded bg-[#FFF3D6] px-1.5 py-0.5 text-[11px] font-semibold text-[#8A6A00]">
-                        회신마감 {new Date(e.token_expires_at).toLocaleString("ko-KR")}
+                        회신마감 {new Date(e.token_expires_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                       </span>
                     </div>
                   </li>

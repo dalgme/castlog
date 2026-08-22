@@ -60,7 +60,7 @@ export function LockdownPanel({
                 <br />
                 사유: {reason === "honeytoken" ? "허니토큰 접근 감지" : reason}
                 {triggeredAt && (
-                  <> · {new Date(triggeredAt).toLocaleString("ko-KR")}</>
+                  <> · {new Date(triggeredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</>
                 )}
               </AlertDescription>
             </Alert>
