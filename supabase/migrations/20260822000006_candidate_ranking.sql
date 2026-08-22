@@ -57,3 +57,11 @@ create policy plan_review_changes_insert on public.plan_review_changes
   for insert with check (
     tenant_id = app.tenant_id() and actor_user_id = auth.uid()
   );
+
+-- 3) 전문가 프로필 확장 (기획 확정 2026-08-22 — 최종학위 선택형 + 전공)
+alter table public.experts
+  add column if not exists degree_level text,
+  add column if not exists degree_major text;
+
+comment on column public.experts.degree_level is '최종학위 (학사/석사 수료/석사/박사 수료/박사/기타)';
+comment on column public.experts.degree_major is '전공명';

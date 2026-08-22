@@ -56,7 +56,13 @@ export async function uploadCertificateFile(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "파일을 선택하세요." };
   }
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  // 한글 파일명 보전 — 클라이언트가 보낸 원본 파일명 우선
+  const clientFileName = formData.get("fileName");
+  const fileName =
+    typeof clientFileName === "string" && clientFileName.trim()
+      ? clientFileName.trim()
+      : file.name;
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
 
   const supabase = createClient();
@@ -92,7 +98,7 @@ export async function uploadCertificateFile(
       expert_id: g.expertId,
       document_type: "certificate",
       storage_path: storagePath,
-      file_name: file.name,
+      file_name: fileName,
       file_size_bytes: file.size,
       mime_type: validation.contentType,
     })

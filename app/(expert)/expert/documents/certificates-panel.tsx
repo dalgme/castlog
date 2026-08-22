@@ -59,6 +59,7 @@ export function CertificatesPanel({ rows }: { rows: CertificateRow[] }) {
     }
     const formData = new FormData();
     formData.set("file", file);
+    formData.set("fileName", file.name); // 한글 파일명 보전
     run(async () => {
       const r = await uploadCertificateFile(formData);
       if (r.ok) {
@@ -82,7 +83,7 @@ export function CertificatesPanel({ rows }: { rows: CertificateRow[] }) {
             ref={addFileRef}
             type="file"
             accept={DOCUMENT_ACCEPT_ATTR}
-            className="text-xs file:mr-2 file:text-xs"
+            className="text-xs file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-coral file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-coral-dark"
             onChange={(e) => setAddFileName(e.target.files?.[0]?.name ?? null)}
           />
           <Button
@@ -124,6 +125,7 @@ function CertificateItem({
     }
     const formData = new FormData();
     formData.set("file", file);
+    formData.set("fileName", file.name); // 한글 파일명 보전
     formData.set("certificateId", row.id);
     run(async () => {
       const r = await uploadCertificateFile(formData);

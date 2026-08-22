@@ -1988,6 +1988,8 @@ export type Database = {
           career_years: number | null
           created_at: string
           degree_certifications: string | null
+          degree_level: string | null
+          degree_major: string | null
           email: string | null
           expertise_other: string | null
           id: string
@@ -2005,6 +2007,8 @@ export type Database = {
           career_years?: number | null
           created_at?: string
           degree_certifications?: string | null
+          degree_level?: string | null
+          degree_major?: string | null
           email?: string | null
           expertise_other?: string | null
           id?: string
@@ -2022,6 +2026,8 @@ export type Database = {
           career_years?: number | null
           created_at?: string
           degree_certifications?: string | null
+          degree_level?: string | null
+          degree_major?: string | null
           email?: string | null
           expertise_other?: string | null
           id?: string

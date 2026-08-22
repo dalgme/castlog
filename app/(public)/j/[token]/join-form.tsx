@@ -68,7 +68,6 @@ export function ExpertJoinForm({
     defaultValues: {
       name: invitedName ?? "",
       email: "",
-      specialty: "",
       region: "",
       careerYears: "",
       bio: "",
@@ -233,19 +232,6 @@ export function ExpertJoinForm({
           )}
         />
         <div className="grid grid-cols-2 gap-3">
-          <FormField
-            control={profileForm.control}
-            name="specialty"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>전문분야 (선택)</FormLabel>
-                <FormControl>
-                  <Input placeholder="사업계획서" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
           <FormField
             control={profileForm.control}
             name="region"
