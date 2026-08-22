@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   EXPERT_DOCUMENT_BUCKET,
+  isGrantableDocumentType,
   isUploadableDocumentType,
   validateDocumentFile,
 } from "@/lib/experts/documents";
@@ -65,7 +66,7 @@ export async function uploadExpertDocument(
   const { error: uploadError } = await admin.storage
     .from(EXPERT_DOCUMENT_BUCKET)
     .upload(storagePath, await file.arrayBuffer(), {
-      contentType: file.type,
+      contentType: validation.contentType,
       upsert: false,
     });
   if (uploadError) {
@@ -88,7 +89,7 @@ export async function uploadExpertDocument(
       storage_path: storagePath,
       file_name: file.name,
       file_size_bytes: file.size,
-      mime_type: file.type,
+      mime_type: validation.contentType,
     })
     .select("id")
     .single();
@@ -155,7 +156,9 @@ export async function setDocumentGrant(
     return { ok: false, error: "로그인이 필요합니다." };
   }
 
-  if (!isUploadableDocumentType(documentType)) {
+  // 허용 대상 = 표준 슬롯 + 자격증 사본 (attachment는 grants 대상이 아니다 —
+  // DB check 제약과도 일치해야 한다)
+  if (!isGrantableDocumentType(documentType)) {
     return { ok: false, error: "지원하지 않는 서류 유형입니다." };
   }
 

@@ -2177,6 +2177,50 @@ export type Database = {
         }
         Relationships: []
       }
+      expert_certificates: {
+        Row: {
+          cert_name: string | null
+          created_at: string
+          document_id: string
+          expert_id: string
+          id: string
+          issued_on: string | null
+          issuer: string | null
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          cert_name?: string | null
+          created_at?: string
+          document_id: string
+          expert_id: string
+          id?: string
+          issued_on?: string | null
+          issuer?: string | null
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cert_name?: string | null
+          created_at?: string
+          document_id?: string
+          expert_id?: string
+          id?: string
+          issued_on?: string | null
+          issuer?: string | null
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_certificates_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "expert_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_bank_accounts: {
         Row: {
           account_holder: string | null

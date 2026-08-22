@@ -37,7 +37,21 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   signature: "서명",
   seal: "날인(도장)",
   attachment: "첨부파일",
+  certificate: "자격증 사본",
 };
+
+/**
+ * 기업 열람 허용(grants) 대상 유형 — 표준 슬롯 + 자격증 사본.
+ * attachment(외부 송신용)·signature/seal은 각자의 흐름에서 노출되므로 제외.
+ */
+export const GRANTABLE_DOCUMENT_TYPES = [
+  ...STANDARD_UPLOAD_DOCUMENT_TYPES,
+  "certificate",
+] as const;
+
+export function isGrantableDocumentType(value: string): boolean {
+  return (GRANTABLE_DOCUMENT_TYPES as readonly string[]).includes(value);
+}
 
 /**
  * 서명 캔버스로 수집하는 유형 (단계 28-A) — 파일 업로드가 아니라 PNG 캔버스.
@@ -64,12 +78,92 @@ export const SENSITIVE_DOCUMENT_TYPES: readonly string[] = [
 /** 서버 검증 상한 (버킷 file_size_limit와 동일) */
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
-/** 허용 MIME ↔ 확장자 (버킷 allowed_mime_types와 동일 목록) */
-export const ALLOWED_DOCUMENT_MIME_TYPES: Record<string, readonly string[]> = {
-  "application/pdf": ["pdf"],
-  "image/jpeg": ["jpg", "jpeg"],
-  "image/png": ["png"],
+/**
+ * 확장자 → { 브라우저가 보낼 수 있는 MIME 목록, 저장용 정규 MIME } (개정 2026-08-22).
+ * 브라우저는 hwp/hwpx 등에서 octet-stream이나 빈 값을 보내므로 확장자를 축으로
+ * 검증하고, 스토리지에는 정규 MIME으로 저장한다 (버킷 allowed_mime_types는
+ * 정규 MIME 목록과 동일 — 마이그레이션 20260822000004).
+ */
+const OCTET = ["application/octet-stream", ""] as const;
+export const ALLOWED_DOCUMENT_EXTENSIONS: Record<
+  string,
+  { mimes: readonly string[]; canonical: string }
+> = {
+  pdf: { mimes: ["application/pdf"], canonical: "application/pdf" },
+  jpg: { mimes: ["image/jpeg"], canonical: "image/jpeg" },
+  jpeg: { mimes: ["image/jpeg"], canonical: "image/jpeg" },
+  png: { mimes: ["image/png"], canonical: "image/png" },
+  doc: {
+    mimes: ["application/msword", ...OCTET],
+    canonical: "application/msword",
+  },
+  docx: {
+    mimes: [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ...OCTET,
+    ],
+    canonical:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  },
+  xls: {
+    mimes: ["application/vnd.ms-excel", ...OCTET],
+    canonical: "application/vnd.ms-excel",
+  },
+  xlsx: {
+    mimes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ...OCTET,
+    ],
+    canonical:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  ppt: {
+    mimes: ["application/vnd.ms-powerpoint", ...OCTET],
+    canonical: "application/vnd.ms-powerpoint",
+  },
+  pptx: {
+    mimes: [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ...OCTET,
+    ],
+    canonical:
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  },
+  hwp: {
+    mimes: [
+      "application/x-hwp",
+      "application/haansofthwp",
+      "application/vnd.hancom.hwp",
+      ...OCTET,
+    ],
+    canonical: "application/x-hwp",
+  },
+  hwpx: {
+    mimes: [
+      "application/hwp+zip",
+      "application/vnd.hancom.hwpx",
+      ...OCTET,
+    ],
+    canonical: "application/hwp+zip",
+  },
 };
+
+/** 업로드 input accept 속성용 */
+export const DOCUMENT_ACCEPT_ATTR = Object.keys(ALLOWED_DOCUMENT_EXTENSIONS)
+  .map((ext) => `.${ext}`)
+  .join(",");
+
+/** 웹 미리보기 방식 판정 — none은 뷰어에서 '원본 열기' 폴백으로 안내 */
+export type DocumentPreviewKind = "image" | "pdf" | "sheet" | "docx" | "none";
+
+export function documentPreviewKind(fileName: string): DocumentPreviewKind {
+  const ext = fileExtension(fileName);
+  if (["jpg", "jpeg", "png"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (["xls", "xlsx"].includes(ext)) return "sheet";
+  if (ext === "docx") return "docx";
+  return "none";
+}
 
 export function isUploadableDocumentType(
   value: string
@@ -83,25 +177,31 @@ export function fileExtension(fileName: string): string {
   return idx >= 0 ? fileName.slice(idx + 1).toLowerCase() : "";
 }
 
-/** MIME·확장자 서버 검증 — 통과 시 정규 확장자 반환, 실패 시 null */
+/** MIME·확장자 서버 검증 — 통과 시 정규 확장자·저장용 MIME 반환 */
 export function validateDocumentFile(
   mimeType: string,
   fileName: string,
   sizeBytes: number
-): { ok: true; extension: string } | { ok: false; error: string } {
+):
+  | { ok: true; extension: string; contentType: string }
+  | { ok: false; error: string } {
   if (sizeBytes <= 0) {
     return { ok: false, error: "빈 파일은 업로드할 수 없습니다." };
   }
   if (sizeBytes > MAX_DOCUMENT_SIZE_BYTES) {
     return { ok: false, error: "파일 용량은 10MB 이하여야 합니다." };
   }
-  const allowedExts = ALLOWED_DOCUMENT_MIME_TYPES[mimeType];
-  if (!allowedExts) {
-    return { ok: false, error: "PDF, JPG, PNG 파일만 업로드할 수 있습니다." };
-  }
   const ext = fileExtension(fileName);
-  if (!allowedExts.includes(ext)) {
+  const rule = ALLOWED_DOCUMENT_EXTENSIONS[ext];
+  if (!rule) {
+    return {
+      ok: false,
+      error:
+        "PDF, 이미지(JPG/PNG), 오피스(doc/docx/xls/xlsx/ppt/pptx), 한글(hwp/hwpx) 파일만 업로드할 수 있습니다.",
+    };
+  }
+  if (!rule.mimes.includes(mimeType)) {
     return { ok: false, error: "파일 확장자가 형식과 일치하지 않습니다." };
   }
-  return { ok: true, extension: ext };
+  return { ok: true, extension: ext, contentType: rule.canonical };
 }
