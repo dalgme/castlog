@@ -177,8 +177,23 @@ export function RrnInputForm({ context }: { context: RrnCollectionContext }) {
         autoComplete="off"
         disabled={!ready}
       />
-      <Button onClick={onSubmit} disabled={pending || !ready}>
-        {pending ? "암호화·등록 중..." : needsKey ? "보관 비밀번호 설정 + 등록" : "암호화하여 등록"}
+      {/* 등록된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22) */}
+      <Button
+        onClick={onSubmit}
+        disabled={pending || !ready}
+        className={
+          context.alreadyOnFile || done
+            ? "bg-emerald-600 text-white hover:bg-emerald-700"
+            : undefined
+        }
+      >
+        {pending
+          ? "암호화·등록 중..."
+          : context.alreadyOnFile || done
+            ? "수정하기"
+            : needsKey
+              ? "보관 비밀번호 설정 + 등록"
+              : "암호화하여 등록"}
       </Button>
 
       <p className="pt-1 text-xs text-muted-foreground">

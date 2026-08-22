@@ -149,8 +149,17 @@ export function PublicProfileManager({ context }: { context: ProfileContext }) {
           </Alert>
         )}
 
-        <Button onClick={save} disabled={pending}>
-          {pending ? "저장 중..." : "저장"}
+        {/* 저장된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22) */}
+        <Button
+          onClick={save}
+          disabled={pending}
+          className={
+            context.hasProfile
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : undefined
+          }
+        >
+          {pending ? "저장 중..." : context.hasProfile ? "수정하기" : "저장"}
         </Button>
       </div>
 
