@@ -79,7 +79,11 @@ begin
      or new.starts_on    is distinct from old.starts_on
      or new.ends_on      is distinct from old.ends_on
      or new.requested_by is distinct from old.requested_by
-     or new.token_hash   is distinct from old.token_hash then
+     or new.token_hash   is distinct from old.token_hash
+     -- 원 정의 이후 추가된 컬럼도 불변 목록에 포함 (수락서 스냅샷 원천)
+     or new.session_name  is distinct from old.session_name
+     or new.position_code is distinct from old.position_code
+     or new.is_practice   is distinct from old.is_practice then
     raise exception '전문가는 섭외 응답(수락·거절) 외 항목을 변경할 수 없습니다.';
   end if;
   return new;
@@ -342,13 +346,18 @@ create policy engagement_slot_positions_delete on public.engagement_slot_positio
     )
   );
 
+-- 레벨 5 개방도 배정 프로젝트 범위 안에서만 — 다른 정책들과 같은 불변식
 drop policy if exists project_engagement_attachments_write on public.project_engagement_attachments;
 create policy project_engagement_attachments_write on public.project_engagement_attachments
   for all using (
-    tenant_id = app.tenant_id() and app.has_exec_grade('senior')
+    tenant_id = app.tenant_id()
+    and app.has_exec_grade('senior')
+    and app.can_view_project(project_id)
   )
   with check (
-    tenant_id = app.tenant_id() and app.has_exec_grade('senior')
+    tenant_id = app.tenant_id()
+    and app.has_exec_grade('senior')
+    and app.can_view_project(project_id)
   );
 
 -- ---- 3. 역할 최소 레벨 — PL은 레벨 3 이상, PM·부PM은 레벨 4 이상 --------------
