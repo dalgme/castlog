@@ -154,7 +154,8 @@ export function SlotTable({
         { slotDate: d.slotDate, startsTime: d.startsTime, endsTime: d.endsTime },
         ...extraSchedules.filter((sc) => sc.slotDate),
       ];
-      for (const sc of schedules) {
+      for (let i = 0; i < schedules.length; i++) {
+        const sc = schedules[i]!;
         const r = await createSlot(projectId, {
           slotDate: sc.slotDate,
           startsTime: sc.startsTime,
@@ -169,6 +170,16 @@ export function SlotTable({
           notes: d.notes,
         });
         if (!r.ok) {
+          // 이미 만들어진 세트는 폼에서 제거 — 재시도 시 중복 생성을 막는다
+          const remaining = schedules.slice(i);
+          const head = remaining[0]!;
+          setD((prev) => ({
+            ...prev,
+            slotDate: head.slotDate,
+            startsTime: head.startsTime,
+            endsTime: head.endsTime,
+          }));
+          setExtraSchedules(remaining.slice(1));
           setError(`${sc.slotDate}: ${r.error}`);
           router.refresh();
           return;
@@ -530,6 +541,8 @@ export function SlotTable({
                   {editingId && (
                     <p className="mt-1 text-[11px] text-violet-800">
                       인원은 세션 목록의 인원 칸에서 조정합니다 (코드 발급 연동).
+                      날짜·역할을 바꿔도 이미 발급된 코드넘버는 유지됩니다 —
+                      코드는 결재·문자에 이미 나간 식별자입니다.
                     </p>
                   )}
                 </div>

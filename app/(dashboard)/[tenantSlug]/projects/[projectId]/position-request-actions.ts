@@ -150,8 +150,12 @@ export async function loadSlotPickerData(
     .from("engagement_slot_positions")
     .select("id, status, expert_id, assigned_expert_id, engagement_id")
     .eq("slot_id", slotRow.slot_id);
+  // 선택 상한 = 클릭한 자리 + 아직 비어 있는 자리 (배정된 자리는 덮지 않는다)
   const openCount = (slotPositions ?? []).filter(
-    (p) => (p.status === "open" || p.status === "assigned") && !p.engagement_id
+    (p) =>
+      !p.engagement_id &&
+      (p.id === positionId ||
+        (p.status === "open" && !p.assigned_expert_id))
   ).length;
   const inSlotExpertIds = new Set(
     (slotPositions ?? [])
@@ -167,7 +171,6 @@ export async function loadSlotPickerData(
     .order("created_at", { ascending: false })
     .limit(1000);
   const poolRows = pool ?? [];
-  const poolIds = poolRows.map((e) => e.id);
 
   const [
     { data: links },
@@ -180,10 +183,8 @@ export async function loadSlotPickerData(
     { data: recruitAssign },
     { data: recruitFields },
   ] = await Promise.all([
-    supabase
-      .from("expert_tenant_links")
-      .select("expert_id, status")
-      .in("expert_id", poolIds.length ? poolIds : ["00000000-0000-0000-0000-000000000000"]),
+    // RLS가 자사분으로 좁힌다 — 풀 id 목록을 쿼리스트링에 싣지 않는다(URL 한도)
+    supabase.from("expert_tenant_links").select("expert_id, status"),
     supabase.from("expert_tenant_tags").select("expert_id, tag"),
     supabase.from("expert_tenant_profiles").select("expert_id, rating"),
     supabase.from("expert_tenant_notes").select("expert_id"),

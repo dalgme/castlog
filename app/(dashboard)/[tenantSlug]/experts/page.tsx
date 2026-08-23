@@ -759,7 +759,9 @@ export default async function TenantExpertsPage({
                               expertName={expert.name}
                               tag={tagAllByExpert.get(expert.id) ?? null}
                               target="favorite"
-                              canManage={canManageTags && isLinked}
+                              canManage={
+                                canManageTags && link?.status === "active"
+                              }
                             />
                             <Link
                               href={`/${params.tenantSlug}/experts/${expert.id}`}
@@ -850,7 +852,9 @@ export default async function TenantExpertsPage({
                               expertName={expert.name}
                               tag={tagAllByExpert.get(expert.id) ?? null}
                               target="vip"
-                              canManage={canManageTags && isLinked}
+                              canManage={
+                                canManageTags && link?.status === "active"
+                              }
                             />
                           </TableCell>
                         </TableRow>

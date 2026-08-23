@@ -49,7 +49,7 @@ export function PlanVersionsDialog({ projectId }: { projectId: string }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next && versions === null) load();
+        if (next) load(); // 열 때마다 재조회 — 새 상신이 있었을 수 있다
       }}
     >
       <DialogTrigger asChild>

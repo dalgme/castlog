@@ -847,7 +847,12 @@ export default async function ProjectDetailPage({
                       s.sessionName ? ` ${s.sessionName}` : ""
                     }`,
                     required: s.requiredCount,
-                    candidates: s.positions.length,
+                    // 등록 후보 = 전문가가 실제 붙은 자리 (취소 제외)
+                    candidates: s.positions.filter(
+                      (p) =>
+                        p.status !== "canceled" &&
+                        (p.expertName || p.assignedExpertName)
+                    ).length,
                   }))}
                 />
               ) : null
@@ -959,7 +964,11 @@ export default async function ProjectDetailPage({
           if (group.length === 0) return null;
           // 그룹 상태 박스 — 전부 완료면 초록, 하나라도 움직였으면 파랑
           const groupResolved = group.map((step) => {
-            const auto = autoStepStatus(step.step_no, autoCtx);
+            const engagementLinked = [8, 9, 10, 15, 16].includes(step.step_no);
+            const auto =
+              engagementLinked && !modules.experts
+                ? null
+                : autoStepStatus(step.step_no, autoCtx);
             return auto ?? (step.status as StepStatus);
           });
           const groupStatus: StepStatus = groupResolved.every(
@@ -983,8 +992,16 @@ export default async function ProjectDetailPage({
               <CardContent>
                 <ul className="divide-y">
                   {group.map((step) => {
-                    // 자동 판정 가능한 스텝은 시스템 상태를 그대로 반영한다
-                    const auto = autoStepStatus(step.step_no, autoCtx);
+                    // 자동 판정 가능한 스텝은 시스템 상태를 그대로 반영한다.
+                    // 섭외 연동 스텝(8·9·10·15·16)은 experts 모듈이 있어야
+                    // 신호가 존재한다 — 없으면 수동 선택으로 되돌린다.
+                    const engagementLinked = [8, 9, 10, 15, 16].includes(
+                      step.step_no
+                    );
+                    const auto =
+                      engagementLinked && !modules.experts
+                        ? null
+                        : autoStepStatus(step.step_no, autoCtx);
                     const shown = auto ?? (step.status as StepStatus);
                     return (
                     <li

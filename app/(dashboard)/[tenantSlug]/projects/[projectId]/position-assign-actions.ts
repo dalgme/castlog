@@ -92,7 +92,7 @@ export async function assignExpertToPosition(input: {
     return { ok: false, error: "자사와 활성 연결이 있는 전문가만 배정할 수 있습니다." };
   }
 
-  const { error } = await supabase
+  const { data: updatedRows, error } = await supabase
     .from("engagement_slot_positions")
     .update({
       status: "assigned",
@@ -100,8 +100,13 @@ export async function assignExpertToPosition(input: {
       assigned_at: new Date().toISOString(),
       assigned_by: auth.session.userId,
     })
-    .eq("id", input.positionId);
-  if (error) return { ok: false, error: "배정에 실패했습니다." };
+    .eq("id", input.positionId)
+    .in("status", ["open", "assigned"])
+    .is("engagement_id", null)
+    .select("id");
+  if (error || !updatedRows || updatedRows.length === 0) {
+    return { ok: false, error: "배정에 실패했습니다. 자리 상태가 바뀌었을 수 있습니다 — 새로고침 후 다시 시도하세요." };
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.session.tenantId,
@@ -148,8 +153,14 @@ export async function assignExpertsToSlot(input: {
     .select("id, status, rank, expert_id, assigned_expert_id, engagement_id")
     .eq("slot_id", clicked.slot_id)
     .order("rank", { ascending: true });
+  // 배치 대상 = 클릭한 자리 + 아직 아무도 배정되지 않은 자리.
+  // 이미 다른 전문가가 배정된 자리는 절대 조용히 덮어쓰지 않는다 —
+  // 교체는 그 자리를 직접 클릭했을 때만 허용한다.
   const openPositions = (positions ?? []).filter(
-    (p) => (p.status === "open" || p.status === "assigned") && !p.engagement_id
+    (p) =>
+      !p.engagement_id &&
+      (p.id === input.positionId ||
+        (p.status === "open" && !p.assigned_expert_id))
   );
   // 클릭한 자리를 맨 앞으로 — 사용자가 고른 자리부터 채운다
   openPositions.sort((a, b) =>
@@ -193,7 +204,7 @@ export async function assignExpertsToSlot(input: {
     }
     const target = openPositions[cursor];
     if (!target) break;
-    const { error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from("engagement_slot_positions")
       .update({
         status: "assigned",
@@ -201,8 +212,11 @@ export async function assignExpertsToSlot(input: {
         assigned_at: new Date().toISOString(),
         assigned_by: auth.session.userId,
       })
-      .eq("id", target.id);
-    if (error) {
+      .eq("id", target.id)
+      .in("status", ["open", "assigned"])
+      .is("engagement_id", null)
+      .select("id");
+    if (error || !updatedRows || updatedRows.length === 0) {
       skipped.push(`${expertId}:실패`);
       continue;
     }

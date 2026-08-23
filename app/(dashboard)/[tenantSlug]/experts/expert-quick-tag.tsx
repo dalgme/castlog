@@ -6,6 +6,7 @@ import { Crown, Star } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { expertTagLabel } from "@/lib/integrations/expert-tags";
+import { useToast } from "@/hooks/use-toast";
 import { setExpertTag } from "./tag-actions";
 
 /**
@@ -31,6 +32,7 @@ export function ExpertQuickTag({
   canManage: boolean;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const active = tag === target;
@@ -47,8 +49,12 @@ export function ExpertQuickTag({
     setError(null);
     startTransition(async () => {
       const result = await setExpertTag(expertId, active ? "" : target);
-      if (!result.ok) setError(result.error);
-      else router.refresh();
+      if (!result.ok) {
+        setError(result.error);
+        toast({ variant: "destructive", description: result.error });
+      } else {
+        router.refresh();
+      }
     });
   }
 

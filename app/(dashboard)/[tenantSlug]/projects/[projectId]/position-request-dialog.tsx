@@ -173,7 +173,7 @@ export function PositionRequestDialog({
         if (next) {
           setSelectedIds([]);
           setNotice(null);
-          if (experts === null) load();
+          load(); // 열 때마다 재조회 — 상한·후보 상태가 바뀌었을 수 있다
         }
       }}
     >

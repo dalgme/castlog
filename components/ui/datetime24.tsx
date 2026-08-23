@@ -95,6 +95,10 @@ export function Time24Input({
   const [hourPart, minutePart] = value ? value.split(":") : ["", ""];
   const hour = hourPart ?? "";
   const minute = minutePart ?? "";
+  // 10분 단위 밖의 기존 값(예: 14:35)도 그대로 보여준다 — 값을 잃지 않게
+  const minuteOptions = minute && !MINUTES.includes(minute)
+    ? [minute, ...MINUTES]
+    : MINUTES;
 
   function emit(nextHour: string, nextMinute: string) {
     if (nextHour !== "" && nextMinute !== "") {
@@ -128,7 +132,7 @@ export function Time24Input({
         className={selectCls}
       >
         <option value="">분</option>
-        {MINUTES.map((m) => (
+        {minuteOptions.map((m) => (
           <option key={m} value={m}>
             {m}분
           </option>
