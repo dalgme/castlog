@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { gradeAtLeast, isUserGrade, type UserGrade } from "@/lib/auth/grades";
+import { getAssignmentRoleMinGrades } from "@/lib/auth/exec-policy";
+import { roleMinGradeError } from "@/lib/integrations/assignment-role-rules";
 import {
   ASSIGNMENT_ROLE_LABELS,
   isAssignmentRole,
@@ -32,22 +33,17 @@ async function requireManager(): Promise<
 }
 
 /**
- * 역할별 최소 레벨 (기획 확정 2026-08-23): PL(겸임 포함)은 레벨 3(팀장) 이상,
- * PM·부PM은 레벨 4(대리) 이상. DB 트리거(app.enforce_assignment_role_grade)와
- * 같은 규칙 — 여기서 먼저 걸러 사람이 읽을 문구로 돌려준다.
+ * 역할별 최소 레벨 (기획 확정 2026-08-23, 회사 조정 가능):
+ * 기본값 PL=레벨 3 · PM=레벨 4 · 부PM=레벨 5 · 담당=레벨 6(제한 없음).
+ * DB 트리거(app.enforce_assignment_role_grade)와 같은 규칙 —
+ * 여기서 먼저 걸러 사람이 읽을 문구로 돌려준다.
  */
-function roleGradeError(
+async function roleGradeError(
   role: AssignmentRole,
   targetGrade: string | null
-): string | null {
-  const grade: UserGrade | null = isUserGrade(targetGrade) ? targetGrade : null;
-  if ((role === "pl" || role === "pl_pm") && !gradeAtLeast(grade, "team_lead")) {
-    return "PL은 레벨 3(팀장) 이상만 지정할 수 있습니다. 대상자의 권한 레벨을 먼저 조정하세요.";
-  }
-  if ((role === "pm" || role === "deputy_pm") && !gradeAtLeast(grade, "deputy")) {
-    return "PM·부PM은 레벨 4(대리) 이상만 지정할 수 있습니다. 대상자의 권한 레벨을 먼저 조정하세요.";
-  }
-  return null;
+): Promise<string | null> {
+  const mins = await getAssignmentRoleMinGrades();
+  return roleMinGradeError(role, targetGrade, mins);
 }
 
 /** PL·PM은 프로젝트당 각 1명 — 부분 유니크 인덱스 위반을 사람이 읽을 문구로 바꾼다. */
@@ -88,7 +84,7 @@ export async function assignProjectMember(
   if (!isAssignmentRole(assignmentRole)) {
     return { ok: false, error: "담당 역할을 확인하세요." };
   }
-  const gradeError = roleGradeError(assignmentRole, target.grade);
+  const gradeError = await roleGradeError(assignmentRole, target.grade);
   if (gradeError) return { ok: false, error: gradeError };
 
   const { error } = await supabase.from("project_assignments").insert({
@@ -109,6 +105,10 @@ export async function assignProjectMember(
         .maybeSingle();
       if (existing) return { ok: true };
       return { ok: false, error: roleConflictError(assignmentRole) };
+    }
+    // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
+    if (error.code === "23514") {
+      return { ok: false, error: `${error.message} (권한 규칙)` };
     }
     return { ok: false, error: "배정에 실패했습니다." };
   }
@@ -138,19 +138,32 @@ export async function setAssignmentRole(
     .select("grade")
     .eq("id", userId)
     .maybeSingle();
-  const gradeError = roleGradeError(assignmentRole, target?.grade ?? null);
+  const gradeError = await roleGradeError(assignmentRole, target?.grade ?? null);
   if (gradeError) return { ok: false, error: gradeError };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("project_assignments")
     .update({ assignment_role: assignmentRole })
     .eq("project_id", projectId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("id");
   if (error) {
     if (error.code === "23505") {
       return { ok: false, error: roleConflictError(assignmentRole) };
     }
+    // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
+    if (error.code === "23514") {
+      return { ok: false, error: `${error.message} (권한 규칙)` };
+    }
     return { ok: false, error: "역할 변경에 실패했습니다." };
+  }
+  // RLS로 0행이 걸러지면 supabase는 에러 없이 넘어간다 — 조용한 무시 방지 (§12-9)
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error:
+        "역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다 (권한 규칙 — 역할 변경은 대표·이사). 필요하면 권한자에게 요청하세요.",
+    };
   }
 
   revalidatePath("/[tenantSlug]/projects", "page");

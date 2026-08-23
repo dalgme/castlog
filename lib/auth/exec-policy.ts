@@ -9,6 +9,12 @@ import {
   type ExecFeature,
 } from "@/lib/auth/exec-permissions";
 
+import {
+  ASSIGNMENT_ROLE_MIN_DEFAULTS,
+  isRuleRole,
+  type RoleMinGrades,
+} from "@/lib/integrations/assignment-role-rules";
+
 import type { User } from "@supabase/supabase-js";
 
 /**
@@ -106,6 +112,25 @@ export async function canExecTenant(
     gradeFromUser(user),
     roleFromUser(user)
   );
+}
+
+/**
+ * 프로젝트 역할별 최소 레벨 조회 (기본값 ← 회사 조정 tenant_assignment_role_rules).
+ * 테이블 미생성·조회 실패 시 기본값 폴백 (부재 폴백, §14-10).
+ */
+export async function getAssignmentRoleMinGrades(): Promise<RoleMinGrades> {
+  const mins: RoleMinGrades = { ...ASSIGNMENT_ROLE_MIN_DEFAULTS };
+  if (!hasSupabaseEnv()) return mins;
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("tenant_assignment_role_rules")
+    .select("assignment_role, min_grade");
+  for (const row of data ?? []) {
+    if (isRuleRole(row.assignment_role) && isUserGrade(row.min_grade)) {
+      mins[row.assignment_role] = row.min_grade;
+    }
+  }
+  return mins;
 }
 
 /** 한 화면에서 여러 기능 플래그가 필요할 때 — 정책 1회 조회로 일괄 판정 */

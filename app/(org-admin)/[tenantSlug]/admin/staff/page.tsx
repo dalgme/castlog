@@ -38,6 +38,12 @@ import { StaffGradeSelect } from "../org/staff-grade-select";
 import { LevelGuideDialog } from "../org/level-guide-dialog";
 import { PositionsPanel } from "../org/positions-panel";
 import { ExecThresholdPanel } from "../org/exec-threshold-panel";
+import { RoleRulePanel } from "../org/role-rule-panel";
+import {
+  ASSIGNMENT_ROLE_MIN_DEFAULTS,
+  RULE_ROLES,
+} from "@/lib/integrations/assignment-role-rules";
+import { ASSIGNMENT_ROLE_LABELS } from "@/lib/integrations/assignment-roles";
 import {
   AdminDelegationPanel,
   type DelegationRow,
@@ -136,10 +142,14 @@ export default async function StaffSettingsPage({
   const staffNameById = new Map(staffRows.map((s) => [s.id, s.name]));
 
   // 기능별 권한 문턱 조정 — 회사 조정값 + 개인 지정 (테이블 미생성 시 빈 목록 폴백)
-  const [{ data: execOverrides }, { data: execGrants }] = await Promise.all([
-    supabase.from("tenant_exec_overrides").select("feature, min_grade"),
-    supabase.from("tenant_exec_grants").select("feature, user_id"),
-  ]);
+  const [{ data: execOverrides }, { data: execGrants }, { data: roleRules }] =
+    await Promise.all([
+      supabase.from("tenant_exec_overrides").select("feature, min_grade"),
+      supabase.from("tenant_exec_grants").select("feature, user_id"),
+      supabase
+        .from("tenant_assignment_role_rules")
+        .select("assignment_role, min_grade"),
+    ]);
   const overrideByFeature = new Map(
     (execOverrides ?? []).map((o) => [o.feature, o.min_grade])
   );
@@ -162,6 +172,17 @@ export default async function StaffSettingsPage({
   const execStaff = staffRows
     .filter((s) => s.is_active)
     .map((s) => ({ id: s.id, name: s.name, gradeLabel: gradeLabel(s.grade) }));
+
+  // 프로젝트 역할별 최소 레벨 — 기본값(PL 3·PM 4·부PM 5·담당 6) + 회사 조정
+  const roleRuleByRole = new Map(
+    (roleRules ?? []).map((r) => [r.assignment_role, r.min_grade])
+  );
+  const roleRuleRows = RULE_ROLES.map((role) => ({
+    role,
+    label: role === "member" ? "담당 (일반)" : ASSIGNMENT_ROLE_LABELS[role],
+    defaultLabel: GRADE_LABELS[ASSIGNMENT_ROLE_MIN_DEFAULTS[role]],
+    overrideGrade: roleRuleByRole.get(role) ?? null,
+  }));
 
   const delegationCandidates = staffRows
     .filter((s) => s.is_active && s.grade !== "ceo")
@@ -345,6 +366,8 @@ export default async function StaffSettingsPage({
             )}
           </CardContent>
         </Card>
+
+        <RoleRulePanel rows={roleRuleRows} />
 
         <ExecThresholdPanel rows={execPolicyRows} staff={execStaff} />
 
