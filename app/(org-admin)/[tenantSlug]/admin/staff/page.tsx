@@ -34,6 +34,7 @@ import {
 import { StaffActiveToggle } from "../org/staff-active-toggle";
 import { StaffEditDialog } from "../org/staff-edit-dialog";
 import { StaffGradeSelect } from "../org/staff-grade-select";
+import { LevelGuideDialog } from "../org/level-guide-dialog";
 import { PositionsPanel } from "../org/positions-panel";
 import {
   AdminDelegationPanel,
@@ -91,6 +92,17 @@ export default async function StaffSettingsPage({
 
   const sessionUser = await getSessionUser();
   const supabase = createClient();
+
+  // '레벨 설정 이해하기' 확인 여부 (기획 확정 2026-08-23 — 최초 1회 강제)
+  const { data: levelGuideAck } = sessionUser
+    ? await supabase
+        .from("user_tour_acks")
+        .select("tour_key")
+        .eq("user_id", sessionUser.id)
+        .eq("tour_key", "level_guide")
+        .maybeSingle()
+    : { data: null };
+  const levelGuideAcked = Boolean(levelGuideAck);
 
   const [{ data: staff }, { data: positions }, { data: joinRecords }] =
     await Promise.all([
@@ -208,9 +220,13 @@ export default async function StaffSettingsPage({
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">
-              ② 직원 계정 ({staffRows.length})
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-sm">
+                ② 직원 계정 ({staffRows.length})
+              </CardTitle>
+              {/* 권한 레벨 조정 전 최초 1회 확인 (기획 확정 2026-08-23) */}
+              <LevelGuideDialog acked={levelGuideAcked} />
+            </div>
           </CardHeader>
           <CardContent>
             {staffRows.length === 0 ? (
@@ -254,6 +270,7 @@ export default async function StaffSettingsPage({
                               grade={gradeOf(member.grade)}
                               disabled={member.id === sessionUser?.id}
                               disabledReason="본인 권한단계는 변경할 수 없습니다."
+                              guideAcked={levelGuideAcked}
                             />
                           </TableCell>
                           <TableCell>{member.department ?? "-"}</TableCell>

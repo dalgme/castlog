@@ -22,14 +22,28 @@ const STAGE_COLORS: Record<ProjectStage, string> = {
   settled: "bg-slate-500",
 };
 
-export function ProjectTodoTicker({ stage }: { stage: ProjectStage }) {
+export function ProjectTodoTicker({
+  stage,
+  size = "sm",
+}: {
+  stage: ProjectStage;
+  /** sm = 목록 행 안 (기본) / lg = 프로젝트 현황 대시보드 상단 전광판 */
+  size?: "sm" | "lg";
+}) {
   const text = `지금 할 일 ▶ ${PROJECT_STAGE_LABELS[stage]} — ${PROJECT_STAGE_DESCRIPTIONS[stage]}`;
+  const sizing =
+    size === "lg"
+      ? "h-8 rounded-md"
+      : "mt-1.5 h-6 max-w-md rounded";
+  const trackText = size === "lg" ? "text-[13px] leading-8" : "text-[11px] leading-6";
   return (
     <div
-      className={`castlog-marquee mt-1.5 h-6 w-full max-w-md overflow-hidden rounded ${STAGE_COLORS[stage]}`}
+      className={`castlog-marquee w-full overflow-hidden ${sizing} ${STAGE_COLORS[stage]}`}
       title={text}
     >
-      <div className="castlog-marquee-track flex whitespace-nowrap text-[11px] font-medium leading-6 text-white">
+      <div
+        className={`castlog-marquee-track flex whitespace-nowrap font-medium text-white ${trackText}`}
+      >
         {/* 두 벌을 이어 붙여 끊김 없는 루프를 만든다 */}
         <span className="pr-16">{text}</span>
         <span className="pr-16" aria-hidden>

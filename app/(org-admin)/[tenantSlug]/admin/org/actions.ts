@@ -35,6 +35,41 @@ async function requireStaffAdmin(): Promise<AdminScopeSession> {
   return requireAdminScope("staff");
 }
 
+/**
+ * '레벨 설정 이해하기' 확인 (기획 확정 2026-08-23).
+ * 안내를 최초 1회 확인해야 권한단계를 조정할 수 있다 — user_tour_acks 재사용
+ * (tour_key='level_guide'). 확인 여부 조회는 화면(page)에서, 강제는 setStaffGrade에서.
+ */
+export async function ackLevelGuide(): Promise<StaffActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const session = await requireStaffAdmin();
+  if (!session.ok) return session;
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("user_tour_acks")
+    .upsert(
+      { user_id: session.userId, tour_key: "level_guide" },
+      { onConflict: "user_id,tour_key" }
+    );
+  if (error) return { ok: false, error: "저장에 실패했습니다. 다시 시도해 주세요." };
+  return { ok: true };
+}
+
+/** setStaffGrade 강제 게이트 — 안내를 확인한 사람만 권한단계를 조정한다 */
+async function hasAckedLevelGuide(userId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("user_tour_acks")
+    .select("tour_key")
+    .eq("user_id", userId)
+    .eq("tour_key", "level_guide")
+    .maybeSingle();
+  return Boolean(data);
+}
+
 export type CreateStaffResult =
   | { ok: true; tempPassword: string; email: string }
   | { ok: false; error: string };
@@ -257,6 +292,15 @@ export async function setStaffGrade(
 
   const session = await requireStaffAdmin();
   if (!session.ok) return session;
+
+  // 최초 1회 '레벨 설정 이해하기' 확인 강제 (기획 확정 2026-08-23)
+  if (!(await hasAckedLevelGuide(session.userId))) {
+    return {
+      ok: false,
+      error:
+        "권한 레벨을 조정하려면 먼저 '레벨 설정 이해하기' 버튼을 눌러 안내를 확인해 주세요 (최초 1회).",
+    };
+  }
 
   const parsed = staffGradeSchema.safeParse(input);
   if (!parsed.success) {

@@ -27,11 +27,14 @@ export function StaffGradeSelect({
   grade,
   disabled,
   disabledReason,
+  guideAcked = true,
 }: {
   userId: string;
   grade: UserGrade;
   disabled?: boolean;
   disabledReason?: string;
+  /** '레벨 설정 이해하기' 확인 전에는 조정 차단 (기획 확정 2026-08-23) */
+  guideAcked?: boolean;
 }) {
   const [value, setValue] = useState<UserGrade>(grade);
   const [pending, startTransition] = useTransition();
@@ -40,6 +43,12 @@ export function StaffGradeSelect({
   function onChange(next: string) {
     const nextGrade = next as UserGrade;
     if (nextGrade === value) return;
+    if (!guideAcked) {
+      window.alert(
+        "권한 레벨을 조정하려면 먼저 '레벨 설정 이해하기' 버튼을 눌러 안내를 확인해 주세요 (최초 1회)."
+      );
+      return;
+    }
     const ok = window.confirm(
       `권한단계를 '${GRADE_LABELS[value]}' → '${GRADE_LABELS[nextGrade]}'(으)로 변경합니다.\n` +
         `본인 계정에는 다음 로그인(토큰 갱신) 시점부터 적용됩니다.`

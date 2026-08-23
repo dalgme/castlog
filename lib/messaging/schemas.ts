@@ -27,6 +27,12 @@ export const messageSendSchema = z
   .object({
     channel: z.enum(["sms", "email"]),
     messageType: z.enum(["transactional", "advertising"]),
+    // 발송 제목 — 이력(로그) 목록에 표시할 이름 (기획 확정 2026-08-23)
+    title: z
+      .string()
+      .trim()
+      .min(1, "발송 제목을 입력하세요 (이력에 표시됩니다).")
+      .max(80, "발송 제목은 80자 이내로 입력하세요."),
     subject: z.string().max(150, "제목은 150자 이내로 입력하세요.").optional(),
     body: z
       .string()
@@ -40,9 +46,18 @@ export const messageSendSchema = z
       .optional(),
     // 서명 문구(선택) — 문자 하단에 자동 추가 (예: "(주)렛츠 김예나 선임연구원")
     signature: z.string().trim().max(100, "서명 문구는 100자 이내로 입력하세요.").optional(),
+    // 예약발송 (KST, datetime-local 형식 "YYYY-MM-DDTHH:mm") — 문자만
+    scheduledAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "예약 시각 형식이 올바르지 않습니다.")
+      .optional(),
   })
   .refine((v) => v.channel !== "email" || (v.subject && v.subject.length > 0), {
     message: "이메일은 제목이 필요합니다.",
     path: ["subject"],
+  })
+  .refine((v) => v.channel === "sms" || !v.scheduledAt, {
+    message: "예약발송은 문자(SMS)에서만 지원합니다.",
+    path: ["scheduledAt"],
   });
 export type MessageSendInput = z.infer<typeof messageSendSchema>;
