@@ -142,6 +142,8 @@ async function createPositions(
 /**
  * 세션 수정 (기획 확정 2026-08-23) — 일정·세션명·역할·장소.
  * 필요인원은 코드 발급이 얽혀 adjustSlotCount 경로로만 바꾼다.
+ * feeAmount·locationAddress·notes는 스키마 재사용 관계로 받지만 쓰지 않는다
+ * — 비용은 후보별 예정가로 관리(개정 2026-08-22).
  * 승인된 계획 이후의 수정은 계획 서명(signature) 불일치로 잡혀
  * '변경 상신(재승인)'이 활성화된다 — 변경은 감사로그에 남긴다.
  */
@@ -195,12 +197,18 @@ export async function updateSlot(
       starts_time: before.starts_time,
       ends_time: before.ends_time,
       session_name: before.session_name,
+      role_type: before.role_type,
+      role_description: before.role_description,
+      location_name: before.location_name,
     },
     after_data: {
       slot_date: d.slotDate,
       starts_time: d.startsTime || null,
       ends_time: d.endsTime || null,
       session_name: d.sessionName || null,
+      role_type: d.roleType,
+      role_description: d.roleDescription || null,
+      location_name: d.locationName || null,
     },
   });
 

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
+import { getTenantModules } from "@/lib/modules/server";
 import { PLAN_STATUS_LABELS } from "@/lib/integrations/engagement-plans";
 
 /**
@@ -59,6 +60,10 @@ export async function getEngagementPlanVersions(
   } = await supabase.auth.getUser();
   if (!user || !tenantIdFromUser(user)) {
     return { ok: false, error: "로그인이 필요합니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
   }
 
   // RLS가 배정 범위를 지킨다 — 보이는 프로젝트의 계획만 조회된다

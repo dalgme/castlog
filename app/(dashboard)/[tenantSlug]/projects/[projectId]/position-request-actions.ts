@@ -162,7 +162,7 @@ export async function loadSlotPickerData(
   // 전문가 풀 — 전문가 메뉴와 같은 전면 공개 기준 (연습모드는 연결분만)
   const { data: pool } = await admin
     .from("experts")
-    .select("id, name, phone, email, specialty, region, career_years")
+    .select("id, name, phone, specialty, region, career_years")
     .eq("is_practice", practice)
     .order("created_at", { ascending: false })
     .limit(1000);

@@ -53,7 +53,7 @@ export function ExpertQuickTag({
   }
 
   const title = !canManage
-    ? `${targetLabel} 지정은 레벨 4 이상부터 가능합니다`
+    ? `${targetLabel} 지정 권한이 없습니다 (권한 규칙)`
     : active
       ? `${targetLabel} 해제`
       : `${targetLabel}로 지정`;
