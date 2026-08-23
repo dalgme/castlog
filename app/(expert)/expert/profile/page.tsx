@@ -114,6 +114,7 @@ export default async function ExpertProfilePage() {
           <CardContent className="pt-6">
             <ExpertProfileForm
               phoneDisplay={formatKrMobile(expert.phone)}
+              hasSaved={Boolean(expert.name)}
               defaultValues={{
                 name: expert.name,
                 email: expert.email ?? "",
