@@ -1204,6 +1204,7 @@ export type Database = {
           engagement_id: string
           expert_id: string
           id: string
+          is_practice: boolean
           is_urgent: boolean
           prior_status: string
           project_id: string | null
@@ -1217,6 +1218,7 @@ export type Database = {
           engagement_id: string
           expert_id: string
           id?: string
+          is_practice?: boolean
           is_urgent?: boolean
           prior_status: string
           project_id?: string | null
@@ -1230,6 +1232,7 @@ export type Database = {
           engagement_id?: string
           expert_id?: string
           id?: string
+          is_practice?: boolean
           is_urgent?: boolean
           prior_status?: string
           project_id?: string | null
@@ -4019,6 +4022,7 @@ export type Database = {
           dismissed_at: string | null
           dismissed_by: string | null
           id: string
+          is_practice: boolean
           resource_id: string | null
           resource_type: string | null
           severity: string
@@ -4033,6 +4037,7 @@ export type Database = {
           dismissed_at?: string | null
           dismissed_by?: string | null
           id?: string
+          is_practice?: boolean
           resource_id?: string | null
           resource_type?: string | null
           severity?: string
@@ -4047,6 +4052,7 @@ export type Database = {
           dismissed_at?: string | null
           dismissed_by?: string | null
           id?: string
+          is_practice?: boolean
           resource_id?: string | null
           resource_type?: string | null
           severity?: string
