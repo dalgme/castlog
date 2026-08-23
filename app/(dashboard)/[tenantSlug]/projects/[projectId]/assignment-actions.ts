@@ -30,11 +30,18 @@ async function requireManager(): Promise<
   return { ok: true, userId: user.id, tenantId };
 }
 
-/** PM은 프로젝트당 1명 — 부분 유니크 인덱스 위반을 사람이 읽을 문구로 바꾼다. */
+/** PL·PM은 프로젝트당 각 1명 — 부분 유니크 인덱스 위반을 사람이 읽을 문구로 바꾼다. */
 function roleConflictError(role: AssignmentRole): string {
-  return role === "pm"
-    ? `이 프로젝트에는 이미 ${ASSIGNMENT_ROLE_LABELS.pm}이(가) 지정되어 있습니다. 먼저 해제하거나 역할을 바꾸세요.`
-    : "배정에 실패했습니다.";
+  if (role === "pl") {
+    return "이 프로젝트에는 이미 PL(겸임 포함)이 지정되어 있습니다. 먼저 해제하거나 역할을 바꾸세요.";
+  }
+  if (role === "pm") {
+    return `이 프로젝트에는 이미 ${ASSIGNMENT_ROLE_LABELS.pm}(겸임 포함)이 지정되어 있습니다. 먼저 해제하거나 역할을 바꾸세요.`;
+  }
+  if (role === "pl_pm") {
+    return "이 프로젝트에는 이미 PL 또는 PM이 지정되어 있습니다. 겸임 지정 전에 기존 PL·PM을 해제하거나 역할을 바꾸세요.";
+  }
+  return "배정에 실패했습니다.";
 }
 
 /** 프로젝트에 담당자 배정 (권한자만). */

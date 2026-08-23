@@ -24,6 +24,7 @@ export function ProjectDashboardCards({
   data,
   budgetAmount,
   committedCost,
+  plName,
   pmName,
   deputyPmNames,
   modules,
@@ -33,6 +34,7 @@ export function ProjectDashboardCards({
   budgetAmount: number | null;
   /** 확정 + 요청중 섭외비 */
   committedCost: number;
+  plName: string | null;
   pmName: string | null;
   deputyPmNames: string[];
   modules: { experts: boolean; approvals: boolean };
@@ -55,6 +57,9 @@ export function ProjectDashboardCards({
       <Card>
         <CardContent className="space-y-2 pt-5">
           <p className="text-xs text-muted-foreground">책임자</p>
+          <p className="text-sm font-medium">
+            PL {plName ?? <span className="text-muted-foreground">미지정</span>}
+          </p>
           <p className="text-sm font-medium">
             PM {pmName ?? <span className="text-muted-foreground">미지정</span>}
           </p>

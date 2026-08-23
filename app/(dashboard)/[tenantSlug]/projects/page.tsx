@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProjectTodoTicker } from "@/components/projects/todo-ticker";
 import { projectStage } from "@/lib/integrations/project-stage";
+import { isPlRole, isPmRole } from "@/lib/integrations/assignment-roles";
 import {
   Table,
   TableBody,
@@ -84,7 +85,7 @@ export default async function ProjectsPage({
     name: c.name,
   }));
 
-  // PM·부PM 표기 (RLS가 이미 볼 수 있는 배정만 돌려준다)
+  // PL·PM·부PM 표기 (RLS가 이미 볼 수 있는 배정만 돌려준다)
   const { data: assignments } = rows.length
     ? await supabase
         .from("project_assignments")
@@ -93,7 +94,7 @@ export default async function ProjectsPage({
           "project_id",
           rows.map((r) => r.id)
         )
-        .in("assignment_role", ["pm", "deputy_pm"])
+        .in("assignment_role", ["pl", "pl_pm", "pm", "deputy_pm"])
     : { data: null };
 
   // users 임베드는 타입 관계가 잡혀 있지 않아 별도 조회 후 매핑한다
@@ -105,13 +106,18 @@ export default async function ProjectsPage({
     : { data: null };
   const nameById = new Map((leadUsers ?? []).map((u) => [u.id, u.name]));
 
-  const leadByProject = new Map<string, { pm?: string; deputies: string[] }>();
+  const leadByProject = new Map<
+    string,
+    { pl?: string; pm?: string; deputies: string[] }
+  >();
   for (const a of assignments ?? []) {
     const name = nameById.get(a.user_id);
     if (!name) continue;
     const entry = leadByProject.get(a.project_id) ?? { deputies: [] };
-    if (a.assignment_role === "pm") entry.pm = name;
-    else entry.deputies.push(name);
+    // PL·PM 겸임(pl_pm)은 양쪽 칸에 모두 표기한다
+    if (isPlRole(a.assignment_role)) entry.pl = name;
+    if (isPmRole(a.assignment_role)) entry.pm = name;
+    if (a.assignment_role === "deputy_pm") entry.deputies.push(name);
     leadByProject.set(a.project_id, entry);
   }
 
@@ -150,8 +156,9 @@ export default async function ProjectsPage({
                       <TableHead>프로젝트명</TableHead>
                       <TableHead>발주처</TableHead>
                       <TableHead>기간</TableHead>
-                      {/* PM과 부PM을 한 칸에 붙여 두면 부PM이 여럿일 때
-                          누가 PM인지 읽히지 않는다 — 칸을 나눈다 */}
+                      {/* PL·PM·부PM을 한 칸에 붙여 두면 누가 책임자인지
+                          읽히지 않는다 — 칸을 나눈다 */}
+                      <TableHead>PL</TableHead>
                       <TableHead>PM</TableHead>
                       <TableHead>부PM</TableHead>
                       <TableHead>진행</TableHead>
@@ -187,6 +194,11 @@ export default async function ProjectsPage({
                           <TableCell>{project.client_name ?? "-"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {leadByProject.get(project.id)?.pl ?? (
+                              <span className="text-muted-foreground">미지정</span>
+                            )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs">
                             {leadByProject.get(project.id)?.pm ?? (

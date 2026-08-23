@@ -92,7 +92,8 @@ export function ProjectAssignmentPanel({
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         배정된 담당자만 이 프로젝트를 볼 수 있습니다. 대표·이사(권한자)는 배정과 무관하게
-        전체 프로젝트를 봅니다. PM은 프로젝트당 1명, 부PM은 인원 제한이 없습니다.
+        전체 프로젝트를 봅니다. PL·PM은 프로젝트당 각 1명이며, 한 사람이 둘 다 맡으면
+        &lsquo;PL·PM 겸임&rsquo;으로 지정합니다. 부PM·담당은 인원 제한이 없습니다.
       </p>
 
       {assigned.length === 0 ? (
@@ -113,7 +114,7 @@ export function ProjectAssignmentPanel({
                 onValueChange={(next) => onChangeRole(m.userId, next)}
                 disabled={pending}
               >
-                <SelectTrigger className="h-6 w-[76px] text-xs">
+                <SelectTrigger className="h-6 w-[104px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -168,7 +169,7 @@ export function ProjectAssignmentPanel({
           value={pickRole}
           onValueChange={(v) => setPickRole(v as AssignmentRole)}
         >
-          <SelectTrigger className="w-24">
+          <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

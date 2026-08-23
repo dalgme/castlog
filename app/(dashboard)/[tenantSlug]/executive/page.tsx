@@ -187,13 +187,14 @@ export default async function ExecutivePage({
         .from("project_assignments")
         .select("user_id, project_id, assignment_role")
         .in("project_id", liveProjectIds)
-        .in("assignment_role", ["pm", "deputy_pm"])
+        .in("assignment_role", ["pl", "pl_pm", "pm", "deputy_pm"])
     : { data: [] };
   const loadByUser = new Map<string, { pm: number; deputy: number }>();
   for (const a of pmAssignments ?? []) {
     const cur = loadByUser.get(a.user_id) ?? { pm: 0, deputy: 0 };
-    if (a.assignment_role === "pm") cur.pm += 1;
-    else cur.deputy += 1;
+    // PL·PM(겸임 포함)은 책임 부하로, 부PM은 부책임 부하로 계상
+    if (a.assignment_role === "deputy_pm") cur.deputy += 1;
+    else cur.pm += 1;
     loadByUser.set(a.user_id, cur);
   }
   const loadRows = Array.from(loadByUser.entries())
@@ -208,7 +209,8 @@ export default async function ExecutivePage({
   // PM을 아무도 맡지 않은 진행 프로젝트 — 책임자 공백이다.
   const projectsWithPm = new Set(
     (pmAssignments ?? [])
-      .filter((a) => a.assignment_role === "pm")
+      // PM 자리가 채워졌는가 — 겸임(pl_pm)도 PM이다
+      .filter((a) => a.assignment_role === "pm" || a.assignment_role === "pl_pm")
       .map((a) => a.project_id)
   );
   const pmlessProjects = liveProjectIds.filter((id) => !projectsWithPm.has(id));
