@@ -21,6 +21,8 @@ export type SmsSendParams = {
   to: string; // E.164 또는 국내 표기 — 어댑터에서 정규화
   from: string; // 사전등록 발신번호
   text: string;
+  /** MMS 이미지 (기획 확정 2026-08-23) — 공급자에 업로드된 이미지 id. 솔라피만 지원 */
+  imageId?: string | null;
 };
 
 export type SmsSendResult =
@@ -44,6 +46,73 @@ export function isSmsTestMode(): boolean {
   return process.env.SMS_TEST_MODE === "true";
 }
 
+/** 솔라피 HMAC-SHA256 인증 헤더 */
+function solapiAuthHeader(apiKey: string, apiSecret: string): string {
+  const date = new Date().toISOString();
+  const salt = randomBytes(16).toString("hex");
+  const signature = createHmac("sha256", apiSecret)
+    .update(date + salt)
+    .digest("hex");
+  return `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
+}
+
+/** MMS 이미지 상한 — 솔라피 규격 (JPG, 200KB) */
+export const MMS_IMAGE_MAX_BYTES = 200 * 1024;
+
+/**
+ * MMS 이미지 업로드 (기획 확정 2026-08-23) — 발송 전 공급자 저장소에 올리고
+ * imageId를 받는다. 솔라피만 지원한다.
+ */
+export async function uploadMmsImage(
+  creds: SmsCredentials,
+  input: { base64: string; name: string }
+): Promise<{ ok: true; imageId: string; test?: boolean } | { ok: false; error: string }> {
+  if (isSmsTestMode()) {
+    return { ok: true, imageId: "test-image", test: true };
+  }
+  if (creds.provider !== "solapi") {
+    return {
+      ok: false,
+      error: "이미지(MMS) 발송은 현재 솔라피 연동에서만 지원됩니다.",
+    };
+  }
+  if (!creds.apiSecret) {
+    return { ok: false, error: "솔라피 API Secret이 설정되지 않았습니다." };
+  }
+
+  try {
+    const response = await fetch("https://api.solapi.com/storage/v1/files", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: solapiAuthHeader(creds.apiKey, creds.apiSecret),
+      },
+      body: JSON.stringify({
+        file: input.base64,
+        type: "MMS",
+        name: input.name,
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      return {
+        ok: false,
+        error: `이미지 업로드 실패 (solapi ${response.status}): ${detail.slice(0, 200)}`,
+      };
+    }
+    const json = (await response.json()) as { fileId?: string };
+    if (!json.fileId) {
+      return { ok: false, error: "이미지 업로드 응답에 fileId가 없습니다." };
+    }
+    return { ok: true, imageId: json.fileId };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `이미지 업로드 실패: ${error instanceof Error ? error.message : "network"}`,
+    };
+  }
+}
+
 /** 솔라피 — HMAC-SHA256 인증 (messages/v4) */
 async function sendViaSolapi(
   creds: SmsCredentials,
@@ -52,24 +121,20 @@ async function sendViaSolapi(
   if (!creds.apiSecret) {
     return { ok: false, error: "솔라피 API Secret이 설정되지 않았습니다." };
   }
-  const date = new Date().toISOString();
-  const salt = randomBytes(16).toString("hex");
-  const signature = createHmac("sha256", creds.apiSecret)
-    .update(date + salt)
-    .digest("hex");
-
   try {
     const response = await fetch("https://api.solapi.com/messages/v4/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `HMAC-SHA256 apiKey=${creds.apiKey}, date=${date}, salt=${salt}, signature=${signature}`,
+        Authorization: solapiAuthHeader(creds.apiKey, creds.apiSecret),
       },
       body: JSON.stringify({
         message: {
           to: toLocalPhone(params.to),
           from: toLocalPhone(params.from),
           text: params.text,
+          // 이미지 첨부 시 MMS — 솔라피가 imageId로 형식을 판정한다
+          ...(params.imageId ? { type: "MMS", imageId: params.imageId } : {}),
         },
       }),
     });

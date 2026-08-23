@@ -11,7 +11,12 @@ import {
   messageSendSchema,
   type MessageSendInput,
 } from "@/lib/messaging/schemas";
-import { sendTenantSms, type SmsRecipient } from "@/lib/sms/send";
+import {
+  sendTenantSms,
+  uploadTenantMmsImage,
+  type SmsRecipient,
+} from "@/lib/sms/send";
+import { MMS_IMAGE_MAX_BYTES } from "@/lib/sms/providers";
 import { sendTenantEmail, type EmailRecipient } from "@/lib/email/send";
 
 export type SendMessageResult =
@@ -29,6 +34,66 @@ export type SendMessageResult =
 /** KST datetime-local("YYYY-MM-DDTHH:mm") → Date */
 function parseKstLocal(value: string): Date {
   return new Date(`${value}:00+09:00`);
+}
+
+export type UploadMmsResult =
+  | { ok: true; imageId: string; fileName: string; testMode: boolean }
+  | { ok: false; error: string };
+
+/**
+ * MMS 이미지 업로드 (기획 확정 2026-08-23) — JPG 200KB 이하만.
+ * 공급자(솔라피) 저장소에 올리고 imageId를 돌려준다. 발송 시 이 id를 쓴다.
+ */
+export async function uploadMmsImageAction(
+  formData: FormData
+): Promise<UploadMmsResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
+    return { ok: false, error: "발송 권한이 없습니다." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "이미지 파일을 선택하세요." };
+  }
+  if (file.size > MMS_IMAGE_MAX_BYTES) {
+    return {
+      ok: false,
+      error: "이미지는 200KB 이하 JPG만 첨부할 수 있습니다 (통신사 MMS 규격). 용량을 줄여 다시 올려 주세요.",
+    };
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  // JPG 매직 바이트 검증 — 확장자·신고 MIME은 믿지 않는다
+  if (!(bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) {
+    return { ok: false, error: "JPG 이미지만 첨부할 수 있습니다 (통신사 MMS 규격)." };
+  }
+
+  const clientName = formData.get("fileName");
+  const fileName =
+    typeof clientName === "string" && clientName.trim()
+      ? clientName.trim()
+      : file.name;
+
+  const result = await uploadTenantMmsImage({
+    tenantId,
+    base64: bytes.toString("base64"),
+    name: fileName,
+  });
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    imageId: result.imageId,
+    fileName,
+    testMode: result.test === true,
+  };
 }
 
 /**
@@ -121,6 +186,8 @@ export async function sendMessage(
           message_type: data.messageType,
           body: smsBody,
           sender_number: data.senderNumber ?? null,
+          mms_image_id: data.imageId ?? null,
+          mms_image_name: data.imageName ?? null,
           status: "scheduled",
           scheduled_at: when.toISOString(),
           recipient_count: recipients.length,
@@ -187,6 +254,7 @@ export async function sendMessage(
       recipients,
       senderNumber: data.senderNumber ?? null,
       batchId,
+      imageId: data.imageId ?? null,
     });
     if (!result.ok) return result;
     const summary = result.summary;
@@ -199,6 +267,8 @@ export async function sendMessage(
       message_type: data.messageType,
       body: smsBody,
       sender_number: data.senderNumber ?? null,
+      mms_image_id: data.imageId ?? null,
+      mms_image_name: data.imageName ?? null,
       status: "sent",
       sent_at: new Date().toISOString(),
       recipient_count: recipients.length,

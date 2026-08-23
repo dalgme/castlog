@@ -51,6 +51,9 @@ export const messageSendSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "예약 시각 형식이 올바르지 않습니다.")
       .optional(),
+    // MMS 이미지 (기획 확정 2026-08-23) — 업로드 액션이 발급한 공급자 이미지 id
+    imageId: z.string().max(200).optional(),
+    imageName: z.string().max(200).optional(),
   })
   .refine((v) => v.channel !== "email" || (v.subject && v.subject.length > 0), {
     message: "이메일은 제목이 필요합니다.",
@@ -59,5 +62,9 @@ export const messageSendSchema = z
   .refine((v) => v.channel === "sms" || !v.scheduledAt, {
     message: "예약발송은 문자(SMS)에서만 지원합니다.",
     path: ["scheduledAt"],
+  })
+  .refine((v) => v.channel === "sms" || !v.imageId, {
+    message: "이미지 첨부는 문자(SMS)에서만 지원합니다.",
+    path: ["imageId"],
   });
 export type MessageSendInput = z.infer<typeof messageSendSchema>;
