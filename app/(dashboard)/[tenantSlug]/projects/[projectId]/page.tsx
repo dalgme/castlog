@@ -736,6 +736,7 @@ export default async function ProjectDetailPage({
                 tenantSlug={params.tenantSlug}
                 slots={slotRows}
                 canManage={canInput}
+                canNotice={canExec("sessionNotice", grade, role)}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />

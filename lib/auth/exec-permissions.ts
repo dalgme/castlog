@@ -37,6 +37,8 @@ export const EXEC_FEATURES = {
   sessionNotice: { minGrade: "deputy", label: "세션 안내문자 발송" },
   acceptanceSend: { minGrade: "deputy", label: "수락서 처리·리마인드" },
   planSubmit: { minGrade: "deputy", label: "섭외계획 품의 상신" },
+  // 지급건 생성은 금액을 다루는 기능이라 레벨이 아니라 지급 축(canManagePayments:
+  // 이사 이상 + finance 위임)을 유지한다 — 이 키는 예약만 해 두고 배선하지 않는다.
   paymentBatchCreate: { minGrade: "deputy", label: "지급건 생성" },
   expertInvite: { minGrade: "deputy", label: "전문가 등록요청·서류요청" },
   expertRecord: { minGrade: "deputy", label: "태그·평점·메모·섭외분야" },

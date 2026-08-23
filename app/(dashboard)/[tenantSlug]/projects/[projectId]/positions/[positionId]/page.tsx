@@ -165,7 +165,7 @@ export default async function PositionPage({
         ) : !canManage ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              섭외 요청은 관리자 이상만 보낼 수 있습니다.
+              섭외 요청은 레벨 4 이상만 보낼 수 있습니다 (권한 규칙).
             </CardContent>
           </Card>
         ) : planGate.required && !planGate.allowed ? (

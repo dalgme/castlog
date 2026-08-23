@@ -424,10 +424,10 @@ export function EngagementWorkbench({
                       </Link>
                     </Button>
                   )}
-                  {canManage && e.status === "requested" && (
+                  {canCancel && e.status === "requested" && (
                     <EngagementCancelButton engagementId={e.id} />
                   )}
-                  {canManage && e.status === "accepted" && (
+                  {canCancel && e.status === "accepted" && (
                     <EngagementUrgentCancel
                       engagementId={e.id}
                       expertName={e.expertName}
