@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
+import { ProjectTodoTicker } from "@/components/projects/todo-ticker";
 
 import { AttachmentPanel } from "./attachment-panel";
 
@@ -652,16 +653,26 @@ export default async function ProjectDetailPage({
       />
       <main className="space-y-5 p-5">
         {tab === "overview" && (
-        <ProjectDashboardCards
-          tenantSlug={params.tenantSlug}
-          data={dashboard}
-          budgetAmount={project.budget_amount}
-          committedCost={confirmedCost + requestedCost}
-          plName={plName}
-          pmName={pmName}
-          deputyPmNames={deputyPmNames}
-          modules={{ experts: modules.experts, approvals: modules.approvals }}
-        />
+          <>
+            {/* 목록의 '지금 할 일' 전광판을 상세 대시보드 상단에도 그대로
+                (기획 확정 2026-08-23 — 섭외취소 긴급 보고 마퀴는 별도 유지) */}
+            {modules.experts && (
+              <ProjectTodoTicker
+                stage={engagementState?.stage ?? "assigning"}
+                size="lg"
+              />
+            )}
+            <ProjectDashboardCards
+              tenantSlug={params.tenantSlug}
+              data={dashboard}
+              budgetAmount={project.budget_amount}
+              committedCost={confirmedCost + requestedCost}
+              plName={plName}
+              pmName={pmName}
+              deputyPmNames={deputyPmNames}
+              modules={{ experts: modules.experts, approvals: modules.approvals }}
+            />
+          </>
         )}
         {tab === "basic" && canManage && (
           <Card>
