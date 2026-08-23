@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
-import { isExpertTag } from "@/lib/integrations/expert-tags";
+import { expertTagLabel, isExpertTag } from "@/lib/integrations/expert-tags";
 
 export type TagResult = { ok: true } | { ok: false; error: string };
 
@@ -92,6 +92,17 @@ export async function setExpertTag(
     resource_type: "expert",
     resource_id: expertId,
     after_data: tag ? { tag } : null,
+  });
+
+  // 평가 로그 — 등급 변경도 점수와 같은 이력에 남긴다 (기획 확정 2026-08-23).
+  // 로그 테이블 미생성(마이그레이션 전)이어도 등급 지정 자체는 유지한다.
+  await supabase.from("expert_rating_logs").insert({
+    tenant_id: auth.tenantId,
+    expert_id: expertId,
+    kind: "grade",
+    value: tag ? (expertTagLabel(tag) ?? tag) : "해제",
+    note: note?.trim() || null,
+    created_by: auth.userId,
   });
 
   revalidatePath("/[tenantSlug]/experts", "page");

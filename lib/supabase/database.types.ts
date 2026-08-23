@@ -2156,6 +2156,110 @@ export type Database = {
           },
         ]
       }
+      expert_rating_logs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expert_id: string
+          id: string
+          kind: string
+          note: string | null
+          tenant_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expert_id: string
+          id?: string
+          kind: string
+          note?: string | null
+          tenant_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expert_id?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          tenant_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_rating_logs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_rating_logs_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_rating_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expert_tenant_notes: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          expert_id: string
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          expert_id: string
+          id?: string
+          tenant_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          expert_id?: string
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_tenant_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_tenant_notes_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_tenant_notes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_tenant_profiles: {
         Row: {
           created_at: string
