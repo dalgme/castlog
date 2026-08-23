@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { buildPublicLink } from "@/lib/routing/links";
@@ -18,7 +20,6 @@ import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 
 export type ReminderResult = { ok: true } | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 /**
  * 미회신 섭외 재안내 (리마인드 · 링크 재발급).
@@ -55,8 +56,11 @@ export async function remindEngagement(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "재안내 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("acceptanceSend", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("acceptanceSend") };
   }
 
   const { data: engagement } = await supabase

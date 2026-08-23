@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getTenantModules } from "@/lib/modules/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import {
   EXPERT_DOCUMENT_BUCKET,
@@ -22,7 +24,6 @@ import {
  * 아니지만 전문가 개인에게 붙는 파일이 섞이므로 공개 URL을 만들지 않는다.
  */
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 export type AttachmentResult = { ok: true } | { ok: false; error: string };
 
@@ -45,8 +46,11 @@ async function requireManager(): Promise<
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "첨부 관리 권한이 없습니다(관리자 이상)." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("planInput", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("planInput") };
   }
   return { ok: true, session: { userId: user.id, tenantId, role } };
 }

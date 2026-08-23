@@ -24,11 +24,13 @@ import {
 
 /** 실행 기능 키 — 게이트 지점마다 하나를 고른다 */
 export const EXEC_FEATURES = {
-  /* ── 레벨 3까지 (개설·대량·되돌리기 어려운 것·자유 발송) ─────────── */
+  /* ── 레벨 3까지 (개설·대량·되돌리기 어려운 것·자유 발송·설정류) ──── */
   projectCreate: { minGrade: "team_lead", label: "프로젝트 개설" },
   bulkImport: { minGrade: "team_lead", label: "일괄 등록 (엑셀·보유자료)" },
   engagementCancel: { minGrade: "team_lead", label: "섭외 취소" },
   freeMessageSend: { minGrade: "team_lead", label: "일반 문자·이메일 발송" },
+  projectBudget: { minGrade: "team_lead", label: "프로젝트 예산 수정" },
+  sendTemplate: { minGrade: "team_lead", label: "발송 문구 관리" },
 
   /* ── 레벨 4까지 (발송·품의 실행 — PM을 맡는 레벨) ────────────────── */
   engagementRequest: { minGrade: "deputy", label: "섭외요청 발송" },

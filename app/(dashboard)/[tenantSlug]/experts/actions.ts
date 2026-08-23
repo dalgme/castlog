@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { normalizeKrMobileE164 } from "@/lib/auth/phone";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { buildPublicLink } from "@/lib/routing/links";
 import {
   inviteCreateSchema,
@@ -53,8 +54,11 @@ export async function createExpertInvitation(
   // tenant_id는 JWT app_metadata에서만 읽는다 (CLAUDE.md 3 — 최우선 원칙)
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "등록 요청 생성 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 
   // 모듈 게이트 — 네비 숨김만으로는 불충분 (CLAUDE.md 1-2)
@@ -126,8 +130,11 @@ export async function revokeExpertInvitation(
 
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "등록 요청 회수 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 
   const { data: updated, error } = await supabase
@@ -177,8 +184,11 @@ export async function regenerateExpertInvitation(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "등록 요청 재생성 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 
   const token = generateLinkToken();
@@ -238,8 +248,11 @@ export async function sendExpertInvitationSms(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "문자 발송 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 
   const { data: invitation } = await supabase

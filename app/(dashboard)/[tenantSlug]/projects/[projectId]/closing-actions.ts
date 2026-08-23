@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
 import { matchApprovalRule, createApprovalWithSteps } from "@/lib/approvals/engine";
@@ -106,8 +107,13 @@ export async function saveSessionSatisfaction(input: {
   satisfaction: number;
   memo?: string;
 }): Promise<ClosingActionResult> {
-  const auth = await requireManager();
-  if (!auth.ok) return auth;
+  // 만족도 입력은 종료 결정이 아니라 전문가 기록이다 — 레벨 4(PM 실행선)까지 연다.
+  const gate = await requireExecGrade("expertRecord");
+  if (!gate.ok) return gate;
+  const auth = {
+    ok: true as const,
+    session: { userId: gate.userId, tenantId: gate.tenantId, role: gate.role },
+  };
 
   const modules = await getTenantModules();
   if (!modules.experts) {

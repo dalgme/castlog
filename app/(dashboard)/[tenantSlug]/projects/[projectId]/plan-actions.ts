@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -22,7 +24,6 @@ export type PlanActionResult =
   | { ok: true; approvalId?: string | null }
   | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 type PlanSession = {
   ok: true;
@@ -53,8 +54,11 @@ async function requirePlanSession(): Promise<PlanSession> {
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "섭외계획 품의 권한이 없습니다(관리자 이상)." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("planSubmit", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("planSubmit") };
   }
   return { ok: true, userId: user.id, tenantId, role };
 }

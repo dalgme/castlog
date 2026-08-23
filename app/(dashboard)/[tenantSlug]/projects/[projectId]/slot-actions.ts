@@ -5,26 +5,16 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
 
 export type SlotResult = { ok: true } | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
-
+/** 세션 계획·후보 입력 = 레벨 5까지 (기획 확정 2026-08-23 — 차등화) */
 async function requireManager(): Promise<
   { ok: true; userId: string; tenantId: string } | { ok: false; error: string }
 > {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "섭외 테이블 편집 권한이 없습니다(관리자 이상)." };
-  }
-  return { ok: true, userId: user.id, tenantId };
+  return requireExecGrade("planInput");
 }
 
 const slotSchema = z
@@ -242,7 +232,8 @@ export async function updateProjectBudget(
   budgetAmount: string
 ): Promise<SlotResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  const auth = await requireManager();
+  // 예산은 금액 축 — 레벨 3까지 유지 (세션 입력과 구분, 기획 확정 2026-08-23)
+  const auth = await requireExecGrade("projectBudget");
   if (!auth.ok) return auth;
   if (!/^\d*$/.test(budgetAmount)) {
     return { ok: false, error: "예산은 숫자만 입력하세요 (원 단위)." };

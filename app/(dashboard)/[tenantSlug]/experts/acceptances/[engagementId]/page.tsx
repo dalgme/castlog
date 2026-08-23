@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { canExec } from "@/lib/auth/exec-permissions";
 import { requireModule } from "@/lib/modules/server";
 import { getAcceptanceView } from "@/lib/integrations/acceptance-view";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
@@ -93,7 +94,8 @@ export default async function TenantAcceptancePage({
   }
 
   const role = roleFromUser(user);
-  const canManage = role === "org_admin" || role === "manager";
+  // 수락서 발송·재발송은 레벨 4(대리)부터 — 서버 게이트(acceptanceSend)와 같은 기준
+  const canManage = canExec("acceptanceSend", gradeFromUser(user), role);
 
   return (
     <div>

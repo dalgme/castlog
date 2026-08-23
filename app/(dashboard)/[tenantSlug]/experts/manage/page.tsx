@@ -4,7 +4,8 @@ import { requireRole, getSessionUser } from "@/lib/auth/session";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { canExec } from "@/lib/auth/exec-permissions";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,8 @@ export default async function ExpertManagePage({
   await requireModule("experts");
 
   const user = await getSessionUser();
-  const canEdit = ["org_admin", "manager"].includes(roleFromUser(user) ?? "");
+  // 평점·메모·섭외분야 수정은 레벨 4(대리)부터 — 서버 게이트(expertRecord)와 같은 기준
+  const canEdit = canExec("expertRecord", gradeFromUser(user), roleFromUser(user));
 
   const headerActions = (
     <Button asChild variant="outline" size="sm">

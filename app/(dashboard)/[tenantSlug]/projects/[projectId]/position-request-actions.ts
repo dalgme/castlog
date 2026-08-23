@@ -1,6 +1,7 @@
 "use server";
 
-import { roleFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { requireUser } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -34,8 +35,11 @@ export async function loadPositionRequestData(
 ): Promise<PositionRequestData> {
   const user = await requireUser();
   const role = roleFromUser(user);
-  if (!user || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "섭외 요청 권한이 없습니다(관리자 이상)." };
+  if (!user || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("planInput", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("planInput") };
   }
 
   const modules = await getTenantModules();

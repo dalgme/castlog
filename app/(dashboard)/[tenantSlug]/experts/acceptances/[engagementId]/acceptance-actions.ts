@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getTenantModules } from "@/lib/modules/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import {
   EXPERT_DOCUMENT_BUCKET,
@@ -19,7 +21,6 @@ import {
 
 export type AcceptanceActionResult = { ok: true } | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 async function requireManager(): Promise<
   { ok: true; userId: string; tenantId: string } | { ok: false; error: string }
@@ -35,8 +36,11 @@ async function requireManager(): Promise<
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "수락서 편집 권한이 없습니다(관리자 이상)." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("acceptanceSend", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("acceptanceSend") };
   }
   return { ok: true, userId: user.id, tenantId };
 }
