@@ -4650,6 +4650,30 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_assignment_role_rules: {
+        Row: {
+          tenant_id: string
+          assignment_role: string
+          min_grade: string
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          tenant_id: string
+          assignment_role: string
+          min_grade: string
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          tenant_id?: string
+          assignment_role?: string
+          min_grade?: string
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tenant_exec_grants: {
         Row: {
           tenant_id: string

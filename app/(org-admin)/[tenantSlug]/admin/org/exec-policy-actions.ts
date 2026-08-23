@@ -8,6 +8,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 import { isUserGrade } from "@/lib/auth/grades";
 import { EXEC_FEATURES, type ExecFeature } from "@/lib/auth/exec-permissions";
+import { isRuleRole } from "@/lib/integrations/assignment-role-rules";
 import { explainActionError } from "@/lib/ux/action-errors";
 
 export type ExecPolicyActionResult = { ok: true } | { ok: false; error: string };
@@ -195,6 +196,74 @@ export async function removeExecGrant(
     resource_type: "user",
     resource_id: userId,
     after_data: { feature },
+  });
+
+  revalidatePath("/[tenantSlug]/admin/staff", "page");
+  return { ok: true };
+}
+
+/**
+ * 프로젝트 역할(PL·PM·부PM·담당)별 최소 레벨 조정 — minGrade가 null이면
+ * 기본값 복귀(행 삭제). 기본값: PL 레벨 3 · PM 레벨 4 · 부PM 레벨 5 · 담당 레벨 6.
+ */
+export async function setAssignmentRoleRule(
+  role: string,
+  minGrade: string | null
+): Promise<ExecPolicyActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const session = await requireAdminScope("staff");
+  if (!session.ok) return session;
+
+  if (!isRuleRole(role)) {
+    return { ok: false, error: "알 수 없는 역할입니다." };
+  }
+  if (minGrade !== null && !isUserGrade(minGrade)) {
+    return { ok: false, error: "레벨 값을 확인하세요." };
+  }
+
+  const supabase = createClient();
+  if (minGrade === null) {
+    const { error } = await supabase
+      .from("tenant_assignment_role_rules")
+      .delete()
+      .eq("tenant_id", session.tenantId)
+      .eq("assignment_role", role);
+    if (error) {
+      return {
+        ok: false,
+        error: await explainActionError(error.message, "기본값 복귀에 실패했습니다."),
+      };
+    }
+  } else {
+    const { error } = await supabase.from("tenant_assignment_role_rules").upsert(
+      {
+        tenant_id: session.tenantId,
+        assignment_role: role,
+        min_grade: minGrade,
+        updated_by: session.userId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "tenant_id,assignment_role" }
+    );
+    if (error) {
+      return {
+        ok: false,
+        error: await explainActionError(error.message, "역할 레벨 조정에 실패했습니다."),
+      };
+    }
+  }
+
+  const admin = createAdminClient();
+  await admin.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.isCeo ? "org_admin" : "manager",
+    action: "tenant.role_grade_rule_change",
+    resource_type: "tenant",
+    resource_id: session.tenantId,
+    after_data: { assignment_role: role, min_grade: minGrade ?? "(기본값)" },
   });
 
   revalidatePath("/[tenantSlug]/admin/staff", "page");
