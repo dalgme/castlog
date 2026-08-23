@@ -3631,6 +3631,133 @@ export type Database = {
           },
         ]
       }
+      sms_send_batches: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          excluded_count: number
+          failed_count: number
+          id: string
+          last_error: string | null
+          message_type: string
+          recipient_count: number
+          scheduled_at: string | null
+          sender_number: string | null
+          sent_at: string | null
+          sent_count: number
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          excluded_count?: number
+          failed_count?: number
+          id?: string
+          last_error?: string | null
+          message_type: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sender_number?: string | null
+          sent_at?: string | null
+          sent_count?: number
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          excluded_count?: number
+          failed_count?: number
+          id?: string
+          last_error?: string | null
+          message_type?: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sender_number?: string | null
+          sent_at?: string | null
+          sent_count?: number
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_send_batches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_send_batches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_send_batch_recipients: {
+        Row: {
+          batch_id: string
+          created_at: string
+          expert_id: string | null
+          id: string
+          name: string | null
+          phone: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          expert_id?: string | null
+          id?: string
+          name?: string | null
+          phone: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          expert_id?: string | null
+          id?: string
+          name?: string | null
+          phone?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_send_batch_recipients_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "sms_send_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_send_batch_recipients_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_send_batch_recipients_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tax_lockdown: {
         Row: {
           honeytoken_id: string | null

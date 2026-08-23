@@ -136,6 +136,11 @@ export type TenantSmsSendParams = {
    * service_role로 수행한다. 화면에서 호출할 때는 지정하지 않는다.
    */
   systemContext?: boolean;
+  /**
+   * 발송 건(sms_send_batches) id를 미리 만들어 로그와 연결할 때 지정
+   * (기획 확정 2026-08-23 — 발송 이력·제목·예약). 미지정 시 임의 생성.
+   */
+  batchId?: string | null;
 };
 
 /**
@@ -316,7 +321,7 @@ export async function sendTenantSms(
 ): Promise<{ ok: true; summary: SendSummary } | { ok: false; error: string }> {
   const systemContext = params.systemContext === true;
   const supabase = systemContext ? createAdminClient() : createClient();
-  const batchId = randomUUID();
+  const batchId = params.batchId ?? randomUUID();
   // 연습모드에서는 실제 발송을 하지 않는다. 흐름·이력은 그대로 남기되 공급자
   // 호출만 건너뛴다 — 발송 연습을 하다 실제 요금·오발송이 나면 안 된다.
   const practice = systemContext ? false : await isPracticeMode();

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { ComposeForm, type RecipientOption } from "./compose-form";
+import { SendHistory, type SendBatchRow } from "./send-history";
 
 export const metadata = { title: "발송" };
 
@@ -139,6 +140,33 @@ export default async function MessagesPage() {
   // 기본값은 항상 회사 대표번호 (목록 첫 항목)
   const defaultSender = senderOptions[0]?.value ?? null;
 
+  // 발송 이력 (발송 건 단위 — 기획 확정 2026-08-23). 테이블 미생성이면 빈 목록.
+  const batchesResult = await supabase
+    .from("sms_send_batches")
+    .select(
+      "id, title, message_type, status, scheduled_at, sent_at, created_at, recipient_count, sent_count, failed_count, excluded_count, last_error, created_by, users (name)"
+    )
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const batchRows: SendBatchRow[] = (batchesResult.error
+    ? []
+    : (batchesResult.data ?? [])
+  ).map((b) => ({
+    id: b.id,
+    title: b.title,
+    messageType: b.message_type,
+    status: b.status,
+    scheduledAt: b.scheduled_at,
+    sentAt: b.sent_at,
+    createdAt: b.created_at,
+    recipientCount: b.recipient_count,
+    sentCount: b.sent_count,
+    failedCount: b.failed_count,
+    excludedCount: b.excluded_count,
+    lastError: b.last_error,
+    senderName: b.users?.name ?? null,
+  }));
+
   return (
     <div>
       <PageHeader title="발송" />
@@ -159,7 +187,16 @@ export default async function MessagesPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">최근 발송 기록</CardTitle>
+            <CardTitle className="text-sm">문자 발송 이력 (제목별 · 예약 관리)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SendHistory rows={batchRows} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">최근 발송 기록 (수신자별 상세)</CardTitle>
           </CardHeader>
           <CardContent>
             {smsRows.length === 0 && emailRows.length === 0 ? (

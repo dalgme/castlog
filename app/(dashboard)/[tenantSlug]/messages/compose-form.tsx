@@ -71,6 +71,11 @@ export function ComposeForm({
   );
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  // 발송 제목 — 이력(로그) 목록에 표시 (기획 확정 2026-08-23)
+  const [title, setTitle] = useState("");
+  // 예약발송 (문자만) — datetime-local, KST
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
@@ -100,6 +105,8 @@ export function ComposeForm({
     });
   }
 
+  const scheduling = channel === "sms" && scheduleEnabled;
+
   function onSend() {
     const ids = eligible
       .filter((r) => selected.has(r.expertId))
@@ -108,19 +115,30 @@ export function ComposeForm({
       toast({ variant: "destructive", description: "수신 대상을 선택하세요." });
       return;
     }
+    if (!title.trim()) {
+      toast({
+        variant: "destructive",
+        description: "발송 제목을 입력하세요 (발송 이력에 표시됩니다).",
+      });
+      return;
+    }
+    if (scheduling && !scheduledAt) {
+      toast({ variant: "destructive", description: "예약 시각을 선택하세요." });
+      return;
+    }
     // 위험 작업 2단계 확인 (CLAUDE.md 14-3)
     const typeLabel = messageType === "advertising" ? "광고성" : "업무연락";
-    if (
-      !window.confirm(
-        `${typeLabel} ${channel.toUpperCase()} ${ids.length}명에게 발송할까요?\n발송 후 취소할 수 없습니다.`
-      )
-    ) {
+    const confirmText = scheduling
+      ? `${typeLabel} 문자 ${ids.length}명 — ${scheduledAt.replace("T", " ")}에 예약할까요?\n발송 전까지는 이력에서 취소할 수 있습니다.`
+      : `${typeLabel} ${channel.toUpperCase()} ${ids.length}명에게 발송할까요?\n발송 후 취소할 수 없습니다.`;
+    if (!window.confirm(confirmText)) {
       return;
     }
     startTransition(async () => {
       const result = await sendMessage({
         channel,
         messageType,
+        title: title.trim(),
         subject: subject || undefined,
         body,
         expertIds: ids,
@@ -128,12 +146,18 @@ export function ComposeForm({
           channel === "sms" && senderNumber ? senderNumber : undefined,
         signature:
           channel === "sms" && signature.trim() ? signature.trim() : undefined,
+        scheduledAt: scheduling ? scheduledAt : undefined,
       });
       if (result.ok) {
         toast({
-          description: `발송 완료 — 성공 ${result.sent}건, 실패 ${result.failed}건, 제외 ${result.excluded}건${result.testMode ? " (테스트 모드)" : ""}`,
+          description: result.scheduled
+            ? `예약 완료 — ${result.recipients}명, 예약 시각 이후 10분 내에 발송됩니다. 발송 이력에서 취소할 수 있습니다.`
+            : `발송 완료 — 성공 ${result.sent}건, 실패 ${result.failed}건, 제외 ${result.excluded}건${result.testMode ? " (테스트 모드)" : ""}`,
         });
         setBody("");
+        setTitle("");
+        setScheduleEnabled(false);
+        setScheduledAt("");
         setSelected(new Set());
       } else {
         toast({ variant: "destructive", description: result.error });
@@ -238,6 +262,17 @@ export function ComposeForm({
         </div>
       )}
 
+      {/* 발송 제목 — 이력에 표시할 이름 (기획 확정 2026-08-23) */}
+      <div className="space-y-1">
+        <p className="text-sm font-semibold">발송 제목 (필수 · 이력에 표시)</p>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="예: 9월 창업캠프 섭외 안내"
+          maxLength={80}
+        />
+      </div>
+
       {channel === "email" && (
         <Input
           value={subject}
@@ -245,6 +280,33 @@ export function ComposeForm({
           placeholder="이메일 제목"
           maxLength={150}
         />
+      )}
+
+      {channel === "sms" && (
+        <div className="space-y-2 rounded-md border p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+            <Checkbox
+              checked={scheduleEnabled}
+              onCheckedChange={(v) => setScheduleEnabled(v === true)}
+            />
+            예약발송
+          </label>
+          {scheduleEnabled && (
+            <div className="space-y-1">
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                예약 시각(한국 시간) 이후 10분 내에 발송됩니다. 발송 전에는 아래
+                발송 이력에서 취소할 수 있습니다. 광고성은 야간(21~08시) 예약이
+                불가합니다.
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       <Textarea
@@ -333,7 +395,13 @@ export function ComposeForm({
         disabled={pending || selectedCount === 0 || body.length === 0}
         onClick={onSend}
       >
-        {pending ? "발송 중..." : `발송 (${selectedCount}명)`}
+        {pending
+          ? scheduling
+            ? "예약 중..."
+            : "발송 중..."
+          : scheduling
+            ? `예약 등록 (${selectedCount}명)`
+            : `발송 (${selectedCount}명)`}
       </Button>
     </div>
   );
