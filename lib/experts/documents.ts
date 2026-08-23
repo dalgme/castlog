@@ -25,6 +25,8 @@ export const STANDARD_UPLOAD_DOCUMENT_TYPES = [
 export const UPLOADABLE_DOCUMENT_TYPES = [
   ...STANDARD_UPLOAD_DOCUMENT_TYPES,
   "attachment",
+  // 통합서류(혼합) — 기업 파일 일괄 등록에서 생기며, 전문가 본인도 교체 가능
+  "combined",
 ] as const;
 export type UploadableDocumentType = (typeof UPLOADABLE_DOCUMENT_TYPES)[number];
 
@@ -38,6 +40,7 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   seal: "날인(도장)",
   attachment: "첨부파일",
   certificate: "자격증 사본",
+  combined: "통합서류(혼합)",
 };
 
 /**
@@ -47,6 +50,7 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 export const GRANTABLE_DOCUMENT_TYPES = [
   ...STANDARD_UPLOAD_DOCUMENT_TYPES,
   "certificate",
+  "combined",
 ] as const;
 
 export function isGrantableDocumentType(value: string): boolean {
@@ -73,6 +77,7 @@ export const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
 export const SENSITIVE_DOCUMENT_TYPES: readonly string[] = [
   "bank_account_copy",
   "id_card_copy",
+  "combined",
 ];
 
 /** 서버 검증 상한 (버킷 file_size_limit와 동일) */

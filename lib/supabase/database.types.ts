@@ -1290,6 +1290,7 @@ export type Database = {
           status: string
           storage_path: string
           updated_at: string
+          uploaded_by_tenant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1303,6 +1304,7 @@ export type Database = {
           status?: string
           storage_path: string
           updated_at?: string
+          uploaded_by_tenant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1316,6 +1318,7 @@ export type Database = {
           status?: string
           storage_path?: string
           updated_at?: string
+          uploaded_by_tenant_id?: string | null
         }
         Relationships: [
           {
@@ -2002,6 +2005,8 @@ export type Database = {
           secondary_phone: string | null
           specialty: string | null
           updated_at: string
+          organization: string | null
+          job_title: string | null
         }
         Insert: {
           is_practice?: boolean
@@ -2021,6 +2026,8 @@ export type Database = {
           secondary_phone?: string | null
           specialty?: string | null
           updated_at?: string
+          organization?: string | null
+          job_title?: string | null
         }
         Update: {
           is_practice?: boolean
@@ -2040,6 +2047,8 @@ export type Database = {
           secondary_phone?: string | null
           specialty?: string | null
           updated_at?: string
+          organization?: string | null
+          job_title?: string | null
         }
         Relationships: []
       }

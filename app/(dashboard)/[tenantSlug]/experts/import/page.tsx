@@ -3,9 +3,12 @@ import { requireModule } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
+import { ExpertsTabs } from "../experts-tabs";
 
 import { ExpertImportClient } from "./import-client";
 import { DirectImportClient } from "./direct-import-client";
+import { DocumentImportClient } from "./document-import-client";
+import { DocumentStatusSection } from "./document-status-section";
 
 export const metadata = { title: "전문가 일괄 등록" };
 
@@ -31,10 +34,13 @@ export default async function ExpertImportPage({
     <div>
       <PageHeader title="전문가 일괄 등록" />
       <main className="mx-auto max-w-4xl space-y-5 p-5">
+        <ExpertsTabs tenantSlug={params.tenantSlug} active="import" />
         {hasSupabaseEnv() ? (
           <>
             <ExpertImportClient tenantSlug={params.tenantSlug} />
             <DirectImportClient tenantSlug={params.tenantSlug} />
+            <DocumentImportClient />
+            <DocumentStatusSection />
           </>
         ) : (
           <EmptyState
