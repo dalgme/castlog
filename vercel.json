@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/product-brief",
       "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/rrn-store-health",
+      "schedule": "0 20 * * *"
     }
   ]
 }
