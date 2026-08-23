@@ -198,6 +198,14 @@ export default async function TenantExpertsPage({
     linkByExpert.set(link.experts.id, { status: link.status });
   }
 
+  // 연습모드에서는 **자기 연습 테넌트에 연결된 시드 전문가만** 보인다.
+  // 연습 시드는 회사마다 같은 이름(가온 강사 등)으로 생성되므로, 전 플랫폼의
+  // 연습 시드를 다 보이면 동명 전문가가 여러 벌 나타난다. 실모드의 전체 풀
+  // 공개 정책은 실전문가(is_practice=false)에만 적용된다.
+  const visiblePool = practice
+    ? (poolRows ?? []).filter((e) => linkByExpert.has(e.id))
+    : (poolRows ?? []);
+
   // 섭외분야(내부용) — 테넌트 격리
   const recruitNameById = new Map((recruitFields ?? []).map((f) => [f.id, f.name]));
   const recruitByExpert = new Map<string, string[]>();
@@ -230,7 +238,7 @@ export default async function TenantExpertsPage({
     ? Date.now() - periodDays * 24 * 60 * 60 * 1000
     : null;
 
-  let rows = (poolRows ?? []).filter((expert) => {
+  let rows = visiblePool.filter((expert) => {
     const link = linkByExpert.get(expert.id);
     if (scope === "linked" && (!link || link.status === "revoked")) return false;
     if (regionFilter && (expert.region ?? "") !== regionFilter) return false;
@@ -300,7 +308,7 @@ export default async function TenantExpertsPage({
 
   // 지역 선택지 자동 추출 (건수 상위 12개)
   const regionCounts = new Map<string, number>();
-  for (const e of poolRows ?? []) {
+  for (const e of visiblePool) {
     if (!e.region) continue;
     regionCounts.set(e.region, (regionCounts.get(e.region) ?? 0) + 1);
   }
@@ -347,7 +355,7 @@ export default async function TenantExpertsPage({
   const activeExpertOptions = Array.from(linkByExpert.entries())
     .filter(([, v]) => v.status === "active")
     .map(([id]) => {
-      const expert = (poolRows ?? []).find((e) => e.id === id);
+      const expert = visiblePool.find((e) => e.id === id);
       return expert ? { id, name: expert.name } : null;
     })
     .filter((v): v is { id: string; name: string } => v !== null);
