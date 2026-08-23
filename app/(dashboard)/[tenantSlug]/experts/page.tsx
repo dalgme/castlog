@@ -27,6 +27,9 @@ import {
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
 
 import { InviteExpertDialog } from "./invite-dialog";
+import { ExpertRatingCell } from "./rating-cell";
+import { ExpertRecruitFieldsCell } from "./recruit-fields-cell";
+import { ExpertNotesCell } from "./notes-cell";
 import { ExpertRecommendDialog } from "./recommend-dialog";
 import { InvitationActions } from "./invitation-actions";
 import { ExpertTagCell } from "./expert-tag-cell";
@@ -317,11 +320,17 @@ export default async function TenantExpertsPage({
     .slice(0, 12)
     .map(([name]) => name);
 
-  // 자사 등급·평가 (연결 전문가만 — 테넌트 격리)
+  // 자사 등급·평가·평점·메모 (자사 주관 기록 — 테넌트 격리)
   const linkedIds = pageRows
     .filter((e) => linkByExpert.get(e.id))
     .map((e) => e.id);
-  const [{ data: tagRows }, { data: evaluationRows }] = await Promise.all([
+  const pageIds = pageRows.map((e) => e.id);
+  const [
+    { data: tagRows },
+    { data: evaluationRows },
+    profilesResult,
+    notesResult,
+  ] = await Promise.all([
     linkedIds.length
       ? supabase
           .from("expert_tenant_tags")
@@ -334,7 +343,41 @@ export default async function TenantExpertsPage({
           .select("expert_id, score")
           .in("expert_id", linkedIds)
       : Promise.resolve({ data: null }),
+    pageIds.length
+      ? supabase
+          .from("expert_tenant_profiles")
+          .select("expert_id, rating")
+          .in("expert_id", pageIds)
+      : Promise.resolve({ data: null, error: null }),
+    // 메모 건수 — 테이블 미생성(마이그레이션 전)이면 빈 목록으로 동작
+    pageIds.length
+      ? supabase
+          .from("expert_tenant_notes")
+          .select("expert_id")
+          .in("expert_id", pageIds)
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  const ratingByExpert = new Map(
+    (profilesResult.data ?? []).map((p) => [p.expert_id, p.rating])
+  );
+  const noteCountByExpert = new Map<string, number>();
+  for (const n of notesResult.data ?? []) {
+    noteCountByExpert.set(
+      n.expert_id,
+      (noteCountByExpert.get(n.expert_id) ?? 0) + 1
+    );
+  }
+  // 섭외분야 셀용 — 전문가별 선택된 분야 id (recruitAssignments는 자사분만, RLS)
+  const recruitIdsByExpert = new Map<string, string[]>();
+  for (const a of recruitAssignments ?? []) {
+    const list = recruitIdsByExpert.get(a.expert_id) ?? [];
+    list.push(a.field_id);
+    recruitIdsByExpert.set(a.expert_id, list);
+  }
+  const recruitOptions = (recruitFields ?? []).map((f) => ({
+    id: f.id,
+    name: f.name,
+  }));
   const tagByExpert = new Map(
     (tagRows ?? []).map((t) => [t.expert_id, { tag: t.tag, note: t.note }])
   );
@@ -429,7 +472,12 @@ export default async function TenantExpertsPage({
         actions={
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
-              <a href={`/${params.tenantSlug}/experts/export`}>엑셀</a>
+              <a
+                href={`/${params.tenantSlug}/experts/export`}
+                title="현재 조회된 전문가 목록을 엑셀 파일로 내려받습니다"
+              >
+                엑셀 다운로드
+              </a>
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href={`/${params.tenantSlug}/experts/import`}>일괄 등록</Link>
@@ -599,16 +647,74 @@ export default async function TenantExpertsPage({
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
+                    {/* 컬럼명 마우스 오버 설명 (기획 확정 2026-08-23) */}
                     <TableRow>
-                      <TableHead>이름</TableHead>
-                      <TableHead>휴대폰</TableHead>
-                      <TableHead>전문분야</TableHead>
-                      <TableHead>강의(멘토링) 분야</TableHead>
-                      <TableHead>지역</TableHead>
-                      <TableHead>경력</TableHead>
-                      <TableHead>자사 평균</TableHead>
-                      <TableHead>등급</TableHead>
-                      <TableHead>상태</TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 이름 — 클릭하면 상세 화면으로 이동합니다"
+                      >
+                        이름
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 연락처 — 등록플랫폼 공개 정보입니다"
+                      >
+                        휴대폰
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 본인이 입력한 전문분야 (전 기업 공통 표시)"
+                      >
+                        전문분야
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 본인이 선택한 강의·멘토링 가능 분야 (전 기업 공통 표시)"
+                      >
+                        강의(멘토링) 분야
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="우리 회사가 내부 기준으로 붙인 섭외 분야 — 전문가·타사에 보이지 않습니다. 선택지는 설정 > 기업관리 > 섭외분야에서 관리합니다"
+                      >
+                        섭외 분야
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 프로필의 거주지·활동지역"
+                      >
+                        지역
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 프로필의 경력 연차"
+                      >
+                        경력
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="우리 회사의 평가 — 자사 평점(1~10, 직접 지정)과 프로젝트 평가 평균. 클릭해 점수를 매기면 변경이 평가 로그로 남습니다. 전문가에게 보이지 않습니다"
+                      >
+                        자사 평가
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="우리 회사가 붙인 등급(즐겨찾기·VIP·주의) — 전문가에게 보이지 않고, 변경은 평가 로그에 남습니다"
+                      >
+                        등급
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="우리 회사 내부 메모 — 댓글처럼 쌓이고 작성자·일시가 남습니다. 전문가에게 보이지 않습니다"
+                      >
+                        메모
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="우리 회사와의 연결 상태 — 연결됨 / 대기중 / 미연결"
+                      >
+                        상태
+                      </TableHead>
                       <TableHead className="w-20" />
                     </TableRow>
                   </TableHeader>
@@ -640,6 +746,15 @@ export default async function TenantExpertsPage({
                               ? expertiseNames.join(" · ")
                               : "-"}
                           </TableCell>
+                          <TableCell>
+                            <ExpertRecruitFieldsCell
+                              expertId={expert.id}
+                              expertName={expert.name}
+                              options={recruitOptions}
+                              selectedIds={recruitIdsByExpert.get(expert.id) ?? []}
+                              canManage={canManageTags}
+                            />
+                          </TableCell>
                           <TableCell>{expert.region ?? "-"}</TableCell>
                           <TableCell>
                             {expert.career_years != null
@@ -648,22 +763,20 @@ export default async function TenantExpertsPage({
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-sm">
                             {(() => {
-                              if (!isLinked) {
-                                return (
-                                  <span className="text-muted-foreground">-</span>
-                                );
-                              }
+                              // 자사 평가 = 프로젝트 평가 평균(읽기) + 자사 평점(직접 지정, §4 테넌트 격리)
                               const acc = scoreByExpert.get(expert.id);
-                              if (!acc || acc.count === 0) {
-                                return (
-                                  <span className="text-muted-foreground">
-                                    평가 없음
-                                  </span>
-                                );
-                              }
-                              // 자사에서 매긴 평가의 평균만 보여 준다 (§4).
+                              const avg =
+                                acc && acc.count > 0
+                                  ? (acc.sum / acc.count).toFixed(1)
+                                  : null;
                               return (
-                                <strong>{(acc.sum / acc.count).toFixed(1)}</strong>
+                                <ExpertRatingCell
+                                  expertId={expert.id}
+                                  expertName={expert.name}
+                                  avg={avg}
+                                  myRating={ratingByExpert.get(expert.id) ?? null}
+                                  canManage={canManageTags}
+                                />
                               );
                             })()}
                           </TableCell>
@@ -680,6 +793,14 @@ export default async function TenantExpertsPage({
                                 -
                               </span>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <ExpertNotesCell
+                              expertId={expert.id}
+                              expertName={expert.name}
+                              count={noteCountByExpert.get(expert.id) ?? 0}
+                              canManage={canManageTags}
+                            />
                           </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>
