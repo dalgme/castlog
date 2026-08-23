@@ -89,7 +89,11 @@ export function ExpertProfileForm({
               <FormLabel>이메일</FormLabel>
               <FormControl>
                 <Input type="email" autoComplete="email" {...field} />
-
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -118,11 +122,6 @@ export function ExpertProfileForm({
             )}
           />
         </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         {/* 휴대폰 번호 — 로그인 인증 수단이라 수정 불가, 표시만 (기획 확정 2026-08-22) */}
         <div className="space-y-2">
           <p className="text-sm font-medium">핸드폰 번호</p>

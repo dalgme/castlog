@@ -8,6 +8,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import type { ExecFeature } from "@/lib/auth/exec-permissions";
 import { getTenantModules } from "@/lib/modules/server";
+import { isPracticeMode } from "@/lib/practice/server";
 import { getProjectEngagementState } from "@/lib/integrations/project-engagement";
 import {
   getActivePlan,
@@ -63,14 +64,18 @@ async function ensureExpertLink(
   tenantId: string,
   expertId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = createClient();
-  const { data: link } = await supabase
+  // 판정은 자사 링크 실상태 기준 — 세션 RLS에 기대지 않고 admin으로
+  // tenant_id를 명시해 읽는다 (담당자 본인이 전문가이기도 한 경우의 오판 방지).
+  const admin = createAdminClient();
+  const { data: links, error: readError } = await admin
     .from("expert_tenant_links")
     .select("id, status")
-    .eq("expert_id", expertId)
-    .order("status", { ascending: true })
-    .limit(10);
-  const statuses = (link ?? []).map((l) => l.status);
+    .eq("tenant_id", tenantId)
+    .eq("expert_id", expertId);
+  if (readError) {
+    return { ok: false, error: "관계 확인에 실패했습니다. 잠시 후 다시 시도하세요." };
+  }
+  const statuses = (links ?? []).map((l) => l.status);
   if (statuses.includes("active") || statuses.includes("pending")) {
     return { ok: true };
   }
@@ -80,23 +85,44 @@ async function ensureExpertLink(
       error: "해제된 관계의 전문가입니다. 전문가 상세에서 관계를 다시 연결한 뒤 후보로 올리세요.",
     };
   }
-  // 미연결 — 관계 자동 생성 (전역 테이블: service_role 경로, 연습 플래그는 전문가 기준)
-  const admin = createAdminClient();
+  // 미연결 — 관계 자동 생성. 연습/실모드가 어긋나는 전문가는 만들지 않는다
+  // (연습 세션이 실제 관계를 남기거나, 실모드에 연습 시드가 붙는 것 방지).
   const { data: expert } = await admin
     .from("experts")
     .select("id, is_practice")
     .eq("id", expertId)
     .maybeSingle();
   if (!expert) return { ok: false, error: "전문가를 찾을 수 없습니다." };
+  const practice = await isPracticeMode();
+  if (expert.is_practice !== practice) {
+    return { ok: false, error: "현재 모드에서 다룰 수 없는 전문가입니다." };
+  }
   const { error } = await admin.from("expert_tenant_links").insert({
     tenant_id: tenantId,
     expert_id: expertId,
     status: "active",
     relation_source: "engaged",
+    // 연결일 표기용 — 일방 생성이므로 생성 시점을 수락 시점으로 본다(보유자료 전례)
+    accepted_at: new Date().toISOString(),
     is_practice: expert.is_practice,
   });
-  if (error && error.code !== "23505") {
-    return { ok: false, error: "관계 생성에 실패했습니다. 잠시 후 다시 시도하세요." };
+  if (error) {
+    if (error.code !== "23505") {
+      return { ok: false, error: "관계 생성에 실패했습니다. 잠시 후 다시 시도하세요." };
+    }
+    // 경합으로 이미 생겼다면 실제 상태를 다시 확인 — revoked면 통과시키지 않는다
+    const { data: existing } = await admin
+      .from("expert_tenant_links")
+      .select("status")
+      .eq("tenant_id", tenantId)
+      .eq("expert_id", expertId)
+      .maybeSingle();
+    if (!existing || (existing.status !== "active" && existing.status !== "pending")) {
+      return {
+        ok: false,
+        error: "해제된 관계의 전문가입니다. 전문가 상세에서 관계를 다시 연결한 뒤 후보로 올리세요.",
+      };
+    }
   }
   return { ok: true };
 }
