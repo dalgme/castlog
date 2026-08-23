@@ -17,7 +17,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -103,14 +102,16 @@ export function DirectImportClient({ tenantSlug }: { tenantSlug: string }) {
       .length ?? 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          2. 보유자료로 전문가 가입/등록
-        </CardTitle>
-        <CardDescription>
+    /* 1번(등록 요청)과 성격이 다른 강한 행위(즉시 생성)라 색으로 구획을 가른다
+       (기획 확정 2026-08-23 — 가독성 향상) */
+    <Card className="overflow-hidden border-teal-300 bg-teal-50/50">
+      <div className="bg-teal-600 px-6 py-2.5 text-sm font-bold text-white">
+        2. 보유자료로 전문가 가입/등록 — 명단으로 즉시 생성
+      </div>
+      <CardHeader className="pb-2 pt-4">
+        <CardDescription className="text-teal-950/80">
           회사가 보유한 명단(이름·이메일·핸드폰·계좌·거주지·학위/자격증·강의분야·이력)을
-          올리면 즉시 전문가로 가입·등록되고 우리 회사와의 관계(관계기업)가
+          올리면 <b>즉시 전문가로 가입·등록</b>되고 우리 회사와의 관계(관계기업)가
           만들어집니다. 전문가 본인은 이 번호로 휴대폰 인증 로그인하는 순간 자기
           계정으로 이어받습니다. 명단의 개인정보는 회사가 적법하게 보유한
           자료여야 하며, 등록 사실 고지는 회사의 책임입니다.

@@ -112,6 +112,7 @@ export function ExpertNotesCell({
                     {note.authorName} ·{" "}
                     {new Date(note.createdAt).toLocaleString("ko-KR", {
                       timeZone: "Asia/Seoul",
+    hour12: false,
                     })}
                   </p>
                 </div>

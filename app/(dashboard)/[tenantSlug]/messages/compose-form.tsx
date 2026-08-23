@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -293,12 +294,7 @@ export function ComposeForm({
           </label>
           {scheduleEnabled && (
             <div className="space-y-1">
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              />
+              <DateTime24Input value={scheduledAt} onChange={setScheduledAt} />
               <p className="text-xs text-muted-foreground">
                 예약 시각(한국 시간) 이후 10분 내에 발송됩니다. 발송 전에는 아래
                 발송 이력에서 취소할 수 있습니다. 광고성은 야간(21~08시) 예약이

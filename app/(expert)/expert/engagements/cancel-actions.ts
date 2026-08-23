@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { releasePositionsForEngagement } from "@/lib/integrations/engagement-lifecycle";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
+import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
 
 export type ExpertCancelResult = { ok: true } | { ok: false; error: string };
 
@@ -110,12 +111,18 @@ export async function cancelConfirmedEngagementByExpert(input: {
     canceled_by: null,
   });
 
+  // 배너는 한 줄: 프로젝트·세션(일자)·전문가·PM (기획 확정 2026-08-23 —
+  // 사유는 배너에 싣지 않는다. 취소 내역·감사로그에 남는다)
+  const alertTitle = await buildUrgentCancelAlertTitle({
+    engagementId: engagement.id,
+    expertName: expert.name,
+  });
   await admin.from("tenant_alerts").insert({
     tenant_id: engagement.tenant_id,
     severity: "urgent",
     category: "engagement_cancel",
-    title: `긴급: 전문가 참여 취소 (${expert.name})`,
-    body: `확정된 참여가 전문가 요청으로 취소되었습니다. 사유: ${fullReason}`,
+    title: alertTitle,
+    body: null,
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     created_by: null,

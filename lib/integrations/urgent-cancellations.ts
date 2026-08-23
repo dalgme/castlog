@@ -1,7 +1,9 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isPmRole } from "@/lib/integrations/assignment-roles";
 
 /**
  * 긴급 취소 알림 — 확정된 전문가가 갑자기 못 오게 된 건.
@@ -22,6 +24,63 @@ export type UrgentCancellation = {
   reason: string | null;
   canceledAt: string;
 };
+
+/**
+ * 긴급 취소 전사 배너 제목 — 한 줄: 프로젝트명 · 세션(일자) · 전문가 · 담당 PM
+ * (기획 확정 2026-08-23 — 사유·부연 문장은 배너에 싣지 않는다. 사유는 취소
+ * 내역에 그대로 남는다.) 조합 조회는 admin — 전문가 취소 경로에는 테넌트
+ * 세션이 없고, 결과는 이름뿐이다.
+ */
+export async function buildUrgentCancelAlertTitle(input: {
+  engagementId: string;
+  expertName: string;
+}): Promise<string> {
+  const fallback = `긴급 취소: ${input.expertName} 님 섭외 취소`;
+  try {
+    const admin = createAdminClient();
+    const { data: eng } = await admin
+      .from("expert_engagements")
+      .select("project_id, session_name, starts_on, projects (name)")
+      .eq("id", input.engagementId)
+      .maybeSingle();
+    if (!eng) return fallback;
+
+    const projectName = eng.projects?.name ?? "프로젝트 미연결";
+
+    const date = eng.starts_on
+      ? `${parseInt(eng.starts_on.slice(5, 7), 10)}.${parseInt(
+          eng.starts_on.slice(8, 10),
+          10
+        )}`
+      : null;
+    const sessionPart = eng.session_name
+      ? `${eng.session_name}${date ? `(${date})` : ""}`
+      : date
+        ? `세션 ${date}`
+        : "세션 미지정";
+
+    let pmName = "미지정";
+    if (eng.project_id) {
+      const { data: assignments } = await admin
+        .from("project_assignments")
+        .select("assignment_role, user_id")
+        .eq("project_id", eng.project_id);
+      const pm = (assignments ?? []).find((a) => isPmRole(a.assignment_role));
+      if (pm) {
+        const { data: pmUser } = await admin
+          .from("users")
+          .select("name")
+          .eq("id", pm.user_id)
+          .maybeSingle();
+        if (pmUser?.name) pmName = pmUser.name;
+      }
+    }
+
+    return `긴급 취소: ${projectName} · ${sessionPart} · ${input.expertName} · PM ${pmName}`;
+  } catch {
+    return fallback;
+  }
+}
 
 export async function getUrgentCancellations(options?: {
   /** 특정 프로젝트만 (프로젝트 화면용). 없으면 전사 */

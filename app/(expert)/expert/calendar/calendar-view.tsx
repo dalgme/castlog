@@ -15,6 +15,7 @@ import {
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -344,19 +345,27 @@ function ScheduleForm({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label className="text-[11px] text-muted-foreground">시작</label>
-          <Input
-            type={allDay ? "date" : "datetime-local"}
-            value={startsAt}
-            onChange={(e) => setStartsAt(e.target.value)}
-          />
+          {allDay ? (
+            <Input
+              type="date"
+              value={startsAt}
+              onChange={(e) => setStartsAt(e.target.value)}
+            />
+          ) : (
+            <DateTime24Input value={startsAt} onChange={setStartsAt} />
+          )}
         </div>
         <div>
           <label className="text-[11px] text-muted-foreground">종료 (선택)</label>
-          <Input
-            type={allDay ? "date" : "datetime-local"}
-            value={endsAt}
-            onChange={(e) => setEndsAt(e.target.value)}
-          />
+          {allDay ? (
+            <Input
+              type="date"
+              value={endsAt}
+              onChange={(e) => setEndsAt(e.target.value)}
+            />
+          ) : (
+            <DateTime24Input value={endsAt} onChange={setEndsAt} />
+          )}
         </div>
       </div>
       <Textarea rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="메모 (선택)" />

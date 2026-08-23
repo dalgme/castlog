@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -233,11 +234,7 @@ export function SessionNoticeDialog({
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">예약 시각 (선택)</label>
-            <Input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-            />
+            <DateTime24Input value={scheduledAt} onChange={setScheduledAt} />
             <p className="text-[11px] text-muted-foreground">
               비워두면 즉시 발송합니다. 예약분은 15분 간격으로 실행됩니다.
             </p>

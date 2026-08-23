@@ -6,6 +6,7 @@ import { Send } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,12 +43,15 @@ const CHANNELS: { value: DispatchChannel; label: string; note: string }[] = [
 export function DispatchDialog({
   projectId,
   projectName,
+  defaultSummary = null,
   targetCount,
   disabled,
   disabledReason,
 }: {
   projectId: string;
   projectName: string;
+  /** 프로젝트 설명에서 자동으로 채운다 — 발송 전 자유롭게 수정 가능 */
+  defaultSummary?: string | null;
   targetCount: number;
   disabled: boolean;
   disabledReason: string;
@@ -64,7 +68,8 @@ export function DispatchDialog({
   const [channel, setChannel] = useState<DispatchChannel>("both");
   const [deadline, setDeadline] = useState("");
   const [programName, setProgramName] = useState(projectName);
-  const [eventSummary, setEventSummary] = useState("");
+  // 프로젝트 설명에서 자동 채움 (기획 확정 2026-08-23) — 수정 가능
+  const [eventSummary, setEventSummary] = useState(defaultSummary ?? "");
   const [memo, setMemo] = useState("");
 
   function send() {
@@ -193,11 +198,10 @@ export function DispatchDialog({
 
             <div>
               <Label htmlFor="dispatch-deadline">회신 마감일시</Label>
-              <Input
+              <DateTime24Input
                 id="dispatch-deadline"
-                type="datetime-local"
                 value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
+                onChange={setDeadline}
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 비워 두면 기본 기한이 적용됩니다. 이 시각이 지나면 동의 링크가
@@ -207,7 +211,12 @@ export function DispatchDialog({
 
             <div className="space-y-2">
               <div>
-                <Label htmlFor="dispatch-program">사업명 / 프로그램명</Label>
+                <Label htmlFor="dispatch-program">
+                  사업명 / 프로그램명{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (프로젝트에서 자동 입력 — 수정 가능)
+                  </span>
+                </Label>
                 <Input
                   id="dispatch-program"
                   value={programName}
@@ -215,7 +224,12 @@ export function DispatchDialog({
                 />
               </div>
               <div>
-                <Label htmlFor="dispatch-summary">주제 / 행사 내용 (선택)</Label>
+                <Label htmlFor="dispatch-summary">
+                  주제 / 행사 내용{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (프로젝트 설명에서 자동 입력 — 수정 가능)
+                  </span>
+                </Label>
                 <Textarea
                   id="dispatch-summary"
                   rows={2}

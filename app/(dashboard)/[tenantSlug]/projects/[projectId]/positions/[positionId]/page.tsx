@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth/session";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { requireModule, getTenantModules } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
 import { formatKrw } from "@/lib/approvals/constants";
 import {
   getPositionContext,
@@ -59,6 +60,13 @@ export default async function PositionPage({
 
   const ctx = await getPositionContext(params.positionId);
   if (!ctx) notFound();
+
+  // 프로젝트 설명 — 섭외요청의 '주제/행사 내용' 자동 채움 (기획 확정 2026-08-23)
+  const { data: projectRow } = await createClient()
+    .from("projects")
+    .select("description")
+    .eq("id", ctx.projectId)
+    .maybeSingle();
 
   const role = roleFromUser(user);
   const canManage = role === "org_admin" || role === "manager";
@@ -193,6 +201,7 @@ export default async function PositionPage({
                 positionId={ctx.positionId}
                 candidates={candidates}
                 defaultProgramName={ctx.projectName}
+                defaultSummary={projectRow?.description ?? null}
                 tenantSlug={params.tenantSlug}
                 projectId={params.projectId}
               />
