@@ -809,6 +809,8 @@ export default async function ProjectDetailPage({
             projectId={project.id}
             slots={slotRows}
             canManage={canExecute}
+            canInput={canInput}
+            canCancel={canExec("engagementCancel", grade, role)}
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
