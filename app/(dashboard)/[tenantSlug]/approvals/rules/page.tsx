@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { SettingsTabs } from "@/components/layout/settings-tabs";
+import { PermissionLevelGuide } from "@/components/org/permission-level-guide";
 
 import { RuleDialog, type RulePrefill } from "./rule-dialog";
 import { RuleDeactivateButton } from "./rule-deactivate-button";
@@ -175,6 +176,8 @@ export default async function ApprovalRulesPage({
         showRules
       />
       <main className="space-y-5 p-5">
+        {/* 처음 쓰는 회사용 — 직급/권한 레벨/프로젝트 역할 관계 안내 (기획 확정 2026-08-23) */}
+        <PermissionLevelGuide />
         {activeRules.length === 0 ? (
           <EmptyState
             title="등록된 전결규정이 없습니다"
