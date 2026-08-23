@@ -103,7 +103,7 @@ export function AdminDelegationPanel({
       <div className="flex flex-wrap items-center gap-2 rounded-t-lg border-b-2 border-amber-300 bg-amber-100/80 px-5 py-3">
         <KeyRound className="h-4 w-4 shrink-0 text-amber-800" aria-hidden />
         <span className="text-sm font-bold text-amber-900">
-          시스템 설정·관리 권한 위임
+          추가 권한 스위치 — 설정·관리 기능 위임 (권한 레벨 확장)
         </span>
         <span className="rounded-full bg-amber-800 px-2 py-0.5 text-[10px] font-semibold text-white">
           중요
@@ -117,11 +117,13 @@ export function AdminDelegationPanel({
 
       <CardContent className="space-y-4 pt-4">
         <p className="text-sm leading-relaxed text-amber-950">
-          대표가 가진 <b>설정·관리 기능</b>을 기능 단위로 나눠 줍니다. 기능마다
-          다른 사람을 지정할 수 있고, 한 기능에 여러 명을 둘 수도 있습니다.
-          위임하면 그 사람의 화면에 해당 메뉴가 곧바로 열립니다.
+          대표(레벨 1)가 가진 <b>설정·관리 기능</b>을 스위치처럼 기능 단위로 켜
+          줍니다. 기능마다 다른 사람을 지정할 수 있고, 한 기능에 여러 명을 둘 수도
+          있습니다. 켜 주면 그 사람의 화면에 해당 메뉴가 곧바로 열립니다 —{" "}
+          <b>권한 레벨은 그대로 두고 그 사람의 권한만 넓히는</b> 방법입니다
+          (예: 레벨 5 + 발송·문구 = 홍보 담당, 레벨 4 + 지급 = 회계 담당).
           <br />
-          업무 권한(프로젝트·섭외·결재 승인)은 권한단계로 결정되며 여기서 바뀌지
+          업무 권한(프로젝트·섭외·결재 승인)은 권한 레벨로 결정되며 여기서 바뀌지
           않습니다. <b>주민등록번호 조회 지정자 관리와 위임 권한 자체는 위임할 수
           없습니다.</b>
         </p>

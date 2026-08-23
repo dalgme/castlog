@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 
-import { GRADE_LABELS, USER_GRADES, type UserGrade } from "@/lib/auth/grades";
+import {
+  GRADE_LABELS,
+  GRADE_SHORT_TAGS,
+  USER_GRADES,
+  type UserGrade,
+} from "@/lib/auth/grades";
 import {
   Select,
   SelectContent,
@@ -75,6 +80,8 @@ export function StaffGradeSelect({
           ))}
         </SelectContent>
       </Select>
+      {/* 레벨 숫자만으로는 뭘 할 수 있는지 안 읽힌다 — 현재 값의 꼬리표를 보여준다 */}
+      <p className="text-[11px] text-muted-foreground">{GRADE_SHORT_TAGS[value]}</p>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );

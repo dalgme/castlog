@@ -25,23 +25,37 @@ export const USER_GRADES = [
 
 export type UserGrade = (typeof USER_GRADES)[number];
 
-/** 화면 표기명 — 직급(positions)과 별개인 '권한단계' 이름이다. */
+/**
+ * 화면 표기명 — 직급(positions)과 별개인 '권한 레벨' 이름이다.
+ * 기획 확정 2026-08-23: 직급 명칭(대표·이사·팀장…)과 똑같아 혼동을 일으켜
+ * '레벨 1~6'으로 전환. 레벨 1이 최상위(보통 대표), 레벨 6이 기본(신규 입사).
+ */
 export const GRADE_LABELS: Record<UserGrade, string> = {
-  ceo: "대표",
-  director: "이사",
-  team_lead: "팀장",
-  deputy: "대리",
-  senior: "주임",
-  staff: "사원",
+  ceo: "레벨 1",
+  director: "레벨 2",
+  team_lead: "레벨 3",
+  deputy: "레벨 4",
+  senior: "레벨 5",
+  staff: "레벨 6",
+};
+
+/** 레벨 옆에 붙이는 짧은 꼬리표 — 선택지·목록에서 레벨 숫자만으로 부족할 때 */
+export const GRADE_SHORT_TAGS: Record<UserGrade, string> = {
+  ceo: "총괄 관리 (보통 대표)",
+  director: "전사 열람·배정 (보통 임원)",
+  team_lead: "배정 프로젝트 실행 (보통 팀장급)",
+  deputy: "배정 프로젝트 실무",
+  senior: "배정 프로젝트 실무",
+  staff: "배정 프로젝트 실무 (기본)",
 };
 
 export const GRADE_DESCRIPTIONS: Record<UserGrade, string> = {
-  ceo: "회사 총괄관리자 — 업무 전체 + 시스템 설정·관리",
-  director: "전사 프로젝트 열람·배정, 섭외·결재 실행",
-  team_lead: "배정 프로젝트 실행(섭외요청·수락서), 열람은 배정 범위",
-  deputy: "배정 프로젝트 실무",
-  senior: "배정 프로젝트 실무",
-  staff: "배정 프로젝트 실무",
+  ceo: "회사의 모든 기능 + 임직원 계정·전결규정·발송 등 시스템 설정·관리. 주민번호 조회 지정자 관리는 이 레벨만",
+  director: "회사의 모든 프로젝트를 배정 없이 열람하고, 프로젝트에 담당자를 배정. 섭외·품의 실행",
+  team_lead: "배정된 프로젝트 안에서 실행 — 섭외요청 발송, 수락서, 품의 상신. 다른 프로젝트는 안 보임",
+  deputy: "배정된 프로젝트 열람·실무 입력. 결재는 자동으로 위 레벨로 올라감",
+  senior: "배정된 프로젝트 열람·실무 입력. 결재는 자동으로 위 레벨로 올라감",
+  staff: "배정된 프로젝트 열람·실무 입력. 결재는 자동으로 위 레벨로 올라감",
 };
 
 /** 높을수록 상위 권한 (DB의 app.grade_rank와 동일 기준) */
