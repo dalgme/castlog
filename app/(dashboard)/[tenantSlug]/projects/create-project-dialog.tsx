@@ -29,6 +29,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import {
   Select,
   SelectContent,
@@ -235,7 +236,11 @@ export function CreateProjectDialog({
                 <FormItem>
                   <FormLabel>총 예산 (원, 선택)</FormLabel>
                   <FormControl>
-                    <Input inputMode="numeric" placeholder="50000000" {...field} />
+                    <CommaNumberInput
+                      placeholder="50,000,000"
+                      value={field.value ?? ""}
+                      onValueChange={field.onChange}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

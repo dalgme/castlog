@@ -74,3 +74,66 @@ export function DateTime24Input({
     </div>
   );
 }
+
+/**
+ * 24시간제 시각(시:분) 입력 — 날짜 없이 시간만 고르는 자리용 (세션 시작·종료 등).
+ * 값 형식은 "HH:mm" 또는 빈 문자열 — 기존 type="time" 값 계약과 동일해
+ * 서버 액션 수정 없이 교체된다. 분은 10분 단위 (DateTime24Input과 동일).
+ */
+export function Time24Input({
+  id,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  id?: string;
+  /** "HH:mm" 또는 빈 문자열 */
+  value: string;
+  onChange: (next: string) => void;
+  ariaLabel?: string;
+}) {
+  const [hourPart, minutePart] = value ? value.split(":") : ["", ""];
+  const hour = hourPart ?? "";
+  const minute = minutePart ?? "";
+
+  function emit(nextHour: string, nextMinute: string) {
+    if (nextHour !== "" && nextMinute !== "") {
+      onChange(`${nextHour}:${nextMinute}`);
+    } else {
+      onChange("");
+    }
+  }
+
+  const selectCls = "h-9 rounded-md border bg-background px-2 text-sm";
+
+  return (
+    <div className="flex items-center gap-1" id={id}>
+      <select
+        aria-label={`${ariaLabel ?? "시각"} — 시 (24시간)`}
+        value={hour}
+        onChange={(e) => emit(e.target.value, e.target.value ? minute || "00" : "")}
+        className={selectCls}
+      >
+        <option value="">시</option>
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {h}시
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={`${ariaLabel ?? "시각"} — 분`}
+        value={minute}
+        onChange={(e) => emit(hour || "09", e.target.value)}
+        className={selectCls}
+      >
+        <option value="">분</option>
+        {MINUTES.map((m) => (
+          <option key={m} value={m}>
+            {m}분
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

@@ -42,8 +42,17 @@ export function CommaNumberInput({
   );
 }
 
-function formatComma(raw: string): string {
-  const digits = raw.replace(/[^\d]/g, "");
+export function formatComma(raw: string | number | null | undefined): string {
+  const digits = String(raw ?? "").replace(/[^\d]/g, "");
   if (!digits) return "";
   return Number(digits).toLocaleString("ko-KR");
+}
+
+/**
+ * 비제어(defaultValue) 입력용 — 타이핑 즉시 그 자리에서 콤마를 다시 그린다.
+ * onBlur에서 숫자만 추려 쓰는 기존 입력(예정가 등)에 얹어 쓴다.
+ */
+export function commaInputHandler(e: React.FormEvent<HTMLInputElement>) {
+  const el = e.currentTarget;
+  el.value = formatComma(el.value);
 }

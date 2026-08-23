@@ -16,6 +16,7 @@ import {
 } from "@/lib/integrations/engagement-stage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { commaInputHandler, formatComma } from "@/components/ui/comma-number-input";
 import { useToast } from "@/hooks/use-toast";
 
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
@@ -185,9 +186,10 @@ export function CandidateList({
                 <span className="inline-flex items-center gap-1 text-xs">
                   <Input
                     inputMode="numeric"
-                    defaultValue={p.expectedFee ?? ""}
+                    defaultValue={formatComma(p.expectedFee)}
+                    onInput={commaInputHandler}
                     placeholder="예정가(원)"
-                    className="h-7 w-28 text-xs"
+                    className="h-7 w-28 text-xs tabular-nums"
                     onBlur={(e) => {
                       const v = e.target.value.replace(/\D/g, "");
                       if (v !== String(p.expectedFee ?? "")) {

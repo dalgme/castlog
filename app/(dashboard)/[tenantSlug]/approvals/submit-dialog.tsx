@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import {
   Select,
   SelectContent,
@@ -170,7 +171,11 @@ export function SubmitApprovalDialog({
                   <FormItem>
                     <FormLabel>금액 (원, 선택)</FormLabel>
                     <FormControl>
-                      <Input inputMode="numeric" placeholder="1000000" {...field} />
+                      <CommaNumberInput
+                      placeholder="1,000,000"
+                      value={field.value ?? ""}
+                      onValueChange={field.onChange}
+                    />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

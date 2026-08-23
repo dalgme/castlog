@@ -33,8 +33,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { DateTime24Input } from "@/components/ui/datetime24";
+import { DateTime24Input, Time24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
+import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import {
   Select,
   SelectContent,
@@ -397,7 +398,11 @@ export function EngagementDialog({
                   <FormItem>
                     <FormLabel>의뢰비용 (원, 선택)</FormLabel>
                     <FormControl>
-                      <Input inputMode="numeric" placeholder="500000" {...field} />
+                      <CommaNumberInput
+                      placeholder="500,000"
+                      value={field.value ?? ""}
+                      onValueChange={field.onChange}
+                    />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -437,9 +442,13 @@ export function EngagementDialog({
                   name="startsTime"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>시작 시각 (선택)</FormLabel>
+                      <FormLabel>시작 시각 (선택 · 24시간제)</FormLabel>
                       <FormControl>
-                        <Input type="time" {...field} />
+                        <Time24Input
+                          value={field.value ?? ""}
+                          onChange={field.onChange}
+                          ariaLabel="시작 시각"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -450,9 +459,13 @@ export function EngagementDialog({
                   name="endsTime"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>종료 시각 (선택)</FormLabel>
+                      <FormLabel>종료 시각 (선택 · 24시간제)</FormLabel>
                       <FormControl>
-                        <Input type="time" {...field} />
+                        <Time24Input
+                          value={field.value ?? ""}
+                          onChange={field.onChange}
+                          ariaLabel="종료 시각"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
