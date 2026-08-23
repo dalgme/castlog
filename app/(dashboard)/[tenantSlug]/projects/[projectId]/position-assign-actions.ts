@@ -613,6 +613,7 @@ export async function sendAcceptanceLetters(input: {
   const auth = await requireManager("acceptanceSend");
   if (!auth.ok) return auth;
   const senderName = await staffActorLabel(auth.session.userId);
+  const sendIsPractice = await isPracticeMode();
 
   const state = await getProjectEngagementState(input.projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
@@ -726,19 +727,20 @@ export async function sendAcceptanceLetters(input: {
         .from("engagement_acceptances")
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", acceptance.id);
+      if (error) {
+        failed.push({ name: expertName, reason: "송신 처리에 실패했습니다." });
+        continue;
+      }
 
-      // 섭외 이력 — 수락서 송신을 담당자 이름으로 기록
+      // 섭외 이력 — 수락서 송신을 담당자 이름으로 기록 (송신 확정 후에만)
       await logEngagementEvent({
         tenantId: auth.session.tenantId,
         engagementId: target.engagementId,
         type: "acceptance_sent",
         actorKind: "staff",
         actorLabel: senderName,
+        isPractice: sendIsPractice,
       });
-      if (error) {
-        failed.push({ name: expertName, reason: "송신 처리에 실패했습니다." });
-        continue;
-      }
     }
 
     const letterPath = `/expert/engagements/${target.engagementId}/acceptance`;

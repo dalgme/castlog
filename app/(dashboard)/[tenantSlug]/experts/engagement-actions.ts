@@ -15,6 +15,7 @@ import {
 import { applyEngagementResponse } from "@/lib/integrations/engagements";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { isPracticeMode } from "@/lib/practice/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
@@ -157,6 +158,7 @@ export async function createEngagement(
     type: "requested",
     actorKind: "staff",
     actorLabel: await staffActorLabel(user.id),
+    isPractice: await isPracticeMode(),
   });
 
   // 통합 알림함 — 전문가에게 섭외 요청 도착 알림
@@ -389,6 +391,7 @@ export async function cancelEngagement(
     actorKind: "staff",
     actorLabel: await staffActorLabel(user.id),
     note: trimmedReason,
+    isPractice: await isPracticeMode(),
   });
 
   // 통합 알림함 — 전문가에게 섭외 취소/회수 알림
@@ -441,15 +444,29 @@ export async function manualAcceptEngagement(
     return { ok: false, error: execDeniedMessage("engagementRequest") };
   }
 
-  // 자사 건인지 RLS로 확인 (요청됨 상태만 수동 완료 가능)
+  // 자사 건인지 확인 — RLS에 더해 tenant_id를 명시한다. 담당자가 다른 회사의
+  // 전문가 본인이기도 하면 RLS의 본인 조건으로도 행이 보이는데, 그 경로로
+  // 타사 건을 '담당자 수동 처리'로 기록하게 두면 안 된다.
   const { data: engagement } = await supabase
     .from("expert_engagements")
-    .select("id, status")
+    .select("id, status, project_id")
     .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!engagement) return { ok: false, error: "섭외 건을 찾을 수 없습니다." };
   if (engagement.status !== "requested") {
     return { ok: false, error: "회신 대기 중인 건만 수동 완료할 수 있습니다." };
+  }
+
+  // 부PM 실행 게이트 — 계약 성립 행위라 취소와 같은 수준으로 PM 승인을 거친다.
+  // (프로젝트에 붙은 건만 대상 — 미연결 건은 PM이 없다)
+  if (engagement.project_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId: engagement.project_id,
+      actionType: "engagement.manual_accept",
+      targetId: engagement.id,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
   }
 
   const actorName = await staffActorLabel(user.id);

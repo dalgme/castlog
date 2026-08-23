@@ -52,7 +52,7 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
     .update({ status: "expired" })
     .eq("status", "requested")
     .lt("token_expires_at", now)
-    .select("id, tenant_id");
+    .select("id, tenant_id, is_practice");
 
   const rows = expired ?? [];
   if (rows.length === 0) return { expired: 0, positionsReleased: 0 };
@@ -87,6 +87,7 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
       type: "expired",
       actorKind: "system",
       actorLabel: "시스템",
+      isPractice: r.is_practice,
     });
   }
 

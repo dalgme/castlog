@@ -37,11 +37,21 @@ create index if not exists engagement_events_engagement_idx
 alter table public.engagement_events enable row level security;
 
 -- 조회: 자사 직원 (전문가 세션 제외 — 실행자 실명이 담긴 내부 업무 이력).
+--   + 연습모드 격리(is_practice = app.is_practice() — 20260818000001 총칙)
+--   + 열람 범위는 섭외 건 자체의 RLS를 그대로 미러링한다(exists 서브쿼리가
+--     호출자 세션의 expert_engagements 정책 아래에서 돌므로, 팀장 이하는
+--     배정 프로젝트 건만 보인다 — 20260816000017과 동일 범위).
 -- 쓰기: 서버 로직(service_role) 전용 — 세션 정책을 열지 않는다.
 drop policy if exists engagement_events_select on public.engagement_events;
 create policy engagement_events_select on public.engagement_events
   for select using (
-    tenant_id = app.tenant_id() and app.user_role() <> 'expert'
+    tenant_id = app.tenant_id()
+    and app.user_role() <> 'expert'
+    and is_practice = app.is_practice()
+    and exists (
+      select 1 from public.expert_engagements e
+      where e.id = engagement_events.engagement_id
+    )
   );
 
 comment on table public.engagement_events is
