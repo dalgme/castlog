@@ -173,8 +173,11 @@ export default async function PositionPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p className="text-muted-foreground">{planGate.message}</p>
+              {/* 계획 품의는 직전 화면(전문가 섭외 탭 워크벤치)에서 진행한다 */}
               <Button asChild variant="outline" size="sm">
-                <Link href={`/${params.tenantSlug}/projects/${params.projectId}`}>
+                <Link
+                  href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
+                >
                   프로젝트에서 계획 품의 진행
                 </Link>
               </Button>
@@ -212,8 +215,10 @@ export default async function PositionPage({
         {/* 코드넘버 상세는 프로젝트에서 들어와 프로젝트로 돌아가는 자리다.
             돌아가는 문을 화면 맨 아래 전체 폭으로 크게 둔다 (기획 지시) */}
         <Button asChild variant="outline" className="h-12 w-full text-base">
-          <Link href={`/${params.tenantSlug}/projects/${params.projectId}`}>
-            프로젝트로
+          <Link
+            href={`/${params.tenantSlug}/projects/${params.projectId}?tab=overview`}
+          >
+            프로젝트 현황 대시보드로 가기
           </Link>
         </Button>
       </main>

@@ -356,7 +356,7 @@ export function SlotTable({
               <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
                 세션을 추가하면 <b>임시후보 코드 3개</b>가 자동 발급됩니다 (필요
                 인원이 3명을 넘으면 그만큼). 비용은 여기서 입력하지 않습니다 —
-                <b> 전문가 등록 탭에서 후보별 예정가</b>로 작성합니다.
+                <b> 섭외후보 등록 탭에서 후보별 예정가</b>로 작성합니다.
               </p>
             </div>
 
