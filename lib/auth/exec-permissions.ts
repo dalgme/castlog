@@ -49,11 +49,20 @@ export const EXEC_FEATURES = {
 
 export type ExecFeature = keyof typeof EXEC_FEATURES;
 
-/** legacy role → grade 역산 (없으면 null) — canExec와 exec-policy가 같은 규칙을 쓴다 */
+/**
+ * legacy role → grade 역산 (없으면 null) — canExec와 exec-policy가 같은 규칙을 쓴다.
+ * 임직원 role(org_admin/manager/staff)만 역산한다. expert·platform_admin은
+ * null — 문턱을 레벨 6까지 내려도 전문가 세션이 실행 축에 올라타지 못하게
+ * (DB app.can_exec의 role 제한과 동일 규칙).
+ */
 export function gradeFromLegacyRoleSafe(
   legacyRole?: string | null
 ): UserGrade | null {
-  return legacyRole ? gradeFromLegacyRole(legacyRole) : null;
+  if (!legacyRole) return null;
+  if (legacyRole !== "org_admin" && legacyRole !== "manager" && legacyRole !== "staff") {
+    return null;
+  }
+  return gradeFromLegacyRole(legacyRole);
 }
 
 /** grade(없으면 legacy role에서 역산)로 기능 실행 가능 여부 판정 */

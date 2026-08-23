@@ -129,6 +129,10 @@ as $$
 $$;
 
 -- 기능 실행 판정 — 개인 지정 > 레벨 판정. platform_admin은 통과(기존과 동일).
+-- 임직원 세션(org_admin/manager/staff)에만 적용 — 전문가(expert) 세션은
+-- 활성 테넌트 클레임이 있어도 실행 권한 축에 절대 올라타지 못한다.
+-- (user_grade()의 'staff' 폴백 때문에, 이 제한이 없으면 레벨 6 개방 시
+--  전문가가 직원용 쓰기 정책을 통과한다.)
 create or replace function app.can_exec(p_feature text)
 returns boolean
 language sql
@@ -137,13 +141,18 @@ security definer
 set search_path = ''
 as $$
   select app.user_role() = 'platform_admin'
-      or app.grade_rank(app.user_grade())
-         >= app.grade_rank(app.exec_min_grade(p_feature))
-      or exists (
-        select 1 from public.tenant_exec_grants g
-        where g.tenant_id = app.tenant_id()
-          and g.feature = p_feature
-          and g.user_id = auth.uid()
+      or (
+        app.user_role() in ('org_admin', 'manager', 'staff')
+        and (
+          app.grade_rank(app.user_grade())
+            >= app.grade_rank(app.exec_min_grade(p_feature))
+          or exists (
+            select 1 from public.tenant_exec_grants g
+            where g.tenant_id = app.tenant_id()
+              and g.feature = p_feature
+              and g.user_id = auth.uid()
+          )
+        )
       )
 $$;
 
@@ -210,18 +219,20 @@ begin
 end;
 $$;
 
--- 프로젝트 갱신 — 실행 흐름(계획 상신·섭외요청·수락서 송신) 권한자
+-- 프로젝트 갱신 — 실행 흐름(계획 상신·섭외요청·수락서 송신) + 기초정보 수정
+-- 권한자. projectBudget을 빼면 예산만 지정받은 직원이 트리거는 통과하고
+-- 행 정책에서 막히는 모순이 생긴다.
 drop policy if exists projects_update on public.projects;
 create policy projects_update on public.projects
   for update using (
     tenant_id = app.tenant_id()
     and (app.can_exec('planSubmit') or app.can_exec('engagementRequest')
-         or app.can_exec('acceptanceSend'))
+         or app.can_exec('acceptanceSend') or app.can_exec('projectBudget'))
   )
   with check (
     tenant_id = app.tenant_id()
     and (app.can_exec('planSubmit') or app.can_exec('engagementRequest')
-         or app.can_exec('acceptanceSend'))
+         or app.can_exec('acceptanceSend') or app.can_exec('projectBudget'))
   );
 
 -- projects 컬럼 경계 — 기초정보(예산·기간·상태 등)는 projectBudget 권한자 전용
@@ -520,6 +531,19 @@ drop policy if exists engagement_cancellations_insert on public.engagement_cance
 create policy engagement_cancellations_insert on public.engagement_cancellations
   for insert with check (
     tenant_id = app.tenant_id() and app.can_exec('engagementCancel')
+  );
+
+-- 발송 이력 조회도 발송 권한과 같은 축으로 — 만든 배치를 못 읽는 모순 방지
+drop policy if exists sms_send_batches_select on public.sms_send_batches;
+create policy sms_send_batches_select on public.sms_send_batches
+  for select using (
+    tenant_id = app.tenant_id() and app.can_exec('freeMessageSend')
+  );
+
+drop policy if exists sms_send_batch_recipients_select on public.sms_send_batch_recipients;
+create policy sms_send_batch_recipients_select on public.sms_send_batch_recipients
+  for select using (
+    tenant_id = app.tenant_id() and app.can_exec('freeMessageSend')
   );
 
 drop policy if exists sms_send_batches_insert on public.sms_send_batches;

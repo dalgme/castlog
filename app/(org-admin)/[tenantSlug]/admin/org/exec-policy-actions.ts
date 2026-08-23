@@ -17,6 +17,14 @@ function isExecFeature(value: unknown): value is ExecFeature {
 }
 
 /**
+ * 조정 가능한 기능인지 — 지급건 생성은 레벨 축이 아니라 지급·정산 위임
+ * (finance 스위치)으로만 관리한다. 키가 예약만 되어 있어도 여기서 거른다.
+ */
+function adjustableFeature(value: unknown): value is ExecFeature {
+  return isExecFeature(value) && value !== "paymentBatchCreate";
+}
+
+/**
  * 기능별 권한 문턱 조정 (기획 확정 2026-08-23 — 차등화 다음 단계).
  * 임직원 권한 구조를 다루므로 staff 스코프(대표 + '임직원 계정' 위임자)로 게이트.
  * 값은 tenant_exec_overrides / tenant_exec_grants — RLS도 같은 스코프로 지킨다.
@@ -33,8 +41,8 @@ export async function setExecThreshold(
   const session = await requireAdminScope("staff");
   if (!session.ok) return session;
 
-  if (!isExecFeature(feature)) {
-    return { ok: false, error: "알 수 없는 기능입니다." };
+  if (!adjustableFeature(feature)) {
+    return { ok: false, error: "이 기능은 문턱 조정 대상이 아닙니다." };
   }
   if (minGrade !== null && !isUserGrade(minGrade)) {
     return { ok: false, error: "레벨 값을 확인하세요." };
@@ -98,8 +106,13 @@ export async function addExecGrant(
   const session = await requireAdminScope("staff");
   if (!session.ok) return session;
 
-  if (!isExecFeature(feature)) {
-    return { ok: false, error: "알 수 없는 기능입니다." };
+  if (!adjustableFeature(feature)) {
+    return { ok: false, error: "이 기능은 지정 대상이 아닙니다." };
+  }
+  // 자기 자신에게는 지정 불가 — 권한 관리자가 스스로를 올리지 못한다는
+  // 원칙(setStaffGrade와 동일)을 여기서도 지킨다. 대표는 어차피 전 기능 보유.
+  if (userId === session.userId) {
+    return { ok: false, error: "자기 자신에게는 지정할 수 없습니다. 다른 권한자에게 요청하세요." };
   }
 
   const supabase = createClient();
