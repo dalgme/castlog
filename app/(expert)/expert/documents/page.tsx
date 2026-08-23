@@ -68,7 +68,9 @@ export default async function ExpertDocumentsPage() {
         .from("expert_documents")
         .select("id, document_type, file_name, status, created_at")
         .eq("expert_id", expert.id)
-        .eq("status", "active"),
+        .eq("status", "active")
+        // 같은 유형이 겹치면 최신이 화면에 남도록 (Map은 마지막 set이 이긴다)
+        .order("created_at", { ascending: true }),
       supabase
         .from("expert_tenant_links")
         .select(

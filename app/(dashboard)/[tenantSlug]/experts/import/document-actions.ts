@@ -17,8 +17,8 @@ import {
 import {
   classifyDocFileName,
   extractPhoneTail,
-  fileNameBody,
   isBulkDocType,
+  nameMatches,
   type BulkDocType,
 } from "@/lib/experts/document-import";
 
@@ -121,7 +121,10 @@ export async function analyzeDocumentImport(
       .select("id, name, phone")
       .in("id", expertIds)
       .eq("is_practice", false),
-    admin
+    // 세션 클라이언트(RLS) — 자사가 볼 권리가 있는 서류만 경고 판단에 쓴다.
+    // 허용받지 못한 서류의 존재는 여기서 노출하지 않는다 (현황 표와 같은 원칙).
+    // 못 본 기존 서류는 업로드 시점의 서버 거부가 단건으로만 알린다.
+    supabase
       .from("expert_documents")
       .select("expert_id, document_type, uploaded_by_tenant_id")
       .in("expert_id", expertIds)
@@ -134,10 +137,8 @@ export async function analyzeDocumentImport(
     phoneTail: e.phone.replace(/\D/g, "").slice(-4),
   }));
   const byTail = new Map<string, DocImportCandidate[]>();
-  const byName = new Map<string, DocImportCandidate[]>();
   for (const e of roster) {
     byTail.set(e.phoneTail, [...(byTail.get(e.phoneTail) ?? []), e]);
-    byName.set(e.name, [...(byName.get(e.name) ?? []), e]);
   }
   const docKey = (expertId: string, type: string) => `${expertId}:${type}`;
   const existing = new Map<string, string | null>();
@@ -148,7 +149,6 @@ export async function analyzeDocumentImport(
   const rows: DocImportRow[] = fileNames.map((fileName) => {
     const docType = classifyDocFileName(fileName);
     const tail = extractPhoneTail(fileName);
-    const body = fileNameBody(fileName);
 
     let matched: DocImportCandidate | null = null;
     let candidates: DocImportCandidate[] = [];
@@ -158,7 +158,7 @@ export async function analyzeDocumentImport(
       else candidates = hits;
     }
     if (!matched && candidates.length === 0) {
-      const nameHits = roster.filter((e) => body.includes(e.name));
+      const nameHits = roster.filter((e) => nameMatches(fileName, e.name));
       if (nameHits.length === 1) matched = nameHits[0]!;
       else if (nameHits.length > 1) candidates = nameHits;
     }
@@ -170,8 +170,6 @@ export async function analyzeDocumentImport(
         : undefined;
       if (owner === null) {
         warning = "이미 전문가가 등록한 서류가 있습니다 — 업로드가 취소됩니다.";
-      } else if (owner !== undefined && owner !== auth.tenantId) {
-        warning = "다른 기업이 등록한 서류가 있습니다 — 업로드가 취소됩니다.";
       } else if (owner === auth.tenantId) {
         warning = "자사가 올린 기존 파일을 교체합니다.";
       }
@@ -203,6 +201,9 @@ export async function uploadBulkExpertDocument(
 
   const expertId = String(formData.get("expertId") ?? "");
   const docType = String(formData.get("docType") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expertId)) {
+    return { ok: false, error: "요청 값을 확인하세요." };
+  }
   const fileName = String(formData.get("fileName") ?? "");
   const file = formData.get("file");
   if (!expertId || !isBulkDocType(docType) || !(file instanceof File)) {
@@ -282,17 +283,24 @@ export async function uploadBulkExpertDocument(
   // 자사가 올린 기존 파일은 교체 처리 (전문가 본인분은 위에서 걸렀다)
   let replaced = false;
   for (const p of prior ?? []) {
-    await admin
+    const { error: replaceError } = await admin
       .from("expert_documents")
       .update({ status: "replaced" })
       .eq("id", p.id);
+    if (replaceError) {
+      // 새 파일은 이미 등록됨 — 이중 활성 상태를 숨기지 않고 알린다
+      return {
+        ok: false,
+        error: "새 파일은 등록됐지만 기존 파일 교체 처리에 실패했습니다. 다시 시도하거나 캐스트로그에 알려 주세요.",
+      };
+    }
     replaced = true;
   }
 
   await admin.from("expert_document_history").insert({
     document_id: inserted.id,
     expert_id: expertId,
-    action: "created",
+    action: replaced ? "replaced" : "created",
     actor_auth_user_id: auth.userId,
   });
   await admin.from("audit_logs").insert({

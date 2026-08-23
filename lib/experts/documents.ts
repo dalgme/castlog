@@ -77,6 +77,7 @@ export const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
 export const SENSITIVE_DOCUMENT_TYPES: readonly string[] = [
   "bank_account_copy",
   "id_card_copy",
+  "combined",
 ];
 
 /** 서버 검증 상한 (버킷 file_size_limit와 동일) */

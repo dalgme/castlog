@@ -52,16 +52,31 @@ export function classifyDocFileName(fileName: string): BulkDocType {
   return "combined";
 }
 
-/** 파일명 속 숫자열에서 휴대폰 뒷 4자리 후보 추출 (4자리 이상 숫자열의 끝 4자리) */
+/**
+ * 파일명 속 숫자열에서 휴대폰 뒷 4자리 후보 추출.
+ * 전화로 볼 수 있는 꼴만 인정한다 — 정확히 4자리(뒷자리 표기) 또는
+ * 10자리 이상(전체 번호). 날짜(6·8자리) 같은 숫자열은 무시해 오매칭을 막는다.
+ */
 export function extractPhoneTail(fileName: string): string | null {
-  const runs = fileName.match(/\d{4,}/g);
-  if (!runs || runs.length === 0) return null;
-  // 가장 긴 숫자열 우선 — 날짜(8자리)보다 전화(10~11자리)가 길다
-  const best = [...runs].sort((a, b) => b.length - a.length)[0]!;
+  const runs = fileName.match(/\d+/g);
+  if (!runs) return null;
+  const phoneLike = runs.filter((r) => r.length === 4 || r.length >= 10);
+  if (phoneLike.length === 0) return null;
+  const best = [...phoneLike].sort((a, b) => b.length - a.length)[0]!;
   return best.slice(-4);
 }
 
 /** 파일명에서 확장자·구분자를 뗀 본문 (이름 매칭용) */
 export function fileNameBody(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_\-.\s()\[\]]+/g, " ").trim();
+}
+
+/**
+ * 이름 매칭 — 파일명 토큰이 이름과 **정확히 일치**할 때만 인정한다.
+ * 부분 포함("김수" ⊂ "김수현")으로 다른 사람에게 민감서류가 붙는 것을 막는다.
+ */
+export function nameMatches(fileName: string, expertName: string): boolean {
+  return fileNameBody(fileName)
+    .split(" ")
+    .some((token) => token === expertName);
 }

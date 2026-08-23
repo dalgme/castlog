@@ -47,9 +47,16 @@ create policy expert_documents_select on public.expert_documents
   for select using (
     app.is_expert_self(expert_id)
     or app.tenant_can_view_document(expert_id, document_type)
-    -- 자기 회사가 제공한 파일은 전문가 허용 없이도 열람 (타사에는 미공개)
+    -- 자기 회사가 제공한 파일은 전문가 허용 없이도 열람 (타사에는 미공개).
+    -- 단, 관계가 해제되면 함께 닫힌다 — 다른 열람 규칙과 같은 기준.
     or (uploaded_by_tenant_id is not null
-        and uploaded_by_tenant_id = app.tenant_id())
+        and uploaded_by_tenant_id = app.tenant_id()
+        and exists (
+          select 1 from public.expert_tenant_links l
+          where l.expert_id = expert_documents.expert_id
+            and l.tenant_id = app.tenant_id()
+            and l.status = 'active'
+        ))
   );
 
 -- ---- 4. 소속·직위 ------------------------------------------------------------
