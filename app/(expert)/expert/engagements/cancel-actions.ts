@@ -69,7 +69,7 @@ export async function cancelConfirmedEngagementByExpert(input: {
   const admin = createAdminClient();
   const { data: engagement } = await admin
     .from("expert_engagements")
-    .select("id, tenant_id, expert_id, project_id, status")
+    .select("id, tenant_id, expert_id, project_id, status, is_practice")
     .eq("id", input.engagementId)
     .maybeSingle();
   if (!engagement || engagement.expert_id !== expert.id) {
@@ -100,6 +100,8 @@ export async function cancelConfirmedEngagementByExpert(input: {
 
   // canceled_by는 직원(users)을 가리키는 칼럼이다. 전문가 본인 취소는 비워 두고
   // 사유 앞머리로 주체를 남긴다.
+  // admin 경로에는 JWT 연습 클레임이 없어 스탬프 트리거가 못 잡는다 —
+  // 섭외 건의 모드를 그대로 명시한다 (연습 취소가 실모드 화면에 새면 안 된다)
   await admin.from("engagement_cancellations").insert({
     tenant_id: engagement.tenant_id,
     engagement_id: engagement.id,
@@ -109,6 +111,7 @@ export async function cancelConfirmedEngagementByExpert(input: {
     is_urgent: true,
     reason: fullReason,
     canceled_by: null,
+    is_practice: engagement.is_practice,
   });
 
   // 배너는 한 줄: 프로젝트·세션(일자)·전문가·PM (기획 확정 2026-08-23 —
@@ -126,6 +129,7 @@ export async function cancelConfirmedEngagementByExpert(input: {
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     created_by: null,
+    is_practice: engagement.is_practice,
   });
 
   await admin.from("audit_logs").insert({
