@@ -54,10 +54,13 @@ create table if not exists public.tenant_exec_grants (
 alter table public.tenant_exec_overrides enable row level security;
 alter table public.tenant_exec_grants enable row level security;
 
--- 조회: 테넌트 전 직원 (판정·화면 표시에 필요) / 쓰기: staff 스코프 (임직원 권한 관리)
+-- 조회: 테넌트 직원 (판정·화면 표시에 필요 — 전문가 세션은 제외: 내부 권한
+-- 구성이라 볼 이유가 없다) / 쓰기: staff 스코프 (임직원 권한 관리)
 drop policy if exists tenant_exec_overrides_select on public.tenant_exec_overrides;
 create policy tenant_exec_overrides_select on public.tenant_exec_overrides
-  for select using (tenant_id = app.tenant_id());
+  for select using (
+    tenant_id = app.tenant_id() and app.user_role() <> 'expert'
+  );
 
 drop policy if exists tenant_exec_overrides_write on public.tenant_exec_overrides;
 create policy tenant_exec_overrides_write on public.tenant_exec_overrides
@@ -66,7 +69,9 @@ create policy tenant_exec_overrides_write on public.tenant_exec_overrides
 
 drop policy if exists tenant_exec_grants_select on public.tenant_exec_grants;
 create policy tenant_exec_grants_select on public.tenant_exec_grants
-  for select using (tenant_id = app.tenant_id());
+  for select using (
+    tenant_id = app.tenant_id() and app.user_role() <> 'expert'
+  );
 
 drop policy if exists tenant_exec_grants_write on public.tenant_exec_grants;
 create policy tenant_exec_grants_write on public.tenant_exec_grants

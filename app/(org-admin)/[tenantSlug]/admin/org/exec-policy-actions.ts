@@ -60,6 +60,7 @@ export async function setExecThreshold(
         feature,
         min_grade: minGrade,
         updated_by: session.userId,
+        updated_at: new Date().toISOString(),
       },
       { onConflict: "tenant_id,feature" }
     );
