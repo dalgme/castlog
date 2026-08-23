@@ -101,6 +101,40 @@ create policy projects_update on public.projects
     tenant_id = app.tenant_id() and app.has_exec_grade('deputy')
   );
 
+-- 레벨 4 개방의 경계 — projects의 기초정보(예산·기간·상태 등)는 레벨 3 전용.
+-- RLS는 행 단위라 컬럼을 못 가르므로, 레벨 4가 바꿀 수 있는 컬럼(섭외 단계
+-- 전환 흐름이 만지는 것)만 트리거로 허용한다. 새 컬럼이 생기면 기본은 잠김.
+create or replace function app.guard_project_update_grade()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  -- 레벨 4 실행 흐름(계획 상신·섭외요청·수락서 송신)이 갱신하는 컬럼
+  v_open text[] := array[
+    'engagement_stage', 'engagement_plan_approval_id',
+    'engagement_channel', 'engagement_deadline', 'engagement_requested_at',
+    'acceptance_channel', 'acceptance_sent_at', 'updated_at'
+  ];
+begin
+  -- 서버 관리 경로(service_role)와 레벨 3 이상은 전 컬럼 수정 가능
+  if auth.role() = 'service_role' or app.has_exec_grade('team_lead') then
+    return new;
+  end if;
+  if (to_jsonb(new) - v_open) is distinct from (to_jsonb(old) - v_open) then
+    raise exception '프로젝트 기본정보(예산·기간·상태 등) 수정은 레벨 3 이상만 할 수 있습니다 (권한 규칙).'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_project_update_grade on public.projects;
+create trigger guard_project_update_grade
+  before update on public.projects
+  for each row execute function app.guard_project_update_grade();
+
 -- 섭외계획 품의 (배정 범위 조건은 그대로 유지)
 drop policy if exists engagement_plans_write on public.engagement_plans;
 create policy engagement_plans_write on public.engagement_plans
