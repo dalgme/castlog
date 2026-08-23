@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
-import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
+import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
@@ -52,7 +53,7 @@ export async function createDocumentRequest(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("expertInvite", user))) {
     return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 
@@ -138,7 +139,7 @@ export async function cancelDocumentRequest(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("expertInvite", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("expertInvite", user))) {
     return { ok: false, error: execDeniedMessage("expertInvite") };
   }
 

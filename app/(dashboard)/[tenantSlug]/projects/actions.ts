@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { explainActionError } from "@/lib/ux/action-errors";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
 import {
   createApprovalWithSteps,
@@ -58,8 +60,11 @@ export async function createProject(
 
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "프로젝트 생성 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("projectCreate", user))) {
+    return { ok: false, error: execDeniedMessage("projectCreate") };
   }
 
   // 분류는 자사 카테고리만 — FK는 RLS를 우회하므로 소유를 직접 확인한다.

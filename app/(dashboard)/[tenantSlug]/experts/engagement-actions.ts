@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
-import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
+import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
@@ -82,7 +83,7 @@ export async function createEngagement(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("engagementRequest", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("engagementRequest", user))) {
     return { ok: false, error: execDeniedMessage("engagementRequest") };
   }
 
@@ -269,7 +270,7 @@ export async function cancelEngagement(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("engagementCancel", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("engagementCancel", user))) {
     return { ok: false, error: execDeniedMessage("engagementCancel") };
   }
 

@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import {
+  canExecTenant,
+  canExecWithPolicy,
+  getExecPolicy,
+} from "@/lib/auth/exec-policy";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
@@ -37,7 +42,7 @@ async function requireNoticeSession(): Promise<
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("sessionNotice", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("sessionNotice", user))) {
     return { ok: false, error: execDeniedMessage("sessionNotice") };
   }
   return { ok: true, userId: user.id, tenantId, role, grade: gradeFromUser(user) };
@@ -187,9 +192,13 @@ export async function saveNoticeTemplate(
 ): Promise<NoticeResult> {
   const auth = await requireNoticeSession();
   if (!auth.ok) return auth;
-  // 문구 관리는 설정 성격 — 레벨 3까지 (발송 실행보다 문턱이 높다)
-  if (!canExec("sendTemplate", auth.grade, auth.role)) {
-    return { ok: false, error: execDeniedMessage("sendTemplate") };
+  // 문구 관리는 설정 성격 — 발송 실행보다 문턱이 높다 (회사 조정 반영)
+  const policy = await getExecPolicy(auth.userId);
+  if (!canExecWithPolicy(policy, "sendTemplate", auth.grade, auth.role)) {
+    return {
+      ok: false,
+      error: execDeniedMessage("sendTemplate", policy.overrides.sendTemplate),
+    };
   }
 
   const trimmedName = name.trim();
@@ -223,9 +232,13 @@ export async function deactivateNoticeTemplate(
 ): Promise<NoticeResult> {
   const auth = await requireNoticeSession();
   if (!auth.ok) return auth;
-  // 문구 관리는 설정 성격 — 레벨 3까지 (발송 실행보다 문턱이 높다)
-  if (!canExec("sendTemplate", auth.grade, auth.role)) {
-    return { ok: false, error: execDeniedMessage("sendTemplate") };
+  // 문구 관리는 설정 성격 — 발송 실행보다 문턱이 높다 (회사 조정 반영)
+  const policy = await getExecPolicy(auth.userId);
+  if (!canExecWithPolicy(policy, "sendTemplate", auth.grade, auth.role)) {
+    return {
+      ok: false,
+      error: execDeniedMessage("sendTemplate", policy.overrides.sendTemplate),
+    };
   }
 
   const supabase = createClient();

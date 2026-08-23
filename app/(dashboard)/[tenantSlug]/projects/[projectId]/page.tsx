@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
-import { canExec } from "@/lib/auth/exec-permissions";
+import { getExecFlags } from "@/lib/auth/exec-policy";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import {
   assignmentRoleRank,
@@ -106,10 +106,16 @@ export default async function ProjectDetailPage({
 
   const role = roleFromUser(user);
   const grade = gradeFromUser(user);
-  // 레벨 차등 (기획 확정 2026-08-23) — 서버 게이트와 같은 기준:
-  // 실행(섭외요청·수락서·품의 상신)과 평가는 레벨 4(대리)부터.
-  const canExecute = canExec("engagementRequest", grade, role);
-  const canEvaluate = canExec("expertRecord", grade, role);
+  // 레벨 차등 + 회사별 문턱 조정 반영 — 서버 게이트와 같은 판정(getExecFlags).
+  const exec = await getExecFlags(user, [
+    "engagementRequest",
+    "expertRecord",
+    "planInput",
+    "sessionNotice",
+    "engagementCancel",
+  ] as const);
+  const canExecute = exec.engagementRequest;
+  const canEvaluate = exec.expertRecord;
 
   if (!hasSupabaseEnv()) {
     return (
@@ -254,8 +260,8 @@ export default async function ProjectDetailPage({
   const canManage = role === "org_admin" || role === "manager";
   // Phase A-1: 배정 패널용 — 배정은 전사 열람 권한자(대표·이사)가 한다 (§3-1)
   const canAssign = canViewAllProjects(grade);
-  // 레벨 5(주임)부터 — 세션·코드넘버·후보 입력 (실무 입력선)
-  const canInput = canExec("planInput", grade, role);
+  // 세션·코드넘버·후보 입력 (실무 입력선 — 기본 레벨 5, 회사 조정 반영)
+  const canInput = exec.planInput;
 
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
@@ -736,7 +742,7 @@ export default async function ProjectDetailPage({
                 tenantSlug={params.tenantSlug}
                 slots={slotRows}
                 canManage={canInput}
-                canNotice={canExec("sessionNotice", grade, role)}
+                canNotice={exec.sessionNotice}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />
@@ -811,7 +817,7 @@ export default async function ProjectDetailPage({
             slots={slotRows}
             canManage={canExecute}
             canInput={canInput}
-            canCancel={canExec("engagementCancel", grade, role)}
+            canCancel={exec.engagementCancel}
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
