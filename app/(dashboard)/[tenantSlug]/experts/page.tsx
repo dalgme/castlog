@@ -34,6 +34,7 @@ import { ExpertRecommendDialog } from "./recommend-dialog";
 import { InvitationActions } from "./invitation-actions";
 import { ExpertTagCell } from "./expert-tag-cell";
 import { ExpertQuickTag } from "./expert-quick-tag";
+import { ExpertsTabs } from "./experts-tabs";
 
 export const metadata = { title: "전문가" };
 
@@ -496,14 +497,6 @@ export default async function TenantExpertsPage({
               </a>
             </Button>
             <Button asChild variant="outline" size="sm">
-              <Link href={`/${params.tenantSlug}/experts/import`}>일괄 등록</Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/${params.tenantSlug}/experts/manage`}>
-                전문가 관리
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
               <Link href={`/${params.tenantSlug}/experts/cancellations`}>
                 취소 내역
               </Link>
@@ -518,6 +511,7 @@ export default async function TenantExpertsPage({
         }
       />
       <main className="space-y-5 p-5">
+        <ExpertsTabs tenantSlug={params.tenantSlug} active="list" />
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <SearchForm

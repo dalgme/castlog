@@ -1,4 +1,3 @@
-import Link from "next/link";
 
 import { requireRole, getSessionUser } from "@/lib/auth/session";
 import { requireModule } from "@/lib/modules/server";
@@ -7,7 +6,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
-import { Button } from "@/components/ui/button";
+import { ExpertsTabs } from "../experts-tabs";
 
 import {
   ManageClient,
@@ -36,17 +35,14 @@ export default async function ExpertManagePage({
   // 평점·메모·섭외분야 수정은 레벨 4(대리)부터 — 서버 게이트(expertRecord)와 같은 기준
   const canEdit = await canExecTenant("expertRecord", user);
 
-  const headerActions = (
-    <Button asChild variant="outline" size="sm">
-      <Link href={`/${params.tenantSlug}/experts`}>← 전문가 목록</Link>
-    </Button>
-  );
+  const headerActions = null;
 
   if (!hasSupabaseEnv()) {
     return (
       <div>
         <PageHeader title="전문가 관리" actions={headerActions} />
         <main className="p-5">
+        <ExpertsTabs tenantSlug={params.tenantSlug} active="manage" />
           <EmptyState
             title="서버 설정 대기 중"
             description="Supabase 환경변수가 설정되면 표시됩니다."
@@ -148,6 +144,7 @@ export default async function ExpertManagePage({
     <div>
       <PageHeader title="전문가 관리" actions={headerActions} />
       <main className="mx-auto max-w-6xl space-y-4 p-5">
+        <ExpertsTabs tenantSlug={params.tenantSlug} active="manage" />
         {rows.length === 0 ? (
           <EmptyState
             title="관계 전문가가 없습니다"
