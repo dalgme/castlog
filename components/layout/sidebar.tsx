@@ -66,7 +66,8 @@ const NAV_ITEMS: readonly {
   { label: "보고서", path: "reports", icon: FileText, module: "operations" },
   { label: "발송", path: "messages", icon: Send, module: null },
   { label: "섭외 안내", path: "guide", icon: BookOpen, module: "experts" },
-  { label: "설정", path: "settings", icon: Settings, module: null },
+  // 설정의 기본 진입은 '내 설정' 탭 (기획 확정 2026-08-23)
+  { label: "설정", path: "settings/me", icon: Settings, module: null },
 ];
 
 /** 테넌트 대시보드 공통 사이드바 (모바일: 조회 수준 대응 — 좁은 화면에서 아이콘만) */

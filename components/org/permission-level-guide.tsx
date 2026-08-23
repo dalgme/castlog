@@ -48,9 +48,17 @@ const LEVEL_ROWS: { level: string; who: string; can: string[] }[] = [
   },
 ];
 
-export function PermissionLevelGuide() {
+export function PermissionLevelGuide({
+  defaultOpen = false,
+}: {
+  /** 팝업(레벨 설정 이해하기) 안에서는 펼친 상태로 시작한다 */
+  defaultOpen?: boolean;
+} = {}) {
   return (
-    <details className="group rounded-xl border border-brand/30 bg-[#F2F6FF]">
+    <details
+      open={defaultOpen}
+      className="group rounded-xl border border-brand/30 bg-[#F2F6FF]"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 p-4 text-sm font-bold text-brand-navy [&::-webkit-details-marker]:hidden">
         <ShieldCheck className="h-4 w-4 text-brand" aria-hidden />
         권한 체계 한눈에 보기 — 직급 · 권한 레벨 · 프로젝트 역할
