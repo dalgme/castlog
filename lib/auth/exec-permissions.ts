@@ -49,6 +49,22 @@ export const EXEC_FEATURES = {
 
 export type ExecFeature = keyof typeof EXEC_FEATURES;
 
+/**
+ * legacy role → grade 역산 (없으면 null) — canExec와 exec-policy가 같은 규칙을 쓴다.
+ * 임직원 role(org_admin/manager/staff)만 역산한다. expert·platform_admin은
+ * null — 문턱을 레벨 6까지 내려도 전문가 세션이 실행 축에 올라타지 못하게
+ * (DB app.can_exec의 role 제한과 동일 규칙).
+ */
+export function gradeFromLegacyRoleSafe(
+  legacyRole?: string | null
+): UserGrade | null {
+  if (!legacyRole) return null;
+  if (legacyRole !== "org_admin" && legacyRole !== "manager" && legacyRole !== "staff") {
+    return null;
+  }
+  return gradeFromLegacyRole(legacyRole);
+}
+
 /** grade(없으면 legacy role에서 역산)로 기능 실행 가능 여부 판정 */
 export function canExec(
   feature: ExecFeature,
@@ -57,15 +73,19 @@ export function canExec(
 ): boolean {
   const resolved: UserGrade | null = isUserGrade(grade)
     ? grade
-    : legacyRole
-      ? gradeFromLegacyRole(legacyRole)
-      : null;
+    : gradeFromLegacyRoleSafe(legacyRole);
   if (!resolved) return false;
   return gradeAtLeast(resolved, EXEC_FEATURES[feature].minGrade);
 }
 
-/** 거부 시 사용자에게 돌려줄 문구 — 규칙 거부임을 명시 (CLAUDE.md 12-9) */
-export function execDeniedMessage(feature: ExecFeature): string {
+/**
+ * 거부 시 사용자에게 돌려줄 문구 — 규칙 거부임을 명시 (CLAUDE.md 12-9).
+ * 회사가 문턱을 조정했다면 조정된 레벨(effectiveMin)을 문구에 쓴다.
+ */
+export function execDeniedMessage(
+  feature: ExecFeature,
+  effectiveMin?: UserGrade
+): string {
   const def = EXEC_FEATURES[feature];
   const levelLabel: Record<UserGrade, string> = {
     ceo: "레벨 1",
@@ -75,5 +95,6 @@ export function execDeniedMessage(feature: ExecFeature): string {
     senior: "레벨 5",
     staff: "레벨 6",
   };
-  return `'${def.label}'은(는) ${levelLabel[def.minGrade]} 이상만 실행할 수 있습니다 (권한 규칙). 필요하면 관리자에게 권한 레벨 조정을 요청하세요.`;
+  const min = effectiveMin ?? def.minGrade;
+  return `'${def.label}'은(는) ${levelLabel[min]} 이상만 실행할 수 있습니다 (권한 규칙). 필요하면 관리자에게 권한 레벨 조정을 요청하세요.`;
 }

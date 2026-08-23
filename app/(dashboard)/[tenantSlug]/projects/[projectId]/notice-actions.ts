@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { execDeniedMessage, type ExecFeature } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
@@ -17,7 +18,10 @@ import {
 export type NoticeResult = { ok: true } | { ok: false; error: string };
 
 
-async function requireNoticeSession(): Promise<
+/** 발송은 sessionNotice, 문구 관리는 sendTemplate — 기능 축을 호출부가 고른다 */
+async function requireNoticeSession(
+  feature: ExecFeature = "sessionNotice"
+): Promise<
   | { ok: true; userId: string; tenantId: string; role: string; grade: string | null }
   | { ok: false; error: string }
 > {
@@ -37,8 +41,8 @@ async function requireNoticeSession(): Promise<
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("sessionNotice", gradeFromUser(user), role)) {
-    return { ok: false, error: execDeniedMessage("sessionNotice") };
+  if (!(await canExecTenant(feature, user))) {
+    return { ok: false, error: execDeniedMessage(feature) };
   }
   return { ok: true, userId: user.id, tenantId, role, grade: gradeFromUser(user) };
 }
@@ -185,12 +189,9 @@ export async function saveNoticeTemplate(
   name: string,
   body: string
 ): Promise<NoticeResult> {
-  const auth = await requireNoticeSession();
+  // 문구 관리는 sendTemplate 축 하나로만 판정 — 발송 권한과 별개 (개인 지정 유효)
+  const auth = await requireNoticeSession("sendTemplate");
   if (!auth.ok) return auth;
-  // 문구 관리는 설정 성격 — 레벨 3까지 (발송 실행보다 문턱이 높다)
-  if (!canExec("sendTemplate", auth.grade, auth.role)) {
-    return { ok: false, error: execDeniedMessage("sendTemplate") };
-  }
 
   const trimmedName = name.trim();
   const trimmedBody = body.trim();
@@ -221,12 +222,9 @@ export async function saveNoticeTemplate(
 export async function deactivateNoticeTemplate(
   templateId: string
 ): Promise<NoticeResult> {
-  const auth = await requireNoticeSession();
+  // 문구 관리는 sendTemplate 축 하나로만 판정 — 발송 권한과 별개 (개인 지정 유효)
+  const auth = await requireNoticeSession("sendTemplate");
   if (!auth.ok) return auth;
-  // 문구 관리는 설정 성격 — 레벨 3까지 (발송 실행보다 문턱이 높다)
-  if (!canExec("sendTemplate", auth.grade, auth.role)) {
-    return { ok: false, error: execDeniedMessage("sendTemplate") };
-  }
 
   const supabase = createClient();
   const { error } = await supabase

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { canExec } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { requireModule, getTenantModules } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -69,9 +68,8 @@ export default async function PositionPage({
     .eq("id", ctx.projectId)
     .maybeSingle();
 
-  const role = roleFromUser(user);
   // 후보·섭외 실행은 레벨 4(대리)부터 — 서버 게이트와 같은 기준
-  const canManage = canExec("engagementRequest", gradeFromUser(user), role);
+  const canManage = await canExecTenant("engagementRequest", user);
   const modules = await getTenantModules();
   const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
   const candidates = canManage && ctx.status === "open" ? await getSlotCandidates(ctx) : [];

@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
@@ -52,8 +54,12 @@ async function gate(): Promise<Gate> {
 
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "보유자료 등록 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  // service_role 경로라 RLS가 아닌 이 게이트가 유일한 강제 지점 — 회사 조정 반영
+  if (!(await canExecTenant("bulkImport", user))) {
+    return { ok: false, error: execDeniedMessage("bulkImport") };
   }
 
   const modules = await getTenantModules();

@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { requireRole, getSessionUser } from "@/lib/auth/session";
-import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { canExec } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -393,11 +392,7 @@ export default async function TenantExpertsPage({
 
   const sessionUser = await getSessionUser();
   // 전문가 평점·등급·메모는 레벨 4(대리)부터 — 서버 게이트(expertRecord)와 같은 기준
-  const canManageTags = canExec(
-    "expertRecord",
-    gradeFromUser(sessionUser),
-    roleFromUser(sessionUser)
-  );
+  const canManageTags = await canExecTenant("expertRecord", sessionUser);
 
   const activeExpertOptions = Array.from(linkByExpert.entries())
     .filter(([, v]) => v.status === "active")

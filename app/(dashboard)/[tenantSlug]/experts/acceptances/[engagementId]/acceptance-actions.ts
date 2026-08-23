@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getTenantModules } from "@/lib/modules/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
-import { gradeFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import {
   EXPERT_DOCUMENT_BUCKET,
@@ -39,7 +39,7 @@ async function requireManager(): Promise<
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("acceptanceSend", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("acceptanceSend", user))) {
     return { ok: false, error: execDeniedMessage("acceptanceSend") };
   }
   return { ok: true, userId: user.id, tenantId };

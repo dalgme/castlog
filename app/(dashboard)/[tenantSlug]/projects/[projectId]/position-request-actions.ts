@@ -1,7 +1,8 @@
 "use server";
 
-import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { roleFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { requireUser } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -38,7 +39,7 @@ export async function loadPositionRequestData(
   if (!user || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("planInput", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("planInput", user))) {
     return { ok: false, error: execDeniedMessage("planInput") };
   }
 

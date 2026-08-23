@@ -4,10 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import {
-  canExec,
   execDeniedMessage,
   type ExecFeature,
 } from "@/lib/auth/exec-permissions";
+import { canExecWithPolicy, getExecPolicy } from "@/lib/auth/exec-policy";
 
 export type ExecGateResult =
   | { ok: true; userId: string; tenantId: string; role: string }
@@ -34,9 +34,11 @@ export async function requireExecGrade(
   if (!user || !tenantId || !role || role === "expert") {
     return { ok: false, error: "로그인이 필요합니다." };
   }
+  // 회사 조정 레벨·개인 지정까지 반영해 판정한다 (기본값은 EXEC_FEATURES)
+  const policy = await getExecPolicy(user.id);
   const grade = gradeFromUser(user);
-  if (!canExec(feature, grade, role)) {
-    return { ok: false, error: execDeniedMessage(feature) };
+  if (!canExecWithPolicy(policy, feature, grade, role)) {
+    return { ok: false, error: execDeniedMessage(feature, policy.overrides[feature]) };
   }
   return { ok: true, userId: user.id, tenantId, role };
 }

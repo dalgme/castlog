@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
-import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
+import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { expertTagLabel, isExpertTag } from "@/lib/integrations/expert-tags";
 
@@ -31,7 +32,7 @@ async function requireExpertManager(): Promise<
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!canExec("expertRecord", gradeFromUser(user), role)) {
+  if (!(await canExecTenant("expertRecord", user))) {
     return { ok: false, error: execDeniedMessage("expertRecord") };
   }
   return { ok: true, userId: user.id, tenantId, role };

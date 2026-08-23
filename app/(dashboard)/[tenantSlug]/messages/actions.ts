@@ -7,6 +7,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import {
   messageSendSchema,
   type MessageSendInput,
@@ -56,8 +58,11 @@ export async function uploadMmsImageAction(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "발송 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("freeMessageSend", user))) {
+    return { ok: false, error: execDeniedMessage("freeMessageSend") };
   }
 
   const file = formData.get("file");
@@ -123,8 +128,11 @@ export async function sendMessage(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "발송 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("freeMessageSend", user))) {
+    return { ok: false, error: execDeniedMessage("freeMessageSend") };
   }
 
   // 수신 대상: 활성 연결 전문가만 (RLS)
@@ -370,8 +378,11 @@ export async function cancelScheduledMessage(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "발송 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("freeMessageSend", user))) {
+    return { ok: false, error: execDeniedMessage("freeMessageSend") };
   }
 
   // 조건부 갱신 — 이미 발송 중·완료된 건은 건드리지 않는다

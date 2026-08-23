@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/table";
 
 import { roleFromUser } from "@/lib/auth/tenant";
-import { isUserGrade, type UserGrade } from "@/lib/auth/grades";
+import { GRADE_LABELS, gradeLabel, isUserGrade, type UserGrade } from "@/lib/auth/grades";
+import { EXEC_FEATURES, type ExecFeature } from "@/lib/auth/exec-permissions";
 import { isAdminScope } from "@/lib/auth/admin-scope-keys";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
@@ -36,6 +37,7 @@ import { StaffEditDialog } from "../org/staff-edit-dialog";
 import { StaffGradeSelect } from "../org/staff-grade-select";
 import { LevelGuideDialog } from "../org/level-guide-dialog";
 import { PositionsPanel } from "../org/positions-panel";
+import { ExecThresholdPanel } from "../org/exec-threshold-panel";
 import {
   AdminDelegationPanel,
   type DelegationRow,
@@ -132,6 +134,34 @@ export default async function StaffSettingsPage({
   const staffRows = staff ?? [];
   const positionRows = positions ?? [];
   const staffNameById = new Map(staffRows.map((s) => [s.id, s.name]));
+
+  // 기능별 권한 문턱 조정 — 회사 조정값 + 개인 지정 (테이블 미생성 시 빈 목록 폴백)
+  const [{ data: execOverrides }, { data: execGrants }] = await Promise.all([
+    supabase.from("tenant_exec_overrides").select("feature, min_grade"),
+    supabase.from("tenant_exec_grants").select("feature, user_id"),
+  ]);
+  const overrideByFeature = new Map(
+    (execOverrides ?? []).map((o) => [o.feature, o.min_grade])
+  );
+  const grantsByFeature = new Map<string, { userId: string; name: string }[]>();
+  for (const g of execGrants ?? []) {
+    const list = grantsByFeature.get(g.feature) ?? [];
+    list.push({ userId: g.user_id, name: staffNameById.get(g.user_id) ?? "(직원)" });
+    grantsByFeature.set(g.feature, list);
+  }
+  const execPolicyRows = (Object.keys(EXEC_FEATURES) as ExecFeature[])
+    // 지급건 생성은 레벨 축이 아니라 지급 위임(finance 스위치)으로 관리 — 표에서 제외
+    .filter((f) => f !== "paymentBatchCreate")
+    .map((f) => ({
+      feature: f,
+      label: EXEC_FEATURES[f].label,
+      defaultLabel: GRADE_LABELS[EXEC_FEATURES[f].minGrade],
+      overrideGrade: overrideByFeature.get(f) ?? null,
+      grants: grantsByFeature.get(f) ?? [],
+    }));
+  const execStaff = staffRows
+    .filter((s) => s.is_active)
+    .map((s) => ({ id: s.id, name: s.name, gradeLabel: gradeLabel(s.grade) }));
 
   const delegationCandidates = staffRows
     .filter((s) => s.is_active && s.grade !== "ceo")
@@ -315,6 +345,8 @@ export default async function StaffSettingsPage({
             )}
           </CardContent>
         </Card>
+
+        <ExecThresholdPanel rows={execPolicyRows} staff={execStaff} />
 
         <Card>
           <CardHeader className="pb-3">
