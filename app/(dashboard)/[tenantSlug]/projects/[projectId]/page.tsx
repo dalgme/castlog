@@ -16,10 +16,7 @@ import {
   getProjectEngagementState,
   buildEngagementPlanDraft,
 } from "@/lib/integrations/project-engagement";
-import {
-  getUrgentCancellations,
-  getCanceledExpertByPositionCode,
-} from "@/lib/integrations/urgent-cancellations";
+import { getCanceledExpertByPositionCode } from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
 import { getTenantModules } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
@@ -44,7 +41,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EngagementDialog } from "@/components/integrations/engagement-dialog";
-import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
 import { ProjectTodoTicker } from "@/components/projects/todo-ticker";
 
 import { AttachmentPanel } from "./attachment-panel";
@@ -414,13 +410,11 @@ export default async function ProjectDetailPage({
       ])
     : [{ data: null }, { data: null }];
 
-  // 긴급 취소 — 이 프로젝트 건만. 재섭외 대상 자리를 눈에 띄게 표시한다.
-  const [urgentCancels, canceledByCode] = modules.experts
-    ? await Promise.all([
-        getUrgentCancellations({ projectId: project.id }),
-        getCanceledExpertByPositionCode(project.id),
-      ])
-    : [[], {} as Record<string, string>];
+  // 긴급 취소 — 재섭외 대상 자리 표시용. (상단 흐름 전광판은 '지금 할 일'로
+  // 대체 — 긴급 취소는 정적 긴급 배너가 별도로 알린다. 기획 확정 2026-08-23)
+  const canceledByCode = modules.experts
+    ? await getCanceledExpertByPositionCode(project.id)
+    : ({} as Record<string, string>);
 
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
@@ -636,7 +630,16 @@ export default async function ProjectDetailPage({
 
   return (
     <div>
-      <UrgentCancelMarquee items={urgentCancels} tenantSlug={params.tenantSlug} />
+      {/* '지금 할 일' 전광판 — 목록의 전광판 내용을 페이지 최상단에서 그대로
+          이어 보여준다 (긴급 취소 흐름 전광판 대체 — 기획 확정 2026-08-23) */}
+      {modules.experts && (
+        <div className="px-5 pt-3">
+          <ProjectTodoTicker
+            stage={engagementState?.stage ?? "assigning"}
+            size="lg"
+          />
+        </div>
+      )}
       <PageHeader
         title={project.name}
         actions={
@@ -653,26 +656,16 @@ export default async function ProjectDetailPage({
       />
       <main className="space-y-5 p-5">
         {tab === "overview" && (
-          <>
-            {/* 목록의 '지금 할 일' 전광판을 상세 대시보드 상단에도 그대로
-                (기획 확정 2026-08-23 — 섭외취소 긴급 보고 마퀴는 별도 유지) */}
-            {modules.experts && (
-              <ProjectTodoTicker
-                stage={engagementState?.stage ?? "assigning"}
-                size="lg"
-              />
-            )}
-            <ProjectDashboardCards
-              tenantSlug={params.tenantSlug}
-              data={dashboard}
-              budgetAmount={project.budget_amount}
-              committedCost={confirmedCost + requestedCost}
-              plName={plName}
-              pmName={pmName}
-              deputyPmNames={deputyPmNames}
-              modules={{ experts: modules.experts, approvals: modules.approvals }}
-            />
-          </>
+          <ProjectDashboardCards
+            tenantSlug={params.tenantSlug}
+            data={dashboard}
+            budgetAmount={project.budget_amount}
+            committedCost={confirmedCost + requestedCost}
+            plName={plName}
+            pmName={pmName}
+            deputyPmNames={deputyPmNames}
+            modules={{ experts: modules.experts, approvals: modules.approvals }}
+          />
         )}
         {tab === "basic" && canManage && (
           <Card>
