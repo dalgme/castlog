@@ -16,6 +16,7 @@ import {
 } from "@/lib/integrations/engagement-stage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { commaInputHandler, formatComma } from "@/components/ui/comma-number-input";
 import { useToast } from "@/hooks/use-toast";
 
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
@@ -46,6 +47,7 @@ export function CandidateList({
   stageByPosition,
   canManage,
   canCancel,
+  sessionDuration,
   editable,
 }: {
   tenantSlug: string;
@@ -57,6 +59,8 @@ export function CandidateList({
   canManage: boolean;
   /** 섭외 취소·긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
   canCancel: boolean;
+  /** 세션 진행 시간 (예: "3시간") — 예정가 옆 참고 표시 */
+  sessionDuration?: string | null;
   /** 순위·예정가·후보 편집 가능 여부 — 품의 상신 전(assigning)만 */
   editable: boolean;
 }) {
@@ -185,9 +189,10 @@ export function CandidateList({
                 <span className="inline-flex items-center gap-1 text-xs">
                   <Input
                     inputMode="numeric"
-                    defaultValue={p.expectedFee ?? ""}
+                    defaultValue={formatComma(p.expectedFee)}
+                    onInput={commaInputHandler}
                     placeholder="예정가(원)"
-                    className="h-7 w-28 text-xs"
+                    className="h-7 w-28 text-xs tabular-nums"
                     onBlur={(e) => {
                       const v = e.target.value.replace(/\D/g, "");
                       if (v !== String(p.expectedFee ?? "")) {
@@ -196,12 +201,18 @@ export function CandidateList({
                     }}
                   />
                   원
+                  {sessionDuration && (
+                    <span className="text-muted-foreground">
+                      · {sessionDuration}
+                    </span>
+                  )}
                 </span>
               ) : (
                 <span className="text-xs text-muted-foreground">
                   {p.expectedFee !== null
                     ? `예정가 ${formatKrw(p.expectedFee)}`
                     : "예정가 미정"}
+                  {sessionDuration ? ` · ${sessionDuration}` : ""}
                 </span>
               )}
 

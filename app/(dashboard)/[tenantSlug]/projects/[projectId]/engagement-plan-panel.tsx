@@ -40,6 +40,7 @@ export function EngagementPlanPanel({
   canSubmit,
   approverOptions,
   hasProjectRule,
+  sessionSummary = [],
 }: {
   tenantSlug: string;
   projectId: string;
@@ -48,6 +49,8 @@ export function EngagementPlanPanel({
   /** 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원) */
   approverOptions: { id: string; name: string; gradeLabel: string }[];
   hasProjectRule: boolean;
+  /** 세션별 필요인원·등록 후보인원 한눈 요약 (기획 확정 2026-08-23) */
+  sessionSummary?: { label: string; required: number; candidates: number }[];
 }) {
   const [approverIds, setApproverIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
@@ -181,6 +184,24 @@ export function EngagementPlanPanel({
             </p>
           </div>
         </div>
+
+        {sessionSummary.length > 0 && (
+          <div className="rounded-md border bg-background p-2.5">
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">
+              세션별 필요인원 · 등록 후보인원
+            </p>
+            <ul className="space-y-0.5 text-xs">
+              {sessionSummary.map((row, i) => (
+                <li key={i} className="flex items-center justify-between gap-2">
+                  <span className="truncate">{row.label}</span>
+                  <span className="shrink-0 tabular-nums">
+                    필요 {row.required}명 · 후보 {row.candidates}명
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {plan.approvalId && (
           <Button asChild variant="outline" size="sm">

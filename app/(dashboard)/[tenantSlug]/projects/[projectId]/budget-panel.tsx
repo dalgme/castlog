@@ -6,7 +6,7 @@ import { Pencil } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import { formatKrw } from "@/lib/approvals/constants";
 
 import { updateProjectBudget } from "./slot-actions";
@@ -69,12 +69,11 @@ export function BudgetPanel({
           <p className="text-xs text-muted-foreground">총 예산</p>
           {editing ? (
             <div className="mt-1 flex items-center gap-1">
-              <Input
-                inputMode="numeric"
+              <CommaNumberInput
                 value={value}
-                onChange={(e) => setValue(e.target.value)}
+                onValueChange={setValue}
                 className="h-8"
-                placeholder="50000000"
+                placeholder="50,000,000"
               />
               <Button size="sm" onClick={save} disabled={pending}>
                 저장

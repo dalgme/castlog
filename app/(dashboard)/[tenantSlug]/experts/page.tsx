@@ -33,6 +33,7 @@ import { ExpertNotesCell } from "./notes-cell";
 import { ExpertRecommendDialog } from "./recommend-dialog";
 import { InvitationActions } from "./invitation-actions";
 import { ExpertTagCell } from "./expert-tag-cell";
+import { ExpertQuickTag } from "./expert-quick-tag";
 
 export const metadata = { title: "전문가" };
 
@@ -64,6 +65,8 @@ const POOL_FETCH_LIMIT = 2000;
 const SCOPE_FILTERS = [
   { key: "all", label: "전체" },
   { key: "linked", label: "연결됨" },
+  { key: "favorite", label: "즐겨찾기" },
+  { key: "vip", label: "VIP" },
 ] as const;
 
 const PERIOD_FILTERS = [
@@ -234,6 +237,15 @@ export default async function TenantExpertsPage({
   }
 
   // ── 필터 ────────────────────────────────────────────────────────────────
+  // 등급(즐겨찾기·VIP)은 필터와 이름 앞 별·VIP 버튼에 쓰므로 페이지 전 범위로
+  // 미리 읽는다 (자사 태그 전체 — RLS 테넌트 격리, 건수 작음)
+  const { data: allTagRows } = await supabase
+    .from("expert_tenant_tags")
+    .select("expert_id, tag");
+  const tagAllByExpert = new Map(
+    (allTagRows ?? []).map((t) => [t.expert_id, t.tag])
+  );
+
   const lowered = query.toLowerCase();
   const queryDigits = query.replace(/\D/g, "").replace(/^0/, "");
   const periodDays = PERIOD_FILTERS.find((p) => p.key === periodFilter)?.days;
@@ -244,6 +256,11 @@ export default async function TenantExpertsPage({
   let rows = visiblePool.filter((expert) => {
     const link = linkByExpert.get(expert.id);
     if (scope === "linked" && (!link || link.status === "revoked")) return false;
+    if (
+      (scope === "favorite" || scope === "vip") &&
+      tagAllByExpert.get(expert.id) !== scope
+    )
+      return false;
     if (regionFilter && (expert.region ?? "") !== regionFilter) return false;
     if (periodCutoff && new Date(expert.created_at).getTime() < periodCutoff)
       return false;
@@ -715,6 +732,12 @@ export default async function TenantExpertsPage({
                         상태
                       </TableHead>
                       <TableHead className="w-20" />
+                      <TableHead
+                        className="w-16 cursor-help"
+                        title="VIP 지정 — 클릭으로 켜고 끕니다 (연결된 전문가만)"
+                      >
+                        VIP
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -730,7 +753,16 @@ export default async function TenantExpertsPage({
                       const expertiseNames = expertiseByExpert.get(expert.id) ?? [];
                       return (
                         <TableRow key={expert.id}>
-                          <TableCell className="font-medium">
+                          <TableCell className="whitespace-nowrap font-medium">
+                            <ExpertQuickTag
+                              expertId={expert.id}
+                              expertName={expert.name}
+                              tag={tagAllByExpert.get(expert.id) ?? null}
+                              target="favorite"
+                              canManage={
+                                canManageTags && link?.status === "active"
+                              }
+                            />
                             <Link
                               href={`/${params.tenantSlug}/experts/${expert.id}`}
                               className="underline-offset-4 hover:underline"
@@ -813,6 +845,17 @@ export default async function TenantExpertsPage({
                                 서류
                               </Link>
                             ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <ExpertQuickTag
+                              expertId={expert.id}
+                              expertName={expert.name}
+                              tag={tagAllByExpert.get(expert.id) ?? null}
+                              target="vip"
+                              canManage={
+                                canManageTags && link?.status === "active"
+                              }
+                            />
                           </TableCell>
                         </TableRow>
                       );

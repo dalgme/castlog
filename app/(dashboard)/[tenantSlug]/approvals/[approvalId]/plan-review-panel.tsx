@@ -7,6 +7,7 @@ import { GripVertical, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatKrw } from "@/lib/approvals/constants";
 import { Input } from "@/components/ui/input";
+import { commaInputHandler, formatComma } from "@/components/ui/comma-number-input";
 import { useToast } from "@/hooks/use-toast";
 
 import {
@@ -140,9 +141,10 @@ export function PlanReviewPanel({
                       <span className="inline-flex items-center gap-1 text-xs">
                         <Input
                           inputMode="numeric"
-                          defaultValue={c.expectedFee ?? ""}
+                          defaultValue={formatComma(c.expectedFee)}
+                          onInput={commaInputHandler}
                           placeholder="예정가(원)"
-                          className="h-7 w-28 text-xs"
+                          className="h-7 w-28 text-xs tabular-nums"
                           onBlur={(e) => {
                             const v = e.target.value.replace(/\D/g, "");
                             if (v !== String(c.expectedFee ?? "")) {

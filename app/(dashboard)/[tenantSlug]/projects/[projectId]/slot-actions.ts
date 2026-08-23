@@ -139,6 +139,83 @@ async function createPositions(
   return null;
 }
 
+/**
+ * 세션 수정 (기획 확정 2026-08-23) — 일정·세션명·역할·장소.
+ * 필요인원은 코드 발급이 얽혀 adjustSlotCount 경로로만 바꾼다.
+ * feeAmount·locationAddress·notes는 스키마 재사용 관계로 받지만 쓰지 않는다
+ * — 비용은 후보별 예정가로 관리(개정 2026-08-22).
+ * 승인된 계획 이후의 수정은 계획 서명(signature) 불일치로 잡혀
+ * '변경 상신(재승인)'이 활성화된다 — 변경은 감사로그에 남긴다.
+ */
+export async function updateSlot(
+  slotId: string,
+  input: Omit<z.input<typeof slotSchema>, "requiredCount">
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireExecGrade("planInput");
+  if (!auth.ok) return auth;
+
+  const parsed = slotSchema.safeParse({ ...input, requiredCount: 1 });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+  const d = parsed.data;
+
+  const supabase = createClient();
+  const { data: before } = await supabase
+    .from("engagement_slots")
+    .select(
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, location_name"
+    )
+    .eq("id", slotId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "세션을 찾을 수 없습니다." };
+
+  const { error } = await supabase
+    .from("engagement_slots")
+    .update({
+      slot_date: d.slotDate,
+      starts_time: d.startsTime || null,
+      ends_time: d.endsTime || null,
+      role_type: d.roleType,
+      session_name: d.sessionName || null,
+      role_description: d.roleDescription || null,
+      location_name: d.locationName || null,
+    })
+    .eq("id", slotId);
+  if (error) return { ok: false, error: "세션 수정에 실패했습니다." };
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.role,
+    action: "engagement_slot.update",
+    resource_type: "engagement_slot",
+    resource_id: slotId,
+    before_data: {
+      slot_date: before.slot_date,
+      starts_time: before.starts_time,
+      ends_time: before.ends_time,
+      session_name: before.session_name,
+      role_type: before.role_type,
+      role_description: before.role_description,
+      location_name: before.location_name,
+    },
+    after_data: {
+      slot_date: d.slotDate,
+      starts_time: d.startsTime || null,
+      ends_time: d.endsTime || null,
+      session_name: d.sessionName || null,
+      role_type: d.roleType,
+      role_description: d.roleDescription || null,
+      location_name: d.locationName || null,
+    },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
 /** 슬롯 삭제 — 섭외 요청이 연결된 인원이 있으면 막는다(§14-4 되돌리기 보호). */
 export async function deleteSlot(slotId: string): Promise<SlotResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };

@@ -5,6 +5,7 @@ import { Calculator } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -238,30 +239,27 @@ export function TravelForm({
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-2">
           <Label>편도거리(km)</Label>
-          <Input
-            inputMode="numeric"
+          <CommaNumberInput
             value={distanceKm}
-            onChange={(e) => setDistanceKm(e.target.value.replace(/[^\d]/g, ""))}
+            onValueChange={setDistanceKm}
             placeholder="0"
             disabled={pending}
           />
         </div>
         <div className="space-y-2">
           <Label>유가(원/L)</Label>
-          <Input
-            inputMode="numeric"
+          <CommaNumberInput
             value={fuelPrice}
-            onChange={(e) => setFuelPrice(e.target.value.replace(/[^\d]/g, ""))}
+            onValueChange={setFuelPrice}
             placeholder="0"
             disabled={pending}
           />
         </div>
         <div className="space-y-2">
           <Label>연비(km/L)</Label>
-          <Input
-            inputMode="numeric"
+          <CommaNumberInput
             value={efficiency}
-            onChange={(e) => setEfficiency(e.target.value.replace(/[^\d]/g, ""))}
+            onValueChange={setEfficiency}
             disabled={pending}
           />
         </div>
@@ -270,20 +268,18 @@ export function TravelForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>통행료(원)</Label>
-          <Input
-            inputMode="numeric"
+          <CommaNumberInput
             value={tollCost}
-            onChange={(e) => setTollCost(e.target.value.replace(/[^\d]/g, ""))}
+            onValueChange={setTollCost}
             placeholder="0"
             disabled={pending}
           />
         </div>
         <div className="space-y-2">
           <Label>기타(원)</Label>
-          <Input
-            inputMode="numeric"
+          <CommaNumberInput
             value={otherCost}
-            onChange={(e) => setOtherCost(e.target.value.replace(/[^\d]/g, ""))}
+            onValueChange={setOtherCost}
             placeholder="0"
             disabled={pending}
           />

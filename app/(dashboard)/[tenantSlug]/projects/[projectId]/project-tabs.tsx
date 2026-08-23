@@ -54,7 +54,7 @@ const TAB_DEFS: readonly {
   },
   {
     key: "experts",
-    label: "전문가 등록",
+    label: "섭외후보 등록",
     needsExperts: true,
     activeClass: "border-orange-600 bg-orange-600 text-white shadow-sm",
     idleClass:

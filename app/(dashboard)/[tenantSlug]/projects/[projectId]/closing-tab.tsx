@@ -198,7 +198,7 @@ export function ClosingTab({
           {!inClosing && !afterClosing && stage !== "confirmed" && (
             <LockedNote>
               전문가 전원이 수락서를 승인해 <strong>확정</strong>된 뒤에 마감을
-              시작할 수 있습니다. 진행 상황은 ‘전문가 등록’ 탭에서 봅니다.
+              시작할 수 있습니다. 진행 상황은 ‘섭외후보 등록’ 탭에서 봅니다.
             </LockedNote>
           )}
 
