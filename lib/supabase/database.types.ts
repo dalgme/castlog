@@ -3745,6 +3745,8 @@ export type Database = {
           id: string
           last_error: string | null
           message_type: string
+          mms_image_id: string | null
+          mms_image_name: string | null
           recipient_count: number
           scheduled_at: string | null
           sender_number: string | null
@@ -3764,6 +3766,8 @@ export type Database = {
           id?: string
           last_error?: string | null
           message_type: string
+          mms_image_id?: string | null
+          mms_image_name?: string | null
           recipient_count?: number
           scheduled_at?: string | null
           sender_number?: string | null
@@ -3783,6 +3787,8 @@ export type Database = {
           id?: string
           last_error?: string | null
           message_type?: string
+          mms_image_id?: string | null
+          mms_image_name?: string | null
           recipient_count?: number
           scheduled_at?: string | null
           sender_number?: string | null

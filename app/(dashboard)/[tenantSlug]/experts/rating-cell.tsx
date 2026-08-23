@@ -158,6 +158,7 @@ export function ExpertRatingCell({
                       — {log.authorName},{" "}
                       {new Date(log.createdAt).toLocaleString("ko-KR", {
                         timeZone: "Asia/Seoul",
+    hour12: false,
                       })}
                     </span>
                   </li>

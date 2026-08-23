@@ -837,6 +837,7 @@ export default async function ProjectDetailPage({
               amount: planDraft?.amount ?? 0,
             }}
             projectName={project.name}
+            projectDescription={project.description}
             attachmentPanel={
               <AttachmentPanel
                 projectId={project.id}

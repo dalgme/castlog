@@ -6,11 +6,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
-import { sendMessage } from "./actions";
+import { sendMessage, uploadMmsImageAction } from "./actions";
 
 export type RecipientOption = {
   expertId: string;
@@ -73,9 +74,14 @@ export function ComposeForm({
   const [body, setBody] = useState("");
   // 발송 제목 — 이력(로그) 목록에 표시 (기획 확정 2026-08-23)
   const [title, setTitle] = useState("");
-  // 예약발송 (문자만) — datetime-local, KST
+  // 예약발송 (문자만) — 24시간제, KST
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  // MMS 이미지 첨부 (문자만 — 기획 확정 2026-08-23)
+  const [mmsImage, setMmsImage] = useState<{ imageId: string; name: string } | null>(
+    null
+  );
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
@@ -147,6 +153,8 @@ export function ComposeForm({
         signature:
           channel === "sms" && signature.trim() ? signature.trim() : undefined,
         scheduledAt: scheduling ? scheduledAt : undefined,
+        imageId: channel === "sms" && mmsImage ? mmsImage.imageId : undefined,
+        imageName: channel === "sms" && mmsImage ? mmsImage.name : undefined,
       });
       if (result.ok) {
         toast({
@@ -158,6 +166,7 @@ export function ComposeForm({
         setTitle("");
         setScheduleEnabled(false);
         setScheduledAt("");
+        setMmsImage(null);
         setSelected(new Set());
       } else {
         toast({ variant: "destructive", description: result.error });
@@ -284,6 +293,68 @@ export function ComposeForm({
 
       {channel === "sms" && (
         <div className="space-y-2 rounded-md border p-3">
+          <p className="text-sm font-semibold">이미지 첨부 (선택 · MMS 발송)</p>
+          {mmsImage ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="rounded-md bg-secondary/70 px-2 py-1 text-xs">
+                🖼 {mmsImage.name}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-red-600"
+                onClick={() => setMmsImage(null)}
+              >
+                제거
+              </Button>
+            </div>
+          ) : (
+            <input
+              type="file"
+              accept="image/jpeg"
+              disabled={uploadingImage}
+              className="block text-xs file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-coral file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-coral-dark"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 200 * 1024) {
+                  toast({
+                    variant: "destructive",
+                    description:
+                      "이미지는 200KB 이하 JPG만 첨부할 수 있습니다 (통신사 MMS 규격).",
+                  });
+                  e.target.value = "";
+                  return;
+                }
+                const fd = new FormData();
+                fd.set("file", file);
+                fd.set("fileName", file.name);
+                setUploadingImage(true);
+                void uploadMmsImageAction(fd).then((r) => {
+                  setUploadingImage(false);
+                  e.target.value = "";
+                  if (r.ok) {
+                    setMmsImage({ imageId: r.imageId, name: r.fileName });
+                    toast({
+                      description: `이미지가 준비되었습니다${r.testMode ? " (테스트 모드)" : ""} — 발송 시 MMS로 나갑니다.`,
+                    });
+                  } else {
+                    toast({ variant: "destructive", description: r.error });
+                  }
+                });
+              }}
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            JPG · 200KB 이하 (통신사 MMS 규격). 이미지를 첨부하면 MMS로
+            발송되며 건당 요금이 문자보다 높습니다. 솔라피 연동에서 지원됩니다.
+          </p>
+        </div>
+      )}
+
+      {channel === "sms" && (
+        <div className="space-y-2 rounded-md border p-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
             <Checkbox
               checked={scheduleEnabled}
@@ -293,12 +364,7 @@ export function ComposeForm({
           </label>
           {scheduleEnabled && (
             <div className="space-y-1">
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              />
+              <DateTime24Input value={scheduledAt} onChange={setScheduledAt} />
               <p className="text-xs text-muted-foreground">
                 예약 시각(한국 시간) 이후 10분 내에 발송됩니다. 발송 전에는 아래
                 발송 이력에서 취소할 수 있습니다. 광고성은 야간(21~08시) 예약이

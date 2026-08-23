@@ -1,0 +1,76 @@
+"use client";
+
+/**
+ * 24시간제 일시 입력 (기획 확정 2026-08-23 — 시간 기능은 전부 24시간 기준).
+ * datetime-local은 브라우저 로캘에 따라 오전/오후로 표시되어 쓰지 않는다.
+ * 값 형식은 기존과 동일한 "YYYY-MM-DDTHH:mm" — 서버 액션 수정 없이 교체된다.
+ */
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES = ["00", "10", "20", "30", "40", "50"];
+
+export function DateTime24Input({
+  id,
+  value,
+  onChange,
+}: {
+  id?: string;
+  /** "YYYY-MM-DDTHH:mm" 또는 빈 문자열 */
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [datePart, timePart] = value ? value.split("T") : ["", ""];
+  const date = datePart ?? "";
+  const [hourPart, minutePart] = timePart ? timePart.split(":") : ["", ""];
+  const hour = hourPart ?? "";
+  const minute = minutePart ?? "";
+
+  function emit(nextDate: string, nextHour: string, nextMinute: string) {
+    if (nextDate && nextHour !== "" && nextMinute !== "") {
+      onChange(`${nextDate}T${nextHour}:${nextMinute}`);
+    } else {
+      onChange("");
+    }
+  }
+
+  const selectCls =
+    "h-9 rounded-md border bg-background px-2 text-sm";
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <input
+        id={id}
+        type="date"
+        value={date}
+        onChange={(e) => emit(e.target.value, hour || "09", minute || "00")}
+        className={selectCls}
+      />
+      <select
+        aria-label="시 (24시간)"
+        value={hour}
+        onChange={(e) => emit(date, e.target.value, minute || "00")}
+        className={selectCls}
+      >
+        <option value="">시</option>
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {h}시
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="분"
+        value={minute}
+        onChange={(e) => emit(date, hour || "09", e.target.value)}
+        className={selectCls}
+      >
+        <option value="">분</option>
+        {MINUTES.map((m) => (
+          <option key={m} value={m}>
+            {m}분
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-muted-foreground">(24시간제)</span>
+    </div>
+  );
+}

@@ -7,6 +7,7 @@ import { Send, Copy, Check, AlertTriangle, CircleCheck } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SlotCandidate } from "@/lib/integrations/slot-candidates";
@@ -29,12 +30,15 @@ export function CandidatePicker({
   positionId,
   candidates,
   defaultProgramName,
+  defaultSummary = null,
   tenantSlug,
   projectId,
 }: {
   positionId: string;
   candidates: SlotCandidate[];
   defaultProgramName: string;
+  /** 프로젝트 설명에서 자동 채움 — 발송 전 수정 가능 (기획 확정 2026-08-23) */
+  defaultSummary?: string | null;
   tenantSlug: string;
   projectId: string;
 }) {
@@ -47,7 +51,7 @@ export function CandidatePicker({
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [programName, setProgramName] = useState(defaultProgramName);
-  const [eventSummary, setEventSummary] = useState("");
+  const [eventSummary, setEventSummary] = useState(defaultSummary ?? "");
   const [specialNotes, setSpecialNotes] = useState("");
   const [deadline, setDeadline] = useState("");
   // 부PM이 PM 승인 없이 실행을 시도한 경우 — 그 자리에서 승인을 요청한다.
@@ -300,11 +304,7 @@ export function CandidatePicker({
         />
         <div>
           <label className="text-[11px] text-muted-foreground">회신 마감일시 (선택)</label>
-          <Input
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-          />
+          <DateTime24Input value={deadline} onChange={setDeadline} />
         </div>
         <Button onClick={send} disabled={pending || !selected}>
           <Send className="mr-1.5 h-4 w-4" />

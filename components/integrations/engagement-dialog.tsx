@@ -33,6 +33,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -230,19 +231,11 @@ export function EngagementDialog({
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div>
                       <label className="text-[11px] text-muted-foreground">시작 일시</label>
-                      <Input
-                        type="datetime-local"
-                        value={screenFrom}
-                        onChange={(e) => setScreenFrom(e.target.value)}
-                      />
+                      <DateTime24Input value={screenFrom} onChange={setScreenFrom} />
                     </div>
                     <div>
                       <label className="text-[11px] text-muted-foreground">종료 일시 (선택)</label>
-                      <Input
-                        type="datetime-local"
-                        value={screenTo}
-                        onChange={(e) => setScreenTo(e.target.value)}
-                      />
+                      <DateTime24Input value={screenTo} onChange={setScreenTo} />
                     </div>
                   </div>
                   <Button
@@ -533,7 +526,10 @@ export function EngagementDialog({
                   <FormItem>
                     <FormLabel>회신 마감일시 (선택)</FormLabel>
                     <FormControl>
-                      <Input type="datetime-local" {...field} />
+                      <DateTime24Input
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
                       미입력 시 기본 14일 후로 설정됩니다. 이 시각까지 전문가가 회신할

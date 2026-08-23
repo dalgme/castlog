@@ -12,6 +12,7 @@ import { isMissingColumnError } from "@/lib/supabase/db-errors";
 import {
   isSmsTestMode,
   sendSms,
+  uploadMmsImage,
   type SmsCredentials,
   type SmsProviderKey,
 } from "./providers";
@@ -141,6 +142,8 @@ export type TenantSmsSendParams = {
    * (기획 확정 2026-08-23 — 발송 이력·제목·예약). 미지정 시 임의 생성.
    */
   batchId?: string | null;
+  /** MMS 이미지 id (기획 확정 2026-08-23) — uploadTenantMmsImage로 발급 */
+  imageId?: string | null;
 };
 
 /**
@@ -315,6 +318,28 @@ async function resolveSenderNumber(
   return requested;
 }
 
+/**
+ * MMS 이미지 업로드 (기획 확정 2026-08-23) — 테넌트 SMS 설정(솔라피)으로
+ * 공급자 저장소에 올리고 imageId를 받는다. 발송(즉시·예약)은 이 id를 쓴다.
+ */
+export async function uploadTenantMmsImage(params: {
+  tenantId: string;
+  base64: string;
+  name: string;
+}): Promise<
+  { ok: true; imageId: string; test?: boolean } | { ok: false; error: string }
+> {
+  if (isSmsTestMode()) {
+    return { ok: true, imageId: "test-image", test: true };
+  }
+  const credsResult = await loadCredentials(params.tenantId, false);
+  if (!credsResult.ok) return credsResult;
+  return uploadMmsImage(credsResult.creds, {
+    base64: params.base64,
+    name: params.name,
+  });
+}
+
 /** 발송 실행 — 전 건 sms_logs 기록 + 사용량 계측 */
 export async function sendTenantSms(
   params: TenantSmsSendParams
@@ -378,6 +403,7 @@ export async function sendTenantSms(
           to: recipient.phone,
           from: fromNumber ?? credsResult.senderNumber,
           text: finalBody,
+          imageId: params.imageId ?? null,
         })
       : ({ ok: true, test: true } as const);
 

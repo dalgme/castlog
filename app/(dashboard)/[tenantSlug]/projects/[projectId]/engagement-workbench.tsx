@@ -110,6 +110,7 @@ export function EngagementWorkbench({
   projectState,
   planPreview,
   projectName,
+  projectDescription = null,
   attachmentPanel,
   acceptanceAttachmentPanel,
   headerActions,
@@ -139,6 +140,8 @@ export function EngagementWorkbench({
   /** 품의서 미리보기 (상신 전 확인용) */
   planPreview: { lines: PlanPreviewLine[]; amount: number };
   projectName: string;
+  /** 프로젝트 설명 — 섭외요청의 '주제/행사 내용' 자동 채움용 */
+  projectDescription?: string | null;
   /** 섭외요청 첨부 패널 — 서버 컴포넌트에서 내려받는다 */
   attachmentPanel?: React.ReactNode;
   /** 수락서 첨부 패널 — 수락서 송신 전에만 붙일 수 있다 */
@@ -182,6 +185,7 @@ export function EngagementWorkbench({
               <DispatchDialog
                 projectId={projectId}
                 projectName={projectName}
+                defaultSummary={projectDescription}
                 targetCount={projectState.assigned}
                 disabled={projectState.stage !== "plan_approved"}
                 disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."

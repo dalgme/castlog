@@ -38,6 +38,7 @@ function formatKst(value: string | null): string {
   if (!value) return "-";
   return new Date(value).toLocaleString("ko-KR", {
     timeZone: "Asia/Seoul",
+    hour12: false,
     month: "numeric",
     day: "numeric",
     hour: "2-digit",

@@ -7,6 +7,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
+import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import {
@@ -326,15 +327,20 @@ export async function cancelEngagement(
     canceled_by: user.id,
   });
 
-  // 긴급 취소 → 전사 알림 (대시보드 배너)
+  // 긴급 취소 → 전사 알림 (대시보드 배너) — 한 줄: 프로젝트·세션(일자)·전문가·PM
+  // (기획 확정 2026-08-23 — 사유는 배너에 싣지 않는다. 취소 내역에 남는다)
   if (urgent) {
     const expertName = engagement.experts?.name ?? "전문가";
+    const title = await buildUrgentCancelAlertTitle({
+      engagementId,
+      expertName,
+    });
     await supabase.from("tenant_alerts").insert({
       tenant_id: tenantId,
       severity: "urgent",
       category: "engagement_cancel",
-      title: `긴급: 섭외 취소 (${expertName})`,
-      body: `계약 성립된 섭외가 취소되었습니다. 사유: ${trimmedReason}`,
+      title,
+      body: null,
       resource_type: "expert_engagement",
       resource_id: engagementId,
       created_by: user.id,

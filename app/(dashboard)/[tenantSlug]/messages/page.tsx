@@ -221,7 +221,7 @@ export default async function MessagesPage() {
                       {LOG_STATUS_LABELS[log.status] ?? log.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false })}
                     </span>
                     {log.status === "failed" && log.error_message && (
                       <span className="w-full text-xs text-destructive">
@@ -246,7 +246,7 @@ export default async function MessagesPage() {
                       {LOG_STATUS_LABELS[log.status] ?? log.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                      {new Date(log.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false })}
                     </span>
                   </li>
                 ))}

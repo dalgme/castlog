@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const { data: due } = await admin
     .from("sms_send_batches")
-    .select("id, tenant_id, message_type, body, sender_number, created_by, title")
+    .select("id, tenant_id, message_type, body, sender_number, created_by, title, mms_image_id")
     .eq("status", "scheduled")
     .lte("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true })
@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
       senderNumber: batch.sender_number,
       systemContext: true,
       batchId: batch.id,
+      imageId: batch.mms_image_id,
     });
 
     if (result.ok) {
