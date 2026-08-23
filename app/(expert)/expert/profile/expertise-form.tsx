@@ -29,6 +29,8 @@ export function ExpertiseForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // 저장된 뒤에는 '수정하기'로 — 등록 완료 상태가 한눈에 보이게 (기획 확정 2026-08-22)
+  const hasSaved = selectedIds.length > 0 || Boolean(otherText) || saved;
   const [picked, setPicked] = useState<Set<string>>(new Set(selectedIds));
   const [other, setOther] = useState(otherText);
 
@@ -106,12 +108,22 @@ export function ExpertiseForm({
         />
       </div>
 
-      <Button onClick={save} disabled={pending} className="w-full sm:w-auto">
+      <Button
+        onClick={save}
+        disabled={pending}
+        className={
+          hasSaved
+            ? "w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
+            : "w-full sm:w-auto"
+        }
+      >
         {pending ? "저장 중..." : saved ? (
           <>
             <Check className="mr-1 h-4 w-4" aria-hidden />
-            저장됨
+            저장됨 · 수정하기
           </>
+        ) : hasSaved ? (
+          "수정하기"
         ) : (
           "분야 저장"
         )}

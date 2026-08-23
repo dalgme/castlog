@@ -36,10 +36,13 @@ import { updateExpertProfile } from "./actions";
 export function ExpertProfileForm({
   defaultValues,
   phoneDisplay,
+  hasSaved,
 }: {
   defaultValues: ExpertProfileInput;
   /** 로그인 인증 수단인 휴대폰 번호 — 표시 전용, 수정 불가 */
   phoneDisplay: string;
+  /** 필수영역(이름)이 이미 저장되어 있는지 — 저장 버튼을 '수정하기'로 표시 */
+  hasSaved: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -278,8 +281,17 @@ export function ExpertProfileForm({
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={pending}>
-          {pending ? "저장 중..." : "저장"}
+        {/* 필수영역(이름)이 저장되어 있으면 '수정하기'로 (기획 확정 2026-08-22) */}
+        <Button
+          type="submit"
+          className={
+            hasSaved
+              ? "w-full bg-emerald-600 text-white hover:bg-emerald-700"
+              : "w-full"
+          }
+          disabled={pending}
+        >
+          {pending ? "저장 중..." : hasSaved ? "수정하기" : "저장"}
         </Button>
       </form>
     </Form>

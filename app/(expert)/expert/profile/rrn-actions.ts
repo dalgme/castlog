@@ -46,14 +46,17 @@ export async function getRrnCollectionContext(): Promise<RrnCollectionContext> {
   const expertId = await currentExpertId();
   if (!expertId) return empty;
 
-  // 본인 키·본인 프래그먼트만 RLS로 조회(관리자 클라이언트 불필요).
+  // 키는 본인 RLS로 조회. 프래그먼트는 deny-all RLS(암호문 보호)라 본인
+  // 세션으로는 항상 0건이다 — 등록 여부(건수만, 암호문 비접촉)는 서버
+  // admin으로 센다. 조회 대상은 위에서 검증한 본인 expert_id뿐이다.
+  const admin = createAdminClient();
   const [{ data: keyRow }, onFileRes] = await Promise.all([
     supabase
       .from("expert_rrn_keys")
       .select("public_key_jwk")
       .eq("expert_id", expertId)
       .maybeSingle(),
-    supabase
+    admin
       .from("rrn_fragments_front")
       .select("id", { count: "exact", head: true })
       .eq("expert_id", expertId)
