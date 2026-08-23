@@ -69,6 +69,8 @@ export const expertProfileSchema = z.object({
     .optional()
     .or(z.literal("")),
   specialty: z.string().max(100, "100자 이내로 입력하세요.").optional(),
+  organization: z.string().max(100, "소속은 100자 이내로 입력하세요.").optional(),
+  jobTitle: z.string().max(100, "직위는 100자 이내로 입력하세요.").optional(),
   region: z.string().max(150, "150자 이내로 입력하세요.").optional(),
   /** 거주지 — 광역 선택 + 세부 주소 (서버가 region으로 합쳐 저장) */
   regionSido: z

@@ -89,6 +89,35 @@ export function ExpertProfileForm({
               <FormLabel>이메일</FormLabel>
               <FormControl>
                 <Input type="email" autoComplete="email" {...field} />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="organization"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>소속 (선택)</FormLabel>
+                <FormControl>
+                  <Input placeholder="예: OO대학교, OO컨설팅" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="jobTitle"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>직위 (선택)</FormLabel>
+                <FormControl>
+                  <Input placeholder="예: 교수, 대표, 수석 컨설턴트" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import type { ExecFeature } from "@/lib/auth/exec-permissions";
@@ -52,6 +53,54 @@ async function requireManager(
   };
 }
 
+
+/**
+ * 후보 배정 전 자사 관계 보장 (기획 확정 2026-08-23 — 미연결 전문가 후보 등록).
+ * 링크가 없으면 자동 생성한다(relation_source='engaged' — 섭외 시작으로 형성,
+ * §4 전면 공개). 해제(revoked)된 관계는 조용히 되살리지 않고 거부한다.
+ */
+async function ensureExpertLink(
+  tenantId: string,
+  expertId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const { data: link } = await supabase
+    .from("expert_tenant_links")
+    .select("id, status")
+    .eq("expert_id", expertId)
+    .order("status", { ascending: true })
+    .limit(10);
+  const statuses = (link ?? []).map((l) => l.status);
+  if (statuses.includes("active") || statuses.includes("pending")) {
+    return { ok: true };
+  }
+  if (statuses.includes("revoked")) {
+    return {
+      ok: false,
+      error: "해제된 관계의 전문가입니다. 전문가 상세에서 관계를 다시 연결한 뒤 후보로 올리세요.",
+    };
+  }
+  // 미연결 — 관계 자동 생성 (전역 테이블: service_role 경로, 연습 플래그는 전문가 기준)
+  const admin = createAdminClient();
+  const { data: expert } = await admin
+    .from("experts")
+    .select("id, is_practice")
+    .eq("id", expertId)
+    .maybeSingle();
+  if (!expert) return { ok: false, error: "전문가를 찾을 수 없습니다." };
+  const { error } = await admin.from("expert_tenant_links").insert({
+    tenant_id: tenantId,
+    expert_id: expertId,
+    status: "active",
+    relation_source: "engaged",
+    is_practice: expert.is_practice,
+  });
+  if (error && error.code !== "23505") {
+    return { ok: false, error: "관계 생성에 실패했습니다. 잠시 후 다시 시도하세요." };
+  }
+  return { ok: true };
+}
+
 /**
  * 코드넘버에 전문가를 **임의 배정**한다.
  *
@@ -81,16 +130,9 @@ export async function assignExpertToPosition(input: {
     };
   }
 
-  // 활성 연결이 있는 전문가만 (RLS + 명시 확인)
-  const { data: link } = await supabase
-    .from("expert_tenant_links")
-    .select("id, status")
-    .eq("expert_id", input.expertId)
-    .eq("status", "active")
-    .maybeSingle();
-  if (!link) {
-    return { ok: false, error: "자사와 활성 연결이 있는 전문가만 배정할 수 있습니다." };
-  }
+  // 미연결 전문가는 관계를 자동 생성한다 (해제된 관계만 거부)
+  const linked = await ensureExpertLink(auth.session.tenantId, input.expertId);
+  if (!linked.ok) return linked;
 
   const { data: updatedRows, error } = await supabase
     .from("engagement_slot_positions")
@@ -182,20 +224,14 @@ export async function assignExpertsToSlot(input: {
       .filter(Boolean) as string[]
   );
 
-  // 활성 연결 일괄 확인 (RLS + 명시 확인)
-  const { data: links } = await supabase
-    .from("expert_tenant_links")
-    .select("expert_id")
-    .eq("status", "active")
-    .in("expert_id", input.expertIds);
-  const activeIds = new Set((links ?? []).map((l) => l.expert_id));
-
   let assigned = 0;
   const skipped: string[] = [];
   let cursor = 0;
   for (const expertId of input.expertIds) {
-    if (!activeIds.has(expertId)) {
-      skipped.push(`${expertId}:미연결`);
+    // 미연결이면 관계 자동 생성 (해제된 관계만 건너뜀)
+    const linked = await ensureExpertLink(auth.session.tenantId, expertId);
+    if (!linked.ok) {
+      skipped.push(`${expertId}:${linked.error}`);
       continue;
     }
     if (inSlot.has(expertId)) {

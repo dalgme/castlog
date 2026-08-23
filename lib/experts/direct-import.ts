@@ -17,6 +17,8 @@ import { restoreLeadingZero } from "@/lib/experts/import";
 
 export const DIRECT_IMPORT_HEADERS = [
   "이름",
+  "소속",
+  "직위",
   "이메일",
   "핸드폰번호",
   "은행명",
@@ -33,6 +35,8 @@ export const DIRECT_IMPORT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export const directImportRowSchema = z.object({
   name: z.string().trim().min(1, "이름이 없습니다").max(50, "이름은 50자 이내"),
+  organization: z.string().trim().max(100).optional().default(""),
+  jobTitle: z.string().trim().max(100).optional().default(""),
   email: z
     .string()
     .trim()
@@ -107,6 +111,8 @@ export function classifyDirectImportRows(
   return rawRows.map((raw, index) => {
     const input: DirectImportRowInput = {
       name: (raw.name ?? "").trim(),
+      organization: (raw.organization ?? "").trim(),
+      jobTitle: (raw.jobTitle ?? "").trim(),
       email: (raw.email ?? "").trim(),
       phone: restoreLeadingZero((raw.phone ?? "").trim()),
       bankName: (raw.bankName ?? "").trim(),
