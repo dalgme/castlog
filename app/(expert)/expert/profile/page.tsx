@@ -44,7 +44,7 @@ export default async function ExpertProfilePage() {
   const { data: expert } = await supabase
     .from("experts")
     .select(
-      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, degree_level, degree_major, expertise_other"
+      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, degree_level, degree_major, expertise_other, organization, job_title"
     )
     .eq("auth_user_id", user.id)
     .maybeSingle();
@@ -118,6 +118,8 @@ export default async function ExpertProfilePage() {
               defaultValues={{
                 name: expert.name,
                 email: expert.email ?? "",
+                organization: expert.organization ?? "",
+                jobTitle: expert.job_title ?? "",
                 regionSido: splitRegion(expert.region).sido,
                 regionDetail: splitRegion(expert.region).detail,
                 careerYears:

@@ -1,4 +1,5 @@
 import "server-only";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -51,7 +52,7 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
     .update({ status: "expired" })
     .eq("status", "requested")
     .lt("token_expires_at", now)
-    .select("id, tenant_id");
+    .select("id, tenant_id, is_practice");
 
   const rows = expired ?? [];
   if (rows.length === 0) return { expired: 0, positionsReleased: 0 };
@@ -77,6 +78,18 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
       resource_id: r.id,
     }))
   );
+
+  // 섭외 이력 — 만료는 시스템 이벤트로 남긴다
+  for (const r of rows) {
+    await logEngagementEvent({
+      tenantId: r.tenant_id,
+      engagementId: r.id,
+      type: "expired",
+      actorKind: "system",
+      actorLabel: "시스템",
+      isPractice: r.is_practice,
+    });
+  }
 
   return { expired: rows.length, positionsReleased: released?.length ?? 0 };
 }

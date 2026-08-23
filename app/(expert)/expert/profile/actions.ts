@@ -56,6 +56,8 @@ export async function updateExpertProfile(
     .update({
       name: parsed.data.name,
       email: parsed.data.email || null,
+      organization: parsed.data.organization || null,
+      job_title: parsed.data.jobTitle || null,
       region,
       career_years: parsed.data.careerYears
         ? parseInt(parsed.data.careerYears, 10)

@@ -21,6 +21,11 @@ export const DEPUTY_GATED_ACTIONS = {
     targetType: "engagement",
     why: "확정된 일정을 되돌리는 작업이라 전문가·현장 일정에 곧바로 영향을 줍니다.",
   },
+  "engagement.manual_accept": {
+    label: "수동 섭외 완료(수락서 생성)",
+    targetType: "engagement",
+    why: "계약 성립으로 처리되어 수락서가 만들어지고 자리가 확정됩니다. 되돌리려면 긴급 취소가 필요합니다.",
+  },
   "engagement.session_sms": {
     label: "세션 안내문자 발송",
     targetType: "slot",

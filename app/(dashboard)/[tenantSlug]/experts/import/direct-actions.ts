@@ -109,6 +109,8 @@ async function loadPhoneSets(tenantId: string) {
 
 const HEADER_TO_KEY: Record<string, keyof DirectImportRowInput | "expertiseFieldsText"> = {
   이름: "name",
+  소속: "organization",
+  직위: "jobTitle",
   이메일: "email",
   핸드폰번호: "phone",
   은행명: "bankName",
@@ -261,6 +263,8 @@ export async function commitDirectImport(
         .insert({
           auth_user_id: null, // 본인이 휴대폰 인증으로 로그인할 때 클레임된다
           name: row.input.name,
+          organization: row.input.organization || null,
+          job_title: row.input.jobTitle || null,
           phone: row.phoneE164,
           email: row.input.email || null,
           region: row.input.residence || null,

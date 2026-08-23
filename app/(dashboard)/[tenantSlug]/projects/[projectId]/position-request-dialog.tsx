@@ -130,7 +130,9 @@ export function PositionRequestDialog({
   const capReached = selectedIds.length >= openCount;
 
   function toggle(expert: SlotPickerExpert) {
-    if (expert.linkStatus !== "active" || expert.alreadyInSlot) return;
+    // 미연결도 선택 가능 — 후보 등록 시 자사 관계가 자동 생성된다.
+    // 해제(revoked)된 관계만 화면에서 막는다 (서버도 거부).
+    if (expert.linkStatus === "revoked" || expert.alreadyInSlot) return;
     setSelectedIds((prev) =>
       prev.includes(expert.id)
         ? prev.filter((id) => id !== expert.id)
@@ -293,7 +295,7 @@ export function PositionRequestDialog({
                     variant: "outline" as const,
                   };
                   const selectable =
-                    e.linkStatus === "active" && !e.alreadyInSlot;
+                    e.linkStatus !== "revoked" && !e.alreadyInSlot;
                   const checked = selectedIds.includes(e.id);
                   return (
                     <TableRow
@@ -375,8 +377,9 @@ export function PositionRequestDialog({
 
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            미연결 전문가는 선택할 수 없습니다 — 전문가 메뉴에서 섭외를 시작해
-            연결한 뒤 후보로 올릴 수 있습니다. 일정 겹침은 배정 전 참고용입니다.
+            미연결 전문가도 선택할 수 있습니다 — 후보로 등록하면 자사 관계가
+            자동 생성됩니다(해제된 관계는 전문가 상세에서 재연결 필요). 일정
+            겹침은 배정 전 참고용입니다.
           </p>
           <Button
             onClick={submit}

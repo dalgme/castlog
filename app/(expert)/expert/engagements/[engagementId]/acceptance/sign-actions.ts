@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { refreshAcceptanceSignatureSnapshot } from "@/lib/integrations/acceptance";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { registerExpertSignature } from "@/app/(expert)/expert/profile/signature-actions";
 
@@ -39,7 +40,7 @@ export async function signAcceptance(
 
   const { data: expert } = await supabase
     .from("experts")
-    .select("id")
+    .select("id, name")
     .eq("auth_user_id", user.id)
     .maybeSingle();
   if (!expert) return { ok: false, error: "전문가 프로필이 없습니다." };
@@ -97,12 +98,22 @@ export async function signAcceptance(
   // 프로젝트 단계 재판정 — 전원 승인이면 '확정'으로 올라간다
   const { data: engagement } = await admin
     .from("expert_engagements")
-    .select("project_id")
+    .select("project_id, is_practice")
     .eq("id", acceptance.engagement_id)
     .maybeSingle();
   if (engagement?.project_id) {
     await refreshProjectEngagementStage(engagement.project_id);
   }
+
+  // 섭외 이력 — 수락서 확정(전문가 승인·서명)을 전문가 이름으로 기록
+  await logEngagementEvent({
+    tenantId: acceptance.tenant_id,
+    engagementId: acceptance.engagement_id,
+    type: "acceptance_confirmed",
+    actorKind: "expert",
+    actorLabel: expert.name ?? "전문가",
+    isPractice: engagement?.is_practice ?? false,
+  });
 
   revalidatePath(`/expert/engagements/${acceptance.engagement_id}/acceptance`);
   revalidatePath("/expert/engagements");

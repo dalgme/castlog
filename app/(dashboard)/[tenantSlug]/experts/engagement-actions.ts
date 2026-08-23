@@ -6,8 +6,16 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { canExecTenant } from "@/lib/auth/exec-policy";
+import {
+  ENGAGEMENT_EVENT_LABELS,
+  logEngagementEvent,
+  staffActorLabel,
+  type EngagementEventType,
+} from "@/lib/integrations/engagement-events";
+import { applyEngagementResponse } from "@/lib/integrations/engagements";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import { isPracticeMode } from "@/lib/practice/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
@@ -141,6 +149,16 @@ export async function createEngagement(
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     after_data: { expert_id: data.expertId, project_id: projectId },
+  });
+
+  // 섭외 이력 — 발송 담당자 이름으로 기록
+  await logEngagementEvent({
+    tenantId,
+    engagementId: engagement.id,
+    type: "requested",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(user.id),
+    isPractice: await isPracticeMode(),
   });
 
   // 통합 알림함 — 전문가에게 섭외 요청 도착 알림
@@ -365,6 +383,17 @@ export async function cancelEngagement(
     after_data: { prior_status: engagement.status, is_urgent: urgent },
   });
 
+  // 섭외 이력 — 회수·긴급 취소를 담당자 이름으로 기록
+  await logEngagementEvent({
+    tenantId,
+    engagementId,
+    type: urgent ? "urgent_canceled" : "canceled",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(user.id),
+    note: trimmedReason,
+    isPractice: await isPracticeMode(),
+  });
+
   // 통합 알림함 — 전문가에게 섭외 취소/회수 알림
   await notifyExpert({
     expertId: engagement.expert_id,
@@ -382,4 +411,123 @@ export async function cancelEngagement(
     revalidatePath(`/[tenantSlug]/projects/${engagement.project_id}`, "page");
   }
   return { ok: true };
+}
+
+
+/**
+ * 수동 섭외 완료 (기획 확정 2026-08-23) — 전화 등으로 수락을 직접 확인한 경우
+ * 담당자가 '섭외 완료(수락서 생성)'로 처리한다. 자동 동의와 같은 경로
+ * (계약 성립 → 수락서 자동 생성 → 자리 확정)를 타되, 실행자는 담당자로 남는다.
+ */
+export async function manualAcceptEngagement(
+  engagementId: string,
+  note?: string
+): Promise<EngagementActionResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  // 섭외요청 실행과 같은 축 — 요청을 보낼 수 있는 사람이 완료 처리도 한다
+  if (!(await canExecTenant("engagementRequest", user))) {
+    return { ok: false, error: execDeniedMessage("engagementRequest") };
+  }
+
+  // 자사 건인지 확인 — RLS에 더해 tenant_id를 명시한다. 담당자가 다른 회사의
+  // 전문가 본인이기도 하면 RLS의 본인 조건으로도 행이 보이는데, 그 경로로
+  // 타사 건을 '담당자 수동 처리'로 기록하게 두면 안 된다.
+  const { data: engagement } = await supabase
+    .from("expert_engagements")
+    .select("id, status, project_id")
+    .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!engagement) return { ok: false, error: "섭외 건을 찾을 수 없습니다." };
+  if (engagement.status !== "requested") {
+    return { ok: false, error: "회신 대기 중인 건만 수동 완료할 수 있습니다." };
+  }
+
+  // 부PM 실행 게이트 — 계약 성립 행위라 취소와 같은 수준으로 PM 승인을 거친다.
+  // (프로젝트에 붙은 건만 대상 — 미연결 건은 PM이 없다)
+  if (engagement.project_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId: engagement.project_id,
+      actionType: "engagement.manual_accept",
+      targetId: engagement.id,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+  }
+
+  const actorName = await staffActorLabel(user.id);
+  const result = await applyEngagementResponse(
+    engagementId,
+    "accepted",
+    note?.trim() ? `[수동 처리] ${note.trim()}` : "[수동 처리 — 전화 등 직접 확인]",
+    null,
+    { userId: user.id, role, name: actorName }
+  );
+  if (!result.ok) return result;
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  revalidatePath("/[tenantSlug]/experts", "page");
+  return { ok: true };
+}
+
+export type EngagementEventRow = {
+  id: string;
+  label: string;
+  actorLabel: string;
+  actorKind: string;
+  note: string | null;
+  createdAt: string;
+};
+
+/** 섭외 이력 조회 — 후보 행의 '이력' 버튼 (자사분만, RLS) */
+export async function getEngagementEvents(
+  engagementId: string
+): Promise<
+  { ok: true; rows: EngagementEventRow[] } | { ok: false; error: string }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !tenantIdFromUser(user)) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  const { data, error } = await supabase
+    .from("engagement_events")
+    .select("id, event_type, actor_label, actor_kind, note, created_at")
+    .eq("engagement_id", engagementId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    return { ok: false, error: "이력을 불러오지 못했습니다. 마이그레이션 미적용일 수 있습니다." };
+  }
+  return {
+    ok: true,
+    rows: (data ?? []).map((r) => ({
+      id: r.id,
+      label:
+        ENGAGEMENT_EVENT_LABELS[r.event_type as EngagementEventType] ??
+        r.event_type,
+      actorLabel: r.actor_label,
+      actorKind: r.actor_kind,
+      note: r.note,
+      createdAt: r.created_at,
+    })),
+  };
 }

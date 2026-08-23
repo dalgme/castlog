@@ -41,6 +41,7 @@ export type RecruitFieldOption = { id: string; name: string };
 const RELATION_LABELS: Record<string, string> = {
   self_join: "본인 등록",
   bulk_registered: "보유자료 등록",
+  engaged: "섭외 등록",
 };
 
 /**

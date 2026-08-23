@@ -4683,6 +4683,42 @@ export type Database = {
         }
         Relationships: []
       }
+      engagement_events: {
+        Row: {
+          id: string
+          tenant_id: string
+          engagement_id: string
+          event_type: string
+          actor_label: string
+          actor_kind: string
+          note: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          engagement_id: string
+          event_type: string
+          actor_label: string
+          actor_kind?: string
+          note?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          engagement_id?: string
+          event_type?: string
+          actor_label?: string
+          actor_kind?: string
+          note?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       tenant_exec_grants: {
         Row: {
           tenant_id: string
