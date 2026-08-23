@@ -58,7 +58,7 @@ async function snapshotSignatureImage(
  */
 export async function createEngagementAcceptance(
   engagementId: string,
-  signedVia: "public_link" | "portal"
+  signedVia: "public_link" | "portal" | "manual"
 ): Promise<void> {
   const admin = createAdminClient();
 

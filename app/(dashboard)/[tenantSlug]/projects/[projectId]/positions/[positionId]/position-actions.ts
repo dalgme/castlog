@@ -6,6 +6,11 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { canExecTenant } from "@/lib/auth/exec-policy";
+import { isPracticeMode } from "@/lib/practice/server";
+import {
+  logEngagementEvent,
+  staffActorLabel,
+} from "@/lib/integrations/engagement-events";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
@@ -164,6 +169,16 @@ export async function requestEngagementForPosition(input: {
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     after_data: { position_code: position.code, expert_id: input.expertId },
+  });
+
+  // 섭외 이력 — 발송 담당자 이름으로 기록
+  await logEngagementEvent({
+    tenantId,
+    engagementId: engagement.id,
+    type: "requested",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(user.id),
+    isPractice: await isPracticeMode(),
   });
 
   await notifyExpert({

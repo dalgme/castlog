@@ -34,6 +34,8 @@ import {
 
 import type { SlotRow } from "./slot-table";
 import { CandidateList } from "./candidate-list";
+import { EngagementHistoryDialog } from "./engagement-history-dialog";
+import { ManualAcceptButton } from "./manual-accept-button";
 import {
   EngagementPlanButton,
   type PlanPreviewLine,
@@ -376,6 +378,7 @@ export function EngagementWorkbench({
                   stageByPosition={stageByPosition}
                   canManage={canInput}
                   canCancel={canCancel}
+                  canExecute={canManage}
                   editable={canInput && projectState.stage === "assigning"}
                   sessionDuration={durationLabel(slot.startsTime, slot.endsTime)}
                 />
@@ -427,6 +430,12 @@ export function EngagementWorkbench({
                       </Link>
                     </Button>
                   )}
+                  {canManage && e.status === "requested" && (
+                    <ManualAcceptButton
+                      engagementId={e.id}
+                      expertName={e.expertName}
+                    />
+                  )}
                   {canCancel && e.status === "requested" && (
                     <EngagementCancelButton engagementId={e.id} />
                   )}
@@ -436,6 +445,10 @@ export function EngagementWorkbench({
                       expertName={e.expertName}
                     />
                   )}
+                  <EngagementHistoryDialog
+                    engagementId={e.id}
+                    expertName={e.expertName}
+                  />
                 </li>
               ))}
             </ul>

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 import { hashLinkToken } from "@/lib/auth/tokens";
 import { parseModuleFlags } from "@/lib/modules/modules";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -102,7 +103,9 @@ export async function applyEngagementResponse(
   engagementId: string,
   decision: "accepted" | "declined",
   responseNote: string | null,
-  actorAuthUserId: string | null
+  actorAuthUserId: string | null,
+  /** 전화 등으로 수락을 확인해 담당자가 수동 처리하는 경우 (기획 확정 2026-08-23) */
+  manualActor?: { userId: string; role: string; name: string }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = createAdminClient();
 
@@ -115,7 +118,7 @@ export async function applyEngagementResponse(
     })
     .eq("id", engagementId)
     .eq("status", "requested")
-    .select("id, tenant_id, expert_id, project_id")
+    .select("id, tenant_id, expert_id, project_id, is_practice, experts (name)")
     .maybeSingle();
 
   if (error || !updated) {
@@ -147,7 +150,7 @@ export async function applyEngagementResponse(
     try {
       await createEngagementAcceptance(
         updated.id,
-        actorAuthUserId ? "portal" : "public_link"
+        manualActor ? "manual" : actorAuthUserId ? "portal" : "public_link"
       );
     } catch {
       // 수락서 생성 실패는 수락 처리를 막지 않는다 (감사로그는 acceptance 내부에서 기록)
@@ -184,13 +187,33 @@ export async function applyEngagementResponse(
 
   await admin.from("audit_logs").insert({
     tenant_id: updated.tenant_id,
-    actor_auth_user_id: actorAuthUserId,
-    actor_role: "expert",
+    actor_auth_user_id: manualActor?.userId ?? actorAuthUserId,
+    actor_role: manualActor?.role ?? "expert",
     action:
       decision === "accepted" ? "engagement.accept" : "engagement.decline",
     resource_type: "expert_engagement",
     resource_id: updated.id,
-    after_data: { project_id: updated.project_id },
+    after_data: {
+      project_id: updated.project_id,
+      ...(manualActor ? { manual: true } : {}),
+    },
+  });
+
+  // 섭외 이력 — 동의는 전문가 이름, 수동 처리는 담당자 이름으로 남긴다
+  await logEngagementEvent({
+    tenantId: updated.tenant_id,
+    engagementId: updated.id,
+    type: manualActor
+      ? "manual_accepted"
+      : decision === "accepted"
+        ? "accepted"
+        : "declined",
+    actorKind: manualActor ? "staff" : "expert",
+    actorLabel: manualActor
+      ? manualActor.name
+      : (updated.experts?.name ?? "(전문가)"),
+    note: responseNote,
+    isPractice: updated.is_practice ?? false,
   });
 
   return { ok: true };

@@ -13,6 +13,10 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
+import {
+  logEngagementEvent,
+  staffActorLabel,
+} from "@/lib/integrations/engagement-events";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { logAudit } from "@/lib/audit/log";
 import { blockInPractice } from "@/lib/practice/server";
@@ -152,6 +156,14 @@ export async function remindEngagement(
     resourceType: "expert_engagements",
     resourceId: engagementId,
     afterData: { project_id: engagement.project_id },
+  });
+
+  await logEngagementEvent({
+    tenantId,
+    engagementId,
+    type: "reminded",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(user.id),
   });
 
   revalidatePath("/[tenantSlug]/experts/engagements", "page");

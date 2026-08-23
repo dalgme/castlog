@@ -21,6 +21,8 @@ import { useToast } from "@/hooks/use-toast";
 
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
 import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
+import { manualAcceptEngagement } from "../../experts/engagement-actions";
+import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { PositionRequestDialog } from "./position-request-dialog";
 import type { SlotPositionRow } from "./slot-table";
 import {
@@ -47,6 +49,7 @@ export function CandidateList({
   stageByPosition,
   canManage,
   canCancel,
+  canExecute,
   sessionDuration,
   editable,
 }: {
@@ -59,6 +62,8 @@ export function CandidateList({
   canManage: boolean;
   /** 섭외 취소·긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
   canCancel: boolean;
+  /** 실행 축(섭외요청 등, 레벨 4부터) — 전화 섭외 수동 완료 버튼 */
+  canExecute: boolean;
   /** 세션 진행 시간 (예: "3시간") — 예정가 옆 참고 표시 */
   sessionDuration?: string | null;
   /** 순위·예정가·후보 편집 가능 여부 — 품의 상신 전(assigning)만 */
@@ -257,6 +262,29 @@ export function CandidateList({
                     </Link>
                   </Button>
                 )}
+                {/* 전화 등으로 수락을 직접 확인한 경우 — 수동 섭외 완료 (기획 확정 2026-08-23) */}
+                {canExecute && p.engagementId && stage === "requested" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                    disabled={pending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `${p.expertName ?? "이 전문가"}의 수락을 전화 등으로 직접 확인했습니까?\n섭외 완료(계약 성립)로 처리되고 수락서가 생성됩니다.`
+                        )
+                      ) {
+                        run(
+                          () => manualAcceptEngagement(p.engagementId!),
+                          "섭외 완료로 처리되었습니다. 수락서가 생성되었습니다."
+                        );
+                      }
+                    }}
+                  >
+                    섭외 완료(수락서 생성)
+                  </Button>
+                )}
                 {canCancel && p.engagementId && stage === "requested" && (
                   <EngagementCancelButton engagementId={p.engagementId} />
                 )}
@@ -269,6 +297,13 @@ export function CandidateList({
                       expertName={p.expertName ?? "전문가"}
                     />
                   )}
+                {/* 섭외 이력 — 대상자별 발송·동의·수동 처리 타임라인 */}
+                {p.engagementId && (
+                  <EngagementHistoryDialog
+                    engagementId={p.engagementId}
+                    expertName={p.expertName ?? p.assignedExpertName}
+                  />
+                )}
                 {editable && canManage && isOpen && !p.engagementId && (
                   <button
                     type="button"

@@ -8,6 +8,10 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import type { ExecFeature } from "@/lib/auth/exec-permissions";
 import { getTenantModules } from "@/lib/modules/server";
+import {
+  logEngagementEvent,
+  staffActorLabel,
+} from "@/lib/integrations/engagement-events";
 import { isPracticeMode } from "@/lib/practice/server";
 import { getProjectEngagementState } from "@/lib/integrations/project-engagement";
 import {
@@ -608,6 +612,7 @@ export async function sendAcceptanceLetters(input: {
 }): Promise<AcceptanceSendResult> {
   const auth = await requireManager("acceptanceSend");
   if (!auth.ok) return auth;
+  const senderName = await staffActorLabel(auth.session.userId);
 
   const state = await getProjectEngagementState(input.projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
@@ -721,6 +726,15 @@ export async function sendAcceptanceLetters(input: {
         .from("engagement_acceptances")
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", acceptance.id);
+
+      // 섭외 이력 — 수락서 송신을 담당자 이름으로 기록
+      await logEngagementEvent({
+        tenantId: auth.session.tenantId,
+        engagementId: target.engagementId,
+        type: "acceptance_sent",
+        actorKind: "staff",
+        actorLabel: senderName,
+      });
       if (error) {
         failed.push({ name: expertName, reason: "송신 처리에 실패했습니다." });
         continue;

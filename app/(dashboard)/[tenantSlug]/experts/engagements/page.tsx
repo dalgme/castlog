@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FileSignature } from "lucide-react";
 
 import { requireRole } from "@/lib/auth/session";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,8 @@ import { Pagination } from "@/components/layout/list-controls";
 import { PageHeader } from "@/components/layout/header";
 
 import { RemindButton } from "./remind-button";
+import { EngagementHistoryDialog } from "../../projects/[projectId]/engagement-history-dialog";
+import { ManualAcceptButton } from "../../projects/[projectId]/manual-accept-button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +87,8 @@ export default async function EngagementStatusPage({
 
   const role = roleFromUser(user);
   const canSeeAll = role === "org_admin" || role === "manager" || role === "platform_admin";
+  // 전화 섭외 수동 완료 — 실행 축(engagementRequest)과 같은 문턱 (기획 확정 2026-08-23)
+  const canManualAccept = await canExecTenant("engagementRequest", user);
 
   const supabase = createClient();
 
@@ -219,6 +224,7 @@ export default async function EngagementStatusPage({
                     <TableHead className="text-right">비용</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead>수락서</TableHead>
+                    <TableHead>이력</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -262,14 +268,22 @@ export default async function EngagementStatusPage({
                         </TableCell>
                         <TableCell>
                           {e.status === "requested" ? (
-                            <RemindButton
-                              engagementId={e.id}
-                              expertName={e.experts?.name ?? "전문가"}
-                              daysWaiting={Math.floor(
-                                (Date.now() - new Date(e.created_at).getTime()) /
-                                  86400000
+                            <span className="inline-flex flex-wrap items-center gap-1.5">
+                              <RemindButton
+                                engagementId={e.id}
+                                expertName={e.experts?.name ?? "전문가"}
+                                daysWaiting={Math.floor(
+                                  (Date.now() - new Date(e.created_at).getTime()) /
+                                    86400000
+                                )}
+                              />
+                              {canManualAccept && (
+                                <ManualAcceptButton
+                                  engagementId={e.id}
+                                  expertName={e.experts?.name ?? null}
+                                />
                               )}
-                            />
+                            </span>
                           ) : acceptanceStatus ? (
                             <Link
                               href={`/${params.tenantSlug}/experts/acceptances/${e.id}`}
@@ -282,6 +296,12 @@ export default async function EngagementStatusPage({
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <EngagementHistoryDialog
+                            engagementId={e.id}
+                            expertName={e.experts?.name ?? null}
+                          />
                         </TableCell>
                       </TableRow>
                     );

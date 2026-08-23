@@ -1,4 +1,5 @@
 import "server-only";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -77,6 +78,17 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
       resource_id: r.id,
     }))
   );
+
+  // 섭외 이력 — 만료는 시스템 이벤트로 남긴다
+  for (const r of rows) {
+    await logEngagementEvent({
+      tenantId: r.tenant_id,
+      engagementId: r.id,
+      type: "expired",
+      actorKind: "system",
+      actorLabel: "시스템",
+    });
+  }
 
   return { expired: rows.length, positionsReleased: released?.length ?? 0 };
 }
