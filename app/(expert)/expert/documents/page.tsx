@@ -219,6 +219,48 @@ export default async function ExpertDocumentsPage() {
                 </div>
               );
             })}
+            {/* 통합서류(혼합) — 기업이 일괄 등록한 파일. 있을 때만 노출 */}
+            {activeDocs.get("combined") && (
+              <div className="rounded-md border p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">
+                      {DOCUMENT_TYPE_LABELS.combined}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      민감 서류
+                    </Badge>
+                  </div>
+                  <span className="flex items-center gap-2">
+                    <Button asChild variant="link" size="sm" className="h-auto p-0">
+                      <a
+                        href={`/expert/documents/${activeDocs.get("combined")!.id}/preview`}
+                      >
+                        미리보기
+                      </a>
+                    </Button>
+                    <Button asChild variant="link" size="sm" className="h-auto p-0">
+                      <a
+                        href={`/expert/documents/${activeDocs.get("combined")!.id}/view`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        원본
+                      </a>
+                    </Button>
+                  </span>
+                </div>
+                <p className="mb-2 truncate text-xs text-muted-foreground">
+                  {activeDocs.get("combined")!.file_name} ·{" "}
+                  {new Date(
+                    activeDocs.get("combined")!.created_at
+                  ).toLocaleDateString("ko-KR")}{" "}
+                  등록 — 이력서·신분증·통장이 한 파일에 담긴 서류입니다. 각
+                  항목을 따로 올리면 개별 서류로 관리됩니다.
+                </p>
+                <DocumentUploadForm documentType="combined" hasExisting />
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               PDF·이미지(JPG/PNG)·오피스(doc/docx/xls/xlsx/ppt/pptx)·한글(hwp/hwpx),
               10MB 이하. ‘수정 등록’으로 새 파일을 올리면 기존 파일은 교체 이력으로

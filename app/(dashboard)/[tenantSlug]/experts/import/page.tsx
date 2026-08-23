@@ -7,6 +7,8 @@ import { ExpertsTabs } from "../experts-tabs";
 
 import { ExpertImportClient } from "./import-client";
 import { DirectImportClient } from "./direct-import-client";
+import { DocumentImportClient } from "./document-import-client";
+import { DocumentStatusSection } from "./document-status-section";
 
 export const metadata = { title: "전문가 일괄 등록" };
 
@@ -37,6 +39,8 @@ export default async function ExpertImportPage({
           <>
             <ExpertImportClient tenantSlug={params.tenantSlug} />
             <DirectImportClient tenantSlug={params.tenantSlug} />
+            <DocumentImportClient />
+            <DocumentStatusSection />
           </>
         ) : (
           <EmptyState
