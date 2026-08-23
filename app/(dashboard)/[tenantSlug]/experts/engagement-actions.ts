@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
@@ -78,8 +79,11 @@ export async function createEngagement(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "섭외 요청 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("engagementRequest", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("engagementRequest") };
   }
 
   // 활성 연결이 있는 전문가만 (RLS + 명시 확인)
@@ -262,8 +266,11 @@ export async function cancelEngagement(
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "섭외 취소 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("engagementCancel", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("engagementCancel") };
   }
 
   const { data: engagement } = await supabase

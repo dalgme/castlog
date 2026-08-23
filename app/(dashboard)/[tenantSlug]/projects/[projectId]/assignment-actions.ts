@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeAtLeast, isUserGrade, type UserGrade } from "@/lib/auth/grades";
 import {
   ASSIGNMENT_ROLE_LABELS,
   isAssignmentRole,
@@ -28,6 +29,25 @@ async function requireManager(): Promise<
     return { ok: false, error: "프로젝트 배정 권한이 없습니다(대표·이사 등)." };
   }
   return { ok: true, userId: user.id, tenantId };
+}
+
+/**
+ * 역할별 최소 레벨 (기획 확정 2026-08-23): PL(겸임 포함)은 레벨 3(팀장) 이상,
+ * PM·부PM은 레벨 4(대리) 이상. DB 트리거(app.enforce_assignment_role_grade)와
+ * 같은 규칙 — 여기서 먼저 걸러 사람이 읽을 문구로 돌려준다.
+ */
+function roleGradeError(
+  role: AssignmentRole,
+  targetGrade: string | null
+): string | null {
+  const grade: UserGrade | null = isUserGrade(targetGrade) ? targetGrade : null;
+  if ((role === "pl" || role === "pl_pm") && !gradeAtLeast(grade, "team_lead")) {
+    return "PL은 레벨 3(팀장) 이상만 지정할 수 있습니다. 대상자의 권한 레벨을 먼저 조정하세요.";
+  }
+  if ((role === "pm" || role === "deputy_pm") && !gradeAtLeast(grade, "deputy")) {
+    return "PM·부PM은 레벨 4(대리) 이상만 지정할 수 있습니다. 대상자의 권한 레벨을 먼저 조정하세요.";
+  }
+  return null;
 }
 
 /** PL·PM은 프로젝트당 각 1명 — 부분 유니크 인덱스 위반을 사람이 읽을 문구로 바꾼다. */
@@ -58,7 +78,7 @@ export async function assignProjectMember(
   // 대상이 같은 테넌트의 활성 직원인지 확인
   const { data: target } = await supabase
     .from("users")
-    .select("id, tenant_id, is_active")
+    .select("id, tenant_id, is_active, grade")
     .eq("id", userId)
     .maybeSingle();
   if (!target || target.tenant_id !== auth.tenantId || !target.is_active) {
@@ -68,6 +88,8 @@ export async function assignProjectMember(
   if (!isAssignmentRole(assignmentRole)) {
     return { ok: false, error: "담당 역할을 확인하세요." };
   }
+  const gradeError = roleGradeError(assignmentRole, target.grade);
+  if (gradeError) return { ok: false, error: gradeError };
 
   const { error } = await supabase.from("project_assignments").insert({
     tenant_id: auth.tenantId,
@@ -111,6 +133,14 @@ export async function setAssignmentRole(
   }
 
   const supabase = createClient();
+  const { data: target } = await supabase
+    .from("users")
+    .select("grade")
+    .eq("id", userId)
+    .maybeSingle();
+  const gradeError = roleGradeError(assignmentRole, target?.grade ?? null);
+  if (gradeError) return { ok: false, error: gradeError };
+
   const { error } = await supabase
     .from("project_assignments")
     .update({ assignment_role: assignmentRole })

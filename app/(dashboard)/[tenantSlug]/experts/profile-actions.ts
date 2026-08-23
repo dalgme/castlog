@@ -5,7 +5,8 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { explainActionError } from "@/lib/ux/action-errors";
 
@@ -26,8 +27,11 @@ async function gate(): Promise<Gate> {
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "전문가 관리 권한이 없습니다 (팀장 이상)." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertRecord", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertRecord") };
   }
   const modules = await getTenantModules();
   if (!modules.experts) {

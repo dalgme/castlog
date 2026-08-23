@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
@@ -23,7 +25,6 @@ export type RequestFromPositionResult =
   | { ok: true; url: string }
   | { ok: false; error: string; needsPmApproval?: true };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 /**
  * 넘버링코드(포지션) 기준 섭외요청 — 슬롯의 일정·역할·비용·장소를 그대로 승계한다.
@@ -48,8 +49,11 @@ export async function requestEngagementForPosition(input: {
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "섭외 요청 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("engagementRequest", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("engagementRequest") };
   }
 
   const { data: position } = await supabase
@@ -271,8 +275,11 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("engagementCancel", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("engagementCancel") };
   }
 
   const { data: position } = await supabase

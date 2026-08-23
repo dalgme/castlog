@@ -45,6 +45,7 @@ export function CandidateList({
   positions,
   stageByPosition,
   canManage,
+  canCancel,
   editable,
 }: {
   tenantSlug: string;
@@ -54,6 +55,8 @@ export function CandidateList({
   positions: SlotPositionRow[];
   stageByPosition: Record<string, EngagementStage>;
   canManage: boolean;
+  /** 섭외 취소·긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
+  canCancel: boolean;
   /** 순위·예정가·후보 편집 가능 여부 — 품의 상신 전(assigning)만 */
   editable: boolean;
 }) {
@@ -243,10 +246,10 @@ export function CandidateList({
                     </Link>
                   </Button>
                 )}
-                {canManage && p.engagementId && stage === "requested" && (
+                {canCancel && p.engagementId && stage === "requested" && (
                   <EngagementCancelButton engagementId={p.engagementId} />
                 )}
-                {canManage &&
+                {canCancel &&
                   p.engagementId &&
                   isFilled &&
                   stage !== "canceled" && (

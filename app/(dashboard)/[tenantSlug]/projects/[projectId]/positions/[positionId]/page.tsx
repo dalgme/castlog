@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { canExec } from "@/lib/auth/exec-permissions";
 import { requireModule, getTenantModules } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -69,7 +70,8 @@ export default async function PositionPage({
     .maybeSingle();
 
   const role = roleFromUser(user);
-  const canManage = role === "org_admin" || role === "manager";
+  // 후보·섭외 실행은 레벨 4(대리)부터 — 서버 게이트와 같은 기준
+  const canManage = canExec("engagementRequest", gradeFromUser(user), role);
   const modules = await getTenantModules();
   const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
   const candidates = canManage && ctx.status === "open" ? await getSlotCandidates(ctx) : [];
@@ -163,7 +165,7 @@ export default async function PositionPage({
         ) : !canManage ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              섭외 요청은 관리자 이상만 보낼 수 있습니다.
+              섭외 요청은 레벨 4 이상만 보낼 수 있습니다 (권한 규칙).
             </CardContent>
           </Card>
         ) : planGate.required && !planGate.allowed ? (

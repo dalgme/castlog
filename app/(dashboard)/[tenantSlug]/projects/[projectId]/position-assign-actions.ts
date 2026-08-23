@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { requireExecGrade } from "@/lib/auth/exec-gate";
+import type { ExecFeature } from "@/lib/auth/exec-permissions";
 import { getTenantModules } from "@/lib/modules/server";
 import { getProjectEngagementState } from "@/lib/integrations/project-engagement";
 import {
@@ -24,15 +25,18 @@ import {
 } from "@/lib/integrations/engagement-email";
 import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
 
-const MANAGER_ROLES = ["org_admin", "manager"];
-
 export type PositionAssignResult = { ok: true } | { ok: false; error: string };
 
 type Session = { userId: string; tenantId: string; role: string };
 
-async function requireManager(): Promise<
-  { ok: true; session: Session } | { ok: false; error: string }
-> {
+/**
+ * 실행 게이트 (기획 확정 2026-08-23 — 레벨 차등화):
+ *  - 배정·해제 = 세션 입력 축(레벨 5까지)
+ *  - 품의 상신·섭외 진행·수락서 = 실행 축(레벨 4까지) — 호출부에서 기능 지정
+ */
+async function requireManager(
+  feature: ExecFeature = "planInput"
+): Promise<{ ok: true; session: Session } | { ok: false; error: string }> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
@@ -40,16 +44,12 @@ async function requireManager(): Promise<
   if (!modules.experts) {
     return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
   }
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const tenantId = tenantIdFromUser(user);
-  const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "배정 권한이 없습니다(관리자 이상)." };
-  }
-  return { ok: true, session: { userId: user.id, tenantId, role } };
+  const gate = await requireExecGrade(feature);
+  if (!gate.ok) return gate;
+  return {
+    ok: true,
+    session: { userId: gate.userId, tenantId: gate.tenantId, role: gate.role },
+  };
 }
 
 /**
@@ -166,7 +166,7 @@ export type PlanSubmitResult =
 export async function submitEngagementPlan(
   projectId: string
 ): Promise<PlanSubmitResult> {
-  const auth = await requireManager();
+  const auth = await requireManager("planSubmit");
   if (!auth.ok) return auth;
 
   const supabase = createClient();
@@ -288,7 +288,7 @@ export async function dispatchProjectEngagements(input: {
   eventSummary?: string;
   memo?: string;
 }): Promise<DispatchResult> {
-  const auth = await requireManager();
+  const auth = await requireManager("engagementRequest");
   if (!auth.ok) return auth;
 
   const state = await getProjectEngagementState(input.projectId);
@@ -423,7 +423,7 @@ export async function sendAcceptanceLetters(input: {
   channel: DispatchChannel;
   memo?: string;
 }): Promise<AcceptanceSendResult> {
-  const auth = await requireManager();
+  const auth = await requireManager("acceptanceSend");
   if (!auth.ok) return auth;
 
   const state = await getProjectEngagementState(input.projectId);

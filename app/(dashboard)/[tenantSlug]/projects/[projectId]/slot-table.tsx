@@ -88,6 +88,7 @@ export function SlotTable({
   tenantSlug,
   slots,
   canManage,
+  canNotice,
   noticeTemplates,
   defaultNoticeBody,
 }: {
@@ -95,6 +96,8 @@ export function SlotTable({
   tenantSlug: string;
   slots: SlotRow[];
   canManage: boolean;
+  /** 세션 안내문자 발송 — 레벨 4부터 (입력 권한과 별개 축) */
+  canNotice: boolean;
   noticeTemplates: NoticeTemplateOption[];
   defaultNoticeBody: string;
 }) {
@@ -189,7 +192,7 @@ export function SlotTable({
                 {requested > 0 && ` · ${requested} 요청중`}
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
-              {canManage && (
+              {canNotice && (
                 <span className="ml-auto flex items-center gap-1">
                   <SessionNoticeDialog
                     slotId={s.id}

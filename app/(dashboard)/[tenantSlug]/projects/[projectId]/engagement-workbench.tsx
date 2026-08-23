@@ -103,6 +103,8 @@ export function EngagementWorkbench({
   projectId,
   slots,
   canManage,
+  canInput,
+  canCancel,
   planGate,
   planPanel,
   stageByPosition,
@@ -118,7 +120,12 @@ export function EngagementWorkbench({
   tenantSlug: string;
   projectId: string;
   slots: SlotRow[];
+  /** 실행 버튼(품의 상신·섭외요청·수락서 송신) — 레벨 4부터 */
   canManage: boolean;
+  /** 입력(후보·첨부) — 레벨 5부터 */
+  canInput: boolean;
+  /** 섭외 취소·긴급 취소 — 레벨 3부터 */
+  canCancel: boolean;
   /** 섭외계획 품의 게이트 — 승인 전이면 요청 자체가 막힌다 */
   planGate: { blocked: boolean; message: string };
   /** 섭외계획 품의 패널 — 게이트에 걸렸을 때 그 자리에서 상신할 수 있게 */
@@ -287,13 +294,13 @@ export function EngagementWorkbench({
         {planGate.blocked && planPanel}
 
         {/* 결재가 끝나면 보내기 전에 첨부를 붙인다 — 보낸 뒤에는 못 붙인다 */}
-        {canManage &&
+        {canInput &&
           projectState.stage === "plan_approved" &&
           attachmentPanel}
 
         {/* 수락서에 동봉할 자료 — 송신 순간 각 수락서로 복사된다. 보낸 뒤에
             프로젝트 첨부를 지워도 이미 나간 수락서의 자료는 남는다 */}
-        {canManage &&
+        {canInput &&
           projectState.stage === "accepted_all" &&
           acceptanceAttachmentPanel}
 
@@ -365,8 +372,9 @@ export function EngagementWorkbench({
                   requiredCount={slot.requiredCount}
                   positions={slot.positions}
                   stageByPosition={stageByPosition}
-                  canManage={canManage}
-                  editable={canManage && projectState.stage === "assigning"}
+                  canManage={canInput}
+                  canCancel={canCancel}
+                  editable={canInput && projectState.stage === "assigning"}
                 />
               </li>
             ))}
@@ -416,10 +424,10 @@ export function EngagementWorkbench({
                       </Link>
                     </Button>
                   )}
-                  {canManage && e.status === "requested" && (
+                  {canCancel && e.status === "requested" && (
                     <EngagementCancelButton engagementId={e.id} />
                   )}
-                  {canManage && e.status === "accepted" && (
+                  {canCancel && e.status === "accepted" && (
                     <EngagementUrgentCancel
                       engagementId={e.id}
                       expertName={e.expertName}

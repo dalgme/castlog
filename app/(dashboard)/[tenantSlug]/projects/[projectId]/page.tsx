@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
+import { canExec } from "@/lib/auth/exec-permissions";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import {
   assignmentRoleRank,
@@ -104,7 +105,11 @@ export default async function ProjectDetailPage({
   // 프로젝트 기초는 공통 기반 — 모듈 게이트 없음 (21스텝 섹션만 아래에서 조건부)
 
   const role = roleFromUser(user);
-  const canEvaluate = role === "org_admin" || role === "manager";
+  const grade = gradeFromUser(user);
+  // 레벨 차등 (기획 확정 2026-08-23) — 서버 게이트와 같은 기준:
+  // 실행(섭외요청·수락서·품의 상신)과 평가는 레벨 4(대리)부터.
+  const canExecute = canExec("engagementRequest", grade, role);
+  const canEvaluate = canExec("expertRecord", grade, role);
 
   if (!hasSupabaseEnv()) {
     return (
@@ -245,8 +250,12 @@ export default async function ProjectDetailPage({
     id: u.id,
     name: u.name,
   }));
-  // Phase A-1: 배정 패널용 (권한자만 렌더)
+  // 레벨 1~3 — 예산·마감·스텝 등 결정 성격의 도구
   const canManage = role === "org_admin" || role === "manager";
+  // Phase A-1: 배정 패널용 — 배정은 전사 열람 권한자(대표·이사)가 한다 (§3-1)
+  const canAssign = canViewAllProjects(grade);
+  // 레벨 5(주임)부터 — 세션·코드넘버·후보 입력 (실무 입력선)
+  const canInput = canExec("planInput", grade, role);
 
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
@@ -667,7 +676,7 @@ export default async function ProjectDetailPage({
             modules={{ experts: modules.experts, approvals: modules.approvals }}
           />
         )}
-        {tab === "basic" && canManage && (
+        {tab === "basic" && canAssign && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">담당자 배정</CardTitle>
@@ -726,7 +735,8 @@ export default async function ProjectDetailPage({
                 projectId={project.id}
                 tenantSlug={params.tenantSlug}
                 slots={slotRows}
-                canManage={canManage}
+                canManage={canInput}
+                canNotice={canExec("sessionNotice", grade, role)}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />
@@ -799,7 +809,9 @@ export default async function ProjectDetailPage({
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
-            canManage={canManage}
+            canManage={canExecute}
+            canInput={canInput}
+            canCancel={canExec("engagementCancel", grade, role)}
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
@@ -810,7 +822,7 @@ export default async function ProjectDetailPage({
                   tenantSlug={params.tenantSlug}
                   projectId={project.id}
                   plan={planPanel}
-                  canSubmit={canManage}
+                  canSubmit={canExecute}
                   approverOptions={planApprovers}
                   hasProjectRule={hasProjectRule}
                 />
@@ -879,7 +891,7 @@ export default async function ProjectDetailPage({
               />
             }
             headerActions={
-              canManage ? (
+              canExecute ? (
                 <>
                   {(unlinkedCount ?? 0) > 0 && (
                     <AttachEngagementsDialog projectId={project.id} />

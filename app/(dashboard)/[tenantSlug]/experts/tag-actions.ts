@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import { expertTagLabel, isExpertTag } from "@/lib/integrations/expert-tags";
 
 export type TagResult = { ok: true } | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
 
 async function requireExpertManager(): Promise<
   { ok: true; userId: string; tenantId: string; role: string } | { ok: false; error: string }
@@ -28,8 +28,11 @@ async function requireExpertManager(): Promise<
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "전문가 등급 관리 권한이 없습니다(관리자 이상)." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertRecord", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertRecord") };
   }
   return { ok: true, userId: user.id, tenantId, role };
 }

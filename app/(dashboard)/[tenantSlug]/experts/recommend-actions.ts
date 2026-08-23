@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { canExec, execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -35,8 +37,11 @@ async function requireRecommendSession(): Promise<
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
-    return { ok: false, error: "추천 기능 권한이 없습니다." };
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!canExec("expertRecord", gradeFromUser(user), role)) {
+    return { ok: false, error: execDeniedMessage("expertRecord") };
   }
   return { ok: true, session: { userId: user.id, tenantId, role } };
 }
