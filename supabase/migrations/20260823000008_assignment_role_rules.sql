@@ -16,7 +16,7 @@ create table if not exists public.tenant_assignment_role_rules (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   assignment_role text not null,
   min_grade text not null,
-  updated_by uuid references public.users(id),
+  updated_by uuid references public.users(id) on delete set null,
   updated_at timestamptz not null default now(),
   primary key (tenant_id, assignment_role),
   constraint tenant_assignment_role_rules_role_check check (assignment_role in (

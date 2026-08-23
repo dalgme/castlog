@@ -106,6 +106,10 @@ export async function assignProjectMember(
       if (existing) return { ok: true };
       return { ok: false, error: roleConflictError(assignmentRole) };
     }
+    // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
+    if (error.code === "23514") {
+      return { ok: false, error: `${error.message} (권한 규칙)` };
+    }
     return { ok: false, error: "배정에 실패했습니다." };
   }
 
@@ -137,16 +141,29 @@ export async function setAssignmentRole(
   const gradeError = await roleGradeError(assignmentRole, target?.grade ?? null);
   if (gradeError) return { ok: false, error: gradeError };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("project_assignments")
     .update({ assignment_role: assignmentRole })
     .eq("project_id", projectId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("id");
   if (error) {
     if (error.code === "23505") {
       return { ok: false, error: roleConflictError(assignmentRole) };
     }
+    // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
+    if (error.code === "23514") {
+      return { ok: false, error: `${error.message} (권한 규칙)` };
+    }
     return { ok: false, error: "역할 변경에 실패했습니다." };
+  }
+  // RLS로 0행이 걸러지면 supabase는 에러 없이 넘어간다 — 조용한 무시 방지 (§12-9)
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error:
+        "역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다 (권한 규칙 — 역할 변경은 대표·이사). 필요하면 권한자에게 요청하세요.",
+    };
   }
 
   revalidatePath("/[tenantSlug]/projects", "page");
