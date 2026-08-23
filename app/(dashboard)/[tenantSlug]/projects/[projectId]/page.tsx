@@ -24,7 +24,11 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   PROJECT_STATUS_LABELS,
+  STEP_STATUS_BOX_CLASS,
+  STEP_STATUS_LABELS,
   STEP_TYPE_LABELS,
+  autoStepStatus,
+  type StepStatus,
   type StepType,
 } from "@/lib/operations/steps";
 import {
@@ -46,7 +50,7 @@ import { ProjectTodoTicker } from "@/components/projects/todo-ticker";
 
 import { AttachmentPanel } from "./attachment-panel";
 
-import { StepStatusSelect } from "./step-status-select";
+import { StepStatusButtons } from "./step-status-buttons";
 import { type ExpertReviewTarget } from "./expert-review-form";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import {
@@ -626,6 +630,13 @@ export default async function ProjectDetailPage({
       ])
     : [null, null];
 
+  // 21스텝 자동 판정 컨텍스트 — 섭외 단계·예산·종료 여부 (표시 전용)
+  const autoCtx = {
+    stage: engagementState?.stage ?? "assigning",
+    hasBudget: project.budget_amount !== null,
+    closed: project.closed_at !== null,
+  };
+
   // 첨부 대상 후보 — 이 프로젝트에 배정·섭외된 전문가 (id로 다룬다)
   const assignedExpertOptions = Array.from(
     new Set(
@@ -831,6 +842,13 @@ export default async function ProjectDetailPage({
                   canSubmit={canExecute}
                   approverOptions={planApprovers}
                   hasProjectRule={hasProjectRule}
+                  sessionSummary={slotRows.map((s) => ({
+                    label: `${s.slotDate}${
+                      s.sessionName ? ` ${s.sessionName}` : ""
+                    }`,
+                    required: s.requiredCount,
+                    candidates: s.positions.length,
+                  }))}
                 />
               ) : null
             }
@@ -939,26 +957,51 @@ export default async function ProjectDetailPage({
           STEP_TYPE_ORDER.map((stepType) => {
           const group = stepRows.filter((s) => s.step_type === stepType);
           if (group.length === 0) return null;
+          // 그룹 상태 박스 — 전부 완료면 초록, 하나라도 움직였으면 파랑
+          const groupResolved = group.map((step) => {
+            const auto = autoStepStatus(step.step_no, autoCtx);
+            return auto ?? (step.status as StepStatus);
+          });
+          const groupStatus: StepStatus = groupResolved.every(
+            (st) => st === "completed" || st === "skipped"
+          )
+            ? "completed"
+            : groupResolved.some((st) => st !== "pending")
+              ? "in_progress"
+              : "pending";
           return (
             <Card key={stepType}>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <span
+                    aria-hidden
+                    className={`inline-block h-3 w-3 rounded-sm ${STEP_STATUS_BOX_CLASS[groupStatus]}`}
+                  />
                   {STEP_TYPE_LABELS[stepType]}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="divide-y">
-                  {group.map((step) => (
+                  {group.map((step) => {
+                    // 자동 판정 가능한 스텝은 시스템 상태를 그대로 반영한다
+                    const auto = autoStepStatus(step.step_no, autoCtx);
+                    const shown = auto ?? (step.status as StepStatus);
+                    return (
                     <li
                       key={step.id}
                       className="flex flex-wrap items-center gap-2 py-2.5 text-sm"
                     >
+                      <span
+                        aria-label={STEP_STATUS_LABELS[shown]}
+                        title={STEP_STATUS_LABELS[shown]}
+                        className={`inline-block h-3 w-3 shrink-0 rounded-sm ${STEP_STATUS_BOX_CLASS[shown]}`}
+                      />
                       <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">
                         {String(step.step_no).padStart(2, "0")}
                       </span>
                       <span
                         className={
-                          step.status === "completed" || step.status === "skipped"
+                          shown === "completed" || shown === "skipped"
                             ? "flex-1 text-muted-foreground line-through"
                             : "flex-1 font-medium"
                         }
@@ -975,9 +1018,27 @@ export default async function ProjectDetailPage({
                           기한 {step.due_on}
                         </span>
                       )}
-                      <StepStatusSelect stepId={step.id} status={step.status} />
+                      {auto !== null ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className="font-normal">
+                            자동 반영
+                          </Badge>
+                          {STEP_STATUS_LABELS[shown]}
+                        </span>
+                      ) : (
+                        <span className="inline-flex flex-col items-end gap-0.5">
+                          <StepStatusButtons
+                            stepId={step.id}
+                            status={step.status}
+                          />
+                          <span className="text-[10px] text-muted-foreground">
+                            진행 단계를 클릭으로 선택
+                          </span>
+                        </span>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </CardContent>
             </Card>

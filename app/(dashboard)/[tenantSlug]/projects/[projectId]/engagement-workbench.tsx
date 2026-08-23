@@ -9,6 +9,7 @@ import {
 
 import { formatKrw } from "@/lib/approvals/constants";
 import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
+import { durationLabel } from "@/lib/integrations/time-duration";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -95,7 +96,8 @@ function scheduleLine(slot: SlotRow): string {
     slot.startsTime && slot.endsTime
       ? ` ${slot.startsTime.slice(0, 5)}~${slot.endsTime.slice(0, 5)}`
       : "";
-  return `${slot.slotDate}${time}`;
+  const dur = durationLabel(slot.startsTime, slot.endsTime);
+  return `${slot.slotDate}${time}${dur ? ` (${dur})` : ""}`;
 }
 
 export function EngagementWorkbench({
@@ -375,6 +377,7 @@ export function EngagementWorkbench({
                   canManage={canInput}
                   canCancel={canCancel}
                   editable={canInput && projectState.stage === "assigning"}
+                  sessionDuration={durationLabel(slot.startsTime, slot.endsTime)}
                 />
               </li>
             ))}

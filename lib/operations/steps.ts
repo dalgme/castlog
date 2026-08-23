@@ -72,3 +72,79 @@ export const DEFAULT_LIFECYCLE_STEPS: readonly {
   { stepNo: 20, stepType: "reporting", title: "보고서 검수·제출" },
   { stepNo: 21, stepType: "reporting", title: "사업 종료·아카이브" },
 ];
+
+/**
+ * 21스텝 자동 판정 (기획 확정 2026-08-23).
+ * 시스템 데이터로 진행을 알 수 있는 스텝은 화면에서 자동 반영하고,
+ * 나머지는 PL이 클릭으로 직접 선택한다. 여기 없는 stepNo = 수동.
+ * 자동 판정은 표시 전용이다 — DB의 수동 값 위에 덮어 그린다.
+ */
+export type AutoStepContext = {
+  /** projects.engagement_stage (섭외 진행 단계) */
+  stage: string;
+  hasBudget: boolean;
+  closed: boolean;
+};
+
+const STAGE_ORDER = [
+  "assigning",
+  "plan_review",
+  "plan_approved",
+  "requesting",
+  "accepted_all",
+  "letters_sent",
+  "confirmed",
+  "closing",
+  "settlement_review",
+  "settled",
+] as const;
+
+function stageAtLeastLocal(stage: string, min: string): boolean {
+  const a = STAGE_ORDER.indexOf(stage as (typeof STAGE_ORDER)[number]);
+  const b = STAGE_ORDER.indexOf(min as (typeof STAGE_ORDER)[number]);
+  return a >= 0 && b >= 0 && a >= b;
+}
+
+/** 자동 판정 상태 — null이면 수동 스텝 */
+export function autoStepStatus(
+  stepNo: number,
+  ctx: AutoStepContext
+): StepStatus | null {
+  const s = ctx.stage;
+  switch (stepNo) {
+    case 3: // 예산 편성
+      return ctx.hasBudget ? "completed" : "pending";
+    case 8: // 전문가 섭외 요청
+      if (stageAtLeastLocal(s, "requesting")) return "completed";
+      if (stageAtLeastLocal(s, "plan_review")) return "in_progress";
+      return "pending";
+    case 9: // 전문가 배정 확정
+      if (stageAtLeastLocal(s, "confirmed")) return "completed";
+      if (stageAtLeastLocal(s, "requesting")) return "in_progress";
+      return "pending";
+    case 10: // 일정 계획 확정
+      if (stageAtLeastLocal(s, "plan_approved")) return "completed";
+      if (stageAtLeastLocal(s, "plan_review")) return "in_progress";
+      return "pending";
+    case 15: // 만족도 조사
+      if (stageAtLeastLocal(s, "settlement_review")) return "completed";
+      if (stageAtLeastLocal(s, "closing")) return "in_progress";
+      return "pending";
+    case 16: // 전문가 비용 정산
+      if (stageAtLeastLocal(s, "settled")) return "completed";
+      if (stageAtLeastLocal(s, "settlement_review")) return "in_progress";
+      return "pending";
+    case 21: // 사업 종료·아카이브
+      return ctx.closed ? "completed" : "pending";
+    default:
+      return null;
+  }
+}
+
+/** 상태 박스 색 — 프로세스명 앞 컬러 박스 (기획 확정 2026-08-23) */
+export const STEP_STATUS_BOX_CLASS: Record<StepStatus, string> = {
+  pending: "bg-gray-300",
+  in_progress: "bg-sky-500",
+  completed: "bg-emerald-500",
+  skipped: "border border-gray-300 bg-gray-100",
+};

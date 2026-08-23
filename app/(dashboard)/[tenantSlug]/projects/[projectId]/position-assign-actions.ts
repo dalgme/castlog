@@ -117,6 +117,113 @@ export async function assignExpertToPosition(input: {
   return { ok: true };
 }
 
+/**
+ * 세션 후보 일괄 배정 (기획 확정 2026-08-23 — 탐색 팝업 다중 선택).
+ * 클릭한 자리부터 시작해 이 세션의 미배정 자리(rank 순)에 차례로 배정한다.
+ * 상한 = 미배정 자리 수. 이미 이 세션에 올라간 전문가는 건너뛴다.
+ */
+export async function assignExpertsToSlot(input: {
+  positionId: string;
+  expertIds: string[];
+}): Promise<
+  | { ok: true; assigned: number; skipped: string[] }
+  | { ok: false; error: string }
+> {
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  if (input.expertIds.length === 0) {
+    return { ok: false, error: "전문가를 선택하세요." };
+  }
+
+  const supabase = createClient();
+  const { data: clicked } = await supabase
+    .from("engagement_slot_positions")
+    .select("id, status, slot_id, engagement_id")
+    .eq("id", input.positionId)
+    .maybeSingle();
+  if (!clicked) return { ok: false, error: "대상을 찾을 수 없습니다." };
+
+  const { data: positions } = await supabase
+    .from("engagement_slot_positions")
+    .select("id, status, rank, expert_id, assigned_expert_id, engagement_id")
+    .eq("slot_id", clicked.slot_id)
+    .order("rank", { ascending: true });
+  const openPositions = (positions ?? []).filter(
+    (p) => (p.status === "open" || p.status === "assigned") && !p.engagement_id
+  );
+  // 클릭한 자리를 맨 앞으로 — 사용자가 고른 자리부터 채운다
+  openPositions.sort((a, b) =>
+    a.id === input.positionId ? -1 : b.id === input.positionId ? 1 : 0
+  );
+  if (openPositions.length === 0) {
+    return { ok: false, error: "이 세션에 배정할 수 있는 자리가 없습니다." };
+  }
+  if (input.expertIds.length > openPositions.length) {
+    return {
+      ok: false,
+      error: `이 세션의 후보 자리는 ${openPositions.length}개입니다. 선택 인원을 줄여 주세요.`,
+    };
+  }
+
+  const inSlot = new Set(
+    (positions ?? [])
+      .flatMap((p) => [p.expert_id, p.assigned_expert_id])
+      .filter(Boolean) as string[]
+  );
+
+  // 활성 연결 일괄 확인 (RLS + 명시 확인)
+  const { data: links } = await supabase
+    .from("expert_tenant_links")
+    .select("expert_id")
+    .eq("status", "active")
+    .in("expert_id", input.expertIds);
+  const activeIds = new Set((links ?? []).map((l) => l.expert_id));
+
+  let assigned = 0;
+  const skipped: string[] = [];
+  let cursor = 0;
+  for (const expertId of input.expertIds) {
+    if (!activeIds.has(expertId)) {
+      skipped.push(`${expertId}:미연결`);
+      continue;
+    }
+    if (inSlot.has(expertId)) {
+      skipped.push(`${expertId}:이미 후보`);
+      continue;
+    }
+    const target = openPositions[cursor];
+    if (!target) break;
+    const { error } = await supabase
+      .from("engagement_slot_positions")
+      .update({
+        status: "assigned",
+        assigned_expert_id: expertId,
+        assigned_at: new Date().toISOString(),
+        assigned_by: auth.session.userId,
+      })
+      .eq("id", target.id);
+    if (error) {
+      skipped.push(`${expertId}:실패`);
+      continue;
+    }
+    inSlot.add(expertId);
+    cursor += 1;
+    assigned += 1;
+    await supabase.from("audit_logs").insert({
+      tenant_id: auth.session.tenantId,
+      actor_auth_user_id: auth.session.userId,
+      actor_role: auth.session.role,
+      action: "engagement_position.assign",
+      resource_type: "engagement_slot_position",
+      resource_id: target.id,
+      after_data: { expert_id: expertId, batch: true },
+    });
+  }
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, assigned, skipped };
+}
+
 /** 배정 취소 — 요청 전에만 가능하다 */
 export async function unassignPosition(
   positionId: string
