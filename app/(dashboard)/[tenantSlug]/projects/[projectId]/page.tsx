@@ -8,6 +8,8 @@ import { canManagePayments } from "@/lib/auth/admin-scopes";
 import {
   assignmentRoleRank,
   isAssignmentRole,
+  isPlRole,
+  isPmRole,
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import {
@@ -347,16 +349,21 @@ export default async function ProjectDetailPage({
       createdAt: r.created_at,
     })
   );
-  // 승인 주체는 PM. 대표·이사는 전사 열람 권한과 함께 승인도 할 수 있다.
+  // 승인 주체는 PM(겸임 포함)과 PL(총괄). 대표·이사는 전사 열람 권한과 함께 승인도 할 수 있다.
   const canDecideActions =
-    myAssignmentRole === "pm" || canViewAllProjects(gradeFromUser(user));
+    isPmRole(myAssignmentRole) ||
+    myAssignmentRole === "pl" ||
+    canViewAllProjects(gradeFromUser(user));
   const showActionRequests =
     actionRequests.length > 0 ||
     myAssignmentRole === "deputy_pm" ||
     canDecideActions;
 
+  // PL·PM 겸임(pl_pm)은 양쪽 자리에 모두 표기
+  const plName =
+    assignedMembers.find((m) => isPlRole(m.assignmentRole))?.name ?? null;
   const pmName =
-    assignedMembers.find((m) => m.assignmentRole === "pm")?.name ?? null;
+    assignedMembers.find((m) => isPmRole(m.assignmentRole))?.name ?? null;
   const deputyPmNames = assignedMembers
     .filter((m) => m.assignmentRole === "deputy_pm")
     .map((m) => m.name);
@@ -650,6 +657,7 @@ export default async function ProjectDetailPage({
           data={dashboard}
           budgetAmount={project.budget_amount}
           committedCost={confirmedCost + requestedCost}
+          plName={plName}
           pmName={pmName}
           deputyPmNames={deputyPmNames}
           modules={{ experts: modules.experts, approvals: modules.approvals }}
