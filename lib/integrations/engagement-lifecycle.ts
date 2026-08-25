@@ -47,12 +47,24 @@ export async function expireOverdueEngagements(): Promise<ExpiryResult> {
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  const { data: expired } = await admin
+  // 라이트 모드 테넌트는 만료 대상에서 제외한다 — 링크를 발송한 적이 없으므로
+  // '링크 만료'가 성립하지 않는다. 전화 섭외가 기한보다 오래 걸린다고 타이머가
+  // 요청중 건을 지우고 자리를 비워서는 안 된다 (docs/decisions/experts-lite.md).
+  const { data: liteTenants } = await admin
+    .from("tenants")
+    .select("id")
+    .eq("feature_flags->>experts_lite", "true");
+  const liteIds = (liteTenants ?? []).map((t) => t.id);
+
+  let expireQuery = admin
     .from("expert_engagements")
     .update({ status: "expired" })
     .eq("status", "requested")
-    .lt("token_expires_at", now)
-    .select("id, tenant_id, is_practice");
+    .lt("token_expires_at", now);
+  if (liteIds.length > 0) {
+    expireQuery = expireQuery.not("tenant_id", "in", `(${liteIds.join(",")})`);
+  }
+  const { data: expired } = await expireQuery.select("id, tenant_id, is_practice");
 
   const rows = expired ?? [];
   if (rows.length === 0) return { expired: 0, positionsReleased: 0 };

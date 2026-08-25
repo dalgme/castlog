@@ -32,6 +32,7 @@ export function AcceptanceEditor({
   submissionDocs,
   hasMap,
   attachments,
+  expertsLite = false,
 }: {
   acceptanceId: string;
   status: string;
@@ -40,6 +41,8 @@ export function AcceptanceEditor({
   submissionDocs: string;
   hasMap: boolean;
   attachments: { id: string; fileName: string }[];
+  /** 라이트 모드 — 송부 대신 기업 담당자의 확인으로 마감한다 */
+  expertsLite?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -212,7 +215,7 @@ export function AcceptanceEditor({
       )}
 
       <div className="flex flex-wrap gap-2 border-t pt-3">
-        {editable && (
+        {editable && !expertsLite && (
           <Button
             size="sm"
             disabled={pending}
@@ -224,21 +227,34 @@ export function AcceptanceEditor({
             {status === "issued" ? "수락서 송부" : "다시 송부"}
           </Button>
         )}
-        {status === "signed" && (
+        {/* 라이트 모드 — 포털 서명이 없으므로 기업 담당자의 확인으로 마감한다.
+            이 확정이 없으면 프로젝트가 '전원 수락'에서 멈춰 종료에 못 간다 */}
+        {(status === "signed" || (expertsLite && editable)) && (
           <Button
             size="sm"
             variant="outline"
             disabled={pending}
-            onClick={() =>
-              run(() => confirmAcceptance(acceptanceId), "확인 처리했습니다.")
-            }
+            onClick={() => {
+              if (
+                expertsLite &&
+                status !== "signed" &&
+                !window.confirm(
+                  "전문가 서명 없이 기업 확인으로 마감합니다 (라이트 모드).\n수락서 내용이 합의된 조건과 일치하는지 확인했습니까?"
+                )
+              ) {
+                return;
+              }
+              run(() => confirmAcceptance(acceptanceId), "확인 처리했습니다.");
+            }}
           >
             <Check className="mr-1 h-4 w-4" /> 확인 완료 처리
           </Button>
         )}
         {status === "confirmed" && (
           <p className="text-sm text-muted-foreground">
-            전문가가 확인·승인(서명)을 완료했습니다 — 참여 확정.
+            {expertsLite
+              ? "확인이 완료되었습니다 — 참여 확정."
+              : "전문가가 확인·승인(서명)을 완료했습니다 — 참여 확정."}
           </p>
         )}
       </div>

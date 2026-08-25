@@ -4,7 +4,7 @@ import { FileSignature } from "lucide-react";
 import { requireRole } from "@/lib/auth/session";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser } from "@/lib/auth/tenant";
-import { requireModule } from "@/lib/modules/server";
+import { isExpertsLite, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
@@ -89,6 +89,8 @@ export default async function EngagementStatusPage({
   const canSeeAll = role === "org_admin" || role === "manager" || role === "platform_admin";
   // 전화 섭외 수동 완료 — 실행 축(engagementRequest)과 같은 문턱 (기획 확정 2026-08-23)
   const canManualAccept = await canExecTenant("engagementRequest", user);
+  // 라이트 모드 — 재안내(문자)는 숨긴다. 수동 완료가 기본 동작이 된다.
+  const expertsLite = await isExpertsLite();
 
   const supabase = createClient();
 
@@ -269,14 +271,16 @@ export default async function EngagementStatusPage({
                         <TableCell>
                           {e.status === "requested" ? (
                             <span className="inline-flex flex-wrap items-center gap-1.5">
-                              <RemindButton
-                                engagementId={e.id}
-                                expertName={e.experts?.name ?? "전문가"}
-                                daysWaiting={Math.floor(
-                                  (Date.now() - new Date(e.created_at).getTime()) /
-                                    86400000
-                                )}
-                              />
+                              {!expertsLite && (
+                                <RemindButton
+                                  engagementId={e.id}
+                                  expertName={e.experts?.name ?? "전문가"}
+                                  daysWaiting={Math.floor(
+                                    (Date.now() - new Date(e.created_at).getTime()) /
+                                      86400000
+                                  )}
+                                />
+                              )}
                               {canManualAccept && (
                                 <ManualAcceptButton
                                   engagementId={e.id}

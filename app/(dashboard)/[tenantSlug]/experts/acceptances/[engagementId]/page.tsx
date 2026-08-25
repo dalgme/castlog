@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { canExecTenant } from "@/lib/auth/exec-policy";
-import { requireModule } from "@/lib/modules/server";
+import { isExpertsLite, requireModule } from "@/lib/modules/server";
 import { getAcceptanceView } from "@/lib/integrations/acceptance-view";
 import { ENGAGEMENT_STATUS_LABELS } from "@/lib/integrations/engagements";
 import { createClient } from "@/lib/supabase/server";
@@ -32,6 +32,7 @@ export default async function TenantAcceptancePage({
     "staff",
   ]);
   await requireModule("experts");
+  const expertsLite = await isExpertsLite();
 
   const view = await getAcceptanceView(params.engagementId);
   if (!view) {
@@ -123,6 +124,7 @@ export default async function TenantAcceptancePage({
                   id: a.id,
                   fileName: a.fileName,
                 }))}
+                expertsLite={expertsLite}
               />
             </CardContent>
           </Card>

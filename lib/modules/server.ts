@@ -7,8 +7,11 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getSessionUser } from "@/lib/auth/session";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 
+import { createAdminClient } from "@/lib/supabase/admin";
+
 import {
   DEFAULT_MODULES,
+  parseExpertsLite,
   parseModuleFlags,
   type ModuleFlags,
   type ModuleKey,
@@ -34,6 +37,48 @@ export async function getTenantModules(): Promise<ModuleFlags> {
     .maybeSingle();
 
   return parseModuleFlags(tenant?.feature_flags);
+}
+
+/**
+ * 현재 세션 테넌트의 전문가 섭외 라이트 모드 여부.
+ * 미설정·프리뷰·전역 계정은 false(풀 기능) — 기존 테넌트에 영향이 없다.
+ */
+export async function isExpertsLite(): Promise<boolean> {
+  if (!hasSupabaseEnv()) return false;
+
+  const user = await getSessionUser();
+  const tenantId = tenantIdFromUser(user);
+  if (!tenantId) return false;
+
+  const supabase = createClient();
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("feature_flags")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  return parseExpertsLite(tenant?.feature_flags);
+}
+
+/**
+ * 테넌트 지정 라이트 모드 판정 — 발송 헬퍼(sendEngagementSms/Email)처럼
+ * tenantId를 이미 들고 있는 서버 전용 경로에서 쓴다. 조회 실패 시 false를
+ * 돌려 기존 동작(발송)을 유지한다 — 판정 오류가 일반 테넌트의 발송을
+ * 끊어서는 안 된다.
+ */
+export async function isTenantExpertsLite(tenantId: string): Promise<boolean> {
+  if (!hasSupabaseEnv() || !tenantId) return false;
+  try {
+    const admin = createAdminClient();
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("feature_flags")
+      .eq("id", tenantId)
+      .maybeSingle();
+    return parseExpertsLite(tenant?.feature_flags);
+  } catch {
+    return false;
+  }
 }
 
 /**

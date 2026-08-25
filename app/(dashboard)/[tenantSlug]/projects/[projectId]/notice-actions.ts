@@ -8,7 +8,7 @@ import { execDeniedMessage, type ExecFeature } from "@/lib/auth/exec-permissions
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import {
   dispatchSessionNotice,
@@ -60,6 +60,14 @@ export async function createSessionNotice(input: {
 }): Promise<NoticeResult> {
   const auth = await requireNoticeSession();
   if (!auth.ok) return auth;
+  // 라이트 모드 — 전문가에게 나가는 발송이라 등록 자체를 막는다 (규칙 거부, §12-9)
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error:
+        "라이트 모드에서는 세션 안내문자를 발송하지 않습니다. 발송이 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
+    };
+  }
 
   const body = input.body.trim();
   if (!body) return { ok: false, error: "안내 문구를 입력하세요." };

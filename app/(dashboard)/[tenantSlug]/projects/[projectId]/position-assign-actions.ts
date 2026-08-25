@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import type { ExecFeature } from "@/lib/auth/exec-permissions";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import {
   logEngagementEvent,
   staffActorLabel,
@@ -612,6 +612,15 @@ export async function sendAcceptanceLetters(input: {
 }): Promise<AcceptanceSendResult> {
   const auth = await requireManager("acceptanceSend");
   if (!auth.ok) return auth;
+  // 라이트 모드 — 수락서 송신은 전문가 포털 서명 흐름의 시작이라 통째로 막는다.
+  // 발송 없이 상태만 'sent'로 바꾸면 어디에도 도착하지 않은 문서를 기다리게 된다.
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error:
+        "라이트 모드에서는 수락서를 송신하지 않습니다. 수동 '섭외 완료' 처리로 생성된 수락서는 화면에서 바로 확인·수정할 수 있습니다. 송신이 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
+    };
+  }
   const senderName = await staffActorLabel(auth.session.userId);
   const sendIsPractice = await isPracticeMode();
 

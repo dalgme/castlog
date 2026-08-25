@@ -7,7 +7,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { buildPublicLink } from "@/lib/routing/links";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
@@ -52,6 +52,15 @@ export async function remindEngagement(
   const modules = await getTenantModules();
   if (!modules.experts) {
     return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  // 라이트 모드 — 재안내는 문자 발송 그 자체라 건별로 막는다. 발송 없이
+  // 이벤트만 남기면 이력이 '보낸 것처럼' 보인다 (규칙 거부, §12-9).
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error:
+        "라이트 모드에서는 문자 재안내를 보내지 않습니다. 전화로 확인한 뒤 '섭외 완료(수락서 생성)' 버튼으로 처리하세요. 발송이 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
+    };
   }
 
   const supabase = createClient();

@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getBaseUrl } from "@/lib/routing/links";
+import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantEmail } from "@/lib/email/send";
 
 /**
@@ -20,6 +21,8 @@ export async function sendEngagementEmail(params: {
   body: string;
 }): Promise<void> {
   if (!hasSupabaseEnv()) return;
+  // 라이트 모드 — 전문가 발송 전면 차단 (engagement-sms.ts와 같은 이유)
+  if (await isTenantExpertsLite(params.tenantId)) return;
   try {
     const admin = createAdminClient();
     const { data: expert } = await admin

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { postLoginPath, requireRole } from "@/lib/auth/session";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
-import { getTenantModules, requireModule } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
@@ -51,6 +51,10 @@ export default async function PaymentsPage({
     "staff",
   ]);
   await requireModule("experts");
+  // 라이트 모드 — 지급·세무는 제공하지 않는다 (docs/decisions/experts-lite.md)
+  if (sessionUser && (await isExpertsLite())) {
+    redirect(postLoginPath(sessionUser));
+  }
   // 지급은 금액 축 — 대표·이사 또는 '지급·정산' 위임자만 (CLAUDE.md §3-1)
   if (sessionUser && !(await canManagePayments())) {
     redirect(postLoginPath(sessionUser));

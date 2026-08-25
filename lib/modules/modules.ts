@@ -100,6 +100,33 @@ function isModuleKey(value: string): value is ModuleKey {
   return (MODULE_KEYS as readonly string[]).includes(value);
 }
 
+/**
+ * 전문가 섭외 라이트 모드 (기획 확정 2026-08-25 — docs/decisions/experts-lite.md)
+ *
+ * experts 모듈의 '운영 방식' 옵션이다. 켜면 전문가에게 나가는 발송(섭외요청
+ * 문자·이메일, 재안내, 수락서 송신)이 전부 꺼지고, 회사가 보유한 명단으로
+ * 섭외 현황·중복·우선순위만 수기로 관리한다. 확정은 전화 확인 후 수동
+ * '섭외 완료(수락서 생성)' 버튼으로 한다.
+ *
+ * 모듈 추가와 달리 **기능 축소**라 계약(플랜)에 닿지 않는다 — 기업이 스스로
+ * 켜고 끈다(캐스트로그 승인 불요). 껐다 켜도 데이터는 그대로다(같은
+ * expert_engagements 상태 모델을 쓴다).
+ *
+ * 민감정보 원칙(§5)은 완화되지 않는다: 주민번호는 전문가 본인 키 재래핑이
+ * 없어 라이트에서 기능 자체가 성립하지 않고, 지급·세무 화면은 게이트로 닫는다.
+ */
+export function parseExpertsLite(featureFlags: Json | null | undefined): boolean {
+  if (
+    featureFlags === null ||
+    featureFlags === undefined ||
+    typeof featureFlags !== "object" ||
+    Array.isArray(featureFlags)
+  ) {
+    return false;
+  }
+  return featureFlags["experts_lite"] === true;
+}
+
 /** tenants.feature_flags(JSONB)에서 모듈 활성 여부를 파싱한다. 형식 오류는 기본값 처리. */
 export function parseModuleFlags(featureFlags: Json | null | undefined): ModuleFlags {
   const result: ModuleFlags = { ...DEFAULT_MODULES };
