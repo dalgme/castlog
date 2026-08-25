@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantSms } from "@/lib/sms/send";
 
 /**
@@ -26,6 +27,10 @@ export async function sendEngagementSms(params: {
   body: string;
 }): Promise<void> {
   if (!hasSupabaseEnv()) return;
+  // 라이트 모드(수기 섭외 관리) — 전문가에게 나가는 발송을 전부 끈다.
+  // 개별 호출부가 아니라 여기서 자르는 이유: 발송 경로가 늘 때마다
+  // 게이트를 빠뜨리는 사고를 막는다 (docs/decisions/experts-lite.md).
+  if (await isTenantExpertsLite(params.tenantId)) return;
   try {
     const admin = createAdminClient();
     const { data: expert } = await admin

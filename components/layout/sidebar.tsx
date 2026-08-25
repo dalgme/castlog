@@ -76,6 +76,7 @@ export function Sidebar({
   modules,
   isOrgAdmin,
   canManagePayments,
+  expertsLite = false,
   tenantName,
   logoSrc,
 }: {
@@ -83,6 +84,8 @@ export function Sidebar({
   modules: ModuleFlags;
   isOrgAdmin: boolean;
   canManagePayments: boolean;
+  /** 라이트 모드 — 지급·세무 메뉴를 닫는다 (docs/decisions/experts-lite.md) */
+  expertsLite?: boolean;
   tenantName: string | null;
   /** 등록된 회사 로고 — 없으면 캐스트로그 심볼을 쓴다 */
   logoSrc: string | null;
@@ -92,7 +95,7 @@ export function Sidebar({
     (item) =>
       (item.module === null || modules[item.module]) &&
       (!item.orgAdminOnly || isOrgAdmin) &&
-      (!item.financeOnly || canManagePayments)
+      (!item.financeOnly || (canManagePayments && !expertsLite))
   );
 
   return (

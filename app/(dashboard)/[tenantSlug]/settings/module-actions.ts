@@ -3,11 +3,17 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 import { roleFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
-import { MODULE_KEYS, MODULE_LABELS, type ModuleKey } from "@/lib/modules/modules";
+import {
+  MODULE_KEYS,
+  MODULE_LABELS,
+  parseExpertsLite,
+  type ModuleKey,
+} from "@/lib/modules/modules";
 import { parseRequestedModules } from "@/lib/modules/requests";
 
 export type ModuleRequestResult = { ok: true } | { ok: false; error: string };
@@ -99,6 +105,64 @@ export async function requestModules(
 
   revalidatePath("/[tenantSlug]/settings", "page");
   revalidatePath("/[tenantSlug]/admin/org", "page");
+  return { ok: true };
+}
+
+/**
+ * 전문가 섭외 라이트 모드 켜기/끄기 (기획 확정 2026-08-25).
+ *
+ * 모듈 추가(계약)와 달리 **기능 축소**라 기업이 스스로 설정한다 — 캐스트로그
+ * 승인이 필요 없다. 껐다 켜도 데이터는 그대로다(같은 상태 모델).
+ * 스코프는 사용 기능과 같은 'modules'(settings가 포함).
+ */
+export async function setExpertsLite(
+  enabled: boolean
+): Promise<ModuleRequestResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const gate = await requireAdminScope("modules");
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const admin = createAdminClient();
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("feature_flags")
+    .eq("id", gate.tenantId)
+    .maybeSingle();
+  if (!tenant) return { ok: false, error: "테넌트 정보를 확인할 수 없습니다." };
+
+  const current = parseExpertsLite(tenant.feature_flags);
+  if (current === enabled) return { ok: true };
+
+  // 기존 feature_flags(modules 등)를 보존하면서 experts_lite만 바꾼다
+  const priorFlags =
+    tenant.feature_flags !== null &&
+    typeof tenant.feature_flags === "object" &&
+    !Array.isArray(tenant.feature_flags)
+      ? tenant.feature_flags
+      : {};
+  const { error } = await admin
+    .from("tenants")
+    .update({
+      feature_flags: { ...priorFlags, experts_lite: enabled },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", gate.tenantId);
+  if (error) return { ok: false, error: "저장에 실패했습니다." };
+
+  const supabase = createClient();
+  await supabase.from("audit_logs").insert({
+    tenant_id: gate.tenantId,
+    actor_auth_user_id: gate.userId,
+    actor_role: await currentRole(),
+    action: enabled ? "tenant.experts_lite_on" : "tenant.experts_lite_off",
+    resource_type: "tenant",
+    resource_id: gate.tenantId,
+    after_data: { experts_lite: enabled },
+  });
+
+  revalidatePath("/[tenantSlug]", "layout");
   return { ok: true };
 }
 

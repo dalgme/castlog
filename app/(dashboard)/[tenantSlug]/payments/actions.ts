@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { requirePaymentsAccess } from "@/lib/auth/admin-scopes";
 import {
   createApprovalWithSteps,
@@ -33,6 +33,14 @@ async function requirePaymentsSession(): Promise<
   const modules = await getTenantModules();
   if (!modules.experts) {
     return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  // 라이트 모드 — 지급·세무는 제공하지 않는다 (docs/decisions/experts-lite.md)
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error:
+        "라이트 모드에서는 지급 기능을 사용하지 않습니다. 설정 > 기업관리에서 라이트 모드를 끄면 열립니다.",
+    };
   }
   // 지급은 금액 축이다 — 직급이 아니라 finance 권한으로 가른다.
   // (대표·이사 기본 포함 + finance 위임자. DB의 app.can_manage_payments()와 동일)

@@ -19,7 +19,7 @@ import {
 } from "@/lib/integrations/project-engagement";
 import { getCanceledExpertByPositionCode } from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -148,6 +148,7 @@ export default async function ProjectDetailPage({
   if (!project) notFound();
 
   const modules = await getTenantModules();
+  const expertsLite = await isExpertsLite();
 
   const [
     { data: steps },
@@ -829,6 +830,7 @@ export default async function ProjectDetailPage({
             canManage={canExecute}
             canInput={canInput}
             canCancel={exec.engagementCancel}
+            expertsLite={expertsLite}
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",

@@ -120,6 +120,7 @@ export function EngagementWorkbench({
   attachmentPanel,
   acceptanceAttachmentPanel,
   headerActions,
+  expertsLite = false,
 }: {
   tenantSlug: string;
   projectId: string;
@@ -159,6 +160,8 @@ export function EngagementWorkbench({
   acceptanceAttachmentPanel?: React.ReactNode;
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
+  /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송신 없이 기록만 */
+  expertsLite?: boolean;
 }) {
   // 긴급 취소로 다시 비게 된 자리 — 나머지 빈 자리와 섞이면 놓친다
   const reengageCount = slots.reduce(
@@ -203,6 +206,7 @@ export function EngagementWorkbench({
               />
             )}
           {canManage &&
+            !expertsLite &&
             (projectState.stage === "requesting" ||
               projectState.stage === "accepted_all" ||
               projectState.stage === "letters_sent") && (
@@ -223,6 +227,21 @@ export function EngagementWorkbench({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 라이트 모드 — 발송이 전부 꺼져 있음을 화면에서 먼저 말한다.
+            버튼이 조용히 아무것도 안 보내면 사용자는 보냈다고 믿는다 */}
+        {expertsLite && (
+          <div className="rounded-lg border-l-4 border-sky-500 bg-sky-50 p-3">
+            <p className="text-sm font-bold text-sky-900">
+              라이트 모드 — 발송 없이 기록만 됩니다
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-sky-900">
+              섭외 요청을 만들어도 전문가에게 문자·이메일이 나가지 않습니다.
+              전화 등으로 직접 확인한 뒤 각 후보의{" "}
+              <strong>섭외 완료(수락서 생성)</strong> 버튼으로 확정하세요.
+              재안내·수락서 송신도 쓰지 않습니다. (설정 &gt; 기업관리에서 변경)
+            </p>
+          </div>
+        )}
         {/* 지금 프로젝트가 어느 단계인지 — 버튼이 왜 열리고 닫히는지의 근거다 */}
         <div className="rounded-lg border-l-4 border-brand bg-brand/[0.04] p-3">
           <p className="text-sm font-bold text-brand-navy">
@@ -305,11 +324,12 @@ export function EngagementWorkbench({
         {/* 수락서에 동봉할 자료 — 송신 순간 각 수락서로 복사된다. 보낸 뒤에
             프로젝트 첨부를 지워도 이미 나간 수락서의 자료는 남는다 */}
         {canInput &&
+          !expertsLite &&
           projectState.stage === "accepted_all" &&
           acceptanceAttachmentPanel}
 
         {/* 전원 수락 — 이 화면에서 지금 할 일은 수락서 송신 하나뿐이다 */}
-        {canManage && projectState.stage === "accepted_all" && (
+        {canManage && !expertsLite && projectState.stage === "accepted_all" && (
           <div className="rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
             <p className="text-sm font-bold text-brand-navy">
               전원 수락 완료 — 수락서를 보낼 차례입니다

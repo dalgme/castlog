@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
 import {
   isModuleRequestStatus,
@@ -22,6 +22,7 @@ import {
   ModuleRequestPanel,
   type OpenRequest,
 } from "@/app/(dashboard)/[tenantSlug]/settings/module-request-panel";
+import { LiteModePanel } from "@/app/(dashboard)/[tenantSlug]/settings/lite-mode-panel";
 
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 import { PermissionLevelGuide } from "@/components/org/permission-level-guide";
@@ -62,6 +63,7 @@ export default async function OrgAdminPage({
     if (!allowed) redirect(postLoginPath(gateUser));
   }
   const modules = await getTenantModules();
+  const expertsLite = await isExpertsLite();
 
   if (!hasSupabaseEnv()) {
     return (
@@ -274,6 +276,18 @@ export default async function OrgAdminPage({
               lastDecision={lastModuleDecision}
               canRequest={canRequestModules}
             />
+          </CardContent>
+        </Card>
+        )}
+
+        {/* 라이트 모드 — 기능 축소라 승인 없이 기업이 스스로 설정 (기획 확정 2026-08-25) */}
+        {canRequestModules && modules.experts && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">전문가 섭외 운영 방식</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LiteModePanel enabled={expertsLite} />
           </CardContent>
         </Card>
         )}

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { requireRole } from "@/lib/auth/session";
 import { roleFromUser, practiceFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { getPendingModuleOnboarding } from "@/lib/modules/onboarding";
 import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
 import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
@@ -42,12 +42,14 @@ export async function TenantShell({
     "manager",
     "staff",
   ]);
-  const [modules, adminScopes, pendingOnboarding, payments] = await Promise.all([
-    getTenantModules(),
-    getAdminScopes(),
-    getPendingModuleOnboarding(),
-    canManagePayments(),
-  ]);
+  const [modules, adminScopes, pendingOnboarding, payments, expertsLite] =
+    await Promise.all([
+      getTenantModules(),
+      getAdminScopes(),
+      getPendingModuleOnboarding(),
+      canManagePayments(),
+      isExpertsLite(),
+    ]);
   const role = roleFromUser(user);
   // 연습모드 — 하위 계정(ceo·이사·팀장·대리·주임·사원) 전부에게 열린다.
   // 플랫폼관리자는 테넌트 소속이 아니므로 대상이 아니다.
@@ -87,6 +89,7 @@ export async function TenantShell({
         modules={modules}
         isOrgAdmin={isOrgAdmin}
         canManagePayments={payments}
+        expertsLite={expertsLite}
         tenantName={tenantName}
         logoSrc={logoSrc}
       />
