@@ -125,31 +125,48 @@ export async function setExpertsLite(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const admin = createAdminClient();
-  const { data: tenant } = await admin
-    .from("tenants")
-    .select("feature_flags")
-    .eq("id", gate.tenantId)
-    .maybeSingle();
-  if (!tenant) return { ok: false, error: "테넌트 정보를 확인할 수 없습니다." };
 
-  const current = parseExpertsLite(tenant.feature_flags);
-  if (current === enabled) return { ok: true };
+  // 읽기-수정-쓰기 경합 방지: feature_flags.modules는 계약 정보라, 같은 순간
+  // 캐스트로그 관리모드가 모듈을 승인하면 한쪽 쓰기가 사라질 수 있다.
+  // updated_at을 낙관적 잠금으로 걸고, 충돌 시 다시 읽어 병합한다.
+  let saved = false;
+  for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("feature_flags, updated_at")
+      .eq("id", gate.tenantId)
+      .maybeSingle();
+    if (!tenant) return { ok: false, error: "테넌트 정보를 확인할 수 없습니다." };
 
-  // 기존 feature_flags(modules 등)를 보존하면서 experts_lite만 바꾼다
-  const priorFlags =
-    tenant.feature_flags !== null &&
-    typeof tenant.feature_flags === "object" &&
-    !Array.isArray(tenant.feature_flags)
-      ? tenant.feature_flags
-      : {};
-  const { error } = await admin
-    .from("tenants")
-    .update({
-      feature_flags: { ...priorFlags, experts_lite: enabled },
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", gate.tenantId);
-  if (error) return { ok: false, error: "저장에 실패했습니다." };
+    if (parseExpertsLite(tenant.feature_flags) === enabled) return { ok: true };
+
+    // 기존 feature_flags(modules 등)를 보존하면서 experts_lite만 바꾼다
+    const priorFlags =
+      tenant.feature_flags !== null &&
+      typeof tenant.feature_flags === "object" &&
+      !Array.isArray(tenant.feature_flags)
+        ? tenant.feature_flags
+        : {};
+    let updateQuery = admin
+      .from("tenants")
+      .update({
+        feature_flags: { ...priorFlags, experts_lite: enabled },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", gate.tenantId);
+    updateQuery = tenant.updated_at
+      ? updateQuery.eq("updated_at", tenant.updated_at)
+      : updateQuery.is("updated_at", null);
+    const { data: updated, error } = await updateQuery.select("id");
+    if (error) return { ok: false, error: "저장에 실패했습니다." };
+    saved = (updated ?? []).length > 0;
+  }
+  if (!saved) {
+    return {
+      ok: false,
+      error: "다른 설정 변경과 겹쳤습니다. 잠시 후 다시 시도해 주세요.",
+    };
+  }
 
   const supabase = createClient();
   await supabase.from("audit_logs").insert({

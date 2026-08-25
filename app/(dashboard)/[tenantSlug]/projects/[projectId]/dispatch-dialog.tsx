@@ -47,6 +47,7 @@ export function DispatchDialog({
   targetCount,
   disabled,
   disabledReason,
+  expertsLite = false,
 }: {
   projectId: string;
   projectName: string;
@@ -55,6 +56,8 @@ export function DispatchDialog({
   targetCount: number;
   disabled: boolean;
   disabledReason: string;
+  /** 라이트 모드 — 발송 없이 요청만 기록되므로 문구를 그에 맞게 바꾼다 */
+  expertsLite?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -124,11 +127,24 @@ export function DispatchDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            이 프로젝트의 모든 전문가에게 섭외 요청을 보낼까요?
+            {expertsLite
+              ? "배정된 전원의 섭외 요청을 기록할까요?"
+              : "이 프로젝트의 모든 전문가에게 섭외 요청을 보낼까요?"}
           </DialogTitle>
           <DialogDescription>
-            배정된 <strong>{targetCount}명</strong>에게 동의 링크가 담긴 요청이
-            나갑니다. 보낸 뒤에는 되돌릴 수 없습니다.
+            {expertsLite ? (
+              <>
+                라이트 모드 — 배정된 <strong>{targetCount}명</strong>의 섭외
+                건이 ‘요청중’으로 기록됩니다. 문자·이메일은 나가지 않으며,
+                전화 확인 후 각 후보의 ‘섭외 완료(수락서 생성)’ 버튼으로
+                확정합니다.
+              </>
+            ) : (
+              <>
+                배정된 <strong>{targetCount}명</strong>에게 동의 링크가 담긴
+                요청이 나갑니다. 보낸 뒤에는 되돌릴 수 없습니다.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -142,8 +158,18 @@ export function DispatchDialog({
           <div className="space-y-3">
             <Alert>
               <AlertDescription>
-                <strong>{result.sent}명</strong>에게 섭외 요청을 보냈습니다.
-                전문가가 수락하면 이 화면의 상태가 자동으로 바뀝니다.
+                {expertsLite ? (
+                  <>
+                    <strong>{result.sent}명</strong>의 섭외 요청을 발송 없이
+                    기록했습니다. 전화 확인 후 각 후보의 ‘섭외 완료(수락서
+                    생성)’ 버튼으로 확정하세요.
+                  </>
+                ) : (
+                  <>
+                    <strong>{result.sent}명</strong>에게 섭외 요청을 보냈습니다.
+                    전문가가 수락하면 이 화면의 상태가 자동으로 바뀝니다.
+                  </>
+                )}
               </AlertDescription>
             </Alert>
             {result.failed.length > 0 && (
@@ -172,6 +198,8 @@ export function DispatchDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            {/* 라이트 모드 — 발송이 없으니 방식·마감을 묻지 않는다 */}
+            {!expertsLite && (
             <fieldset className="space-y-2">
               <legend className="text-sm font-semibold">발송 방식</legend>
               {CHANNELS.map((c) => (
@@ -195,7 +223,9 @@ export function DispatchDialog({
                 </Label>
               ))}
             </fieldset>
+            )}
 
+            {!expertsLite && (
             <div>
               <Label htmlFor="dispatch-deadline">회신 마감일시</Label>
               <DateTime24Input
@@ -208,6 +238,7 @@ export function DispatchDialog({
                 만료되고 자리가 다시 열립니다.
               </p>
             </div>
+            )}
 
             <div className="space-y-2">
               <div>
@@ -264,7 +295,13 @@ export function DispatchDialog({
               </Button>
               <Button className="flex-1" onClick={send} disabled={pending}>
                 <Send className="mr-1.5 h-4 w-4" />
-                {pending ? "발송 중…" : `예, ${targetCount}명에게 보냅니다`}
+                {pending
+                  ? expertsLite
+                    ? "기록 중…"
+                    : "발송 중…"
+                  : expertsLite
+                    ? `예, ${targetCount}명 기록합니다`
+                    : `예, ${targetCount}명에게 보냅니다`}
               </Button>
             </div>
           </div>

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
+import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { execDeniedMessage } from "@/lib/auth/exec-permissions";
@@ -204,6 +205,15 @@ export async function sendAcceptance(
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireManager();
   if (!auth.ok) return auth;
+  // 라이트 모드 — 송부는 포털 서명 흐름의 시작이다. 상태만 'sent'로 바꾸면
+  // 어디에도 도착하지 않은 문서를 기다리게 된다 (규칙 거부, §12-9).
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error:
+        "라이트 모드에서는 수락서를 송부하지 않습니다. 아래 '확인 완료' 처리로 마감하세요. 송부가 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
+    };
+  }
 
   const supabase = createClient();
   const { data: acceptance } = await supabase
@@ -262,12 +272,20 @@ export async function confirmAcceptance(
   const supabase = createClient();
   const { data: acceptance } = await supabase
     .from("engagement_acceptances")
-    .select("id, status")
+    .select("id, engagement_id, status")
     .eq("id", acceptanceId)
     .maybeSingle();
   if (!acceptance) return { ok: false, error: "수락서를 찾을 수 없습니다." };
-  if (acceptance.status !== "signed") {
+
+  // 라이트 모드 — 전문가 포털 서명이 없으므로 기업 담당자의 확인으로 마감한다.
+  // 이 확정이 없으면 프로젝트가 '전원 수락'에서 영영 멈춰 종료(공통 기반)에
+  // 도달할 수 없다 (docs/decisions/experts-lite.md).
+  const lite = await isExpertsLite();
+  if (!lite && acceptance.status !== "signed") {
     return { ok: false, error: "전문가 서명이 완료된 후 확인할 수 있습니다." };
+  }
+  if (lite && !["issued", "sent", "signed"].includes(acceptance.status)) {
+    return { ok: false, error: "이미 확인이 완료됐거나 확인할 수 없는 상태입니다." };
   }
 
   const { error } = await supabase
@@ -277,8 +295,32 @@ export async function confirmAcceptance(
       confirmed_at: new Date().toISOString(),
       confirmed_by: auth.userId,
     })
-    .eq("id", acceptanceId);
+    .eq("id", acceptanceId)
+    .eq("status", acceptance.status);
   if (error) return { ok: false, error: "확인 처리에 실패했습니다." };
+
+  // 라이트 수기 확정은 서명 없는 확정이라 감사 근거를 남긴다
+  if (lite && acceptance.status !== "signed") {
+    await supabase.from("audit_logs").insert({
+      tenant_id: auth.tenantId,
+      actor_auth_user_id: auth.userId,
+      actor_role: "manager",
+      action: "acceptance.confirm_manual",
+      resource_type: "engagement_acceptance",
+      resource_id: acceptanceId,
+      after_data: { prior_status: acceptance.status, experts_lite: true },
+    });
+  }
+
+  // 전원 확인이면 프로젝트가 '확정' 단계로 올라간다 (라이트 종료 경로)
+  const { data: engagement } = await supabase
+    .from("expert_engagements")
+    .select("project_id")
+    .eq("id", acceptance.engagement_id)
+    .maybeSingle();
+  if (engagement?.project_id) {
+    await refreshProjectEngagementStage(engagement.project_id);
+  }
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
   return { ok: true };

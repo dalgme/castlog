@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantSms, type SmsRecipient } from "@/lib/sms/send";
 import { formatEventSchedule, roleTypeLabel } from "./engagement-roles";
 
@@ -181,6 +182,20 @@ export async function dispatchSessionNotice(
   if (!notice) return { ok: false, error: "안내문자 건을 찾을 수 없습니다." };
   if (notice.status !== "scheduled") {
     return { ok: false, error: "이미 처리된 안내문자입니다." };
+  }
+
+  // 라이트 모드 — 전문가 발송 전면 차단. 라이트 전환 전에 예약해 둔 건이
+  // 크론으로 그대로 나가면 안 되므로, 발송 시점에 다시 판정해 failed로 남긴다.
+  if (await isTenantExpertsLite(notice.tenant_id)) {
+    await admin
+      .from("session_notices")
+      .update({
+        status: "failed",
+        last_error:
+          "라이트 모드에서는 안내문자를 발송하지 않습니다 (설정 > 기업관리).",
+      })
+      .eq("id", noticeId);
+    return { ok: false, error: "라이트 모드에서는 안내문자를 발송하지 않습니다." };
   }
 
   const context = await getSessionNoticeContext(notice.slot_id);

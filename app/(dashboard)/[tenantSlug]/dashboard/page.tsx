@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { canViewAllProjects, gradeLabel, gradeRank } from "@/lib/auth/grades";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantDashboard } from "@/lib/integrations/tenant-dashboard";
 import { getMyWork } from "@/lib/integrations/my-work";
@@ -143,12 +143,13 @@ export default async function DashboardPage({
   const isJunior = grade !== null && gradeRank(grade) < gradeRank("team_lead");
 
   const modules = await getTenantModules();
-  const [data, payments, myWork, urgentCancels] = await Promise.all([
+  const [data, payments, myWork, urgentCancels, expertsLite] = await Promise.all([
     getTenantDashboard(year, modules),
     canManagePayments(),
     getMyWork(user?.id ?? "", slug, modules),
     // 확정 전문가의 갑작스러운 취소는 전 임직원이 즉시 알아야 한다
     modules.experts ? getUrgentCancellations() : Promise.resolve([]),
+    isExpertsLite(),
   ]);
 
   const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
@@ -373,7 +374,7 @@ export default async function DashboardPage({
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm">{year}년 비용 현황</CardTitle>
-              {modules.experts && payments && (
+              {modules.experts && payments && !expertsLite && (
                 <Button asChild variant="ghost" size="sm">
                   <Link href={`/${slug}/payments`}>지급 관리</Link>
                 </Button>

@@ -201,6 +201,7 @@ export function EngagementWorkbench({
                 projectName={projectName}
                 defaultSummary={projectDescription}
                 targetCount={projectState.assigned}
+                expertsLite={expertsLite}
                 disabled={projectState.stage !== "plan_approved"}
                 disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
               />
