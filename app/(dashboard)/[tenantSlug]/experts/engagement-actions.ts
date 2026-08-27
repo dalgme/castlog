@@ -13,8 +13,9 @@ import {
   type EngagementEventType,
 } from "@/lib/integrations/engagement-events";
 import { applyEngagementResponse } from "@/lib/integrations/engagements";
+import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
@@ -421,8 +422,13 @@ export async function cancelEngagement(
  */
 export async function manualAcceptEngagement(
   engagementId: string,
-  note?: string
-): Promise<EngagementActionResult> {
+  note?: string,
+  /** 라이트 모드 전용 — 수락서 확인(confirmed)까지 한 번에 마감 (기획 확정 2026-08-25) */
+  alsoConfirm?: boolean
+): Promise<
+  | { ok: true; confirmedNow: boolean }
+  | { ok: false; error: string }
+> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
@@ -479,9 +485,61 @@ export async function manualAcceptEngagement(
   );
   if (!result.ok) return result;
 
+  // 라이트 모드 원클릭 마감 — 송부·서명이 없으므로 방금 생성된 수락서를
+  // 기업 확인(confirmed)까지 함께 처리한다. 실패해도 섭외 완료 자체는
+  // 유효하다(수락서 화면에서 따로 확인 완료 가능) — 성공을 되돌리지 않는다.
+  // 확정이 실제로 됐는지는 confirmedNow로 돌려준다 — 수락서 RLS는
+  // acceptanceSend 축(app.can_exec)이라 engagementRequest만 가진 사람은
+  // 여기서 0행이 될 수 있고, 그때 "마감됐다"고 말하면 거짓 안내다.
+  let confirmedNow = false;
+  if (alsoConfirm && (await isExpertsLite())) {
+    try {
+      const { data: acceptance } = await supabase
+        .from("engagement_acceptances")
+        .select("id, status")
+        .eq("engagement_id", engagementId)
+        .maybeSingle();
+      if (acceptance && ["issued", "sent", "signed"].includes(acceptance.status)) {
+        const { data: confirmed } = await supabase
+          .from("engagement_acceptances")
+          .update({
+            status: "confirmed",
+            confirmed_at: new Date().toISOString(),
+            confirmed_by: user.id,
+          })
+          .eq("id", acceptance.id)
+          .eq("status", acceptance.status)
+          .select("id")
+          .maybeSingle();
+        if (confirmed) {
+          confirmedNow = true;
+          await supabase.from("audit_logs").insert({
+            tenant_id: tenantId,
+            actor_auth_user_id: user.id,
+            actor_role: role,
+            action: "acceptance.confirm_manual",
+            resource_type: "engagement_acceptance",
+            resource_id: acceptance.id,
+            after_data: {
+              prior_status: acceptance.status,
+              experts_lite: true,
+              via: "manual_accept_one_click",
+            },
+          });
+          if (engagement.project_id) {
+            await refreshProjectEngagementStage(engagement.project_id);
+          }
+        }
+      }
+    } catch {
+      // 원클릭 마감 실패가 섭외 완료를 되돌리지 않는다 — confirmedNow=false로
+      // 남겨 화면이 "수락서 화면에서 확인 완료하라"고 안내하게 한다.
+    }
+  }
+
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/experts", "page");
-  return { ok: true };
+  return { ok: true, confirmedNow };
 }
 
 export type EngagementEventRow = {

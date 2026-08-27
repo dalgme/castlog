@@ -400,6 +400,7 @@ export function EngagementWorkbench({
                   canManage={canInput}
                   canCancel={canCancel}
                   canExecute={canManage}
+                  expertsLite={expertsLite}
                   editable={canInput && projectState.stage === "assigning"}
                   sessionDuration={durationLabel(slot.startsTime, slot.endsTime)}
                 />
@@ -455,6 +456,7 @@ export function EngagementWorkbench({
                     <ManualAcceptButton
                       engagementId={e.id}
                       expertName={e.expertName}
+                      expertsLite={expertsLite}
                     />
                   )}
                   {canCancel && e.status === "requested" && (

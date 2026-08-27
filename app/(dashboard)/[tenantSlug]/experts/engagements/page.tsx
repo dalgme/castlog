@@ -285,6 +285,7 @@ export default async function EngagementStatusPage({
                                 <ManualAcceptButton
                                   engagementId={e.id}
                                   expertName={e.experts?.name ?? null}
+                                  expertsLite={expertsLite}
                                 />
                               )}
                             </span>
