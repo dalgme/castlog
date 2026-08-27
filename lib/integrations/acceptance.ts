@@ -73,7 +73,7 @@ export async function createEngagementAcceptance(
   const { data: eng } = await admin
     .from("expert_engagements")
     .select(
-      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes"
+      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes, is_practice"
     )
     .eq("id", engagementId)
     .maybeSingle();
@@ -156,6 +156,9 @@ export async function createEngagementAcceptance(
     seal_path: sealPath,
     has_signature: signaturePath !== null,
     signed_via: signedVia,
+    // 연습 건의 수락서는 연습으로 — admin 경로는 is_practice를 명시해야 한다.
+    // 빠뜨리면 연습 섭외의 수동 '섭외 완료'가 실모드 수락서를 만든다(혼입).
+    is_practice: eng.is_practice,
   });
 
   await admin.from("audit_logs").insert({
