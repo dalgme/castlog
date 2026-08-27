@@ -13,8 +13,9 @@ import {
   type EngagementEventType,
 } from "@/lib/integrations/engagement-events";
 import { applyEngagementResponse } from "@/lib/integrations/engagements";
+import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
@@ -421,7 +422,9 @@ export async function cancelEngagement(
  */
 export async function manualAcceptEngagement(
   engagementId: string,
-  note?: string
+  note?: string,
+  /** 라이트 모드 전용 — 수락서 확인(confirmed)까지 한 번에 마감 (기획 확정 2026-08-25) */
+  alsoConfirm?: boolean
 ): Promise<EngagementActionResult> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
@@ -478,6 +481,48 @@ export async function manualAcceptEngagement(
     { userId: user.id, role, name: actorName }
   );
   if (!result.ok) return result;
+
+  // 라이트 모드 원클릭 마감 — 송부·서명이 없으므로 방금 생성된 수락서를
+  // 기업 확인(confirmed)까지 함께 처리한다. 실패해도 섭외 완료 자체는
+  // 유효하다(수락서 화면에서 따로 확인 완료 가능) — 성공을 되돌리지 않는다.
+  if (alsoConfirm && (await isExpertsLite())) {
+    const { data: acceptance } = await supabase
+      .from("engagement_acceptances")
+      .select("id, status")
+      .eq("engagement_id", engagementId)
+      .maybeSingle();
+    if (acceptance && ["issued", "sent", "signed"].includes(acceptance.status)) {
+      const { data: confirmed } = await supabase
+        .from("engagement_acceptances")
+        .update({
+          status: "confirmed",
+          confirmed_at: new Date().toISOString(),
+          confirmed_by: user.id,
+        })
+        .eq("id", acceptance.id)
+        .eq("status", acceptance.status)
+        .select("id")
+        .maybeSingle();
+      if (confirmed) {
+        await supabase.from("audit_logs").insert({
+          tenant_id: tenantId,
+          actor_auth_user_id: user.id,
+          actor_role: role,
+          action: "acceptance.confirm_manual",
+          resource_type: "engagement_acceptance",
+          resource_id: acceptance.id,
+          after_data: {
+            prior_status: acceptance.status,
+            experts_lite: true,
+            via: "manual_accept_one_click",
+          },
+        });
+        if (engagement.project_id) {
+          await refreshProjectEngagementStage(engagement.project_id);
+        }
+      }
+    }
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/experts", "page");

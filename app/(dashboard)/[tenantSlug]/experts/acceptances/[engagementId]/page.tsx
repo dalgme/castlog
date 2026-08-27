@@ -110,7 +110,9 @@ export default async function TenantAcceptancePage({
         {canManage && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">수락서 보완 · 송부</CardTitle>
+              <CardTitle className="text-sm">
+                {expertsLite ? "수락서 확인" : "수락서 보완 · 송부"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <AcceptanceEditor

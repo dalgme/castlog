@@ -104,7 +104,17 @@ export function AcceptanceEditor({
         </Alert>
       )}
 
-      {editable && (
+      {/* 보완 편집(안내문·지급안내·제출서류·약도·첨부)은 전문가에게 송부할
+          문서를 다듬는 기능이다. 라이트 모드는 송부가 없어 독자가 없으므로
+          숨긴다 — 조건 스냅샷 확인과 [확인 완료]만 남긴다 (기획 확정 2026-08-25) */}
+      {editable && expertsLite && (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          아래 수락서의 조건(역할·일시·비용·장소)이 합의한 내용과 맞는지
+          확인한 뒤 <b>확인 완료 처리</b>로 마감하세요. 안내문 편집·송부는
+          라이트 모드에서 사용하지 않습니다.
+        </p>
+      )}
+      {editable && !expertsLite && (
         <>
           <div className="space-y-2">
             <p className="text-sm font-medium">상세 설명 (안내 사항)</p>
