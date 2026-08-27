@@ -73,7 +73,7 @@ export async function createEngagementAcceptance(
   const { data: eng } = await admin
     .from("expert_engagements")
     .select(
-      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes"
+      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes, is_practice"
     )
     .eq("id", engagementId)
     .maybeSingle();
@@ -156,6 +156,10 @@ export async function createEngagementAcceptance(
     seal_path: sealPath,
     has_signature: signaturePath !== null,
     signed_via: signedVia,
+    // 연습 건의 수락서는 연습으로 — DB 트리거(a_stamp_acceptance_practice,
+    // 20260819000002)가 섭외 건의 플래그로 최종 강제하지만, admin 경로도
+    // 명시해 의도를 코드에 드러낸다(심층 방어).
+    is_practice: eng.is_practice,
   });
 
   await admin.from("audit_logs").insert({

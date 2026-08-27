@@ -17,6 +17,9 @@ import { ensurePracticeAcceptance } from "@/lib/integrations/acceptance";
  *  - 가상 타사(peer) 테넌트에서 각 전문가에게 **섭외 중 3건**.
  *    빈 슬롯 3개와 날짜를 맞춰 두었으므로, 그 슬롯의 후보군을 열면
  *    "해당 일정과 중복되어 섭외 진행 중 1건"이 실제로 뜬다.
+ *  - 자사 '요청중' 건 2건(전화 섭외 실습) — 수동 '섭외 완료(수락서 생성)'
+ *    버튼·섭외 이력 버튼을 눌러 보는 자리. 소진하면 다음 진입 때 보충된다.
+ *  - 섭외 이력(engagement_events) 백필 — 이력 없는 연습 건에 요청·동의 기록.
  *
  * 왜 타사 건을 따로 만드는가: 중복 경고의 핵심은 '다른 회사가 먼저 요청해 둔
  * 상태'다. 자사 건으로는 그 상황이 재현되지 않는다. peer 테넌트는 status를
@@ -45,6 +48,8 @@ const PRACTICE_EXPERTS = [
     careerYears: 12,
     bio: "연습용 가상 전문가입니다. 실존 인물이 아닙니다.",
     paymentType: "other_income",
+    organization: "(연습) 가온대학교",
+    jobTitle: "교수",
   },
   {
     name: "나래 멘토",
@@ -53,6 +58,8 @@ const PRACTICE_EXPERTS = [
     careerYears: 8,
     bio: "연습용 가상 전문가입니다. 실존 인물이 아닙니다.",
     paymentType: "business_income",
+    organization: "(연습) 나래브랜딩",
+    jobTitle: "대표",
   },
   {
     name: "다올 심사",
@@ -61,6 +68,8 @@ const PRACTICE_EXPERTS = [
     careerYears: 15,
     bio: "연습용 가상 전문가입니다. 실존 인물이 아닙니다.",
     paymentType: "other_income",
+    organization: "(연습) 다올회계법인",
+    jobTitle: "회계사",
   },
   {
     name: "라온 진행",
@@ -69,6 +78,8 @@ const PRACTICE_EXPERTS = [
     careerYears: 6,
     bio: "연습용 가상 전문가입니다. 실존 인물이 아닙니다.",
     paymentType: "business_income",
+    organization: "(연습) 라온이벤트",
+    jobTitle: "실장",
   },
   {
     name: "마루 컨설턴트",
@@ -77,6 +88,8 @@ const PRACTICE_EXPERTS = [
     careerYears: 10,
     bio: "연습용 가상 전문가입니다. 실존 인물이 아닙니다.",
     paymentType: "other_income",
+    organization: "(연습) 마루기술컨설팅",
+    jobTitle: "수석 컨설턴트",
   },
 ] as const;
 
@@ -178,6 +191,8 @@ async function ensureExperts(
           region: spec.region,
           career_years: spec.careerYears,
           bio: spec.bio,
+          organization: spec.organization,
+          job_title: spec.jobTitle,
           is_practice: true,
         })
         .select("id")
@@ -198,6 +213,38 @@ async function ensureExperts(
   }
 
   return created;
+}
+
+/**
+ * 소속·직위 백필 — 프로필 항목이 늘어난 뒤(2026-08-23 소속/직위 추가) 먼저
+ * 시드된 연습 전문가는 그 칸이 비어 있다. 목록·상세에서 빈 칸만 보이면
+ * 새 항목이 있다는 것 자체를 연습에서 알 수 없으므로 채워 둔다 (멱등 —
+ * 값이 이미 있으면 존중한다).
+ */
+async function backfillExpertProfiles(
+  admin: Admin,
+  experts: { id: string; name: string }[]
+): Promise<void> {
+  const specByName = new Map<string, (typeof PRACTICE_EXPERTS)[number]>(
+    PRACTICE_EXPERTS.map((e) => [e.name, e])
+  );
+  const { data: rows } = await admin
+    .from("experts")
+    .select("id, name, organization, job_title")
+    .in(
+      "id",
+      experts.map((e) => e.id)
+    );
+  for (const row of rows ?? []) {
+    const spec = specByName.get(row.name);
+    if (!spec) continue;
+    const patch: { organization?: string; job_title?: string } = {};
+    if (!row.organization) patch.organization = spec.organization;
+    if (!row.job_title) patch.job_title = spec.jobTitle;
+    if (Object.keys(patch).length > 0) {
+      await admin.from("experts").update(patch).eq("id", row.id);
+    }
+  }
 }
 
 /**
@@ -555,6 +602,160 @@ async function backfillPracticeStages(
   }
 }
 
+/** 수기(전화) 섭외 연습용 마커 — 이 이름의 건은 시드가 만든 '요청중' 건이다. */
+const MANUAL_PRACTICE_PROGRAM = "(연습) 전화 섭외 실습";
+
+/**
+ * 자사 '요청중' 섭외 건 보장 — 수동 '섭외 완료(수락서 생성)' 버튼과 섭외
+ * 이력 버튼(2026-08-23 추가)을 눌러 볼 자사 소유의 회신 대기 건이 없으면
+ * 연습에서 그 기능이 존재하지 않는 것과 같다 (타사 peer 건은 자사 화면에
+ * 뜨지 않는다).
+ *
+ * 보충형 멱등: 연습자가 완료·회수 처리로 소진하면 다음 진입 때 2건까지
+ * 다시 채운다. 다만 마커 건 총량이 10건을 넘으면 더 만들지 않는다 —
+ * 처리하지 않고 드나들기만 하는 환경에서 무한히 쌓이는 것을 막는다.
+ */
+async function ensureManualPracticeEngagements(
+  admin: Admin,
+  tenantId: string,
+  experts: { id: string; name: string }[],
+  now: Date
+): Promise<void> {
+  const { data: activeProject } = await admin
+    .from("projects")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_practice", true)
+    .eq("name", ACTIVE_PROJECT_NAME)
+    .maybeSingle();
+  // 프로젝트 없이 만든 건은 열람 범위(RLS)상 담당자에게 보이지 않는다 —
+  // 붙일 프로젝트가 아직 없으면 만들지 않는다 (다음 진입 때 만들어진다).
+  if (!activeProject) return;
+
+  const { data: markers } = await admin
+    .from("expert_engagements")
+    .select("id, status, expert_id, project_id")
+    .eq("tenant_id", tenantId)
+    .eq("is_practice", true)
+    .eq("program_name", MANUAL_PRACTICE_PROGRAM);
+
+  // 자가 복구 — 프로젝트 생성 전에 만들어져 미연결로 남은 건을 붙인다
+  // (양쪽 다 연습 데이터라 혼입 트리거에 걸리지 않는다)
+  const orphans = (markers ?? []).filter((m) => m.project_id === null);
+  for (const orphan of orphans) {
+    await admin
+      .from("expert_engagements")
+      .update({ project_id: activeProject.id })
+      .eq("id", orphan.id);
+  }
+
+  const total = (markers ?? []).length;
+  const open = (markers ?? []).filter((m) => m.status === "requested").length;
+  if (open >= 2 || total >= 10) return;
+
+  // 이미 회신 대기 마커를 들고 있는 전문가는 제외 — 같은 사람에게 실습 요청이
+  // 두 건 겹치면 화면이 이상해 보인다. 전원이 보유 중이면 앞사람부터 재사용.
+  const holding = new Set(
+    (markers ?? [])
+      .filter((m) => m.status === "requested")
+      .map((m) => m.expert_id)
+  );
+  const pool = experts.filter((e) => !holding.has(e.id));
+  const targets = (pool.length > 0 ? pool : experts).slice(0, 2 - open);
+  for (let i = 0; i < targets.length; i++) {
+    const expert = targets[i];
+    if (!expert) continue;
+    const date = ymd(addDays(now, 3 + i));
+    const token = generateLinkToken();
+    const { data: engagement } = await admin
+      .from("expert_engagements")
+      .insert({
+        tenant_id: tenantId,
+        expert_id: expert.id,
+        project_id: activeProject.id,
+        program_name: MANUAL_PRACTICE_PROGRAM,
+        role_description: "특강",
+        role_type: "lecturer",
+        starts_on: date,
+        ends_on: date,
+        starts_time: "10:00",
+        ends_time: "12:00",
+        fee_amount: 300000,
+        status: "requested",
+        token_hash: hashLinkToken(token),
+        token_expires_at: new Date(Date.now() + 30 * 86400_000).toISOString(),
+        is_practice: true,
+      })
+      .select("id")
+      .maybeSingle();
+    // 이력 버튼이 비어 보이지 않게 — 요청 시작 이벤트를 함께 남긴다
+    if (engagement) {
+      await admin.from("engagement_events").insert({
+        tenant_id: tenantId,
+        engagement_id: engagement.id,
+        event_type: "requested",
+        actor_kind: "staff",
+        actor_label: "(연습) 담당자",
+        note: "전화로 섭외를 진행한 뒤 '섭외 완료(수락서 생성)' 버튼으로 확정해 보세요.",
+        is_practice: true,
+      });
+    }
+  }
+}
+
+/**
+ * 섭외 이력 백필 — 이력 로그(engagement_events, 2026-08-23 도입) 이전에
+ * 시드된 연습 건은 이력 버튼을 눌러도 "기록된 이력이 없습니다"만 나온다.
+ * 기능이 있는데 보이지 않으면 없는 것과 같으므로, 이벤트가 하나도 없는
+ * 연습 건에 요청·동의 이력을 만들어 준다 (멱등 — 있으면 건드리지 않는다).
+ */
+async function backfillPracticeEngagementEvents(
+  admin: Admin,
+  tenantId: string
+): Promise<void> {
+  const { data: engagements } = await admin
+    .from("expert_engagements")
+    .select("id, status, created_at, responded_at, experts (name)")
+    .eq("tenant_id", tenantId)
+    .eq("is_practice", true)
+    .in("status", ["requested", "accepted"]);
+  if (!engagements || engagements.length === 0) return;
+
+  const { data: existing } = await admin
+    .from("engagement_events")
+    .select("engagement_id")
+    .in(
+      "engagement_id",
+      engagements.map((e) => e.id)
+    );
+  const have = new Set((existing ?? []).map((e) => e.engagement_id));
+
+  for (const eng of engagements) {
+    if (have.has(eng.id)) continue;
+    const requestedAt = eng.created_at ?? new Date().toISOString();
+    await admin.from("engagement_events").insert({
+      tenant_id: tenantId,
+      engagement_id: eng.id,
+      event_type: "requested",
+      actor_kind: "staff",
+      actor_label: "(연습) 담당자",
+      is_practice: true,
+      created_at: requestedAt,
+    });
+    if (eng.status === "accepted") {
+      await admin.from("engagement_events").insert({
+        tenant_id: tenantId,
+        engagement_id: eng.id,
+        event_type: "accepted",
+        actor_kind: "expert",
+        actor_label: eng.experts?.name ?? "전문가",
+        is_practice: true,
+        created_at: eng.responded_at ?? requestedAt,
+      });
+    }
+  }
+}
+
 export async function ensurePracticeEnvironment(
   tenantId: string
 ): Promise<SeedResult> {
@@ -577,10 +778,18 @@ export async function ensurePracticeEnvironment(
   // 조기 반환보다 앞에 둔다. createSlot 안에서만 만들면 새 환경만 채워지고,
   // 먼저 시드된 환경은 영영 비어 있다 (수락서 404의 원인이었다).
   await ensureTaxProfiles(admin, experts);
+  await backfillExpertProfiles(admin, experts);
   await backfillPracticeAcceptances(admin, tenantId);
   await backfillPracticeStages(admin, tenantId);
   await ensureClosingPracticeProject(admin, tenantId, experts, new Date());
-  if (already) return { ok: true, created: false, experts: experts.length };
+  if (already) {
+    // 이력 로그·수동 완료(2026-08-23) 연습 대상 — 기존 환경에도 붙는다.
+    // 신규 환경은 프로젝트·섭외 건이 아래에서 만들어지므로 그 뒤(함수 끝)에서
+    // 호출한다 — 먼저 부르면 첫 진입에 실습 건이 미연결로 남고 이력이 비었다.
+    await ensureManualPracticeEngagements(admin, tenantId, experts, new Date());
+    await backfillPracticeEngagementEvents(admin, tenantId);
+    return { ok: true, created: false, experts: experts.length };
+  }
 
   const now = new Date();
   const week = daysUntilSunday(now);
@@ -724,6 +933,10 @@ export async function ensurePracticeEnvironment(
   if (peerTenantId) {
     await createPeerPendingEngagements(admin, peerTenantId, experts, openDates);
   }
+
+  // ---- 4) 수동 완료·이력 연습 대상 — 방금 만든 프로젝트·섭외 건 위에서 ---------
+  await ensureManualPracticeEngagements(admin, tenantId, experts, now);
+  await backfillPracticeEngagementEvents(admin, tenantId);
 
   return { ok: true, created: true, experts: experts.length };
 }
