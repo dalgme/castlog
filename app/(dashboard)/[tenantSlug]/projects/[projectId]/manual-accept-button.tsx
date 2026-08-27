@@ -50,11 +50,15 @@ export function ManualAcceptButton({
       );
       if (!r.ok) toast({ variant: "destructive", description: r.error });
       else {
+        // 확정 여부는 서버 결과로 판단한다 — 권한(acceptanceSend RLS)이나
+        // 경합으로 확정만 건너뛰었을 수 있고, 그때 "마감됐다"고 하면 거짓이다
+        const wantedConfirm = expertsLite && alsoConfirm;
         toast({
-          description:
-            expertsLite && alsoConfirm
+          description: wantedConfirm
+            ? r.confirmedNow
               ? "섭외 완료·수락서 확인까지 마감되었습니다."
-              : "섭외 완료로 처리되었습니다. 수락서가 생성되었습니다.",
+              : "섭외 완료로 처리되었습니다. 수락서 확인은 완료되지 않았습니다 — 수락서 화면에서 '확인 완료 처리'로 마무리하세요."
+            : "섭외 완료로 처리되었습니다. 수락서가 생성되었습니다.",
         });
         setOpen(false);
         router.refresh();
