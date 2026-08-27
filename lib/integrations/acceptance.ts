@@ -156,8 +156,9 @@ export async function createEngagementAcceptance(
     seal_path: sealPath,
     has_signature: signaturePath !== null,
     signed_via: signedVia,
-    // 연습 건의 수락서는 연습으로 — admin 경로는 is_practice를 명시해야 한다.
-    // 빠뜨리면 연습 섭외의 수동 '섭외 완료'가 실모드 수락서를 만든다(혼입).
+    // 연습 건의 수락서는 연습으로 — DB 트리거(a_stamp_acceptance_practice,
+    // 20260819000002)가 섭외 건의 플래그로 최종 강제하지만, admin 경로도
+    // 명시해 의도를 코드에 드러낸다(심층 방어).
     is_practice: eng.is_practice,
   });
 

@@ -621,16 +621,6 @@ async function ensureManualPracticeEngagements(
   experts: { id: string; name: string }[],
   now: Date
 ): Promise<void> {
-  const { data: markers } = await admin
-    .from("expert_engagements")
-    .select("id, status")
-    .eq("tenant_id", tenantId)
-    .eq("is_practice", true)
-    .eq("program_name", MANUAL_PRACTICE_PROGRAM);
-  const total = (markers ?? []).length;
-  const open = (markers ?? []).filter((m) => m.status === "requested").length;
-  if (open >= 2 || total >= 10) return;
-
   const { data: activeProject } = await admin
     .from("projects")
     .select("id")
@@ -638,8 +628,40 @@ async function ensureManualPracticeEngagements(
     .eq("is_practice", true)
     .eq("name", ACTIVE_PROJECT_NAME)
     .maybeSingle();
+  // 프로젝트 없이 만든 건은 열람 범위(RLS)상 담당자에게 보이지 않는다 —
+  // 붙일 프로젝트가 아직 없으면 만들지 않는다 (다음 진입 때 만들어진다).
+  if (!activeProject) return;
 
-  const targets = experts.slice(0, 2 - open);
+  const { data: markers } = await admin
+    .from("expert_engagements")
+    .select("id, status, expert_id, project_id")
+    .eq("tenant_id", tenantId)
+    .eq("is_practice", true)
+    .eq("program_name", MANUAL_PRACTICE_PROGRAM);
+
+  // 자가 복구 — 프로젝트 생성 전에 만들어져 미연결로 남은 건을 붙인다
+  // (양쪽 다 연습 데이터라 혼입 트리거에 걸리지 않는다)
+  const orphans = (markers ?? []).filter((m) => m.project_id === null);
+  for (const orphan of orphans) {
+    await admin
+      .from("expert_engagements")
+      .update({ project_id: activeProject.id })
+      .eq("id", orphan.id);
+  }
+
+  const total = (markers ?? []).length;
+  const open = (markers ?? []).filter((m) => m.status === "requested").length;
+  if (open >= 2 || total >= 10) return;
+
+  // 이미 회신 대기 마커를 들고 있는 전문가는 제외 — 같은 사람에게 실습 요청이
+  // 두 건 겹치면 화면이 이상해 보인다. 전원이 보유 중이면 앞사람부터 재사용.
+  const holding = new Set(
+    (markers ?? [])
+      .filter((m) => m.status === "requested")
+      .map((m) => m.expert_id)
+  );
+  const pool = experts.filter((e) => !holding.has(e.id));
+  const targets = (pool.length > 0 ? pool : experts).slice(0, 2 - open);
   for (let i = 0; i < targets.length; i++) {
     const expert = targets[i];
     if (!expert) continue;
@@ -650,7 +672,7 @@ async function ensureManualPracticeEngagements(
       .insert({
         tenant_id: tenantId,
         expert_id: expert.id,
-        project_id: activeProject?.id ?? null,
+        project_id: activeProject.id,
         program_name: MANUAL_PRACTICE_PROGRAM,
         role_description: "특강",
         role_type: "lecturer",
@@ -760,10 +782,14 @@ export async function ensurePracticeEnvironment(
   await backfillPracticeAcceptances(admin, tenantId);
   await backfillPracticeStages(admin, tenantId);
   await ensureClosingPracticeProject(admin, tenantId, experts, new Date());
-  // 이력 로그·수동 완료(2026-08-23) 연습 대상 — 기존 환경에도 붙는다
-  await ensureManualPracticeEngagements(admin, tenantId, experts, new Date());
-  await backfillPracticeEngagementEvents(admin, tenantId);
-  if (already) return { ok: true, created: false, experts: experts.length };
+  if (already) {
+    // 이력 로그·수동 완료(2026-08-23) 연습 대상 — 기존 환경에도 붙는다.
+    // 신규 환경은 프로젝트·섭외 건이 아래에서 만들어지므로 그 뒤(함수 끝)에서
+    // 호출한다 — 먼저 부르면 첫 진입에 실습 건이 미연결로 남고 이력이 비었다.
+    await ensureManualPracticeEngagements(admin, tenantId, experts, new Date());
+    await backfillPracticeEngagementEvents(admin, tenantId);
+    return { ok: true, created: false, experts: experts.length };
+  }
 
   const now = new Date();
   const week = daysUntilSunday(now);
@@ -907,6 +933,10 @@ export async function ensurePracticeEnvironment(
   if (peerTenantId) {
     await createPeerPendingEngagements(admin, peerTenantId, experts, openDates);
   }
+
+  // ---- 4) 수동 완료·이력 연습 대상 — 방금 만든 프로젝트·섭외 건 위에서 ---------
+  await ensureManualPracticeEngagements(admin, tenantId, experts, now);
+  await backfillPracticeEngagementEvents(admin, tenantId);
 
   return { ok: true, created: true, experts: experts.length };
 }
