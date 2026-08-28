@@ -33,6 +33,7 @@ export function CandidatePicker({
   defaultSummary = null,
   tenantSlug,
   projectId,
+  expertsLite = false,
 }: {
   positionId: string;
   candidates: SlotCandidate[];
@@ -41,6 +42,8 @@ export function CandidatePicker({
   defaultSummary?: string | null;
   tenantSlug: string;
   projectId: string;
+  /** 라이트 모드 — 발송 없이 기록만 되므로 문구·마감 입력을 그에 맞춘다 (검수 A7) */
+  expertsLite?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -123,17 +126,27 @@ export function CandidatePicker({
     return (
       <Alert>
         <AlertDescription>
-          <p className="mb-2">
-            섭외 요청을 생성했습니다. 아래 동의 링크를 전문가에게 전달하세요.
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded bg-secondary/70 px-2 py-1 text-xs">
-              {url}
-            </code>
-            <Button size="sm" variant="outline" onClick={copy}>
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
+          {expertsLite ? (
+            <p className="mb-2">
+              섭외 요청을 발송 없이 기록했습니다 (라이트 모드). 전화 확인 후
+              프로젝트 섭외 탭의 ‘섭외 완료(수락서 생성)’ 버튼으로 확정하세요.
+            </p>
+          ) : (
+            <p className="mb-2">
+              문자·이메일로 섭외 요청을 보냈습니다. 필요하면 아래 동의 링크를
+              직접 전달할 수도 있습니다.
+            </p>
+          )}
+          {!expertsLite && (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded bg-secondary/70 px-2 py-1 text-xs">
+                {url}
+              </code>
+              <Button size="sm" variant="outline" onClick={copy}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
         </AlertDescription>
       </Alert>
     );
@@ -302,13 +315,22 @@ export function CandidatePicker({
           onChange={(e) => setSpecialNotes(e.target.value)}
           placeholder="특기사항 (선택)"
         />
-        <div>
-          <label className="text-[11px] text-muted-foreground">회신 마감일시 (선택)</label>
-          <DateTime24Input value={deadline} onChange={setDeadline} />
-        </div>
+        {/* 라이트 모드는 발송·링크 만료가 없다 — 마감 입력을 묻지 않는다 (검수 A7) */}
+        {!expertsLite && (
+          <div>
+            <label className="text-[11px] text-muted-foreground">회신 마감일시 (선택)</label>
+            <DateTime24Input value={deadline} onChange={setDeadline} />
+          </div>
+        )}
         <Button onClick={send} disabled={pending || !selected}>
           <Send className="mr-1.5 h-4 w-4" />
-          {pending ? "생성 중..." : "섭외 요청 보내기"}
+          {pending
+            ? expertsLite
+              ? "기록 중..."
+              : "생성 중..."
+            : expertsLite
+              ? "섭외 요청 기록"
+              : "섭외 요청 보내기"}
         </Button>
       </div>
     </div>

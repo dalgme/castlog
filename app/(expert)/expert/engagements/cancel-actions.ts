@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { releasePositionsForEngagement } from "@/lib/integrations/engagement-lifecycle";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
 
@@ -140,6 +141,17 @@ export async function cancelConfirmedEngagementByExpert(input: {
     resource_type: "expert_engagement",
     resource_id: engagement.id,
     after_data: { reason: fullReason },
+  });
+
+  // 섭외 이력 — 전문가 본인의 긴급 취소도 타임라인에 남는다 (검수 B7)
+  await logEngagementEvent({
+    tenantId: engagement.tenant_id,
+    engagementId: engagement.id,
+    type: "urgent_canceled",
+    actorKind: "expert",
+    actorLabel: expert.name ?? "전문가",
+    note: fullReason,
+    isPractice: engagement.is_practice,
   });
 
   // 프로젝트를 요청 단계로 되돌린다 — 재섭외 버튼이 다시 열려야 한다

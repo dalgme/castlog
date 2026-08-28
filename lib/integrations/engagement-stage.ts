@@ -14,28 +14,33 @@ export const ENGAGEMENT_STAGES = [
   "assigned", // 임의 배정
   "plan_review", // 품의 중
   "plan_approved", // 결재 완료
-  "requested", // 승인요청 (전문가에게 발송)
-  "declined", // 반려 (전문가 거절)
+  "requested", // 요청중 (회신 대기)
+  "declined", // 거절 (전문가 거절)
+  "expired", // 요청 만료 (회신 기한 경과)
   "accepted", // 승인 (전문가 수락)
   "letter_issued", // 수락서 생성(자동)
-  "letter_sent", // 수락서 송신
+  "letter_sent", // 수락서 송부
   "confirmed", // 확정
-  "canceled", // 긴급 취소
+  "canceled", // 취소 (회수·긴급)
 ] as const;
 
 export type EngagementStage = (typeof ENGAGEMENT_STAGES)[number];
 
+// 라벨 통일 원칙 (검수 확정 2026-08-28): 회신 대기 = "요청중", 전문가 거절 =
+// "거절"(결재의 '반려'와 구분), 수락서 전달 = "송부", 취소 = 회수·긴급을 묶어
+// "취소". 다른 화면도 이 사전을 따른다 — 같은 상태를 화면마다 다르게 부르지 않는다.
 export const ENGAGEMENT_STAGE_LABELS: Record<EngagementStage, string> = {
   assigned: "임의 배정",
   plan_review: "품의 중",
   plan_approved: "결재 완료",
-  requested: "승인요청",
-  declined: "반려",
+  requested: "요청중",
+  declined: "거절",
+  expired: "요청 만료",
   accepted: "승인",
   letter_issued: "수락서 생성",
-  letter_sent: "수락서 송신",
+  letter_sent: "수락서 송부",
   confirmed: "확정",
-  canceled: "긴급 취소",
+  canceled: "취소",
 };
 
 /** 범례에 함께 적는 한 줄 설명 — 이름만으로는 무엇을 기다리는지 알 수 없다 */
@@ -45,11 +50,12 @@ export const ENGAGEMENT_STAGE_DESCRIPTIONS: Record<EngagementStage, string> = {
   plan_approved: "섭외계획이 승인되어 요청을 보낼 수 있는 상태입니다.",
   requested: "전문가에게 섭외 요청(동의 링크)을 보내고 회신을 기다립니다.",
   declined: "전문가가 거절했습니다. 다른 후보를 찾아야 합니다.",
+  expired: "회신 기한이 지나 요청이 만료되었습니다. 재요청하거나 다른 후보를 찾으세요.",
   accepted: "전문가가 수락했습니다(계약 성립). 수락서가 자동 생성됩니다.",
   letter_issued: "수락서가 자동 생성되었습니다. 안내 정보를 보완해 송부하세요.",
   letter_sent: "수락서를 전문가에게 송부했습니다. 전문가 확인을 기다립니다.",
-  confirmed: "전문가 확인·담당자 최종 확인까지 끝난 자리입니다.",
-  canceled: "확정 이후 취소된 건입니다. 대체 인력을 즉시 찾아야 합니다.",
+  confirmed: "전문가 승인(서명) 또는 기업 확인으로 확정된 자리입니다.",
+  canceled: "회수(응답 전) 또는 확정 후 긴급 취소된 건입니다. 확정 후 취소면 대체 인력을 즉시 찾아야 합니다.",
 };
 
 export type StageTone = "gray" | "amber" | "blue" | "green" | "red";
@@ -60,6 +66,7 @@ export const ENGAGEMENT_STAGE_TONE: Record<EngagementStage, StageTone> = {
   plan_approved: "blue",
   requested: "amber",
   declined: "red",
+  expired: "red",
   accepted: "blue",
   letter_issued: "blue",
   letter_sent: "blue",
@@ -105,6 +112,7 @@ export function deriveEngagementStage(input: {
   // 흐름에서 빠지는 상태가 먼저다 — 취소된 자리를 '확정'으로 보여 주면 안 된다
   if (engagementStatus === "canceled") return "canceled";
   if (engagementStatus === "declined") return "declined";
+  if (engagementStatus === "expired") return "expired";
 
   if (acceptanceStatus === "confirmed") return "confirmed";
   if (acceptanceStatus === "sent" || acceptanceStatus === "signed") {

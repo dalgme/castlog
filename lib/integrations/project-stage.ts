@@ -27,8 +27,8 @@ export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
   plan_review: "섭외 품의 결재 중",
   plan_approved: "결재 완료 · 섭외 진행 가능",
   requesting: "섭외 요청 발송됨",
-  accepted_all: "전원 수락 · 수락서 송신 가능",
-  letters_sent: "수락서 송신됨",
+  accepted_all: "전원 수락 · 수락서 송부 가능",
+  letters_sent: "수락서 송부됨",
   confirmed: "전원 확정",
   closing: "프로젝트 종료 진행",
   settlement_review: "지급 품의 검토 중",
@@ -44,7 +44,7 @@ export const PROJECT_STAGE_DESCRIPTIONS: Record<ProjectStage, string> = {
     "결재가 끝났습니다. 첨부를 준비한 뒤 ‘섭외 진행’으로 전원에게 요청을 보내세요.",
   requesting: "전문가들의 회신을 기다립니다. 수락 여부가 자동으로 반영됩니다.",
   accepted_all:
-    "전원이 수락했습니다. 수락서가 자동 생성되었으니 첨부를 붙여 송신하세요.",
+    "전원이 수락했습니다. 수락서가 자동 생성되었으니 첨부를 붙여 송부하세요.",
   letters_sent:
     "수락서를 보냈습니다. 전문가가 캐스트로그에서 확인·서명하면 확정됩니다.",
   confirmed: "전원 확정. 행사 운영 단계입니다.",

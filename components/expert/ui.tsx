@@ -104,9 +104,9 @@ export const ENGAGEMENT_TONE: Record<string, TagTone> = {
  * 못 쓰므로, 표시 라벨을 여기에 둔다(값은 동일하게 유지).
  */
 export const ENGAGEMENT_STATUS_LABELS: Record<string, string> = {
-  requested: "요청됨",
+  requested: "요청중",
   accepted: "수락(계약 성립)",
   declined: "거절",
-  canceled: "회수",
-  expired: "만료",
+  canceled: "취소",
+  expired: "요청 만료",
 };

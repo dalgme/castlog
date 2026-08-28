@@ -259,7 +259,15 @@ export async function screenExpertAvailability(
   return screenExpertSchedule(expertId, fromISO, toISO);
 }
 
-export type EngagementActionResult = { ok: true } | { ok: false; error: string };
+export type EngagementActionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      /** 부PM 게이트 거부 — 화면이 그 자리에서 승인 요청 UI를 띄운다 (검수 A1) */
+      needsPmApproval?: true;
+      projectId?: string | null;
+    };
 
 /**
  * 섭외 취소 (단계 29 — 대표 피드백 ③)
@@ -313,7 +321,15 @@ export async function cancelEngagement(
       actionType: "engagement.cancel",
       targetId: engagement.id,
     });
-    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+    if (!deputyGate.ok) {
+      return {
+        ok: false,
+        error: deputyGate.error,
+        ...(deputyGate.needsPmApproval
+          ? { needsPmApproval: true as const, projectId: engagement.project_id }
+          : {}),
+      };
+    }
   }
 
   const urgent = engagement.status === "accepted";
@@ -341,6 +357,14 @@ export async function cancelEngagement(
   // 코드넘버 자리를 다시 미섭외로 되돌린다.
   // 이게 없으면 취소한 자리에 다른 전문가를 영영 붙일 수 없다.
   await releasePositionsForEngagement(engagementId);
+  // 프로젝트 단계 재판정 — 확정 프로젝트에서 긴급 취소하면 배지도 내려와야 한다
+  if (engagement.project_id) {
+    try {
+      await refreshProjectEngagementStage(engagement.project_id);
+    } catch {
+      // 단계 갱신 실패가 취소 처리를 막지 않는다
+    }
+  }
 
   // 취소 내역 기록
   await supabase.from("engagement_cancellations").insert({
@@ -426,8 +450,18 @@ export async function manualAcceptEngagement(
   /** 라이트 모드 전용 — 수락서 확인(confirmed)까지 한 번에 마감 (기획 확정 2026-08-25) */
   alsoConfirm?: boolean
 ): Promise<
-  | { ok: true; confirmedNow: boolean }
-  | { ok: false; error: string }
+  | {
+      ok: true;
+      confirmedNow: boolean;
+      /** 원클릭 확정이 권한 규칙(acceptanceSend)으로 막힘 — 화면이 정확한 다음 행동을 안내 (검수 A5) */
+      confirmDeniedByRule?: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      needsPmApproval?: true;
+      projectId?: string | null;
+    }
 > {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
@@ -472,7 +506,15 @@ export async function manualAcceptEngagement(
       actionType: "engagement.manual_accept",
       targetId: engagement.id,
     });
-    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+    if (!deputyGate.ok) {
+      return {
+        ok: false,
+        error: deputyGate.error,
+        ...(deputyGate.needsPmApproval
+          ? { needsPmApproval: true as const, projectId: engagement.project_id }
+          : {}),
+      };
+    }
   }
 
   const actorName = await staffActorLabel(user.id);
@@ -492,7 +534,14 @@ export async function manualAcceptEngagement(
   // acceptanceSend 축(app.can_exec)이라 engagementRequest만 가진 사람은
   // 여기서 0행이 될 수 있고, 그때 "마감됐다"고 말하면 거짓 안내다.
   let confirmedNow = false;
+  let confirmDeniedByRule = false;
   if (alsoConfirm && (await isExpertsLite())) {
+    // 수락서 확정은 acceptanceSend 축(RLS 포함)이다 — engagementRequest만 가진
+    // 사람은 여기서 막히고, 그때 수락서 화면으로 보내면 같은 게이트에 또 막힌다
+    // (검수 A5: 실패 루프). 사유를 구분해 정확한 다음 행동을 안내한다.
+    if (!(await canExecTenant("acceptanceSend", user))) {
+      confirmDeniedByRule = true;
+    } else {
     try {
       const { data: acceptance } = await supabase
         .from("engagement_acceptances")
@@ -526,6 +575,16 @@ export async function manualAcceptEngagement(
               via: "manual_accept_one_click",
             },
           });
+          // 섭외 이력 — 원클릭 마감도 타임라인에 남는다 (검수 B7)
+          await logEngagementEvent({
+            tenantId,
+            engagementId,
+            type: "acceptance_confirmed",
+            actorKind: "staff",
+            actorLabel: actorName,
+            note: "기업 확인 마감 — 라이트 모드(원클릭)",
+            isPractice: await isPracticeMode(),
+          });
           if (engagement.project_id) {
             await refreshProjectEngagementStage(engagement.project_id);
           }
@@ -535,11 +594,12 @@ export async function manualAcceptEngagement(
       // 원클릭 마감 실패가 섭외 완료를 되돌리지 않는다 — confirmedNow=false로
       // 남겨 화면이 "수락서 화면에서 확인 완료하라"고 안내하게 한다.
     }
+    }
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/experts", "page");
-  return { ok: true, confirmedNow };
+  return { ok: true, confirmedNow, confirmDeniedByRule };
 }
 
 export type EngagementEventRow = {

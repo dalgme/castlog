@@ -79,7 +79,7 @@ const STEPS = [
   },
   {
     icon: FileCheck2,
-    title: "⑤ 수락서 송신 → 확정",
+    title: "⑤ 수락서 송부 → 확정",
     body: "전원이 수락하면 수락서를 한 번에 보냅니다. 수락서는 캐스트로그 화면에서 확인·승인(서명)하며, 전원이 승인하면 확정됩니다.",
   },
 ] as const;
@@ -125,7 +125,7 @@ export function EngagementWorkbench({
   tenantSlug: string;
   projectId: string;
   slots: SlotRow[];
-  /** 실행 버튼(품의 상신·섭외요청·수락서 송신) — 레벨 4부터 */
+  /** 실행 버튼(품의 상신·섭외요청·수락서 송부) — 레벨 4부터 */
   canManage: boolean;
   /** 입력(후보·첨부) — 레벨 5부터 */
   canInput: boolean;
@@ -145,7 +145,7 @@ export function EngagementWorkbench({
     assigned: number;
     total: number;
     open: number;
-    /** 수락·확정된 자리 — 수락서 송신 대상 수 */
+    /** 수락·확정된 자리 — 수락서 송부 대상 수 */
     filled: number;
     fullyAssigned: boolean;
   };
@@ -156,11 +156,11 @@ export function EngagementWorkbench({
   projectDescription?: string | null;
   /** 섭외요청 첨부 패널 — 서버 컴포넌트에서 내려받는다 */
   attachmentPanel?: React.ReactNode;
-  /** 수락서 첨부 패널 — 수락서 송신 전에만 붙일 수 있다 */
+  /** 수락서 첨부 패널 — 수락서 송부 전에만 붙일 수 있다 */
   acceptanceAttachmentPanel?: React.ReactNode;
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
-  /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송신 없이 기록만 */
+  /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송부 없이 기록만 */
   expertsLite?: boolean;
 }) {
   // 긴급 취소로 다시 비게 된 자리 — 나머지 빈 자리와 섞이면 놓친다
@@ -239,7 +239,7 @@ export function EngagementWorkbench({
               섭외 요청을 만들어도 전문가에게 문자·이메일이 나가지 않습니다.
               전화 등으로 직접 확인한 뒤 각 후보의{" "}
               <strong>섭외 완료(수락서 생성)</strong> 버튼으로 확정하세요.
-              재안내·수락서 송신도 쓰지 않습니다. (설정 &gt; 기업관리에서 변경)
+              재안내·수락서 송부도 쓰지 않습니다. (설정 &gt; 기업관리에서 변경)
             </p>
           </div>
         )}
@@ -274,7 +274,7 @@ export function EngagementWorkbench({
             무엇을 기다리는 단계인지까지 적어야 담당자가 다음 행동을 안다 */}
         <details className="rounded-lg border bg-secondary/20 p-3">
           <summary className="cursor-pointer text-xs font-semibold">
-            섭외 상태 범례 (9단계)
+            섭외 상태 범례 ({ENGAGEMENT_STAGES.length}단계)
           </summary>
           <ul className="mt-2 space-y-1.5">
             {ENGAGEMENT_STAGES.map((s) => (
@@ -329,7 +329,7 @@ export function EngagementWorkbench({
           projectState.stage === "accepted_all" &&
           acceptanceAttachmentPanel}
 
-        {/* 전원 수락 — 이 화면에서 지금 할 일은 수락서 송신 하나뿐이다 */}
+        {/* 전원 수락 — 이 화면에서 지금 할 일은 수락서 송부 하나뿐이다 */}
         {canManage && !expertsLite && projectState.stage === "accepted_all" && (
           <div className="rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
             <p className="text-sm font-bold text-brand-navy">
@@ -337,7 +337,7 @@ export function EngagementWorkbench({
             </p>
             <p className="mt-1 text-xs leading-relaxed text-brand-navy">
               수락서는 각 전문가별로 자동 생성됩니다. 동봉할 자료를 먼저 붙인 뒤
-              위쪽 <strong>수락서 송신</strong> 버튼을 누르세요. 수락서는
+              위쪽 <strong>수락서 송부</strong> 버튼을 누르세요. 수락서는
               캐스트로그 화면에서만 열리며, 문자·이메일은 도착 안내입니다.
             </p>
           </div>

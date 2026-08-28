@@ -15,7 +15,16 @@ import {
   getSessionNoticeContext,
 } from "@/lib/integrations/session-notices";
 
-export type NoticeResult = { ok: true } | { ok: false; error: string };
+export type NoticeResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      /** 부PM 게이트 거부 — 화면이 그 자리에서 승인 요청 UI를 띄운다 (검수 A1) */
+      needsPmApproval?: true;
+      projectId?: string;
+      slotId?: string;
+    };
 
 
 /** 발송은 sessionNotice, 문구 관리는 sendTemplate — 기능 축을 호출부가 고른다 */
@@ -93,7 +102,19 @@ export async function createSessionNotice(input: {
     actionType: "engagement.session_sms",
     targetId: context.slotId,
   });
-  if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+  if (!deputyGate.ok) {
+    return {
+      ok: false,
+      error: deputyGate.error,
+      ...(deputyGate.needsPmApproval
+        ? {
+            needsPmApproval: true as const,
+            projectId: context.projectId,
+            slotId: context.slotId,
+          }
+        : {}),
+    };
+  }
 
   let scheduledAt: string | null = null;
   if (input.scheduledAt) {

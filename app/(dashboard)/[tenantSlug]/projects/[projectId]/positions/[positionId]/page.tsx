@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { canExecTenant } from "@/lib/auth/exec-policy";
-import { requireModule, getTenantModules } from "@/lib/modules/server";
+import { requireModule, getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { formatKrw } from "@/lib/approvals/constants";
@@ -43,6 +43,7 @@ export default async function PositionPage({
     "staff",
   ]);
   await requireModule("experts");
+  const expertsLite = await isExpertsLite();
 
   if (!hasSupabaseEnv()) {
     return (
@@ -84,7 +85,7 @@ export default async function PositionPage({
   return (
     <div>
       <PageHeader
-        title={`섭외 코드 ${ctx.code}`}
+        title={`코드넘버 ${ctx.code}`}
         actions={
           <Button asChild variant="ghost" size="sm">
             <Link href={`/${params.tenantSlug}/projects/${params.projectId}`}>
@@ -196,7 +197,8 @@ export default async function PositionPage({
                 <li aria-hidden>›</li>
                 <li>③ 요청서 작성</li>
                 <li aria-hidden>›</li>
-                <li>④ 섭외 요청 발송</li>
+                {/* 라이트 모드는 발송이 없다 — 기록 후 전화 확인·수동 완료 */}
+                <li>{expertsLite ? "④ 섭외 요청 기록" : "④ 섭외 요청 발송"}</li>
               </ol>
             </CardHeader>
             <CardContent>
@@ -207,6 +209,7 @@ export default async function PositionPage({
                 defaultSummary={projectRow?.description ?? null}
                 tenantSlug={params.tenantSlug}
                 projectId={params.projectId}
+                expertsLite={expertsLite}
               />
             </CardContent>
           </Card>

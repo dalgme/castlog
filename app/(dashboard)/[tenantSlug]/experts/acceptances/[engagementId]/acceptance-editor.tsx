@@ -33,6 +33,7 @@ export function AcceptanceEditor({
   hasMap,
   attachments,
   expertsLite = false,
+  signedAt = null,
 }: {
   acceptanceId: string;
   status: string;
@@ -43,6 +44,8 @@ export function AcceptanceEditor({
   attachments: { id: string; fileName: string }[];
   /** 라이트 모드 — 송부 대신 기업 담당자의 확인으로 마감한다 */
   expertsLite?: boolean;
+  /** 전자서명 시각 — 확정 경로(서명/기업 확인)를 레코드 기준으로 구분 (검수 B11) */
+  signedAt?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -260,11 +263,13 @@ export function AcceptanceEditor({
             <Check className="mr-1 h-4 w-4" /> 확인 완료 처리
           </Button>
         )}
+        {/* 확정 문구는 현재 모드가 아니라 그 레코드의 확정 경로로 말한다 (검수 B11) —
+            라이트 시절 수기 확정 건이 모드를 끈 뒤 "전문가가 서명했다"로 보이면 안 된다 */}
         {status === "confirmed" && (
           <p className="text-sm text-muted-foreground">
-            {expertsLite
-              ? "확인이 완료되었습니다 — 참여 확정."
-              : "전문가가 확인·승인(서명)을 완료했습니다 — 참여 확정."}
+            {signedAt
+              ? "전문가가 확인·승인(서명)을 완료했습니다 — 참여 확정."
+              : "기업 담당자 확인으로 마감되었습니다(전자서명 없음) — 참여 확정."}
           </p>
         )}
       </div>

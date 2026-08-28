@@ -6,6 +6,7 @@ import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { getPendingModuleOnboarding } from "@/lib/modules/onboarding";
 import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
 import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
+import { getMyTurnApprovals } from "@/lib/approvals/my-turn";
 import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
 import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
@@ -62,6 +63,9 @@ export async function TenantShell({
     Object.values(adminScopes).some(Boolean);
 
   const tenantId = tenantIdFromUser(user);
+  // 내 결재 차례 배지 — 결재권자가 도착을 모르면 승인 게이트에 걸린 팀이 멈춘다 (검수 A3)
+  const approvalsBadge =
+    modules.approvals && user ? (await getMyTurnApprovals(user.id)).length : 0;
 
   let tenantName: string | null = null;
   if (hasSupabaseEnv() && tenantId) {
@@ -90,6 +94,7 @@ export async function TenantShell({
         isOrgAdmin={isOrgAdmin}
         canManagePayments={payments}
         expertsLite={expertsLite}
+        approvalsBadge={approvalsBadge}
         tenantName={tenantName}
         logoSrc={logoSrc}
       />

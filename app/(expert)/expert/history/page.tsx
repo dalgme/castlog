@@ -122,7 +122,7 @@ export default async function ExpertHistoryPage() {
         badge: accepted
           ? "수락"
           : e.status === "declined"
-            ? "반려"
+            ? "거절"
             : e.status === "canceled"
               ? "취소"
               : e.status,

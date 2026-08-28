@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Send, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DeputyRequestInline } from "@/components/integrations/deputy-request-inline";
 
 import { remindEngagement } from "./reminder-actions";
 
@@ -28,13 +29,19 @@ export function RemindButton({
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 부PM 게이트 거부 시 그 자리에서 승인 요청 (검수 A1)
+  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
 
   const send = () => {
     setError(null);
     startTransition(async () => {
       const r = await remindEngagement(engagementId);
       if (!r.ok) {
-        setError(r.error);
+        if (r.needsPmApproval && r.projectId) {
+          setApprovalProjectId(r.projectId);
+        } else {
+          setError(r.error);
+        }
         setConfirming(false);
       } else {
         setDone(true);
@@ -85,6 +92,13 @@ export function RemindButton({
         )}
       </Button>
       {error && <span className="text-[11px] text-destructive">{error}</span>}
+      {approvalProjectId && (
+        <DeputyRequestInline
+          projectId={approvalProjectId}
+          actionType="engagement.remind"
+          targetId={engagementId}
+        />
+      )}
     </span>
   );
 }

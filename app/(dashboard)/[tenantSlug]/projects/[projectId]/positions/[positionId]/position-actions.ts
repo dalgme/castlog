@@ -24,7 +24,7 @@ import {
 } from "@/lib/integrations/engagement-sms";
 import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
-import { getTenantModules } from "@/lib/modules/server";
+import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 
 export type RequestFromPositionResult =
   | { ok: true; url: string }
@@ -148,7 +148,10 @@ export async function requestEngagementForPosition(input: {
     return { ok: false, error: "섭외 요청 생성에 실패했습니다." };
   }
 
-  const { error: linkError } = await supabase
+  // 행수 확인(CAS) — 두 담당자가 동시에 보내면 뒤의 것이 조용히 성공해
+  // 같은 자리에 섭외건 2개·문자 2회가 나가던 결함 (검수 B4). 0행이면 이미
+  // 다른 요청이 자리를 잡은 것이므로, 방금 만든 섭외건을 회수하고 알린다.
+  const { data: linked, error: linkError } = await supabase
     .from("engagement_slot_positions")
     .update({
       status: "requested",
@@ -156,9 +159,21 @@ export async function requestEngagementForPosition(input: {
       expert_id: input.expertId,
     })
     .eq("id", position.id)
-    .in("status", ["open", "assigned"]);
-  if (linkError) {
-    return { ok: false, error: "인원 연결에 실패했습니다." };
+    .in("status", ["open", "assigned"])
+    .select("id")
+    .maybeSingle();
+  if (linkError || !linked) {
+    await supabase
+      .from("expert_engagements")
+      .update({ status: "canceled" })
+      .eq("id", engagement.id)
+      .eq("status", "requested");
+    return {
+      ok: false,
+      error: linkError
+        ? "자리 연결에 실패해 방금 만든 섭외 요청을 회수했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요."
+        : "그 사이 다른 담당자가 이 자리에 먼저 요청을 보냈습니다. 방금 만든 요청은 회수했으니 새로고침 후 확인해 주세요.",
+    };
   }
 
   await supabase.from("audit_logs").insert({
@@ -171,13 +186,15 @@ export async function requestEngagementForPosition(input: {
     after_data: { position_code: position.code, expert_id: input.expertId },
   });
 
-  // 섭외 이력 — 발송 담당자 이름으로 기록
+  // 섭외 이력 — 발송 담당자 이름으로 기록. 라이트 모드는 발송이 없으므로
+  // "발송"으로 남기면 거짓 기록이 된다 (검수 B7) — 사실을 note에 밝힌다.
   await logEngagementEvent({
     tenantId,
     engagementId: engagement.id,
     type: "requested",
     actorKind: "staff",
     actorLabel: await staffActorLabel(user.id),
+    note: (await isExpertsLite()) ? "발송 없이 기록됨 — 라이트 모드" : undefined,
     isPractice: await isPracticeMode(),
   });
 
@@ -330,6 +347,18 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
         .update({ status: "canceled" })
         .eq("id", position.engagement_id)
         .eq("status", "requested");
+
+      // 섭외 이력 — 자리 해제로 함께 회수된 사실을 남긴다 (검수 B7).
+      // 이게 없으면 타임라인이 '요청됨'에서 끊긴 채 상태만 취소로 보인다.
+      await logEngagementEvent({
+        tenantId,
+        engagementId: position.engagement_id,
+        type: "canceled",
+        actorKind: "staff",
+        actorLabel: await staffActorLabel(user.id),
+        note: `코드넘버 ${position.code} 자리 해제로 회수`,
+        isPractice: await isPracticeMode(),
+      });
 
       if (position.expert_id) {
         await supabase.from("engagement_cancellations").insert({

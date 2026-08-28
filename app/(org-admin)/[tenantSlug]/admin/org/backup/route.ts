@@ -148,7 +148,12 @@ export async function GET(
     역할: a.role_description,
     의뢰비용: a.fee_amount ?? "",
     서명첨부: a.has_signature ? "예" : "아니오",
-    수락경로: a.signed_via === "portal" ? "포털" : "공개링크",
+    수락경로:
+      a.signed_via === "portal"
+        ? "포털"
+        : a.signed_via === "manual"
+          ? "수동 처리(전화 확인)"
+          : "공개링크",
     수락일: a.accepted_at ? a.accepted_at.slice(0, 10) : "",
   }));
 

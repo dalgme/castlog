@@ -41,7 +41,10 @@ export function AcceptanceLetter({
   logoSrc?: string | null;
 }) {
   const a = acceptance;
-  const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR");
+  // 법적 문서의 시각 — 서버 로캘과 무관하게 KST로 고정한다
+  const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+  });
   const schedule = formatEventSchedule(
     a.starts_on,
     a.ends_on,
@@ -170,13 +173,25 @@ export function AcceptanceLetter({
 
       <AcceptanceAttachments attachments={attachments} />
 
-      <p className="mt-6 leading-relaxed text-muted-foreground">
-        본인은 위 조건의 섭외 요청을 확인하고 이를 수락합니다. 아래 서명·날인은
-        수락 시점에 등록된 본인의 서명·날인입니다.
-      </p>
-      {a.signed_at && (
+      {/* 수동 처리(전화 확인) 건은 전자서명 문서가 아니다 — 1인칭 서명 문구를
+          쓰면 전문가가 본 적 없는 문서가 서명된 것처럼 보인다 (검수 B3) */}
+      {a.signed_via === "manual" ? (
+        <p className="mt-6 leading-relaxed text-muted-foreground">
+          이 수락서는 전화 등으로 수락 의사를 직접 확인한 뒤 기업 담당자가 수동
+          처리한 건입니다. 전자서명은 포함되어 있지 않습니다.
+        </p>
+      ) : (
+        <p className="mt-6 leading-relaxed text-muted-foreground">
+          본인은 위 조건의 섭외 요청을 확인하고 이를 수락합니다. 아래 서명·날인은
+          수락 시점에 등록된 본인의 서명·날인입니다.
+        </p>
+      )}
+      {a.signed_at && a.signed_via !== "manual" && (
         <p className="mt-1 text-xs text-muted-foreground">
-          전자서명 확인: {new Date(a.signed_at).toLocaleString("ko-KR")}
+          전자서명 확인:{" "}
+          {new Date(a.signed_at).toLocaleString("ko-KR", {
+            timeZone: "Asia/Seoul",
+          })}
         </p>
       )}
 
@@ -191,7 +206,7 @@ export function AcceptanceLetter({
             />
             <figcaption className="mt-1 text-xs text-muted-foreground">서명</figcaption>
           </figure>
-        ) : (
+        ) : a.signed_via === "manual" ? null : (
           <p className="text-xs text-amber-700">
             ※ 서명이 등록되지 않은 상태로 수락되었습니다.
           </p>

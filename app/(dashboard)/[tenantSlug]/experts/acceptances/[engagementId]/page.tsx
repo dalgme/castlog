@@ -127,6 +127,7 @@ export default async function TenantAcceptancePage({
                   fileName: a.fileName,
                 }))}
                 expertsLite={expertsLite}
+                signedAt={view.acceptance.signed_at}
               />
             </CardContent>
           </Card>

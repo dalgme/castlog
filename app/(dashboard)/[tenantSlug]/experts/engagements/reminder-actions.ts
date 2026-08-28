@@ -22,7 +22,15 @@ import { logAudit } from "@/lib/audit/log";
 import { blockInPractice } from "@/lib/practice/server";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 
-export type ReminderResult = { ok: true } | { ok: false; error: string };
+export type ReminderResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      /** 부PM 게이트 거부 — 화면이 그 자리에서 승인 요청 UI를 띄운다 (검수 A1) */
+      needsPmApproval?: true;
+      projectId?: string | null;
+    };
 
 
 /**
@@ -88,14 +96,24 @@ export async function remindEngagement(
     return { ok: false, error: "회신 대기 중인 건만 재안내할 수 있습니다." };
   }
 
-  // 부PM 실행 게이트 — 외부로 나가는 발송이다.
+  // 부PM 실행 게이트 — 외부로 나가는 발송이다. 재안내는 세션 문자가 아니라
+  // 섭외 건의 링크 재발급이므로 별도 action_type + engagement 대상으로 건다
+  // (검수 A1 — 이전에는 session_sms/targetId null이라 승인 규약이 어긋났다).
   if (engagement.project_id) {
     const gate = await gateDeputyAction({
       projectId: engagement.project_id,
-      actionType: "engagement.session_sms",
-      targetId: null,
+      actionType: "engagement.remind",
+      targetId: engagementId,
     });
-    if (!gate.ok) return { ok: false, error: gate.error };
+    if (!gate.ok) {
+      return {
+        ok: false,
+        error: gate.error,
+        ...(gate.needsPmApproval
+          ? { needsPmApproval: true as const, projectId: engagement.project_id }
+          : {}),
+      };
+    }
   }
 
   // 동의 링크 재발급 — 토큰 원문은 저장하지 않으므로 기존 링크를 재사용할 수 없다.

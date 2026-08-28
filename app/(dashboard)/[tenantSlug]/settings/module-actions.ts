@@ -15,6 +15,7 @@ import {
   type ModuleKey,
 } from "@/lib/modules/modules";
 import { parseRequestedModules } from "@/lib/modules/requests";
+import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 
 export type ModuleRequestResult = { ok: true } | { ok: false; error: string };
 
@@ -166,6 +167,24 @@ export async function setExpertsLite(
       ok: false,
       error: "다른 설정 변경과 겹쳤습니다. 잠시 후 다시 시도해 주세요.",
     };
+  }
+
+  // 라이트를 끄는 순간 만료 크론 보호가 사라진다 — 라이트 기간에 기록만 된
+  // 요청중 건(발송된 링크가 없음)의 기한 경과분이 다음 크론에 일괄 만료·자리
+  // 해제되던 결함 (검수 B5). 회신 기한을 기본 기한만큼 앞으로 연장해 담당자가
+  // 재발송하거나 정리할 시간을 준다.
+  if (!enabled) {
+    const newDeadline = new Date(
+      Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+    // 기한이 이미 지난 건만 — 다음 크론이 일괄 만료시킬 대상이다. 아직 살아
+    // 있는 기한(전문가에게 안내된 마감 포함)을 몰래 늘리지 않는다 (리뷰 3).
+    await admin
+      .from("expert_engagements")
+      .update({ token_expires_at: newDeadline })
+      .eq("tenant_id", gate.tenantId)
+      .eq("status", "requested")
+      .lt("token_expires_at", new Date().toISOString());
   }
 
   const supabase = createClient();

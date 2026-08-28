@@ -13,7 +13,7 @@ export const NOTICE_VARIABLES = [
   { key: "{시간}", desc: "시간 구간만" },
   { key: "{장소}", desc: "장소명 (주소 포함)" },
   { key: "{역할}", desc: "역할 구분" },
-  { key: "{코드}", desc: "넘버링코드" },
+  { key: "{코드}", desc: "코드넘버" },
 ] as const;
 
 export const DEFAULT_NOTICE_BODY =

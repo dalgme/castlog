@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { getMyTurnApprovals } from "@/lib/approvals/my-turn";
 import type { ModuleFlags } from "@/lib/modules/modules";
 
 /**
@@ -36,6 +37,11 @@ export type MyWork = {
   dueSoon: WorkItem[];
   /** 회신을 기다리는 섭외 (마감 개념과 별개로 계속 신경 써야 하는 것) */
   awaitingReply: WorkItem[];
+  /**
+   * 내 결재 차례 (검수 A3) — 배정 기준이 아니라 결재선 기준이다. 배정이 없는
+   * 대표·이사도 결재는 온다. 승인 게이트에 걸린 팀이 이 신호로 풀린다.
+   */
+  myApprovals: WorkItem[];
   myProjectCount: number;
 };
 
@@ -54,6 +60,7 @@ export async function getMyWork(
     overdue: [],
     dueSoon: [],
     awaitingReply: [],
+    myApprovals: [],
     myProjectCount: 0,
   };
   if (!hasSupabaseEnv()) return empty;
@@ -64,6 +71,24 @@ export async function getMyWork(
     .toISOString()
     .slice(0, 10);
 
+  // 내 결재 차례 — **배정 조기 반환보다 앞**에서 모은다. 배정이 없는 대표에게
+  // '내 업무'가 항상 0으로 보이던 것이 결재 신호 부재의 원인이었다 (검수 A3).
+  const myApprovals: WorkItem[] = modules.approvals
+    ? (await getMyTurnApprovals(userId)).map((a) => {
+        const dueOn = a.createdAt.slice(0, 10);
+        return {
+          kind: "approval" as const,
+          title: `${a.title}${a.requesterName ? ` — ${a.requesterName} 상신` : ""}`,
+          projectId: null,
+          projectName: null,
+          dueOn,
+          daysLeft: daysBetween(today, dueOn),
+          href: `/${tenantSlug}/approvals/${a.id}`,
+          note: "내 결재 차례입니다. 승인 전에는 다음 단계가 막혀 있습니다.",
+        };
+      })
+    : [];
+
   const { data: assignments } = await supabase
     .from("project_assignments")
     .select("project_id")
@@ -71,7 +96,7 @@ export async function getMyWork(
   const myProjectIds = Array.from(
     new Set((assignments ?? []).map((a) => a.project_id))
   );
-  if (myProjectIds.length === 0) return empty;
+  if (myProjectIds.length === 0) return { ...empty, myApprovals };
 
   const { data: projects } = await supabase
     .from("projects")
@@ -83,7 +108,7 @@ export async function getMyWork(
     .filter((p) => p.status !== "completed" && p.status !== "canceled")
     .map((p) => p.id);
   if (liveIds.length === 0) {
-    return { ...empty, myProjectCount: myProjectIds.length };
+    return { ...empty, myApprovals, myProjectCount: myProjectIds.length };
   }
 
   const [{ data: steps }, { data: engagements }, { data: slots }] =
@@ -188,6 +213,7 @@ export async function getMyWork(
     overdue: overdue.sort(byDue),
     dueSoon: dueSoon.sort(byDue),
     awaitingReply: awaitingReply.sort(byDue),
+    myApprovals: myApprovals.sort(byDue),
     myProjectCount: myProjectIds.length,
   };
 }

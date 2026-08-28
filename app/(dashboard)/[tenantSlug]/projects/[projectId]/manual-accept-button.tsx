@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { DeputyRequestInline } from "@/components/integrations/deputy-request-inline";
 
 import { manualAcceptEngagement } from "../../experts/engagement-actions";
 
@@ -40,6 +41,8 @@ export function ManualAcceptButton({
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [alsoConfirm, setAlsoConfirm] = useState(true);
+  // 부PM 게이트 거부 시 다이얼로그 안에서 바로 승인 요청 (검수 A1)
+  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
 
   const submit = () => {
     startTransition(async () => {
@@ -48,7 +51,10 @@ export function ManualAcceptButton({
         undefined,
         expertsLite && alsoConfirm
       );
-      if (!r.ok) toast({ variant: "destructive", description: r.error });
+      if (!r.ok) {
+        if (r.needsPmApproval && r.projectId) setApprovalProjectId(r.projectId);
+        else toast({ variant: "destructive", description: r.error });
+      }
       else {
         // 확정 여부는 서버 결과로 판단한다 — 권한(acceptanceSend RLS)이나
         // 경합으로 확정만 건너뛰었을 수 있고, 그때 "마감됐다"고 하면 거짓이다
@@ -57,7 +63,9 @@ export function ManualAcceptButton({
           description: wantedConfirm
             ? r.confirmedNow
               ? "섭외 완료·수락서 확인까지 마감되었습니다."
-              : "섭외 완료로 처리되었습니다. 수락서 확인은 완료되지 않았습니다 — 수락서 화면에서 '확인 완료 처리'로 마무리하세요."
+              : r.confirmDeniedByRule
+                ? "섭외 완료로 처리되었습니다. 수락서 확인은 권한 규칙(수락서 처리 권한)으로 막혔습니다 — '수락서 처리' 권한이 있는 담당자에게 마감을 요청하세요."
+                : "섭외 완료로 처리되었습니다. 수락서 확인은 완료되지 않았습니다 — 수락서 화면에서 '확인 완료 처리'로 마무리하세요."
             : "섭외 완료로 처리되었습니다. 수락서가 생성되었습니다.",
         });
         setOpen(false);
@@ -71,7 +79,10 @@ export function ManualAcceptButton({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setAlsoConfirm(true);
+        if (next) {
+          setAlsoConfirm(true);
+          setApprovalProjectId(null);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -110,6 +121,13 @@ export function ManualAcceptButton({
               </span>
             </span>
           </label>
+        )}
+        {approvalProjectId && (
+          <DeputyRequestInline
+            projectId={approvalProjectId}
+            actionType="engagement.manual_accept"
+            targetId={engagementId}
+          />
         )}
         <div className="flex gap-2">
           <Button
