@@ -130,11 +130,16 @@ export default async function ProjectsPage({
             <Button asChild variant="outline" size="sm">
               <a href={`/${params.tenantSlug}/projects/export`}>엑셀</a>
             </Button>
-            {canCreate && (
+            {canCreate ? (
               <CreateProjectDialog
                 tenantSlug={params.tenantSlug}
                 categories={categoryOptions}
               />
+            ) : (
+              // 버튼만 사라지면 개설을 누구에게 부탁해야 하는지 알 수 없다 (검수 F3)
+              <span className="text-xs text-muted-foreground">
+                프로젝트 개설 권한이 없습니다 (권한 규칙 — 기본 레벨 3)
+              </span>
             )}
           </div>
         }

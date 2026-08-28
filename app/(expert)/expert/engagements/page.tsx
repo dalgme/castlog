@@ -88,6 +88,22 @@ export default async function ExpertEngagementsPage() {
     brandByTenant.set(tenantId, brand.logoSrc);
   }
 
+  // 취소 사유 — 회수·긴급취소된 건은 '왜'가 함께 보여야 한다. 알림함이 탭
+  // 뱃지로 대체된 뒤 사유를 볼 화면이 없었다 (검수 C3)
+  const canceledIds = rows.filter((e) => e.status === "canceled").map((e) => e.id);
+  const { data: cancellations } = canceledIds.length
+    ? await supabase
+        .from("engagement_cancellations")
+        .select("engagement_id, reason, is_urgent")
+        .in("engagement_id", canceledIds)
+    : { data: [] };
+  const cancellationByEngagement = new Map(
+    (cancellations ?? []).map((c) => [
+      c.engagement_id,
+      { reason: c.reason, isUrgent: c.is_urgent },
+    ])
+  );
+
   // 수락서 상태 — '수락'과 '참여 확정'은 다르다. 수락서를 승인해야 확정이다.
   const acceptedIds = rows.filter((e) => e.status === "accepted").map((e) => e.id);
   const { data: acceptances } = acceptedIds.length
@@ -221,6 +237,20 @@ export default async function ExpertEngagementsPage() {
                     <MetaRow label="요청 일시">
                       {new Date(engagement.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
                     </MetaRow>
+                    {/* 취소된 건의 사유 — 알림이 아니라 카드에서 바로 본다 (검수 C3) */}
+                    {engagement.status === "canceled" &&
+                      (() => {
+                        const c = cancellationByEngagement.get(engagement.id);
+                        if (!c) return null;
+                        return (
+                          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
+                            {c.isUrgent
+                              ? "확정 후 취소된 건입니다."
+                              : "기업이 요청을 회수했습니다."}
+                            {c.reason ? ` 사유: ${c.reason}` : ""}
+                          </p>
+                        );
+                      })()}
                     {answerable && (
                       <p className="text-sm">
                         <span className="mr-2 text-muted-foreground">회신 마감</span>
@@ -249,8 +279,9 @@ export default async function ExpertEngagementsPage() {
                       const letter = acceptanceStatus.get(engagement.id) ?? null;
                       const confirmed = letter === "confirmed";
                       // 아직 승인하지 않은 수락서 — 여기가 지금 할 일이다
-                      const needsApproval =
-                        letter === "sent" || letter === "issued";
+                      // 'issued'(작성중 — 아직 송부 전)는 전문가가 할 일이
+                      // 아니다. 히어로 집계(sent만)와 정의를 맞춘다 (리뷰 11)
+                      const needsApproval = letter === "sent";
                       return (
                         <div className="mt-3 space-y-2">
                           {confirmed && (

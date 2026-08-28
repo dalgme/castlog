@@ -84,7 +84,7 @@ export async function createSlot(
     })
     .select("id")
     .single();
-  if (error || !slot) return { ok: false, error: "슬롯 생성에 실패했습니다." };
+  if (error || !slot) return { ok: false, error: "슬롯 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   // 후보 순위 모델 (개정 2026-08-22): 임시후보 코드를 기본 3개 발급한다
   // (필요인원이 3명을 넘으면 필요인원만큼). 후보는 이후 추가할 수 있다.
@@ -133,7 +133,7 @@ async function createPositions(
         code,
       });
       if (!error) inserted = true;
-      else if (error.code !== "23505") return "코드넘버 생성에 실패했습니다.";
+      else if (error.code !== "23505") return "코드넘버 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.";
     }
     if (!inserted) return "코드넘버가 중복되어 생성하지 못했습니다.";
   }
@@ -184,7 +184,7 @@ export async function updateSlot(
       location_name: d.locationName || null,
     })
     .eq("id", slotId);
-  if (error) return { ok: false, error: "세션 수정에 실패했습니다." };
+  if (error) return { ok: false, error: "세션 수정에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -238,7 +238,7 @@ export async function deleteSlot(slotId: string): Promise<SlotResult> {
   }
 
   const { error } = await supabase.from("engagement_slots").delete().eq("id", slotId);
-  if (error) return { ok: false, error: "삭제에 실패했습니다." };
+  if (error) return { ok: false, error: "삭제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -298,7 +298,7 @@ export async function adjustSlotCount(
     .from("engagement_slots")
     .update({ required_count: nextCount })
     .eq("id", slotId);
-  if (error) return { ok: false, error: "인원 변경에 실패했습니다." };
+  if (error) return { ok: false, error: "인원 변경에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -324,7 +324,7 @@ export async function updateProjectBudget(
       budget_amount: budgetAmount ? parseInt(budgetAmount, 10) : null,
     })
     .eq("id", projectId);
-  if (error) return { ok: false, error: "예산 저장에 실패했습니다." };
+  if (error) return { ok: false, error: "예산 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -429,7 +429,7 @@ export async function reorderCandidates(
       .from("engagement_slot_positions")
       .update({ rank: i + 1 })
       .eq("id", id);
-    if (error) return { ok: false, error: "순위 저장에 실패했습니다." };
+    if (error) return { ok: false, error: "순위 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
 
   // 순위는 발송 대상(상위 N)과 품의 금액에 영향을 준다 — 누가 언제 바꿨는지
@@ -465,7 +465,7 @@ export async function setCandidateFee(
     .from("engagement_slot_positions")
     .update({ expected_fee: fee ? parseInt(fee, 10) : null })
     .eq("id", positionId);
-  if (error) return { ok: false, error: "예정가 저장에 실패했습니다." };
+  if (error) return { ok: false, error: "예정가 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

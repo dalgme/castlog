@@ -55,9 +55,10 @@ export function EngagementHistoryDialog({
           type="button"
           aria-label="섭외 이력"
           title="섭외 이력 보기"
-          className="rounded p-1 text-muted-foreground hover:text-brand"
+          // 모바일 탭 타깃 확보 — 14px 아이콘 단독은 누르기 어렵다 (검수 G7)
+          className="rounded p-2 text-muted-foreground hover:text-brand"
         >
-          <History className="h-3.5 w-3.5" aria-hidden />
+          <History className="h-4 w-4" aria-hidden />
         </button>
       </DialogTrigger>
       <DialogContent className="max-h-[70vh] max-w-lg overflow-y-auto">

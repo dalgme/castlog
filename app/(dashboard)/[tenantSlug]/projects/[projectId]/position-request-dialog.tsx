@@ -154,16 +154,19 @@ export function PositionRequestDialog({
         setError(result.error);
         return;
       }
+      // 건너뛴 이유를 보여준다 — 건수만 보여주면 같은 선택을 반복한다 (검수 G)
       setNotice(
         `${result.assigned}명을 후보로 등록했습니다.` +
           (result.skipped.length > 0
-            ? ` (${result.skipped.length}건 건너뜀)`
+            ? `\n건너뜀 ${result.skipped.length}건:\n${result.skipped.join("\n")}`
             : "")
       );
       setSelectedIds([]);
       router.refresh();
-      // 등록 결과를 잠깐 보여주고 닫는다
-      setTimeout(() => setOpen(false), 900);
+      // 건너뜀이 있으면 자동으로 닫지 않는다 — 이유를 읽어야 한다 (리뷰 5)
+      if (result.skipped.length === 0) {
+        setTimeout(() => setOpen(false), 900);
+      }
     });
   }
 
@@ -214,7 +217,7 @@ export function PositionRequestDialog({
           </Alert>
         )}
         {notice && (
-          <p className="rounded bg-emerald-50 p-2 text-sm text-emerald-700">
+          <p className="whitespace-pre-line rounded bg-emerald-50 p-2 text-sm text-emerald-700">
             {notice}
           </p>
         )}

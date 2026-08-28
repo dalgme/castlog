@@ -96,14 +96,33 @@ export default async function TenantAcceptancePage({
   // 수락서 발송·재발송은 레벨 4(대리)부터 — 서버 게이트(acceptanceSend)와 같은 기준
   const canManage = await canExecTenant("acceptanceSend", user);
 
+  // 복귀 경로 — 섭외 흐름에서 들어온 사용자는 프로젝트로 돌아간다 (검수 G7)
+  const backSupabase = createClient();
+  const { data: backEngagement } = await backSupabase
+    .from("expert_engagements")
+    .select("project_id")
+    .eq("id", params.engagementId)
+    .maybeSingle();
+
   return (
     <div>
       <PageHeader
         title="섭외 수락서"
         actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={`/${params.tenantSlug}/experts`}>전문가 목록</Link>
-          </Button>
+          <div className="flex items-center gap-1">
+            {backEngagement?.project_id && (
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  href={`/${params.tenantSlug}/projects/${backEngagement.project_id}?tab=experts`}
+                >
+                  프로젝트 섭외로
+                </Link>
+              </Button>
+            )}
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/${params.tenantSlug}/experts`}>전문가 목록</Link>
+            </Button>
+          </div>
         }
       />
       <main className="mx-auto max-w-2xl space-y-5 p-5">

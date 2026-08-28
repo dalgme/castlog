@@ -65,7 +65,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
       "세션·인원·예산이 담긴 섭외계획을 품의로 올립니다. 승인 전에는 섭외요청을 보낼 수 없습니다.",
     caution:
       "전결규정(approval_rules)이 등록돼 있으면 결재선이 자동 결정되고, 없으면 결재자를 직접 고릅니다.",
-    minGrade: "staff",
+    minGrade: "deputy",
     modules: ["approvals"],
     href: "approvals",
   },
@@ -87,7 +87,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
       "후보를 고르면 세션 정보(일시·장소·역할·비용)를 승계한 섭외요청이 만들어지고, 전문가에게 동의 링크가 발송됩니다.",
     caution:
       "요청은 만료 기한이 있습니다. 회신이 없으면 만료 처리되니 마감 전에 확인하세요.",
-    minGrade: "staff",
+    minGrade: "deputy",
     modules: ["experts"],
     href: "experts/engagements",
   },
@@ -107,7 +107,7 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
       "전문가가 수락하면 프로젝트 정보·코드에 묶인 일시/장소·세션명·전문가 정보를 읽어와 수락서가 자동으로 만들어집니다. 승인·확인·반려에 사용합니다.",
     caution:
       "수락서는 화면에서만 봅니다. 파일로 만들어 주고받지 않습니다 — 내려받기·PDF 내보내기 경로가 없습니다.",
-    minGrade: "staff",
+    minGrade: "deputy",
     modules: ["experts"],
     href: "experts/engagements",
   },
@@ -117,8 +117,8 @@ export const ENGAGEMENT_GUIDE_STEPS: readonly GuideStep[] = [
     summary:
       "세션마다 확정된 전문가에게 안내문자를 예약하거나 즉시 보냅니다. 예약 건은 15분 간격으로 발송됩니다.",
     caution:
-      "업무연락과 광고성은 법적으로 다릅니다. 기본값은 안전한 쪽(광고성)이며, 광고성은 야간 발송이 차단되고 수신거부 링크가 자동으로 붙습니다.",
-    minGrade: "staff",
+      "업무연락과 광고성은 법적으로 다릅니다. 섭외·일정 안내는 업무연락(기본값)이며, 광고성으로 보낼 때는 미동의자 제외·야간 차단·수신거부 링크가 강제됩니다.",
+    minGrade: "deputy",
     modules: ["experts"],
     href: "messages",
   },
@@ -168,7 +168,7 @@ export const GUIDE_PERMISSION_NOTES: readonly {
   {
     title: "대표의 설정·관리 기능만 위임할 수 있습니다",
     body:
-      "설정·직원관리·발송설정·감사로그 네 가지 범위로 나눠 임원 등에게 넘길 수 있습니다. 다만 세무(주민등록번호) 조회 지정자 관리, 위임 자체의 부여·회수, 대표 등급 부여는 위임할 수 없습니다.",
+      "회사 설정·사용 기능·임직원·발송 자격증명·발송 문구·전결규정·감사로그·데이터 반출·지급 금액의 9가지 범위로 나눠 기능마다 다른 담당자에게 넘길 수 있습니다(설정 > 임직원 설정). 다만 세무(주민등록번호) 조회 지정자 관리, 위임 자체의 부여·회수, 대표 등급 부여는 위임할 수 없습니다.",
   },
   {
     title: "프로젝트 기초는 모듈이 아닙니다",

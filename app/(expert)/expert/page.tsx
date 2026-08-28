@@ -165,6 +165,15 @@ export default async function ExpertPortalPage({
       e.status === "requested" && new Date(e.token_expires_at).getTime() >= now
   );
 
+  // 승인(서명) 대기 수락서 — 응답 필요 건만 세면 수락서가 와 있어도
+  // "할 일 없음"으로 보인다 (검수 C7)
+  const { count: acceptanceAwaitingCount } = await admin
+    .from("engagement_acceptances")
+    .select("id", { count: "exact", head: true })
+    .eq("expert_id", expert.id)
+    .eq("status", "sent");
+  const acceptanceAwaiting = acceptanceAwaitingCount ?? 0;
+
   // ── 이하 통계는 선택된 기간(period) 기준으로 계산 ──
   // 섭외는 요청 접수일(created_at) 기준으로 기간 판정.
   const periodEngagements = engagementRows.filter((e) =>
@@ -266,12 +275,20 @@ export default async function ExpertPortalPage({
             )}
 
             <div className="mt-5">
-              {pending.length > 0 ? (
+              {pending.length > 0 || acceptanceAwaiting > 0 ? (
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-brand-amber px-3.5 py-1.5 text-sm font-semibold text-brand-navy">
-                    <Inbox className="h-4 w-4" aria-hidden />
-                    응답이 필요한 섭외 {pending.length}건
-                  </span>
+                  {pending.length > 0 && (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-brand-amber px-3.5 py-1.5 text-sm font-semibold text-brand-navy">
+                      <Inbox className="h-4 w-4" aria-hidden />
+                      응답이 필요한 섭외 {pending.length}건
+                    </span>
+                  )}
+                  {acceptanceAwaiting > 0 && (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-1.5 text-sm font-semibold text-brand-navy">
+                      <Inbox className="h-4 w-4" aria-hidden />
+                      승인(서명) 대기 수락서 {acceptanceAwaiting}건
+                    </span>
+                  )}
                   <Button
                     asChild
                     size="sm"

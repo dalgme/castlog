@@ -254,18 +254,30 @@ export async function assignExpertsToSlot(input: {
       .filter(Boolean) as string[]
   );
 
+  // 건너뛴 이유를 이름으로 돌려준다 — UUID 나열은 사용자가 읽을 수 없어
+  // 같은 선택을 반복하게 만든다 (검수 G). 세션 RLS는 미연결·해제 전문가의
+  // 이름을 가리는데, 그게 바로 건너뛰는 대상이다 — 이름은 §4 전면 공개
+  // 정보이므로 admin으로 읽는다 (리뷰 4).
+  const nameAdmin = createAdminClient();
+  const { data: expertRows } = await nameAdmin
+    .from("experts")
+    .select("id, name")
+    .in("id", input.expertIds);
+  const nameOf = new Map((expertRows ?? []).map((e) => [e.id, e.name]));
+
   let assigned = 0;
   const skipped: string[] = [];
   let cursor = 0;
   for (const expertId of input.expertIds) {
+    const displayName = nameOf.get(expertId) ?? "(이름 확인 불가)";
     // 미연결이면 관계 자동 생성 (해제된 관계만 건너뜀)
     const linked = await ensureExpertLink(auth.session.tenantId, expertId);
     if (!linked.ok) {
-      skipped.push(`${expertId}:${linked.error}`);
+      skipped.push(`${displayName} — ${linked.error}`);
       continue;
     }
     if (inSlot.has(expertId)) {
-      skipped.push(`${expertId}:이미 후보`);
+      skipped.push(`${displayName} — 이미 이 세션의 후보입니다`);
       continue;
     }
     const target = openPositions[cursor];
@@ -283,7 +295,7 @@ export async function assignExpertsToSlot(input: {
       .is("engagement_id", null)
       .select("id");
     if (error || !updatedRows || updatedRows.length === 0) {
-      skipped.push(`${expertId}:실패`);
+      skipped.push(`${displayName} — 자리 상태가 바뀌어 배정하지 못했습니다`);
       continue;
     }
     inSlot.add(expertId);
@@ -757,7 +769,7 @@ export async function sendAcceptanceLetters(input: {
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", acceptance.id);
       if (error) {
-        failed.push({ name: expertName, reason: "송부 처리에 실패했습니다." });
+        failed.push({ name: expertName, reason: "송부 처리에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." });
         continue;
       }
 

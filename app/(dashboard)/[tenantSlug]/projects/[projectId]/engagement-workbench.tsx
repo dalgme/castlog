@@ -251,6 +251,18 @@ export function EngagementWorkbench({
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {PROJECT_STAGE_DESCRIPTIONS[projectState.stage]}
           </p>
+          {/* 회신 대기 중 무응답 대응(재안내·수동 완료)은 섭외 현황에 모여
+              있다 — 배너가 "기다립니다"만 말하면 다음 행동을 못 찾는다 (검수 G5) */}
+          {projectState.stage === "requesting" && (
+            <p className="mt-1 text-xs">
+              <Link
+                href={`/${tenantSlug}/experts/engagements?status=requested`}
+                className="text-brand underline underline-offset-4"
+              >
+                회신 대기 건 관리 (재안내·수동 완료) →
+              </Link>
+            </p>
+          )}
         </div>
 
         <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">

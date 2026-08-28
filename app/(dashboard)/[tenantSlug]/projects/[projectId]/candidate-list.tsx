@@ -244,7 +244,8 @@ export function CandidateList({
                 )}
                 {isOpen && !canManage && (
                   <span className="text-xs text-muted-foreground">
-                    섭외 요청은 관리자 이상만 보낼 수 있습니다
+                    탐색·배정 권한이 없습니다 (권한 규칙 — 기본 레벨 5, 회사
+                    조정 가능)
                   </span>
                 )}
                 {!isOpen && (
@@ -275,6 +276,13 @@ export function CandidateList({
                 )}
                 {canCancel && p.engagementId && stage === "requested" && (
                   <EngagementCancelButton engagementId={p.engagementId} />
+                )}
+                {/* 취소 권한 없는 담당자에게 경로를 말해 준다 — 버튼만 사라지면
+                    잘못 보낸 요청을 어떻게 거두는지 알 수 없다 (검수 F3) */}
+                {!canCancel && p.engagementId && stage === "requested" && (
+                  <span className="text-[11px] text-muted-foreground">
+                    회수 권한 없음 (권한 규칙 — 기본 레벨 3)
+                  </span>
                 )}
                 {canCancel &&
                   p.engagementId &&

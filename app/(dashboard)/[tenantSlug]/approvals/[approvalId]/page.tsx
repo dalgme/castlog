@@ -378,6 +378,14 @@ export default async function ApprovalDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* 대결자에게 읽기 전용인 이유를 말한다 — 무설명이면 시스템 결함으로
+                  오인한다 (검수 F3 · §12-9 원인 분류) */}
+              {canAct && actingAsDelegate && approval.status === "in_progress" && (
+                <p className="mb-2 rounded-md bg-secondary/50 p-2 text-xs text-muted-foreground">
+                  대결 처리 중에는 후보 순위·예정가 조정을 할 수 없습니다 — 조정은
+                  원 결재자의 권한이며, 대결자는 승인·반려만 합니다.
+                </p>
+              )}
               <PlanReviewPanel
                 approvalId={approval.id}
                 slots={reviewSlots}

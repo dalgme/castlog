@@ -18,6 +18,9 @@ import { resolvePage, totalPages, withParams } from "@/lib/ui/paging";
 import { Pagination } from "@/components/layout/list-controls";
 import { PageHeader } from "@/components/layout/header";
 
+import { getUrgentCancellations } from "@/lib/integrations/urgent-cancellations";
+import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
+
 import { RemindButton } from "./remind-button";
 import { EngagementHistoryDialog } from "../../projects/[projectId]/engagement-history-dialog";
 import { ManualAcceptButton } from "../../projects/[projectId]/manual-accept-button";
@@ -89,8 +92,13 @@ export default async function EngagementStatusPage({
   const canSeeAll = role === "org_admin" || role === "manager" || role === "platform_admin";
   // 전화 섭외 수동 완료 — 실행 축(engagementRequest)과 같은 문턱 (기획 확정 2026-08-23)
   const canManualAccept = await canExecTenant("engagementRequest", user);
+  // 재안내는 acceptanceSend 축 — 권한 없는 사용자에게 눌러야 거부되는 버튼을
+  // 보여주지 않는다 (검수 F1: 죽은 버튼 금지)
+  const canRemind = await canExecTenant("acceptanceSend", user);
   // 라이트 모드 — 재안내(문자)는 숨긴다. 수동 완료가 기본 동작이 된다.
   const expertsLite = await isExpertsLite();
+  // 긴급취소 전광판 — 대시보드에만 있으면 섭외 화면에서 일하는 사람이 못 본다 (검수 D2)
+  const urgentCancels = await getUrgentCancellations();
 
   const supabase = createClient();
 
@@ -158,6 +166,7 @@ export default async function EngagementStatusPage({
 
   return (
     <div>
+      <UrgentCancelMarquee items={urgentCancels} tenantSlug={params.tenantSlug} />
       <PageHeader
         title="섭외 현황"
         actions={
@@ -271,7 +280,7 @@ export default async function EngagementStatusPage({
                         <TableCell>
                           {e.status === "requested" ? (
                             <span className="inline-flex flex-wrap items-center gap-1.5">
-                              {!expertsLite && (
+                              {!expertsLite && canRemind && (
                                 <RemindButton
                                   engagementId={e.id}
                                   expertName={e.experts?.name ?? "전문가"}
@@ -287,6 +296,12 @@ export default async function EngagementStatusPage({
                                   expertName={e.experts?.name ?? null}
                                   expertsLite={expertsLite}
                                 />
+                              )}
+                              {/* 두 버튼 다 권한 밖이면 빈 칸 대신 이유를 (리뷰 7) */}
+                              {!((!expertsLite && canRemind) || canManualAccept) && (
+                                <span className="text-xs text-muted-foreground">
+                                  처리 권한 없음 (권한 규칙)
+                                </span>
                               )}
                             </span>
                           ) : acceptanceStatus ? (
