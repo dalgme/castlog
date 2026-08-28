@@ -163,8 +163,10 @@ export function PositionRequestDialog({
       );
       setSelectedIds([]);
       router.refresh();
-      // 건너뜀이 있으면 이유를 읽을 시간을 준다
-      setTimeout(() => setOpen(false), result.skipped.length > 0 ? 3500 : 900);
+      // 건너뜀이 있으면 자동으로 닫지 않는다 — 이유를 읽어야 한다 (리뷰 5)
+      if (result.skipped.length === 0) {
+        setTimeout(() => setOpen(false), 900);
+      }
     });
   }
 
@@ -215,7 +217,7 @@ export function PositionRequestDialog({
           </Alert>
         )}
         {notice && (
-          <p className="rounded bg-emerald-50 p-2 text-sm text-emerald-700">
+          <p className="whitespace-pre-line rounded bg-emerald-50 p-2 text-sm text-emerald-700">
             {notice}
           </p>
         )}

@@ -163,11 +163,15 @@ function WorkGroup({
                     ? item.daysLeft >= 0
                       ? "오늘 상신"
                       : `상신 후 ${-item.daysLeft}일`
-                    : item.daysLeft < 0
-                      ? `${-item.daysLeft}일 지남`
-                      : item.daysLeft === 0
-                        ? "오늘"
-                        : `${item.daysLeft}일 남음`}
+                    : item.kind === "reengagement"
+                      ? item.daysLeft >= 0
+                        ? "오늘 발생"
+                        : `${-item.daysLeft}일 경과`
+                      : item.daysLeft < 0
+                        ? `${-item.daysLeft}일 지남`
+                        : item.daysLeft === 0
+                          ? "오늘"
+                          : `${item.daysLeft}일 남음`}
                 </span>
               </div>
               {item.note && (

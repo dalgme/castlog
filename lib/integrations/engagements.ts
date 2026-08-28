@@ -190,17 +190,24 @@ export async function countExpertScheduleConflicts(
       .eq("is_practice", engagement.is_practice)
       .neq("id", engagement.id)
       .lte("starts_on", to)
-      .gte("ends_on", from),
+      // ends_on이 null인 당일 건이 흔하다 — gte만 쓰면 NULL 행이 빠져
+      // 정확히 그 흔한 경우를 놓친다 (리뷰 2)
+      .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`),
     admin
       .from("expert_external_schedules")
       .select("starts_at, ends_at")
       .eq("expert_id", engagement.expert_id),
   ]);
 
+  // timestamptz는 KST 기준 날짜로 바꿔 비교한다 — UTC slice는 오전 9시 이전
+  // 일정을 전날로 만들어 경계 하루가 어긋난다 (리뷰 10)
+  const kstDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   const externalCount = (externals ?? []).filter((s) => {
-    const sStart = s.starts_at?.slice(0, 10);
-    const sEnd = (s.ends_at ?? s.starts_at)?.slice(0, 10);
-    return sStart && sEnd && sStart <= to && sEnd >= from;
+    if (!s.starts_at) return false;
+    const sStart = kstDate(s.starts_at);
+    const sEnd = kstDate(s.ends_at ?? s.starts_at);
+    return sStart <= to && sEnd >= from;
   }).length;
 
   return (engagementCount ?? 0) + externalCount;

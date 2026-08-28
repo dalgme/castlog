@@ -255,8 +255,11 @@ export async function assignExpertsToSlot(input: {
   );
 
   // 건너뛴 이유를 이름으로 돌려준다 — UUID 나열은 사용자가 읽을 수 없어
-  // 같은 선택을 반복하게 만든다 (검수 G — UUID는 노출하지 않는다)
-  const { data: expertRows } = await supabase
+  // 같은 선택을 반복하게 만든다 (검수 G). 세션 RLS는 미연결·해제 전문가의
+  // 이름을 가리는데, 그게 바로 건너뛰는 대상이다 — 이름은 §4 전면 공개
+  // 정보이므로 admin으로 읽는다 (리뷰 4).
+  const nameAdmin = createAdminClient();
+  const { data: expertRows } = await nameAdmin
     .from("experts")
     .select("id, name")
     .in("id", input.expertIds);

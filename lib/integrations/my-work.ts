@@ -20,7 +20,7 @@ import type { ModuleFlags } from "@/lib/modules/modules";
 export const DUE_SOON_DAYS = 7;
 
 export type WorkItem = {
-  kind: "step" | "engagement" | "approval" | "session";
+  kind: "step" | "engagement" | "approval" | "session" | "reengagement";
   title: string;
   projectId: string | null;
   projectName: string | null;
@@ -147,7 +147,10 @@ export async function getMyWork(
             .gte("slot_date", today)
             .lte("slot_date", horizon)
         : Promise.resolve({ data: null }),
-      // 거절·만료 — 재섭외 필요 (검수 D1)
+      // 거절·만료 — 재섭외 필요 (검수 D1). 기준은 생성일이 아니라 **떨어진
+      // 시점**이다 — 기본 기한이 14일이라 created_at 기준이면 만료 건은 만료되는
+      // 순간 창에서 빠져 영영 안 보인다 (리뷰 1). 거절은 responded_at,
+      // 만료는 responded_at이 없고 기한(token_expires_at)이 곧 만료 시점이다.
       modules.experts
         ? supabase
             .from("expert_engagements")
@@ -156,7 +159,9 @@ export async function getMyWork(
             )
             .in("project_id", liveIds)
             .in("status", ["declined", "expired"])
-            .gte("created_at", recent)
+            .or(
+              `responded_at.gte.${recent},and(responded_at.is.null,token_expires_at.gte.${recent})`
+            )
             .order("created_at", { ascending: false })
             .limit(20)
         : Promise.resolve({ data: null }),
@@ -231,9 +236,13 @@ export async function getMyWork(
 
   // 거절·만료 — 자리가 다시 빈 건. 후순위 후보 재요청 시점을 놓치지 않게 한다
   const needsReengagement: WorkItem[] = (dropped ?? []).map((e) => {
-    const at = (e.responded_at ?? e.token_expires_at).slice(0, 10);
+    // KST 기준 날짜 — UTC slice는 오전 9시 이전 시각을 전날로 만든다 (리뷰 10)
+    const at = new Date(e.responded_at ?? e.token_expires_at).toLocaleDateString(
+      "en-CA",
+      { timeZone: "Asia/Seoul" }
+    );
     return {
-      kind: "engagement" as const,
+      kind: "reengagement" as const,
       title: `${e.experts?.name ?? "전문가"} — ${
         e.status === "declined" ? "거절" : "요청 만료"
       }${e.program_name ? ` · ${e.program_name}` : ""}`,

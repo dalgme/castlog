@@ -297,6 +297,12 @@ export default async function EngagementStatusPage({
                                   expertsLite={expertsLite}
                                 />
                               )}
+                              {/* 두 버튼 다 권한 밖이면 빈 칸 대신 이유를 (리뷰 7) */}
+                              {!((!expertsLite && canRemind) || canManualAccept) && (
+                                <span className="text-xs text-muted-foreground">
+                                  처리 권한 없음 (권한 규칙)
+                                </span>
+                              )}
                             </span>
                           ) : acceptanceStatus ? (
                             <Link

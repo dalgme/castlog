@@ -279,8 +279,9 @@ export default async function ExpertEngagementsPage() {
                       const letter = acceptanceStatus.get(engagement.id) ?? null;
                       const confirmed = letter === "confirmed";
                       // 아직 승인하지 않은 수락서 — 여기가 지금 할 일이다
-                      const needsApproval =
-                        letter === "sent" || letter === "issued";
+                      // 'issued'(작성중 — 아직 송부 전)는 전문가가 할 일이
+                      // 아니다. 히어로 집계(sent만)와 정의를 맞춘다 (리뷰 11)
+                      const needsApproval = letter === "sent";
                       return (
                         <div className="mt-3 space-y-2">
                           {confirmed && (
