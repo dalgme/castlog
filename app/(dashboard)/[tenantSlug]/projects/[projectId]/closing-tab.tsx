@@ -192,7 +192,7 @@ export function ClosingTab({
                 />
               ) : (
                 <span className="text-xs text-muted-foreground">
-                  마감 시작은 담당자(관리자 이상)가 합니다.
+                  마감 시작은 레벨 4 이상 담당자가 합니다 (권한 규칙).
                 </span>
               )}
             </div>

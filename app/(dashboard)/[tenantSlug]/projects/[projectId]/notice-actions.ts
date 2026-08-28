@@ -144,7 +144,7 @@ export async function createSessionNotice(input: {
     })
     .select("id")
     .single();
-  if (error || !created) return { ok: false, error: "등록에 실패했습니다." };
+  if (error || !created) return { ok: false, error: "등록에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -198,7 +198,7 @@ export async function cancelSessionNotice(
     })
     .eq("id", noticeId)
     .eq("status", "scheduled");
-  if (error) return { ok: false, error: "중지에 실패했습니다." };
+  if (error) return { ok: false, error: "중지에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -241,7 +241,7 @@ export async function saveNoticeTemplate(
     },
     { onConflict: "tenant_id,name" }
   );
-  if (error) return { ok: false, error: "템플릿 저장에 실패했습니다." };
+  if (error) return { ok: false, error: "템플릿 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -260,7 +260,7 @@ export async function deactivateNoticeTemplate(
     .from("session_notice_templates")
     .update({ is_active: false })
     .eq("id", templateId);
-  if (error) return { ok: false, error: "삭제에 실패했습니다." };
+  if (error) return { ok: false, error: "삭제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

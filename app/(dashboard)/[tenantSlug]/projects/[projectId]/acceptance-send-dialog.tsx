@@ -89,13 +89,16 @@ export function AcceptanceSendDialog({
   }
 
   if (disabled) {
+    // 잠긴 이유를 hover 툴팁에만 두면 터치 기기에서는 영영 못 본다 (검수 G2)
     return (
-      <span
-        title={disabledReason}
-        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground"
-      >
-        <FileCheck2 className="h-3.5 w-3.5" aria-hidden />
-        {label}
+      <span className="inline-flex max-w-[240px] flex-col items-start gap-0.5">
+        <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
+          <FileCheck2 className="h-3.5 w-3.5" aria-hidden />
+          {label}
+        </span>
+        <span className="text-[11px] leading-tight text-muted-foreground">
+          {disabledReason}
+        </span>
       </span>
     );
   }

@@ -50,6 +50,7 @@ export default async function MyWorkPage({
     work.overdue.length === 0 &&
     work.dueSoon.length === 0 &&
     work.awaitingReply.length === 0 &&
+    work.needsReengagement.length === 0 &&
     work.myApprovals.length === 0;
 
   return (
@@ -92,6 +93,12 @@ export default async function MyWorkPage({
               tone="warn"
               icon={Clock}
               items={work.dueSoon}
+            />
+            <WorkGroup
+              title="재섭외 필요 (거절·만료)"
+              tone="danger"
+              icon={AlertTriangle}
+              items={work.needsReengagement}
             />
             <WorkGroup
               title="회신을 기다리는 섭외"

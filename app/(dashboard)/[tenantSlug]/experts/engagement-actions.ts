@@ -104,10 +104,14 @@ export async function createEngagement(
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!link || link.status !== "active") {
-    return { ok: false, error: "활성 연결이 있는 전문가만 섭외할 수 있습니다." };
+    return { ok: false, error: "활성 연결이 있는 전문가만 이 경로로 섭외할 수 있습니다 (규칙). 미연결 전문가는 프로젝트의 '섭외후보 등록' 탭에서 탐색·배정하면 관계가 자동 생성됩니다." };
   }
 
   const token = generateLinkToken();
+  const requestExpiresAtIso = (data.responseDeadline
+    ? new Date(data.responseDeadline)
+    : new Date(Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000)
+  ).toISOString();
   const { data: engagement, error } = await supabase
     .from("expert_engagements")
     .insert({
@@ -129,17 +133,14 @@ export async function createEngagement(
       event_summary: data.eventSummary?.trim() || null,
       special_notes: data.specialNotes?.trim() || null,
       token_hash: hashLinkToken(token),
-      token_expires_at: (data.responseDeadline
-        ? new Date(data.responseDeadline)
-        : new Date(Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000)
-      ).toISOString(),
+      token_expires_at: requestExpiresAtIso,
       requested_by: user.id,
     })
     .select("id")
     .single();
 
   if (error || !engagement) {
-    return { ok: false, error: "섭외 요청 생성에 실패했습니다." };
+    return { ok: false, error: "섭외 요청 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
 
   await supabase.from("audit_logs").insert({
@@ -215,10 +216,12 @@ export async function createEngagement(
             }`
           : null,
         data.feeAmount ? `· 의뢰비용: ${Number(data.feeAmount).toLocaleString("ko-KR")}원` : null,
+        `· 회신 마감: ${new Date(requestExpiresAtIso).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}까지`,
       ]
         .filter(Boolean)
         .join("\n") +
-      `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n`,
+      `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n` +
+      `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,
   });
 
   // 문자 — 이메일은 선택 항목이라 미등록 전문가에게는 이게 유일한 연락 수단이다.
@@ -232,10 +235,13 @@ export async function createEngagement(
     senderUserId: user.id,
     expertId: data.expertId,
     body: buildEngagementRequestSms({
-      tenantName: tenantRow?.name ?? "캐스트로그",
+      // 폴백은 중립 표기 — 캐스트로그 브랜드가 회사 자리에 나오면 §16 위반
+      tenantName: tenantRow?.name ?? "기업",
       programName: data.programName?.trim() || data.roleDescription,
       schedule,
       locationName: data.locationName?.trim() || null,
+      feeAmount: data.feeAmount ? Number(data.feeAmount) : null,
+      deadline: requestExpiresAtIso,
       url,
     }),
   });
@@ -303,7 +309,7 @@ export async function cancelEngagement(
 
   const { data: engagement } = await supabase
     .from("expert_engagements")
-    .select("id, status, expert_id, project_id, experts (name)")
+    .select("id, status, expert_id, project_id, program_name, starts_on, experts (name)")
     .eq("id", engagementId)
     .maybeSingle();
 
@@ -430,6 +436,33 @@ export async function cancelEngagement(
     link: "/expert/engagements",
     tenantId,
   });
+
+  // 문자 — 포털 알림만으로는 문자로 섭외받은 전문가가 취소를 모른 채 일정을
+  // 준비할 수 있다 (검수 C3). 특히 확정 후 긴급 취소는 즉시 닿아야 한다.
+  {
+    const { data: cancelTenant } = await supabase
+      .from("tenants")
+      .select("name")
+      .eq("id", tenantId)
+      .maybeSingle();
+    await sendEngagementSms({
+      tenantId,
+      senderUserId: user.id,
+      expertId: engagement.expert_id,
+      body: [
+        `[${cancelTenant?.name ?? "기업"}] ${
+          urgent ? "확정 섭외 취소 안내" : "섭외 요청 회수 안내"
+        }`,
+        [engagement.program_name, engagement.starts_on]
+          .filter(Boolean)
+          .join(" · ") || null,
+        urgent && trimmedReason ? `사유: ${trimmedReason}` : null,
+        "자세한 내용은 캐스트로그 전문가 포털에서 확인해 주세요.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    });
+  }
 
   revalidatePath("/[tenantSlug]/experts", "page");
   if (engagement.project_id) {
@@ -633,7 +666,7 @@ export async function getEngagementEvents(
     .eq("engagement_id", engagementId)
     .order("created_at", { ascending: true });
   if (error) {
-    return { ok: false, error: "이력을 불러오지 못했습니다. 마이그레이션 미적용일 수 있습니다." };
+    return { ok: false, error: "이력을 불러오지 못했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
   return {
     ok: true,

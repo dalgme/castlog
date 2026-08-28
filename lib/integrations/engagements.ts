@@ -27,6 +27,25 @@ export const ENGAGEMENT_STATUS_LABELS: Record<string, string> = {
   expired: "요청 만료",
 };
 
+/**
+ * 실패 화면에도 실어 보내는 요약 — "이미 응답/만료" 한 줄만 남기면 문자 링크가
+ * 유일한 접점인 전문가가 행사 정보를 다시 볼 곳이 없다 (검수 C2). 회사 브랜딩도
+ * 실패 분기에서 유지한다 (§16 — 검수 C5).
+ */
+export type EngagementLookupSummary = {
+  tenantId: string;
+  tenantName: string;
+  programName: string | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  startsTime: string | null;
+  endsTime: string | null;
+  locationName: string | null;
+  feeAmount: number | null;
+  /** 이미 응답한 경우 — 무엇으로 응답했는지 */
+  respondedAs: "accepted" | "declined" | null;
+};
+
 export type EngagementLookup =
   | {
       ok: true;
@@ -35,7 +54,11 @@ export type EngagementLookup =
       projectName: string | null;
       expertName: string;
     }
-  | { ok: false; reason: "not_found" | "expired" | "already_responded" | "canceled" };
+  | {
+      ok: false;
+      reason: "not_found" | "expired" | "already_responded" | "canceled";
+      summary?: EngagementLookupSummary;
+    };
 
 /**
  * 공개 /e/{token} 검증 — service_role 전용 (anon RLS 정책 없음).
@@ -63,16 +86,34 @@ export async function lookupEngagementByToken(
   const modules = parseModuleFlags(tenant?.feature_flags);
   if (!modules.experts) return { ok: false, reason: "not_found" };
 
-  if (engagement.status === "canceled") return { ok: false, reason: "canceled" };
+  const summary: EngagementLookupSummary = {
+    tenantId: engagement.tenant_id,
+    tenantName: tenant?.name ?? "",
+    programName: engagement.program_name,
+    startsOn: engagement.starts_on,
+    endsOn: engagement.ends_on,
+    startsTime: engagement.starts_time,
+    endsTime: engagement.ends_time,
+    locationName: engagement.location_name,
+    feeAmount: engagement.fee_amount,
+    respondedAs:
+      engagement.status === "accepted" || engagement.status === "declined"
+        ? engagement.status
+        : null,
+  };
+
+  if (engagement.status === "canceled") {
+    return { ok: false, reason: "canceled", summary };
+  }
   if (engagement.status !== "requested") {
-    return { ok: false, reason: "already_responded" };
+    return { ok: false, reason: "already_responded", summary };
   }
   if (new Date(engagement.token_expires_at).getTime() < Date.now()) {
     // 라이트 모드 테넌트는 만료 처리하지 않는다 — 크론과 같은 이유 (리뷰 7):
     // 발송된 링크가 없는 수기 관리 건을, 전문가가 라이트 전환 전의 옛 링크를
     // 여는 행위가 만료·자리 해제시켜서는 안 된다. 화면에는 만료로만 보여 준다.
     if (parseExpertsLite(tenant?.feature_flags)) {
-      return { ok: false, reason: "expired" };
+      return { ok: false, reason: "expired", summary };
     }
     const { data: expired } = await admin
       .from("expert_engagements")
@@ -104,7 +145,7 @@ export async function lookupEngagementByToken(
         }
       }
     }
-    return { ok: false, reason: "expired" };
+    return { ok: false, reason: "expired", summary };
   }
 
   const [{ data: project }, { data: expert }] = await Promise.all([
@@ -125,6 +166,44 @@ export async function lookupEngagementByToken(
     projectName: project?.name ?? null,
     expertName: expert?.name ?? "",
   };
+}
+
+/**
+ * 전문가 본인의 일정 충돌 건수 (검수 C6) — /e 화면에서 수락 전에 보여 준다.
+ * 확정(accepted)된 타 섭외 + 본인이 등록한 외부 일정과의 날짜 겹침만 센다.
+ * 어느 회사의 무슨 일인지는 밝히지 않는다 (테넌트 격리).
+ */
+export async function countExpertScheduleConflicts(
+  engagement: Tables<"expert_engagements">
+): Promise<number> {
+  if (!engagement.starts_on) return 0;
+  const admin = createAdminClient();
+  const from = engagement.starts_on;
+  const to = engagement.ends_on ?? engagement.starts_on;
+
+  const [{ count: engagementCount }, { data: externals }] = await Promise.all([
+    admin
+      .from("expert_engagements")
+      .select("id", { count: "exact", head: true })
+      .eq("expert_id", engagement.expert_id)
+      .eq("status", "accepted")
+      .eq("is_practice", engagement.is_practice)
+      .neq("id", engagement.id)
+      .lte("starts_on", to)
+      .gte("ends_on", from),
+    admin
+      .from("expert_external_schedules")
+      .select("starts_at, ends_at")
+      .eq("expert_id", engagement.expert_id),
+  ]);
+
+  const externalCount = (externals ?? []).filter((s) => {
+    const sStart = s.starts_at?.slice(0, 10);
+    const sEnd = (s.ends_at ?? s.starts_at)?.slice(0, 10);
+    return sStart && sEnd && sStart <= to && sEnd >= from;
+  }).length;
+
+  return (engagementCount ?? 0) + externalCount;
 }
 
 /**

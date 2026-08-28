@@ -69,6 +69,23 @@ export function PlanReviewPanel({
     });
   };
 
+  // 위/아래 이동 — 드래그는 터치 기기에서 동작하지 않는다. 결재 승인·조정은
+  // 모바일 완전 대응 대상이라 버튼 경로를 함께 둔다 (검수 G2 · §10)
+  function moveBy(slot: ReviewSlot, id: string, delta: -1 | 1) {
+    const current = orders[slot.slotId] ?? slot.candidates.map((c) => c.id);
+    const from = current.indexOf(id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= current.length) return;
+    const next = [...current];
+    next.splice(from, 1);
+    next.splice(to, 0, id);
+    setOrders((prev) => ({ ...prev, [slot.slotId]: next }));
+    run(
+      () => reviewerReorderCandidates(approvalId, slot.slotId, next),
+      "순위 변경이 기록·저장되었습니다."
+    );
+  }
+
   function onDrop(slot: ReviewSlot, targetId: string) {
     if (!dragId || dragId === targetId) return;
     const current = orders[slot.slotId] ?? slot.candidates.map((c) => c.id);
@@ -118,10 +135,30 @@ export function PlanReviewPanel({
                     )}
                   >
                     {canEdit && (
-                      <GripVertical
-                        className="h-4 w-4 cursor-grab text-muted-foreground"
-                        aria-label="드래그하여 순위 변경"
-                      />
+                      <span className="flex items-center gap-0.5">
+                        <GripVertical
+                          className="h-4 w-4 cursor-grab text-muted-foreground"
+                          aria-label="드래그하여 순위 변경"
+                        />
+                        <button
+                          type="button"
+                          aria-label="한 칸 위로"
+                          disabled={pending || idx === 0}
+                          onClick={() => moveBy(slot, c.id, -1)}
+                          className="rounded p-1 text-muted-foreground hover:text-brand disabled:opacity-30"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="한 칸 아래로"
+                          disabled={pending || idx === ordered.length - 1}
+                          onClick={() => moveBy(slot, c.id, 1)}
+                          className="rounded p-1 text-muted-foreground hover:text-brand disabled:opacity-30"
+                        >
+                          ▼
+                        </button>
+                      </span>
                     )}
                     <span
                       className={cn(

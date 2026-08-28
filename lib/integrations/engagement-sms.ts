@@ -60,13 +60,30 @@ export function buildEngagementRequestSms(params: {
   programName: string | null;
   schedule: string | null;
   locationName: string | null;
+  /** 의뢰비용(원) — 전문가는 링크를 열기 전에 '얼마'를 알아야 한다 (검수 C4) */
+  feeAmount?: number | null;
+  /** 회신 마감 (ISO) — '언제까지 답해야 하는지'도 본문에 (검수 C4) */
+  deadline?: string | null;
   url: string;
 }): string {
+  const fee =
+    params.feeAmount !== null && params.feeAmount !== undefined
+      ? `의뢰비용 ${params.feeAmount.toLocaleString("ko-KR")}원`
+      : null;
+  const due = params.deadline
+    ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        month: "numeric",
+        day: "numeric",
+      })}까지`
+    : null;
   return [
     `[${params.tenantName}] 섭외 요청`,
     params.programName,
     params.schedule,
     params.locationName,
+    fee,
+    due,
     `수락/거절: ${params.url}`,
   ]
     .filter(Boolean)

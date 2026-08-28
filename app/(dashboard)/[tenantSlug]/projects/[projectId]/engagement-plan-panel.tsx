@@ -213,7 +213,8 @@ export function EngagementPlanPanel({
 
         {canSubmit && !isChange && plan.state !== "in_progress" && plan.state !== "approved" && (
           <p className="rounded-md border bg-background p-2.5 text-xs text-muted-foreground">
-            상신은 화면 위 <b>‘섭외 품의’</b> 버튼으로 합니다. 자리 배정을 모두
+            상신은 화면 위 <b>‘섭외 품의서 자동 작성 및 송신’</b> 버튼으로
+            합니다. 자리 배정을 모두
             마치면 버튼이 활성화됩니다.
           </p>
         )}

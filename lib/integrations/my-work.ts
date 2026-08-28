@@ -38,6 +38,12 @@ export type MyWork = {
   /** 회신을 기다리는 섭외 (마감 개념과 별개로 계속 신경 써야 하는 것) */
   awaitingReply: WorkItem[];
   /**
+   * 거절·만료로 자리가 빈 섭외 — 재섭외가 필요하다 (검수 D1).
+   * 전문가의 거절·만료는 어떤 능동 알림도 만들지 않아 담당자가 후순위 후보
+   * 재요청 시점을 놓치던 비대칭을 메운다. 최근 14일 건만 모은다.
+   */
+  needsReengagement: WorkItem[];
+  /**
    * 내 결재 차례 (검수 A3) — 배정 기준이 아니라 결재선 기준이다. 배정이 없는
    * 대표·이사도 결재는 온다. 승인 게이트에 걸린 팀이 이 신호로 풀린다.
    */
@@ -60,6 +66,7 @@ export async function getMyWork(
     overdue: [],
     dueSoon: [],
     awaitingReply: [],
+    needsReengagement: [],
     myApprovals: [],
     myProjectCount: 0,
   };
@@ -111,7 +118,8 @@ export async function getMyWork(
     return { ...empty, myApprovals, myProjectCount: myProjectIds.length };
   }
 
-  const [{ data: steps }, { data: engagements }, { data: slots }] =
+  const recent = new Date(Date.now() - 14 * 86400000).toISOString();
+  const [{ data: steps }, { data: engagements }, { data: slots }, { data: dropped }] =
     await Promise.all([
       modules.operations
         ? supabase
@@ -138,6 +146,19 @@ export async function getMyWork(
             .in("project_id", liveIds)
             .gte("slot_date", today)
             .lte("slot_date", horizon)
+        : Promise.resolve({ data: null }),
+      // 거절·만료 — 재섭외 필요 (검수 D1)
+      modules.experts
+        ? supabase
+            .from("expert_engagements")
+            .select(
+              "id, project_id, status, responded_at, token_expires_at, program_name, experts (name)"
+            )
+            .in("project_id", liveIds)
+            .in("status", ["declined", "expired"])
+            .gte("created_at", recent)
+            .order("created_at", { ascending: false })
+            .limit(20)
         : Promise.resolve({ data: null }),
     ]);
 
@@ -208,11 +229,33 @@ export async function getMyWork(
     });
   }
 
+  // 거절·만료 — 자리가 다시 빈 건. 후순위 후보 재요청 시점을 놓치지 않게 한다
+  const needsReengagement: WorkItem[] = (dropped ?? []).map((e) => {
+    const at = (e.responded_at ?? e.token_expires_at).slice(0, 10);
+    return {
+      kind: "engagement" as const,
+      title: `${e.experts?.name ?? "전문가"} — ${
+        e.status === "declined" ? "거절" : "요청 만료"
+      }${e.program_name ? ` · ${e.program_name}` : ""}`,
+      projectId: e.project_id,
+      projectName: e.project_id
+        ? (projectNameById.get(e.project_id) ?? null)
+        : null,
+      dueOn: at,
+      daysLeft: daysBetween(today, at),
+      href: e.project_id
+        ? `/${tenantSlug}/projects/${e.project_id}?tab=experts`
+        : `/${tenantSlug}/experts/engagements`,
+      note: "자리가 다시 비었습니다. 예비 후보에게 재섭외하세요.",
+    };
+  });
+
   const byDue = (a: WorkItem, b: WorkItem) => a.daysLeft - b.daysLeft;
   return {
     overdue: overdue.sort(byDue),
     dueSoon: dueSoon.sort(byDue),
     awaitingReply: awaitingReply.sort(byDue),
+    needsReengagement: needsReengagement.sort(byDue),
     myApprovals: myApprovals.sort(byDue),
     myProjectCount: myProjectIds.length,
   };

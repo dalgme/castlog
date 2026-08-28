@@ -34,7 +34,10 @@ export function ClosingStageButtons({
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const label = mode === "start" ? "프로젝트 종료" : "지급 품의 검토 요청";
+  // '프로젝트 종료'는 최종 확정처럼 읽혀 누르기를 주저하게 만든다 —
+  // 실제로는 마감 입력의 시작이다 (검수 G7)
+  const label =
+    mode === "start" ? "마감 시작 (참여율·만족도 입력)" : "지급 품의 검토 요청";
   const question =
     mode === "start"
       ? "프로젝트를 종료하고 마감 입력(참여율·만족도)을 시작할까요?"

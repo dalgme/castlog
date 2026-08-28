@@ -154,16 +154,17 @@ export function PositionRequestDialog({
         setError(result.error);
         return;
       }
+      // 건너뛴 이유를 보여준다 — 건수만 보여주면 같은 선택을 반복한다 (검수 G)
       setNotice(
         `${result.assigned}명을 후보로 등록했습니다.` +
           (result.skipped.length > 0
-            ? ` (${result.skipped.length}건 건너뜀)`
+            ? `\n건너뜀 ${result.skipped.length}건:\n${result.skipped.join("\n")}`
             : "")
       );
       setSelectedIds([]);
       router.refresh();
-      // 등록 결과를 잠깐 보여주고 닫는다
-      setTimeout(() => setOpen(false), 900);
+      // 건너뜀이 있으면 이유를 읽을 시간을 준다
+      setTimeout(() => setOpen(false), result.skipped.length > 0 ? 3500 : 900);
     });
   }
 

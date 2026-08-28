@@ -24,6 +24,7 @@ import {
   sendEngagementEmail,
   portalUrl,
 } from "@/lib/integrations/engagement-email";
+import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
 
 export type AcceptanceActionResult = { ok: true } | { ok: false; error: string };
 
@@ -80,7 +81,7 @@ export async function updateAcceptanceGuide(
       submission_docs: submissionDocs?.trim() || null,
     })
     .eq("id", acceptanceId);
-  if (error) return { ok: false, error: "저장에 실패했습니다." };
+  if (error) return { ok: false, error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
   return { ok: true };
@@ -111,7 +112,7 @@ export async function uploadAcceptanceMap(
       contentType: validation.contentType,
       upsert: false,
     });
-  if (uploadError) return { ok: false, error: "업로드에 실패했습니다." };
+  if (uploadError) return { ok: false, error: "업로드에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   const supabase = createClient();
   const { error } = await supabase
@@ -120,7 +121,7 @@ export async function uploadAcceptanceMap(
     .eq("id", acceptanceId);
   if (error) {
     await admin.storage.from(EXPERT_DOCUMENT_BUCKET).remove([path]);
-    return { ok: false, error: "저장에 실패했습니다." };
+    return { ok: false, error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
@@ -152,7 +153,7 @@ export async function uploadAcceptanceAttachment(
       contentType: validation.contentType,
       upsert: false,
     });
-  if (uploadError) return { ok: false, error: "업로드에 실패했습니다." };
+  if (uploadError) return { ok: false, error: "업로드에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   const supabase = createClient();
   const { error } = await supabase.from("engagement_acceptance_attachments").insert({
@@ -166,7 +167,7 @@ export async function uploadAcceptanceAttachment(
   });
   if (error) {
     await admin.storage.from(EXPERT_DOCUMENT_BUCKET).remove([path]);
-    return { ok: false, error: "저장에 실패했습니다." };
+    return { ok: false, error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
@@ -192,7 +193,7 @@ export async function deleteAcceptanceAttachment(
     .from("engagement_acceptance_attachments")
     .delete()
     .eq("id", attachmentId);
-  if (error) return { ok: false, error: "삭제에 실패했습니다." };
+  if (error) return { ok: false, error: "삭제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   if (row?.storage_path) {
     const admin = createAdminClient();
@@ -286,6 +287,23 @@ export async function sendAcceptance(
       `아래 링크에서 내용을 확인하시고 전자서명을 완료해 주세요.\n` +
       `${portalUrl(letterPath)}\n\n` +
       `※ 포털 로그인 후 확인하실 수 있습니다.\n`,
+  });
+
+  // 문자 — 전문가의 필수 식별자는 휴대폰이고 이메일은 선택이다. 이메일 없는
+  // 전문가는 수락서가 온 줄 모른 채 확정이 멈춘다 (검수 C8: 일괄 송부는
+  // 문자를 보내는데 단건만 빠져 있었다)
+  await sendEngagementSms({
+    tenantId: auth.tenantId,
+    senderUserId: auth.userId,
+    expertId: acceptance.expert_id,
+    body: [
+      `[${acceptance.tenant_name}] 수락서 도착`,
+      title,
+      "※ 수락서는 캐스트로그에서 확인·승인하셔야 합니다.",
+      portalUrl(letterPath),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
