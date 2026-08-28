@@ -12,7 +12,8 @@ export type SlotResult = { ok: true } | { ok: false; error: string };
 
 /** 세션 계획·후보 입력 = 레벨 5까지 (기획 확정 2026-08-23 — 차등화) */
 async function requireManager(): Promise<
-  { ok: true; userId: string; tenantId: string } | { ok: false; error: string }
+  | { ok: true; userId: string; tenantId: string; role: string }
+  | { ok: false; error: string }
 > {
   return requireExecGrade("planInput");
 }
@@ -45,7 +46,7 @@ const slotSchema = z
   );
 
 /**
- * 타임테이블 슬롯 생성 + 필요인원만큼 넘버링코드 자동 부여.
+ * 타임테이블 슬롯 생성 + 필요인원만큼 코드넘버 자동 부여.
  * 코드는 테넌트 내 유일해야 하므로 충돌 시 접미사를 붙여 재시도한다.
  */
 export async function createSlot(
@@ -106,7 +107,7 @@ export async function createSlot(
   return { ok: true };
 }
 
-/** 넘버링코드 부여 — 충돌 시 짧은 접미사로 재시도(테넌트 내 유일). */
+/** 코드넘버 부여 — 충돌 시 짧은 접미사로 재시도(테넌트 내 유일). */
 async function createPositions(
   supabase: ReturnType<typeof createClient>,
   tenantId: string,
@@ -132,9 +133,9 @@ async function createPositions(
         code,
       });
       if (!error) inserted = true;
-      else if (error.code !== "23505") return "넘버링코드 생성에 실패했습니다.";
+      else if (error.code !== "23505") return "코드넘버 생성에 실패했습니다.";
     }
-    if (!inserted) return "넘버링코드가 중복되어 생성하지 못했습니다.";
+    if (!inserted) return "코드넘버가 중복되어 생성하지 못했습니다.";
   }
   return null;
 }
@@ -436,7 +437,7 @@ export async function reorderCandidates(
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
     actor_auth_user_id: auth.userId,
-    actor_role: "staff",
+    actor_role: auth.role,
     action: "candidate.reorder",
     resource_type: "engagement_slot",
     resource_id: slotId,

@@ -298,7 +298,7 @@ export function CandidateList({
                     aria-label="후보 삭제"
                     disabled={pending}
                     onClick={() => {
-                      if (window.confirm(`임시후보 ${p.code}를 삭제할까요?`)) {
+                      if (window.confirm(`코드넘버 ${p.code} 후보를 삭제할까요?`)) {
                         run(() => removeCandidate(p.id), "후보가 삭제되었습니다.");
                       }
                     }}
@@ -319,7 +319,7 @@ export function CandidateList({
           variant="outline"
           className="mt-2"
           disabled={pending}
-          onClick={() => run(() => addCandidate(slotId), "임시후보가 추가되었습니다.")}
+          onClick={() => run(() => addCandidate(slotId), "후보 자리(코드넘버)가 추가되었습니다.")}
         >
           <Plus className="mr-1 h-4 w-4" />
           후보 추가

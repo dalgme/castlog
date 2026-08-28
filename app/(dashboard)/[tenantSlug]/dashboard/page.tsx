@@ -184,7 +184,11 @@ export default async function DashboardPage({
         </Button>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-4 gap-3 text-center">
+        <div
+          className={`grid gap-3 text-center ${
+            modules.approvals ? "grid-cols-4" : "grid-cols-3"
+          }`}
+        >
           <div>
             <p className="text-2xl font-extrabold text-destructive">
               {myWork.overdue.length}
@@ -203,17 +207,20 @@ export default async function DashboardPage({
             </p>
             <p className="text-xs text-muted-foreground">회신 대기 섭외</p>
           </div>
-          {/* 내 결재 차례 — 배정이 없는 대표에게도 보이는 유일한 신호 (검수 A3) */}
-          <div>
-            <p
-              className={`text-2xl font-extrabold ${
-                myWork.myApprovals.length > 0 ? "text-brand" : ""
-              }`}
-            >
-              {myWork.myApprovals.length}
-            </p>
-            <p className="text-xs text-muted-foreground">내 결재 차례</p>
-          </div>
+          {/* 내 결재 차례 — 배정이 없는 대표에게도 보이는 유일한 신호 (검수 A3).
+              전자결재 미사용 회사에는 0만 보이는 칸을 두지 않는다 */}
+          {modules.approvals && (
+            <div>
+              <p
+                className={`text-2xl font-extrabold ${
+                  myWork.myApprovals.length > 0 ? "text-brand" : ""
+                }`}
+              >
+                {myWork.myApprovals.length}
+              </p>
+              <p className="text-xs text-muted-foreground">내 결재 차례</p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -3,7 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 import { hashLinkToken } from "@/lib/auth/tokens";
-import { parseModuleFlags } from "@/lib/modules/modules";
+import { parseExpertsLite, parseModuleFlags } from "@/lib/modules/modules";
 import type { Tables } from "@/lib/supabase/database.types";
 import { createEngagementAcceptance } from "./acceptance";
 import { refreshProjectEngagementStage } from "./project-engagement";
@@ -68,6 +68,12 @@ export async function lookupEngagementByToken(
     return { ok: false, reason: "already_responded" };
   }
   if (new Date(engagement.token_expires_at).getTime() < Date.now()) {
+    // 라이트 모드 테넌트는 만료 처리하지 않는다 — 크론과 같은 이유 (리뷰 7):
+    // 발송된 링크가 없는 수기 관리 건을, 전문가가 라이트 전환 전의 옛 링크를
+    // 여는 행위가 만료·자리 해제시켜서는 안 된다. 화면에는 만료로만 보여 준다.
+    if (parseExpertsLite(tenant?.feature_flags)) {
+      return { ok: false, reason: "expired" };
+    }
     const { data: expired } = await admin
       .from("expert_engagements")
       .update({ status: "expired" })

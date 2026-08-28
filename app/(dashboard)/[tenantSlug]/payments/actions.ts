@@ -215,17 +215,6 @@ export async function createPaymentBatch(
   const data = parsed.data;
   const projectId = data.projectId || null;
 
-  // 부PM 실행 게이트 — 금액이 확정되는 단계다. DEPUTY_GATED_ACTIONS에 등록만
-  // 되고 배선이 빠져 있어 승인이 소진되지 않던 결함 수정 (검수 A2).
-  if (projectId) {
-    const deputyGate = await gateDeputyAction({
-      projectId,
-      actionType: "payment_batch.create",
-      targetId: null,
-    });
-    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
-  }
-
   const supabase = createClient();
 
   // 1) 대상 섭외 검증 — 수락(계약 성립) + 비용 존재 + 프로젝트 일치
@@ -332,6 +321,18 @@ export async function createPaymentBatch(
     }),
     { gross: 0, withholding: 0, net: 0 }
   );
+
+  // 4.5) 부PM 실행 게이트 — 금액이 확정되는 단계다 (검수 A2: 배선 누락 수정).
+  // 승인 1건은 실행 1회분이라 **모든 검증을 통과한 실행 직전**에 소진한다 —
+  // 입력 오류로 승인만 태우면 부PM이 다시 받아와야 한다 (리뷰 6).
+  if (projectId) {
+    const deputyGate = await gateDeputyAction({
+      projectId,
+      actionType: "payment_batch.create",
+      targetId: null,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+  }
 
   // 5) 배치 + 라인 생성
   const { data: batch, error: batchError } = await supabase

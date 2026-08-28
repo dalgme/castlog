@@ -177,12 +177,14 @@ export async function setExpertsLite(
     const newDeadline = new Date(
       Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000
     ).toISOString();
+    // 기한이 이미 지난 건만 — 다음 크론이 일괄 만료시킬 대상이다. 아직 살아
+    // 있는 기한(전문가에게 안내된 마감 포함)을 몰래 늘리지 않는다 (리뷰 3).
     await admin
       .from("expert_engagements")
       .update({ token_expires_at: newDeadline })
       .eq("tenant_id", gate.tenantId)
       .eq("status", "requested")
-      .lt("token_expires_at", newDeadline);
+      .lt("token_expires_at", new Date().toISOString());
   }
 
   const supabase = createClient();

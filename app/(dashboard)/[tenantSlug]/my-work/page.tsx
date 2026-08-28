@@ -150,11 +150,17 @@ function WorkGroup({
                 <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                   {item.dueOn}
                   {" · "}
-                  {item.daysLeft < 0
-                    ? `${-item.daysLeft}일 지남`
-                    : item.daysLeft === 0
-                      ? "오늘"
-                      : `${item.daysLeft}일 남음`}
+                  {/* 결재는 마감이 아니라 상신일 기준 — '지남'으로 표기하면
+                      기한을 어긴 것처럼 읽힌다 (검수 리뷰 9) */}
+                  {item.kind === "approval"
+                    ? item.daysLeft >= 0
+                      ? "오늘 상신"
+                      : `상신 후 ${-item.daysLeft}일`
+                    : item.daysLeft < 0
+                      ? `${-item.daysLeft}일 지남`
+                      : item.daysLeft === 0
+                        ? "오늘"
+                        : `${item.daysLeft}일 남음`}
                 </span>
               </div>
               {item.note && (

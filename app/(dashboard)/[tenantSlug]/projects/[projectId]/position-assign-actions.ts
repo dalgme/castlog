@@ -638,7 +638,7 @@ export async function sendAcceptanceLetters(input: {
     return {
       ok: false,
       error:
-        "라이트 모드에서는 수락서를 송신하지 않습니다. 수동 '섭외 완료' 처리로 생성된 수락서는 화면에서 바로 확인·수정할 수 있습니다. 송신이 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
+        "라이트 모드에서는 수락서를 송부하지 않습니다. 수동 '섭외 완료' 처리로 생성된 수락서는 화면에서 바로 확인·수정할 수 있습니다. 송신이 필요하면 설정 > 기업관리에서 라이트 모드를 끌 수 있습니다.",
     };
   }
   const senderName = await staffActorLabel(auth.session.userId);
@@ -698,7 +698,7 @@ export async function sendAcceptanceLetters(input: {
     expertId,
   }));
   if (targets.length === 0) {
-    return { ok: false, error: "송신할 수락 건이 없습니다." };
+    return { ok: false, error: "송부할 수락 건이 없습니다." };
   }
 
   const { data: experts } = await supabase
@@ -757,11 +757,11 @@ export async function sendAcceptanceLetters(input: {
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", acceptance.id);
       if (error) {
-        failed.push({ name: expertName, reason: "송신 처리에 실패했습니다." });
+        failed.push({ name: expertName, reason: "송부 처리에 실패했습니다." });
         continue;
       }
 
-      // 섭외 이력 — 수락서 송신을 담당자 이름으로 기록 (송신 확정 후에만)
+      // 섭외 이력 — 수락서 송부를 담당자 이름으로 기록 (송부 확정 후에만)
       await logEngagementEvent({
         tenantId: auth.session.tenantId,
         engagementId: target.engagementId,
@@ -826,7 +826,7 @@ export async function sendAcceptanceLetters(input: {
   if (sent === 0 && skipped === 0) {
     return {
       ok: false,
-      error: `한 건도 송신되지 않았습니다. (${failed[0]?.reason ?? "원인 미상"})`,
+      error: `한 건도 송부되지 않았습니다. (${failed[0]?.reason ?? "원인 미상"})`,
     };
   }
 
