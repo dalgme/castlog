@@ -31,6 +31,14 @@ export const DEPUTY_GATED_ACTIONS = {
     targetType: "slot",
     why: "외부로 나가는 발송이며 회수할 수 없습니다.",
   },
+  // 재안내는 세션 문자가 아니라 섭외 건의 동의 링크 재발급이다 — 같은
+  // action_type을 쓰면 대상 규약(slot vs engagement)이 갈려 승인이 호환되지
+  // 않으므로 분리한다 (검수 A1).
+  "engagement.remind": {
+    label: "동의 링크 재안내",
+    targetType: "engagement",
+    why: "외부로 나가는 발송이며, 이전 동의 링크가 무효화됩니다.",
+  },
   "payment_batch.create": {
     label: "지급건 생성",
     targetType: "project",

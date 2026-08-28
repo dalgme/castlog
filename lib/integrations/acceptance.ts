@@ -105,18 +105,20 @@ export async function createEngagementAcceptance(
     ]);
 
   const base = `acceptances/${eng.tenant_id}/${eng.id}`;
-  const signaturePath = await snapshotSignatureImage(
-    admin,
-    eng.expert_id,
-    "signature",
-    `${base}-signature.png`
-  );
-  const sealPath = await snapshotSignatureImage(
-    admin,
-    eng.expert_id,
-    "seal",
-    `${base}-seal.png`
-  );
+  // 수동 처리(전화 확인) 건에는 서명을 박지 않는다 — 전문가가 이 문서를 본 적도
+  // 서명한 적도 없는데 등록 서명을 스탬프하면 서명된 문서처럼 보인다(검수 B3).
+  const isManual = signedVia === "manual";
+  const signaturePath = isManual
+    ? null
+    : await snapshotSignatureImage(
+        admin,
+        eng.expert_id,
+        "signature",
+        `${base}-signature.png`
+      );
+  const sealPath = isManual
+    ? null
+    : await snapshotSignatureImage(admin, eng.expert_id, "seal", `${base}-seal.png`);
 
   const letterNo = `ACC-${new Date()
     .toISOString()

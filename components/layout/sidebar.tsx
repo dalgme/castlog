@@ -77,6 +77,7 @@ export function Sidebar({
   isOrgAdmin,
   canManagePayments,
   expertsLite = false,
+  approvalsBadge = 0,
   tenantName,
   logoSrc,
 }: {
@@ -86,6 +87,8 @@ export function Sidebar({
   canManagePayments: boolean;
   /** 라이트 모드 — 지급·세무 메뉴를 닫는다 (docs/decisions/experts-lite.md) */
   expertsLite?: boolean;
+  /** 내 결재 차례 건수 — 전자결재 메뉴 배지 (검수 A3) */
+  approvalsBadge?: number;
   tenantName: string | null;
   /** 등록된 회사 로고 — 없으면 캐스트로그 심볼을 쓴다 */
   logoSrc: string | null;
@@ -152,6 +155,12 @@ export function Sidebar({
             >
               <Icon className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">{label}</span>
+              {/* 내 결재 차례 — 결재권자가 도착을 알아야 게이트가 풀린다 (검수 A3) */}
+              {path === "approvals" && approvalsBadge > 0 && (
+                <span className="ml-auto hidden rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold leading-none text-white md:inline-block">
+                  {approvalsBadge}
+                </span>
+              )}
             </Link>
           );
         })}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Clock, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, Clock, FileCheck, MessageSquareWarning } from "lucide-react";
 
 import { requireRole } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
@@ -49,7 +49,8 @@ export default async function MyWorkPage({
   const nothing =
     work.overdue.length === 0 &&
     work.dueSoon.length === 0 &&
-    work.awaitingReply.length === 0;
+    work.awaitingReply.length === 0 &&
+    work.myApprovals.length === 0;
 
   return (
     <div>
@@ -60,7 +61,15 @@ export default async function MyWorkPage({
           일 안에 닥치는 일만 모았습니다.
         </p>
 
-        {work.myProjectCount === 0 ? (
+        {/* 내 결재 차례 — 배정과 무관하게 결재선 기준이라 배정 0건이어도 보인다 (검수 A3) */}
+        <WorkGroup
+          title="내 결재 차례"
+          tone="warn"
+          icon={FileCheck}
+          items={work.myApprovals}
+        />
+
+        {work.myProjectCount === 0 && work.myApprovals.length === 0 ? (
           <EmptyState
             title="배정된 프로젝트가 없습니다"
             description="프로젝트에 PM·부PM·담당으로 배정되면 여기에 할 일이 모입니다. 배정은 대표·이사가 합니다."

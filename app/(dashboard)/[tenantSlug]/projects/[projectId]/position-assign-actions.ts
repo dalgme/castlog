@@ -314,7 +314,7 @@ export async function unassignPosition(
   const supabase = createClient();
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, status")
+    .select("id, status, code, assigned_expert_id")
     .eq("id", positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
@@ -331,7 +331,27 @@ export async function unassignPosition(
       assigned_by: null,
     })
     .eq("id", positionId);
-  if (error) return { ok: false, error: "해제에 실패했습니다." };
+  if (error) {
+    return {
+      ok: false,
+      error: "해제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
+
+  // 누가 이 후보를 뺐는지는 물을 수 있어야 한다 (검수 B8 — 무기록이었다)
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.session.tenantId,
+    actor_auth_user_id: auth.session.userId,
+    actor_role: auth.session.role,
+    action: "position.unassign",
+    resource_type: "engagement_slot_position",
+    resource_id: positionId,
+    before_data: {
+      code: position.code,
+      assigned_expert_id: position.assigned_expert_id,
+    },
+    after_data: { status: "open" },
+  });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

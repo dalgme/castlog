@@ -18,12 +18,13 @@ import { refreshProjectEngagementStage } from "./project-engagement";
 
 export const ENGAGEMENT_EXPIRES_DAYS = 14;
 
+// 라벨 사전 — engagement-stage.ts와 같은 원칙 (요청중/거절/취소/요청 만료)
 export const ENGAGEMENT_STATUS_LABELS: Record<string, string> = {
-  requested: "요청됨",
+  requested: "요청중",
   accepted: "수락(계약 성립)",
   declined: "거절",
-  canceled: "회수",
-  expired: "만료",
+  canceled: "취소",
+  expired: "요청 만료",
 };
 
 export type EngagementLookup =
@@ -67,11 +68,36 @@ export async function lookupEngagementByToken(
     return { ok: false, reason: "already_responded" };
   }
   if (new Date(engagement.token_expires_at).getTime() < Date.now()) {
-    await admin
+    const { data: expired } = await admin
       .from("expert_engagements")
       .update({ status: "expired" })
       .eq("id", engagement.id)
-      .eq("status", "requested");
+      .eq("status", "requested")
+      .select("id")
+      .maybeSingle();
+    // 크론 만료와 같은 후처리 — 자리를 풀지 않으면 코드넘버가 requested 자리 +
+    // expired 건으로 영구 잠기고, 크론(status=requested 조건)도 다시 못 잡는다.
+    if (expired) {
+      const { releasePositionsForEngagement } = await import(
+        "./engagement-lifecycle"
+      );
+      await releasePositionsForEngagement(engagement.id);
+      await logEngagementEvent({
+        tenantId: engagement.tenant_id,
+        engagementId: engagement.id,
+        type: "expired",
+        actorKind: "system",
+        actorLabel: "시스템",
+        isPractice: engagement.is_practice,
+      });
+      if (engagement.project_id) {
+        try {
+          await refreshProjectEngagementStage(engagement.project_id);
+        } catch {
+          // 단계 갱신 실패가 만료 처리 자체를 막지 않는다
+        }
+      }
+    }
     return { ok: false, reason: "expired" };
   }
 

@@ -39,6 +39,8 @@ export type ActionRequestRow = {
   id: string;
   actionType: string;
   targetId: string | null;
+  /** 대상 사람용 표기 — 코드넘버·전문가명·세션 (검수 A1: UUID만으로는 뭘 승인하는지 모른다) */
+  targetLabel: string | null;
   requestNote: string | null;
   status: string;
   requesterName: string;
@@ -139,7 +141,7 @@ export function ActionRequestPanel({
         <div className="space-y-2 rounded-lg border p-3">
           <p className="text-sm font-semibold">PM 승인 요청 (프로젝트 단위)</p>
           <p className="text-xs text-muted-foreground">
-            넘버링코드·섭외건·세션처럼 대상이 정해진 작업은 그 화면에서 실행을
+            코드넘버·섭외건·세션처럼 대상이 정해진 작업은 그 화면에서 실행을
             시도하면 바로 승인 요청 버튼이 나타납니다. 여기서는 프로젝트 단위
             작업만 요청합니다.
           </p>
@@ -187,6 +189,11 @@ export function ActionRequestPanel({
                 <span className="text-sm font-semibold">
                   {deputyActionLabel(r.actionType)}
                 </span>
+                {r.targetLabel && (
+                  <span className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                    {r.targetLabel}
+                  </span>
+                )}
                 <Badge variant="secondary">{r.requesterName}</Badge>
                 <span className="text-xs text-muted-foreground">
                   {new Date(r.createdAt).toLocaleString("ko-KR", {
@@ -244,6 +251,9 @@ export function ActionRequestPanel({
             {historyRows.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-medium">{deputyActionLabel(r.actionType)}</span>
+                {r.targetLabel && (
+                  <span className="text-muted-foreground">{r.targetLabel}</span>
+                )}
                 <span className="text-muted-foreground">{r.requesterName}</span>
                 <Badge
                   variant={r.status === "denied" ? "destructive" : "secondary"}

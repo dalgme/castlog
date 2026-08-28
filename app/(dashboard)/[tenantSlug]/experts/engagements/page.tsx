@@ -209,7 +209,7 @@ export default async function EngagementStatusPage({
             title="섭외 건이 없습니다"
             description={
               canSeeAll
-                ? "프로젝트의 섭외 테이블에서 넘버링코드별로 섭외를 요청해 보세요."
+                ? "프로젝트의 세션에서 코드넘버별로 섭외를 요청해 보세요."
                 : "배정된 프로젝트의 섭외 건이 여기에 표시됩니다."
             }
           />

@@ -350,11 +350,64 @@ export default async function ProjectDetailPage({
     .eq("project_id", project.id)
     .order("created_at", { ascending: false })
     .limit(50);
+  // 대상 지정형 요청은 무엇에 대한 승인인지 사람이 읽을 수 있어야 한다 (검수 A1) —
+  // target_id(UUID)만으로는 PM이 뭘 승인하는지 모른 채 실행 1회분을 발급하게 된다.
+  const targetLabelById = new Map<string, string>();
+  {
+    const rows = actionRequestRecords ?? [];
+    const positionIds = rows
+      .filter((r) => r.target_id && r.action_type === "engagement.request")
+      .map((r) => r.target_id as string);
+    const engagementIds = rows
+      .filter(
+        (r) =>
+          r.target_id &&
+          ["engagement.cancel", "engagement.manual_accept", "engagement.remind"].includes(
+            r.action_type
+          )
+      )
+      .map((r) => r.target_id as string);
+    const slotIds = rows
+      .filter((r) => r.target_id && r.action_type === "engagement.session_sms")
+      .map((r) => r.target_id as string);
+    if (positionIds.length > 0) {
+      const { data } = await supabase
+        .from("engagement_slot_positions")
+        .select("id, code")
+        .in("id", positionIds);
+      for (const p of data ?? []) targetLabelById.set(p.id, `코드넘버 ${p.code}`);
+    }
+    if (engagementIds.length > 0) {
+      const { data } = await supabase
+        .from("expert_engagements")
+        .select("id, starts_on, experts (name)")
+        .in("id", engagementIds);
+      for (const e of data ?? []) {
+        targetLabelById.set(
+          e.id,
+          [e.experts?.name, e.starts_on].filter(Boolean).join(" · ")
+        );
+      }
+    }
+    if (slotIds.length > 0) {
+      const { data } = await supabase
+        .from("engagement_slots")
+        .select("id, session_name, slot_date")
+        .in("id", slotIds);
+      for (const s of data ?? []) {
+        targetLabelById.set(
+          s.id,
+          [s.slot_date, s.session_name].filter(Boolean).join(" · ")
+        );
+      }
+    }
+  }
   const actionRequests: ActionRequestRow[] = (actionRequestRecords ?? []).map(
     (r) => ({
       id: r.id,
       actionType: r.action_type,
       targetId: r.target_id,
+      targetLabel: r.target_id ? targetLabelById.get(r.target_id) ?? null : null,
       requestNote: r.request_note,
       status: r.status,
       requesterName: staffById.get(r.requested_by)?.name ?? "(직원)",
@@ -755,6 +808,7 @@ export default async function ProjectDetailPage({
                 slots={slotRows}
                 canManage={canInput}
                 canNotice={exec.sessionNotice}
+                expertsLite={expertsLite}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />
@@ -818,6 +872,7 @@ export default async function ProjectDetailPage({
             staff={staffOptions}
             contributionInitial={contributionInitial}
             reviewTargets={reviewTargets}
+            expertsLite={expertsLite}
           />
         )}
 
@@ -927,10 +982,13 @@ export default async function ProjectDetailPage({
                   {(unlinkedCount ?? 0) > 0 && (
                     <AttachEngagementsDialog projectId={project.id} />
                   )}
+                  {/* 코드넘버·계획 품의를 거치지 않는 예외 경로다 — 정식 절차
+                      (①~⑤)와 같은 이름이면 어느 쪽이 진짜인지 헷갈린다 (검수 B9·G) */}
                   <EngagementDialog
                     experts={connectedExperts}
                     projects={null}
                     defaultProjectId={project.id}
+                    triggerLabel="코드 없이 바로 섭외 (예외)"
                   />
                 </>
               ) : null

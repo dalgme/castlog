@@ -92,6 +92,7 @@ export function SlotTable({
   slots,
   canManage,
   canNotice,
+  expertsLite = false,
   noticeTemplates,
   defaultNoticeBody,
 }: {
@@ -101,6 +102,8 @@ export function SlotTable({
   canManage: boolean;
   /** 세션 안내문자 발송 — 레벨 4부터 (입력 권한과 별개 축) */
   canNotice: boolean;
+  /** 라이트 모드 — 안내문자 버튼을 숨긴다 (검수 A6: 눌러야 거부되는 막다른 버튼 금지) */
+  expertsLite?: boolean;
   noticeTemplates: NoticeTemplateOption[];
   defaultNoticeBody: string;
 }) {
@@ -233,8 +236,8 @@ export function SlotTable({
 
       {slots.length === 0 && !adding && (
         <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
-          아직 섭외 테이블이 없습니다. 날짜·시간대별로 필요한 역할과 인원을 추가하면
-          인원마다 넘버링코드가 자동 부여됩니다.
+          아직 세션이 없습니다. 날짜·시간대별로 필요한 역할과 인원을 추가하면
+          인원마다 코드넘버가 자동 부여됩니다.
         </p>
       )}
 
@@ -270,7 +273,7 @@ export function SlotTable({
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">
-                {canNotice && (
+                {canNotice && !expertsLite && (
                   <SessionNoticeDialog
                     slotId={s.id}
                     slotLabel={`${s.slotDate} ${timeLabel(s)}${
@@ -308,9 +311,21 @@ export function SlotTable({
                     </button>
                     <button
                       type="button"
-                      aria-label="슬롯 삭제"
+                      aria-label="세션 삭제"
                       disabled={pending}
-                      onClick={() => run(() => deleteSlot(s.id))}
+                      onClick={() => {
+                        // 배정·예정가까지 입력한 세션이 오클릭 한 번에 사라지면
+                        // 안 된다 (§14-3 위험 작업 2단계 확인 — 검수 B10)
+                        if (
+                          window.confirm(
+                            `이 세션을 삭제할까요?\n${s.slotDate}${
+                              s.sessionName ? ` · ${s.sessionName}` : ""
+                            } — 코드넘버 ${s.positions.length}자리가 함께 삭제됩니다.`
+                          )
+                        ) {
+                          run(() => deleteSlot(s.id));
+                        }
+                      }}
                       className="rounded p-1 text-muted-foreground hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -548,7 +563,7 @@ export function SlotTable({
                 </div>
               </div>
               <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
-                세션을 추가하면 <b>임시후보 코드 3개</b>가 자동 발급됩니다 (필요
+                세션을 추가하면 <b>코드넘버 3개</b>가 자동 발급됩니다 (필요
                 인원이 3명을 넘으면 그만큼). 비용은 여기서 입력하지 않습니다 —
                 <b> 섭외후보 등록 탭에서 후보별 예정가</b>로 작성합니다.
               </p>

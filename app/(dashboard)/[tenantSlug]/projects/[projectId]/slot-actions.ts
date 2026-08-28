@@ -431,6 +431,18 @@ export async function reorderCandidates(
     if (error) return { ok: false, error: "순위 저장에 실패했습니다." };
   }
 
+  // 순위는 발송 대상(상위 N)과 품의 금액에 영향을 준다 — 누가 언제 바꿨는지
+  // 남긴다 (검수 B8: 무기록이었다)
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: "staff",
+    action: "candidate.reorder",
+    resource_type: "engagement_slot",
+    resource_id: slotId,
+    after_data: { order: ids },
+  });
+
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }

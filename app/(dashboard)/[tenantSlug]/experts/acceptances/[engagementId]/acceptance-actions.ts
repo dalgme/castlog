@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
+import { isPracticeMode } from "@/lib/practice/server";
+import {
+  logEngagementEvent,
+  staffActorLabel,
+} from "@/lib/integrations/engagement-events";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -226,11 +231,37 @@ export async function sendAcceptance(
     return { ok: false, error: "이미 확인이 완료된 수락서입니다." };
   }
 
-  const { error } = await supabase
+  // 상태 CAS — 읽기와 쓰기 사이에 전문가가 승인하면 confirmed→sent로 확정이
+  // 역행하던 결함 (검수 B6). 읽은 상태 그대로일 때만 송부 처리한다.
+  const { data: sentRow, error } = await supabase
     .from("engagement_acceptances")
     .update({ status: "sent", sent_at: new Date().toISOString() })
-    .eq("id", acceptanceId);
-  if (error) return { ok: false, error: "송부 처리에 실패했습니다." };
+    .eq("id", acceptanceId)
+    .eq("status", acceptance.status)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: "송부 처리에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
+  if (!sentRow) {
+    return {
+      ok: false,
+      error: "그 사이 전문가가 승인했거나 상태가 바뀌었습니다. 새로고침 후 확인해 주세요.",
+    };
+  }
+
+  // 섭외 이력 — 단건 송부도 일괄 송신과 같이 기록한다 (검수 B7)
+  await logEngagementEvent({
+    tenantId: auth.tenantId,
+    engagementId: acceptance.engagement_id,
+    type: "acceptance_sent",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(auth.userId),
+    isPractice: await isPracticeMode(),
+  });
 
   const letterPath = `/expert/engagements/${acceptance.engagement_id}/acceptance`;
 
@@ -288,7 +319,9 @@ export async function confirmAcceptance(
     return { ok: false, error: "이미 확인이 완료됐거나 확인할 수 없는 상태입니다." };
   }
 
-  const { error } = await supabase
+  // 행수 확인(CAS) — 0행 갱신을 성공으로 보고하면 경합 시 감사로그만 남는
+  // 거짓 성공이 된다 (검수 B6).
+  const { data: confirmedRow, error } = await supabase
     .from("engagement_acceptances")
     .update({
       status: "confirmed",
@@ -296,8 +329,21 @@ export async function confirmAcceptance(
       confirmed_by: auth.userId,
     })
     .eq("id", acceptanceId)
-    .eq("status", acceptance.status);
-  if (error) return { ok: false, error: "확인 처리에 실패했습니다." };
+    .eq("status", acceptance.status)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: "확인 처리에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
+  if (!confirmedRow) {
+    return {
+      ok: false,
+      error: "이미 다른 담당자(또는 전문가)가 처리했습니다. 새로고침 후 확인해 주세요.",
+    };
+  }
 
   // 라이트 수기 확정은 서명 없는 확정이라 감사 근거를 남긴다
   if (lite && acceptance.status !== "signed") {
@@ -311,6 +357,17 @@ export async function confirmAcceptance(
       after_data: { prior_status: acceptance.status, experts_lite: true },
     });
   }
+
+  // 섭외 이력 — 기업 확인 마감도 타임라인에 남는다 (검수 B7)
+  await logEngagementEvent({
+    tenantId: auth.tenantId,
+    engagementId: acceptance.engagement_id,
+    type: "acceptance_confirmed",
+    actorKind: "staff",
+    actorLabel: await staffActorLabel(auth.userId),
+    note: lite && acceptance.status !== "signed" ? "기업 확인 마감 — 라이트 모드" : undefined,
+    isPractice: await isPracticeMode(),
+  });
 
   // 전원 확인이면 프로젝트가 '확정' 단계로 올라간다 (라이트 종료 경로)
   const { data: engagement } = await supabase

@@ -6,6 +6,7 @@ import { MessageSquare, Save } from "lucide-react";
 
 import { NOTICE_VARIABLES } from "@/lib/integrations/notice-constants";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DeputyRequestInline } from "@/components/integrations/deputy-request-inline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,6 +88,7 @@ export function SessionNoticeDialog({
   const [templateName, setTemplateName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function pickTemplate(id: string) {
@@ -95,14 +97,26 @@ export function SessionNoticeDialog({
     if (template) setBody(template.body);
   }
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>, done: string) {
+  function run(
+    fn: () => Promise<{
+      ok: boolean;
+      error?: string;
+      needsPmApproval?: boolean;
+      projectId?: string;
+    }>,
+    done: string
+  ) {
     setError(null);
     setNotice(null);
+    setApprovalProjectId(null);
     startTransition(async () => {
       const res = await fn();
       if (res.ok) {
         setNotice(done);
         router.refresh();
+      } else if (res.needsPmApproval && res.projectId) {
+        // 부PM 게이트 — 그 자리에서 승인 요청 (검수 A1)
+        setApprovalProjectId(res.projectId);
       } else {
         setError(res.error ?? "처리에 실패했습니다.");
       }
@@ -157,6 +171,13 @@ export function SessionNoticeDialog({
           <Alert>
             <AlertDescription>{notice}</AlertDescription>
           </Alert>
+        )}
+        {approvalProjectId && (
+          <DeputyRequestInline
+            projectId={approvalProjectId}
+            actionType="engagement.session_sms"
+            targetId={slotId}
+          />
         )}
 
         {targets.length === 0 ? (

@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
 import { cancelEngagement } from "@/app/(dashboard)/[tenantSlug]/experts/engagement-actions";
+import { DeputyRequestInline } from "@/components/integrations/deputy-request-inline";
 
 /**
  * 단계 29: 계약 성립(accepted) 섭외의 긴급 취소.
@@ -33,6 +34,8 @@ export function EngagementUrgentCancel({
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [serverError, setServerError] = useState<string | null>(null);
+  // 부PM 게이트 거부 시 다이얼로그 안에서 바로 승인 요청 (검수 A1)
+  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
 
@@ -48,6 +51,8 @@ export function EngagementUrgentCancel({
         toast({ description: "섭외를 긴급 취소하고 전사 알림을 발생했습니다." });
         setOpen(false);
         setReason("");
+      } else if (result.needsPmApproval && result.projectId) {
+        setApprovalProjectId(result.projectId);
       } else {
         setServerError(result.error);
       }
@@ -59,6 +64,7 @@ export function EngagementUrgentCancel({
     if (!next) {
       setReason("");
       setServerError(null);
+      setApprovalProjectId(null);
     }
   }
 
@@ -87,6 +93,13 @@ export function EngagementUrgentCancel({
           <Alert variant="destructive">
             <AlertDescription>{serverError}</AlertDescription>
           </Alert>
+        )}
+        {approvalProjectId && (
+          <DeputyRequestInline
+            projectId={approvalProjectId}
+            actionType="engagement.cancel"
+            targetId={engagementId}
+          />
         )}
         <Textarea
           value={reason}

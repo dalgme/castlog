@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { requirePaymentsAccess } from "@/lib/auth/admin-scopes";
+import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import {
   createApprovalWithSteps,
   matchApprovalRule,
@@ -213,6 +214,17 @@ export async function createPaymentBatch(
   }
   const data = parsed.data;
   const projectId = data.projectId || null;
+
+  // 부PM 실행 게이트 — 금액이 확정되는 단계다. DEPUTY_GATED_ACTIONS에 등록만
+  // 되고 배선이 빠져 있어 승인이 소진되지 않던 결함 수정 (검수 A2).
+  if (projectId) {
+    const deputyGate = await gateDeputyAction({
+      projectId,
+      actionType: "payment_batch.create",
+      targetId: null,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+  }
 
   const supabase = createClient();
 

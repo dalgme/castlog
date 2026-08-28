@@ -131,6 +131,7 @@ export function ClosingTab({
   staff,
   contributionInitial,
   reviewTargets,
+  expertsLite = false,
 }: {
   projectId: string;
   settlement: ProjectSettlement | null;
@@ -146,6 +147,8 @@ export function ClosingTab({
   staff: StaffOption[];
   contributionInitial: Record<string, number>;
   reviewTargets: ExpertReviewTarget[];
+  /** 라이트 모드 — 지급 기능이 닫혀 있으므로 ③·④의 성격을 안내한다 (검수 A8) */
+  expertsLite?: boolean;
 }) {
   const stage: ProjectStage = settlement?.stage ?? "assigning";
   const inClosing = stage === "closing";
@@ -207,37 +210,51 @@ export function ClosingTab({
               전문가 모듈을 쓰지 않는 회사입니다. 참여율만 정리하면 종료됩니다.
             </LockedNote>
           )}
+
+          {/* 라이트 모드 — 비용·지급 메뉴가 닫혀 있는데 종료가 '지급 품의' 개념을
+              요구하면 담당자가 길을 잃는다 (검수 A8). 성격을 먼저 말해 준다 */}
+          {hasExperts && expertsLite && (
+            <LockedNote>
+              라이트 모드 — 지급 기능을 쓰지 않으므로 ③·④의 ‘지급 품의’는
+              금액 지급 없이 <strong>종료 확정 절차</strong>로만 진행됩니다.
+              실제 정산은 회사 자체 회계로 처리하세요.
+            </LockedNote>
+          )}
         </CardContent>
       </Card>
 
-      {/* ① 참여율 */}
-      {canEvaluate && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm">① 참여율 배분</CardTitle>
-            <Badge variant={contributionTotal === 100 ? "default" : "secondary"}>
-              합계 {contributionTotal}%
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            {isClosed ? (
-              <p className="text-sm text-muted-foreground">
-                종료된 프로젝트입니다. 참여율은 임원 대시보드 성과 집계에
-                반영됩니다.
-              </p>
-            ) : (
-              <ProjectClosing
-                projectId={projectId}
-                staff={staff}
-                initial={contributionInitial}
-                closingInProgress={closingInProgress}
-                approvalsActive={hasApprovals}
-                contributionsOnly={hasExperts}
-              />
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* ① 참여율 — 권한 미달자에게도 카드는 보인다. 단계 띠에 ①이 있는데
+          카드가 통째로 사라지면 ①이 어디 있는지 찾게 된다 (검수 F3) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-sm">① 참여율 배분</CardTitle>
+          <Badge variant={contributionTotal === 100 ? "default" : "secondary"}>
+            합계 {contributionTotal}%
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {!canEvaluate ? (
+            <p className="text-sm text-muted-foreground">
+              참여율 입력은 레벨 4 이상만 할 수 있습니다 (권한 규칙). 현재 배분
+              합계는 위 뱃지로 확인할 수 있습니다.
+            </p>
+          ) : isClosed ? (
+            <p className="text-sm text-muted-foreground">
+              종료된 프로젝트입니다. 참여율은 임원 대시보드 성과 집계에
+              반영됩니다.
+            </p>
+          ) : (
+            <ProjectClosing
+              projectId={projectId}
+              staff={staff}
+              initial={contributionInitial}
+              closingInProgress={closingInProgress}
+              approvalsActive={hasApprovals}
+              contributionsOnly={hasExperts}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       {/* ② 세션별 만족도 */}
       {hasExperts && settlement && (inClosing || afterClosing) && (

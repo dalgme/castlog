@@ -164,7 +164,7 @@ export function CandidateList({
               </span>
               <span
                 className="font-mono text-xs font-semibold"
-                title="임시후보 코드"
+                title="코드넘버"
               >
                 {p.code}
               </span>

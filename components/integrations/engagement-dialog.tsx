@@ -164,6 +164,10 @@ export function EngagementDialog({
           <DialogDescription>
             전문가가 동의 링크에서 수락하면 계약이 성립합니다. 섭외 요청은
             업무연락으로 사전 수신동의가 필요하지 않습니다.
+            {/* 이 경로는 코드넘버·섭외계획 품의를 거치지 않는다 — 통제를 걸어 둔
+                회사가 우회로를 모르게 두면 안 된다 (검수 B9) */}
+            {" "}이 경로로 만든 건은 코드넘버·섭외계획 품의를 거치지 않는
+            <b> 미연결 섭외</b>로 기록됩니다.
           </DialogDescription>
         </DialogHeader>
 

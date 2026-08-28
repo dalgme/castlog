@@ -185,7 +185,7 @@ export function ProjectDashboardCards({
               </span>
             </p>
             <p className="text-xs text-muted-foreground">
-              해당 넘버링코드는 다시 미섭외 상태로 돌아갑니다.
+              해당 코드넘버는 다시 미섭외 상태로 돌아갑니다.
             </p>
           </CardContent>
         </Card>

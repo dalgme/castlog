@@ -33,7 +33,7 @@ const CHANNELS: { value: DispatchChannel; label: string; note: string }[] = [
 ];
 
 /**
- * 수락서 일괄 송신.
+ * 수락서 일괄 송부.
  *
  * 여기서 반드시 이해시켜야 하는 것이 하나 있다: **문자·이메일은 수락서가 아니다.**
  * 수락서는 캐스트로그 화면에서만 열리고, 문자·이메일은 '도착했다'는 안내다.
@@ -49,7 +49,7 @@ export function AcceptanceSendDialog({
 }: {
   projectId: string;
   targetCount: number;
-  /** 이미 한 번 나갔는가 — 재송신이면 문구가 달라진다 */
+  /** 이미 한 번 나갔는가 — 재송부이면 문구가 달라진다 */
   alreadySent: boolean;
   disabled: boolean;
   disabledReason: string;
@@ -68,7 +68,7 @@ export function AcceptanceSendDialog({
   const [channel, setChannel] = useState<DispatchChannel>("both");
   const [memo, setMemo] = useState("");
 
-  const label = alreadySent ? "수락서 재송신" : "수락서 송신";
+  const label = alreadySent ? "수락서 재송부" : "수락서 송부";
 
   function send() {
     setError(null);
@@ -120,7 +120,7 @@ export function AcceptanceSendDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            이 프로젝트에 귀속된 전문가 전원에게 수락서 및 안내문 등을 송신할까요?
+            이 프로젝트에 귀속된 전문가 전원에게 수락서 및 안내문 등을 송부할까요?
           </DialogTitle>
           <DialogDescription>
             수락 완료된 <strong>{targetCount}명</strong>의 수락서가 자동 생성되어
@@ -139,7 +139,7 @@ export function AcceptanceSendDialog({
           <div className="space-y-3">
             <Alert>
               <AlertDescription>
-                <strong>{result.sent}명</strong>에게 수락서를 송신했습니다.
+                <strong>{result.sent}명</strong>에게 수락서를 송부했습니다.
                 {result.attached > 0 && ` 첨부 ${result.attached}건이 함께 붙었습니다.`}
                 {result.skipped > 0 &&
                   ` ${result.skipped}명은 이미 확인이 끝나 건너뛰었습니다.`}
@@ -171,7 +171,7 @@ export function AcceptanceSendDialog({
         ) : (
           <div className="space-y-4">
             <fieldset className="space-y-2">
-              <legend className="text-sm font-semibold">송신 알림</legend>
+              <legend className="text-sm font-semibold">송부 알림</legend>
               {CHANNELS.map((c) => (
                 <Label
                   key={c.value}
@@ -214,7 +214,7 @@ export function AcceptanceSendDialog({
               <p className="mt-1.5 text-xs font-semibold leading-relaxed text-brand-navy">
                 수락서는 캐스트로그로 전달되므로 전문가분들도 캐스트로그를 통해
                 확인하셔야 하며, ‘문자/이메일’ 등은 수락서가 캐스트로그에
-                송신되었다는 안내를 보내는 것입니다.
+                송부되었다는 안내를 보내는 것입니다.
               </p>
             </div>
 
@@ -228,7 +228,7 @@ export function AcceptanceSendDialog({
               </Button>
               <Button className="flex-1" onClick={send} disabled={pending}>
                 <FileCheck2 className="mr-1.5 h-4 w-4" />
-                {pending ? "송신 중…" : `예, ${targetCount}명에게 송신합니다`}
+                {pending ? "송부 중…" : `예, ${targetCount}명에게 송부합니다`}
               </Button>
             </div>
           </div>

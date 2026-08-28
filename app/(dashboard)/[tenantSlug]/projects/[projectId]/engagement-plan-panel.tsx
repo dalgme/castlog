@@ -71,7 +71,7 @@ export function EngagementPlanPanel({
             전자결재 모듈이 비활성 상태입니다. 계획 품의 없이 섭외요청을 바로 보낼 수
             있습니다. 계획 섭외비{" "}
             <strong>{won(plan.currentPlannedAmount)}</strong> (인원{" "}
-            {plan.currentPositionCount}명 / 타임테이블 {plan.currentSlotCount}건)
+            {plan.currentPositionCount}명 / 세션 {plan.currentSlotCount}건)
           </p>
         </CardContent>
       </Card>
@@ -166,7 +166,7 @@ export function EngagementPlanPanel({
 
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div className="rounded-md border bg-background p-2.5">
-            <p className="text-xs text-muted-foreground">현재 섭외 테이블</p>
+            <p className="text-xs text-muted-foreground">현재 세션 계획</p>
             <p className="font-medium">
               {plan.currentPositionCount}명 / {plan.currentSlotCount}건
             </p>
