@@ -316,8 +316,10 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!(await canExecTenant("engagementCancel", user))) {
-    return { ok: false, error: execDeniedMessage("engagementCancel") };
+  // 자리 해제는 응답 전 요청만 함께 회수한다(accepted는 거부) — 회수 축과
+  // 같은 위험도라 engagementWithdraw로 판정한다 (리뷰 3: 축 분리 정합)
+  if (!(await canExecTenant("engagementWithdraw", user))) {
+    return { ok: false, error: execDeniedMessage("engagementWithdraw") };
   }
 
   const { data: position } = await supabase

@@ -27,6 +27,10 @@ export function SignatureCanvas({
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
   const [dirty, setDirty] = useState(false);
+  // 실제로 획을 그렸는지 — 리사이즈 복원 판정용. state가 아니라 ref인 이유:
+  // ResizeObserver 콜백은 리렌더와 무관하게 최신 값을 봐야 한다 (리뷰 1:
+  // 빈 캔버스 스냅샷이 onChange로 올라가면 빈 서명으로 승인·등록된다)
+  const dirtyRef = useRef(false);
   // 최신 onChange를 ref로 유지 (리사이즈 복원 시 사용)
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -49,8 +53,11 @@ export function SignatureCanvas({
       const nextH = Math.round(height * ratio);
       if (canvas.width === nextW && canvas.height === nextH) return;
 
-      // 기존 획 보존 — 크기 변경은 캔버스 내용을 지운다
-      const hadContent = canvas.width > 0 && canvas.height > 0;
+      // 기존 획 보존 — 크기 변경은 캔버스 내용을 지운다.
+      // **사용자가 실제로 그린 경우에만** 스냅샷·복원·통지한다 — 빈 캔버스를
+      // 떠서 올리면 빈 PNG가 서명으로 등록·승인된다 (리뷰 1)
+      const hadContent =
+        dirtyRef.current && canvas.width > 0 && canvas.height > 0;
       const snapshot = hadContent ? canvas.toDataURL("image/png") : null;
       const prevW = canvas.width;
       const prevH = canvas.height;
@@ -109,6 +116,7 @@ export function SignatureCanvas({
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last.current = p;
+    dirtyRef.current = true;
     if (!dirty) setDirty(true);
   }
 
@@ -126,6 +134,7 @@ export function SignatureCanvas({
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    dirtyRef.current = false;
     setDirty(false);
     onChange(null);
   }

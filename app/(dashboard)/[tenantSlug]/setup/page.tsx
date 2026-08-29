@@ -106,7 +106,9 @@ export default async function SetupPage({
                       : "권장 항목까지 모두 마쳤습니다."}
                   </p>
                   {/* 설정이 끝난 다음의 길 — "이제 뭘 하지?"에서 끊기지 않게
-                      업무 준비 순서로 이어 준다 (검수 3c) */}
+                      업무 준비 순서로 이어 준다 (검수 3c). experts 모듈을 쓰는
+                      회사에만 — 안 쓰는 회사에 링크를 주면 게이트에 튕긴다 */}
+                  {modules.experts && (
                   <div className="mt-3 rounded-md border bg-secondary/30 p-3">
                     <p className="text-sm font-semibold">
                       다음은 섭외 업무 준비입니다
@@ -134,6 +136,7 @@ export default async function SetupPage({
                       </Button>
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             )}

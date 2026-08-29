@@ -46,7 +46,7 @@ export function EngagementCancelButton({ engagementId }: { engagementId: string 
       {approvalProjectId && (
         <DeputyRequestInline
           projectId={approvalProjectId}
-          actionType="engagement.cancel"
+          actionType="engagement.withdraw"
           targetId={engagementId}
         />
       )}

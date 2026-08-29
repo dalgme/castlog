@@ -129,31 +129,37 @@ export default async function EngagementStatusPage({
         .select("id, project_id, required_count")
         .in("project_id", liveIds)
     : { data: [] };
-  const slotProjectById = new Map(
-    (summarySlots ?? []).map((s) => [s.id, s.project_id])
-  );
-  const { data: summaryPositions } = (summarySlots ?? []).length
+  // 자리 집계 — slot_id 나열 대신 임베디드 조인 필터 (URL 길이 한도 회피,
+  // project-dashboard.ts와 같은 패턴 — 리뷰 6)
+  const { data: summaryPositions } = liveIds.length
     ? await supabase
         .from("engagement_slot_positions")
-        .select("slot_id, status")
-        .in(
-          "slot_id",
-          (summarySlots ?? []).map((s) => s.id)
-        )
+        .select("status, engagement_slots!inner (project_id)")
+        .in("engagement_slots.project_id", liveIds)
     : { data: [] };
+  // 수동 패치된 타입 정의에는 이 임베드 관계가 없어 파서가 못 푼다 —
+  // 런타임 형태를 unknown 경유로 명시한다 (any 금지 원칙 준수)
+  const summaryPositionRows = (summaryPositions ?? []) as unknown as {
+    status: string;
+    engagement_slots: { project_id: string } | null;
+  }[];
   const projectSummary = liveProjects.map((p) => {
     const requiredTotal = (summarySlots ?? [])
       .filter((s) => s.project_id === p.id)
       .reduce((sum, s) => sum + s.required_count, 0);
-    const positions = (summaryPositions ?? []).filter(
-      (pos) => slotProjectById.get(pos.slot_id) === p.id
+    const positions = summaryPositionRows.filter(
+      (pos) => pos.engagement_slots?.project_id === p.id
     );
+    // '배정'에는 임의 배정(assigned)도 들어간다 — 발송 전 단계의 진행이
+    // 전부 assigned에 있는데 빼면 다 채운 프로젝트가 0/N으로 보인다 (리뷰 5)
     return {
       id: p.id,
       name: p.name,
       stage: isProjectStage(p.engagement_stage) ? p.engagement_stage : "assigning",
       requiredTotal,
-      filled: positions.filter((pos) => pos.status === "filled").length,
+      staffed: positions.filter((pos) =>
+        ["assigned", "requested", "filled"].includes(pos.status)
+      ).length,
       awaiting: positions.filter((pos) => pos.status === "requested").length,
     };
   });
@@ -250,7 +256,7 @@ export default async function EngagementStatusPage({
                       {PROJECT_STAGE_LABELS[p.stage]}
                     </Badge>
                     <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                      배정 {p.filled + p.awaiting}/{p.requiredTotal || "-"}
+                      배정 {p.staffed}/{p.requiredTotal || "-"}
                       {p.awaiting > 0 && ` · 회신 대기 ${p.awaiting}`}
                     </span>
                   </li>

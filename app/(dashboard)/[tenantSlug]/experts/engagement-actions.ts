@@ -326,10 +326,14 @@ export async function cancelEngagement(
   }
 
   // 부PM 실행 게이트 — 프로젝트에 붙은 섭외만 대상(미연결 건은 PM이 없다).
+  // 회수/긴급취소는 승인 유형도 분리한다 (리뷰 7).
   if (engagement.project_id) {
     const deputyGate = await gateDeputyAction({
       projectId: engagement.project_id,
-      actionType: "engagement.cancel",
+      actionType:
+        engagement.status === "requested"
+          ? "engagement.withdraw"
+          : "engagement.cancel",
       targetId: engagement.id,
     });
     if (!deputyGate.ok) {

@@ -40,3 +40,52 @@ as $$
 $$;
 
 revoke all on function app.exec_default_min(text) from public;
+
+-- ---- 기능 키 CHECK 제약에 새 키 반영 (리뷰 2) --------------------------------
+-- 설정 화면(문턱 조정·개인 지정)은 EXEC_FEATURES를 순회해 새 키를 자동으로
+-- 노출한다 — 제약을 안 넓히면 저장 시 check_violation(23514)으로 실패한다.
+alter table public.tenant_exec_overrides
+  drop constraint if exists tenant_exec_overrides_feature_check;
+alter table public.tenant_exec_overrides
+  add constraint tenant_exec_overrides_feature_check check (feature in (
+    'projectCreate', 'bulkImport', 'engagementCancel', 'freeMessageSend',
+    'projectBudget', 'sendTemplate',
+    'engagementRequest', 'engagementWithdraw', 'sessionNotice',
+    'acceptanceSend', 'planSubmit',
+    'paymentBatchCreate', 'expertInvite', 'expertRecord',
+    'planInput'
+  ));
+
+alter table public.tenant_exec_grants
+  drop constraint if exists tenant_exec_grants_feature_check;
+alter table public.tenant_exec_grants
+  add constraint tenant_exec_grants_feature_check check (feature in (
+    'projectCreate', 'bulkImport', 'engagementCancel', 'freeMessageSend',
+    'projectBudget', 'sendTemplate',
+    'engagementRequest', 'engagementWithdraw', 'sessionNotice',
+    'acceptanceSend', 'planSubmit',
+    'paymentBatchCreate', 'expertInvite', 'expertRecord',
+    'planInput'
+  ));
+
+-- ---- 섭외 건 UPDATE 정책을 세 축 합집합으로 (리뷰 9) --------------------------
+-- 기존 정책은 engagementRequest 하나만 봤다. 회사가 문턱을 조정해 축들이
+-- 어긋나면, 앱 게이트는 통과했는데 RLS가 0행을 만들어 엉뚱한 문구("이미
+-- 처리되어…")가 나온다. RLS는 거친 울타리로 두고(세 축 중 하나), 정밀 판정은
+-- 각 서버 액션이 한다.
+drop policy if exists expert_engagements_update on public.expert_engagements;
+create policy expert_engagements_update on public.expert_engagements
+  for update using (
+    (tenant_id = app.tenant_id()
+      and (app.can_exec('engagementRequest')
+        or app.can_exec('engagementWithdraw')
+        or app.can_exec('engagementCancel')))
+    or app.is_expert_self(expert_id)
+  )
+  with check (
+    (tenant_id = app.tenant_id()
+      and (app.can_exec('engagementRequest')
+        or app.can_exec('engagementWithdraw')
+        or app.can_exec('engagementCancel')))
+    or app.is_expert_self(expert_id)
+  );
