@@ -324,11 +324,24 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
 
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, code, status, engagement_id, expert_id")
+    .select("id, code, status, engagement_id, expert_id, engagement_slots (project_id)")
     .eq("id", positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
   if (position.status === "open") return { ok: true };
+
+  const projectId = position.engagement_slots?.project_id ?? null;
+
+  // 부PM 실행 게이트 — 진행 중 요청을 함께 회수하는 자리 해제는 회수 버튼과
+  // 같은 효과다. 이 경로만 승인 없이 열려 있으면 게이트가 우회된다 (시뮬레이션 P4)
+  if (projectId && position.engagement_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId,
+      actionType: "engagement.withdraw",
+      targetId: position.engagement_id,
+    });
+    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+  }
 
   // 연결된 섭외 건의 상태를 먼저 확인한다.
   let engagementStatus: string | null = null;
@@ -369,10 +382,13 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
       });
 
       if (position.expert_id) {
+        // project_id를 함께 남긴다 — 없으면 취소 내역의 프로젝트 컬럼이 비고
+        // 코드 조회(getCanceledExpertByPositionCode)에도 안 잡힌다 (시뮬레이션 P4)
         await supabase.from("engagement_cancellations").insert({
           tenant_id: tenantId,
           engagement_id: position.engagement_id,
           expert_id: position.expert_id,
+          project_id: projectId,
           prior_status: "requested",
           is_urgent: false,
           reason: `코드넘버 ${position.code} 자리 해제`,

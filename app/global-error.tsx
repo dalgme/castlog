@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { reportClientError } from "@/lib/monitoring/report-client-error";
+
 /**
  * 루트 레이아웃까지 무너진 경우의 최종 방어선. 자체 <html>/<body>를 렌더한다.
  * 여기서는 앱 컴포넌트·폰트에 의존하지 않고 인라인 스타일만 쓴다.
@@ -15,6 +17,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error(error);
+    reportClientError(error, "global");
   }, [error]);
 
   return (

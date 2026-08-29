@@ -303,10 +303,14 @@ export async function cancelEngagement(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
+  // 자사 건만 — SELECT 정책은 전문가 본인(is_expert_self)도 통과시키므로,
+  // 겸직(직원이 타사의 전문가 본인) 세션이 타사 건을 자사 명의로 취소·기록하는
+  // 교차 테넌트 경로를 tenant_id로 끊는다 (수동 완료와 동일 — 시뮬레이션 P4)
   const { data: engagement } = await supabase
     .from("expert_engagements")
     .select("id, status, expert_id, project_id, program_name, starts_on, experts (name)")
     .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (
@@ -361,6 +365,7 @@ export async function cancelEngagement(
     .from("expert_engagements")
     .update({ status: "canceled" })
     .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
     .eq("status", engagement.status)
     .select("id")
     .maybeSingle();
@@ -381,17 +386,32 @@ export async function cancelEngagement(
     }
   }
 
-  // 취소 내역 기록
-  await supabase.from("engagement_cancellations").insert({
-    tenant_id: tenantId,
-    engagement_id: engagementId,
-    expert_id: engagement.expert_id,
-    project_id: engagement.project_id,
-    prior_status: engagement.status,
-    is_urgent: urgent,
-    reason: trimmedReason,
-    canceled_by: user.id,
-  });
+  // 취소 내역 기록 — 실패를 삼키지 않는다. 여기가 비면 취소 내역 화면과
+  // 전문가 포털의 사유 카드가 통째로 빈다 (시뮬레이션 P4: RLS 유실이
+  // 조용히 지나갔던 지점 — 정책은 20260829000002에서 회수 축까지 확장)
+  const { error: recordError } = await supabase
+    .from("engagement_cancellations")
+    .insert({
+      tenant_id: tenantId,
+      engagement_id: engagementId,
+      expert_id: engagement.expert_id,
+      project_id: engagement.project_id,
+      prior_status: engagement.status,
+      is_urgent: urgent,
+      reason: trimmedReason,
+      canceled_by: user.id,
+    });
+  if (recordError) {
+    await supabase.from("audit_logs").insert({
+      tenant_id: tenantId,
+      actor_auth_user_id: user.id,
+      actor_role: role,
+      action: "engagement.cancel_record_failed",
+      resource_type: "engagement",
+      resource_id: engagementId,
+      after_data: { code: recordError.code ?? null },
+    });
+  }
 
   // 긴급 취소 → 전사 알림 (대시보드 배너) — 한 줄: 프로젝트·세션(일자)·전문가·PM
   // (기획 확정 2026-08-23 — 사유는 배너에 싣지 않는다. 취소 내역에 남는다)

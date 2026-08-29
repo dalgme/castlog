@@ -20,6 +20,7 @@ import {
 } from "@/lib/sms/send";
 import { MMS_IMAGE_MAX_BYTES } from "@/lib/sms/providers";
 import { sendTenantEmail, type EmailRecipient } from "@/lib/email/send";
+import { blockInPractice } from "@/lib/practice/server";
 
 export type SendMessageResult =
   | {
@@ -164,6 +165,17 @@ export async function sendMessage(
 
     // ── 예약발송 (기획 확정 2026-08-23) ──────────────────────────────
     if (data.scheduledAt) {
+      // 연습모드 차단 — 즉시 발송은 발송 서비스가 연습 판정으로 모의 처리하지만,
+      // 예약 건은 크론이 systemContext로 집어 연습 판정 없이 **실발송**한다
+      // (시뮬레이션 P10). 예약 자체를 막는 것이 가장 확실한 차단이다.
+      const practiceGuard = await blockInPractice("sending");
+      if (!practiceGuard.ok) {
+        return {
+          ok: false,
+          error:
+            "연습모드에서는 예약발송을 저장할 수 없습니다. 즉시 발송으로 체험해 주세요 (실제로 나가지 않습니다).",
+        };
+      }
       const when = parseKstLocal(data.scheduledAt);
       if (Number.isNaN(when.getTime())) {
         return { ok: false, error: "예약 시각을 확인하세요." };

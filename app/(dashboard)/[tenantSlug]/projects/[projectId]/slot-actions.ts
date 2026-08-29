@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
+import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 
 export type SlotResult = { ok: true } | { ok: false; error: string };
 
@@ -385,13 +386,24 @@ export async function removeCandidate(positionId: string): Promise<SlotResult> {
     .eq("id", positionId)
     .in("status", ["open", "assigned"])
     .is("engagement_id", null)
-    .select("id")
+    .select("id, slot_id")
     .maybeSingle();
   if (error || !removed) {
     return {
       ok: false,
       error: "이미 섭외가 진행된 후보는 삭제할 수 없습니다. 개별 취소 후 진행하세요.",
     };
+  }
+
+  // 예비 후보를 정리한 직후 단계를 재판정한다 — 판정 기준 변경 전에 이미
+  // '요청 중'으로 고착된 프로젝트가 여기서라도 풀리게 (시뮬레이션 P1)
+  const { data: slot } = await supabase
+    .from("engagement_slots")
+    .select("project_id")
+    .eq("id", removed.slot_id)
+    .maybeSingle();
+  if (slot?.project_id) {
+    await refreshProjectEngagementStage(slot.project_id);
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

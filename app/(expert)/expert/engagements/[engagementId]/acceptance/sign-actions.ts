@@ -58,6 +58,21 @@ export async function signAcceptance(
     return { ok: false, error: "이미 승인이 완료된 수락서입니다." };
   }
 
+  // 섭외 건이 살아 있어야 승인할 수 있다 — 회수·긴급취소된 계약의 수락서가
+  // 남아 '확정'으로 바뀌는 경로 차단 (시뮬레이션 P8)
+  const { data: liveEngagement } = await admin
+    .from("expert_engagements")
+    .select("status")
+    .eq("id", acceptance.engagement_id)
+    .maybeSingle();
+  if (liveEngagement?.status !== "accepted") {
+    return {
+      ok: false,
+      error:
+        "이 섭외는 이미 회수·취소되어 승인할 수 없습니다. 자세한 내용은 섭외 요청 목록에서 확인해 주세요.",
+    };
+  }
+
   // 그 자리에서 그린 서명 — 내 서명으로 등록한다(형식·용량 검증은 등록 액션이 한다)
   if (input?.dataUrl) {
     const registered = await registerExpertSignature(

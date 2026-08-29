@@ -75,8 +75,14 @@ export function SignatureCanvas({
       if (snapshot && prevW > 0 && prevH > 0) {
         const img = new Image();
         img.onload = () => {
-          // 이전 그림을 새 논리 크기에 맞춰 다시 그린다 (비율 유지 축소/확대)
-          ctx.drawImage(img, 0, 0, width, height);
+          // 이전 그림을 새 논리 크기에 맞춰 다시 그린다 — 비율을 유지해야
+          // 세로↔가로 회전에서 서명이 찌그러지지 않는다 (시뮬레이션 P8)
+          const srcRatio = prevW / prevH;
+          let dw = width;
+          let dh = height;
+          if (dw / dh > srcRatio) dw = dh * srcRatio;
+          else dh = dw / srcRatio;
+          ctx.drawImage(img, 0, 0, dw, dh);
           onChangeRef.current(canvas.toDataURL("image/png"));
         };
         img.src = snapshot;
@@ -125,6 +131,9 @@ export function SignatureCanvas({
     drawing.current = false;
     last.current = null;
     canvasRef.current?.releasePointerCapture?.(e.pointerId);
+    // 획 없이 탭만 한 경우는 통지하지 않는다 — 빈 캔버스 PNG가 서명으로
+    // 등록·승인되는 경로 차단 (시뮬레이션 P8: 리사이즈 가드와 같은 이유)
+    if (!dirtyRef.current) return;
     const canvas = canvasRef.current;
     if (canvas) onChange(canvas.toDataURL("image/png"));
   }
