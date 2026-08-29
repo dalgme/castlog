@@ -20,6 +20,10 @@ import { PageHeader } from "@/components/layout/header";
 
 import { getUrgentCancellations } from "@/lib/integrations/urgent-cancellations";
 import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
+import {
+  PROJECT_STAGE_LABELS,
+  isProjectStage,
+} from "@/lib/integrations/project-stage";
 
 import { RemindButton } from "./remind-button";
 import { EngagementHistoryDialog } from "../../projects/[projectId]/engagement-history-dialog";
@@ -105,10 +109,60 @@ export default async function EngagementStatusPage({
   // 프로젝트 RLS가 배정 기준으로 이미 좁혀져 있다 — 보이는 프로젝트만 대상으로 삼는다.
   const { data: visibleProjects } = await supabase
     .from("projects")
-    .select("id, name");
+    .select("id, name, status, engagement_stage, created_at");
   const projectNameById = new Map(
     (visibleProjects ?? []).map((p) => [p.id, p.name])
   );
+
+  // 프로젝트별 섭외 단계 요약 (검수 2번) — 발송 전 단계(후보 구성·품의 중 등)는
+  // 섭외 건 자체가 없어 아래 목록에 안 잡힌다. "어느 프로젝트가 어디서 막혔나"를
+  // 프로젝트를 하나씩 열지 않고 여기서 본다. 저장된 engagement_stage + 자리
+  // 집계만 읽는다(프로젝트별 재판정 없이 가볍게).
+  const liveProjects = (visibleProjects ?? [])
+    .filter((p) => p.status === "planned" || p.status === "active")
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .slice(0, 20);
+  const liveIds = liveProjects.map((p) => p.id);
+  const { data: summarySlots } = liveIds.length
+    ? await supabase
+        .from("engagement_slots")
+        .select("id, project_id, required_count")
+        .in("project_id", liveIds)
+    : { data: [] };
+  // 자리 집계 — slot_id 나열 대신 임베디드 조인 필터 (URL 길이 한도 회피,
+  // project-dashboard.ts와 같은 패턴 — 리뷰 6)
+  const { data: summaryPositions } = liveIds.length
+    ? await supabase
+        .from("engagement_slot_positions")
+        .select("status, engagement_slots!inner (project_id)")
+        .in("engagement_slots.project_id", liveIds)
+    : { data: [] };
+  // 수동 패치된 타입 정의에는 이 임베드 관계가 없어 파서가 못 푼다 —
+  // 런타임 형태를 unknown 경유로 명시한다 (any 금지 원칙 준수)
+  const summaryPositionRows = (summaryPositions ?? []) as unknown as {
+    status: string;
+    engagement_slots: { project_id: string } | null;
+  }[];
+  const projectSummary = liveProjects.map((p) => {
+    const requiredTotal = (summarySlots ?? [])
+      .filter((s) => s.project_id === p.id)
+      .reduce((sum, s) => sum + s.required_count, 0);
+    const positions = summaryPositionRows.filter(
+      (pos) => pos.engagement_slots?.project_id === p.id
+    );
+    // '배정'에는 임의 배정(assigned)도 들어간다 — 발송 전 단계의 진행이
+    // 전부 assigned에 있는데 빼면 다 채운 프로젝트가 0/N으로 보인다 (리뷰 5)
+    return {
+      id: p.id,
+      name: p.name,
+      stage: isProjectStage(p.engagement_stage) ? p.engagement_stage : "assigning",
+      requiredTotal,
+      staffed: positions.filter((pos) =>
+        ["assigned", "requested", "filled"].includes(pos.status)
+      ).length,
+      awaiting: positions.filter((pos) => pos.status === "requested").length,
+    };
+  });
 
   // 가시성(배정 범위)은 expert_engagements RLS가 이미 강제한다 —
   //   권한자: 전체 / 담당자: 배정 프로젝트 건만, 프로젝트 미연결 건은 권한자만.
@@ -176,6 +230,42 @@ export default async function EngagementStatusPage({
         }
       />
       <main className="space-y-4 p-5">
+        {/* 프로젝트별 섭외 단계 — "어느 사업이 어디서 막혔나"를 한눈에 (검수 2번) */}
+        {projectSummary.length > 0 && (
+          <Card>
+            <CardContent className="pt-5">
+              <p className="mb-2 text-sm font-semibold">
+                프로젝트별 섭외 단계{" "}
+                <span className="font-normal text-muted-foreground">
+                  (진행 중 {projectSummary.length}건)
+                </span>
+              </p>
+              <ul className="divide-y">
+                {projectSummary.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex flex-wrap items-center gap-2 py-2 text-sm"
+                  >
+                    <Link
+                      href={`/${params.tenantSlug}/projects/${p.id}?tab=experts`}
+                      className="font-medium text-brand underline-offset-4 hover:underline"
+                    >
+                      {p.name}
+                    </Link>
+                    <Badge variant={p.stage === "confirmed" ? "default" : "secondary"}>
+                      {PROJECT_STAGE_LABELS[p.stage]}
+                    </Badge>
+                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                      배정 {p.staffed}/{p.requiredTotal || "-"}
+                      {p.awaiting > 0 && ` · 회신 대기 ${p.awaiting}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 집계 카드가 곧 필터다 — 숫자를 보고 그 상태만 바로 열어 본다 */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {STATUS_ORDER.map((s) => {

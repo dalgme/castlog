@@ -38,6 +38,7 @@ export default async function ExpertAcceptancePage({
           status={view.acceptance.status}
           signedAt={view.acceptance.signed_at}
           hasSignature={view.acceptance.has_signature}
+          signaturePreviewUrl={view.signatureUrl}
         />
         <AcceptanceLetter {...view} />
       </main>

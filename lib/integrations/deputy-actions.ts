@@ -17,9 +17,16 @@ export const DEPUTY_GATED_ACTIONS = {
     why: "전문가에게 직접 나가는 요청이고, 보낸 뒤에는 회수해도 상대가 이미 봅니다.",
   },
   "engagement.cancel": {
-    label: "섭외 취소",
+    label: "섭외 긴급 취소 (확정 후)",
     targetType: "engagement",
     why: "확정된 일정을 되돌리는 작업이라 전문가·현장 일정에 곧바로 영향을 줍니다.",
+  },
+  // 응답 전 회수는 확정 취소와 성격이 다르다 — 같은 유형에 묶으면 PM이
+  // 받아 보는 승인 요청의 라벨·사유가 사실과 어긋난다 (리뷰 7, A1 재안내와 동일 원칙)
+  "engagement.withdraw": {
+    label: "섭외 요청 회수 (응답 전)",
+    targetType: "engagement",
+    why: "이미 발송된 동의 링크가 무효화됩니다. 전문가가 링크를 봤을 수 있습니다.",
   },
   "engagement.manual_accept": {
     label: "수동 섭외 완료(수락서 생성)",

@@ -22,12 +22,15 @@ export function AcceptanceSignButton({
   status,
   signedAt,
   hasSignature,
+  signaturePreviewUrl = null,
 }: {
   acceptanceId: string;
   status: string;
   signedAt: string | null;
   /** 등록된 서명이 문서에 이미 박혀 있는가 */
   hasSignature: boolean;
+  /** 문서에 박힐 서명 미리보기 (서명 URL) — 어떤 서명인지 보고 승인한다 (검수 3b) */
+  signaturePreviewUrl?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -94,10 +97,27 @@ export function AcceptanceSignButton({
       )}
 
       {hasSignature ? (
-        <p className="rounded-md bg-secondary/40 p-2.5 text-xs text-muted-foreground">
-          등록해 두신 서명·날인이 수락서에 배치되어 있습니다. 다시 그리실 필요는
-          없습니다.
-        </p>
+        <div className="rounded-md bg-secondary/40 p-2.5">
+          <p className="text-xs text-muted-foreground">
+            등록해 두신 서명·날인이 수락서에 배치되어 있습니다. 다시 그리실
+            필요는 없습니다.
+          </p>
+          {/* 어떤 서명이 박히는지 보고 승인한다 — 승인 후에야 문서에서 보이면
+              본인 서명 확인 기회가 없다 (검수 3b) */}
+          {signaturePreviewUrl && (
+            <figure className="mt-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={signaturePreviewUrl}
+                alt="수락서에 배치될 내 서명"
+                className="h-14 w-auto rounded border bg-white object-contain p-1"
+              />
+              <figcaption className="mt-0.5 text-[11px] text-muted-foreground">
+                수락서에 배치될 서명
+              </figcaption>
+            </figure>
+          )}
+        </div>
       ) : (
         <div>
           <p className="text-xs font-semibold">서명 (필수)</p>
