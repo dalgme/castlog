@@ -303,10 +303,6 @@ export async function cancelEngagement(
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  if (!(await canExecTenant("engagementCancel", user))) {
-    return { ok: false, error: execDeniedMessage("engagementCancel") };
-  }
-
   const { data: engagement } = await supabase
     .from("expert_engagements")
     .select("id, status, expert_id, project_id, program_name, starts_on, experts (name)")
@@ -318,6 +314,15 @@ export async function cancelEngagement(
     !["requested", "accepted"].includes(engagement.status)
   ) {
     return { ok: false, error: "취소할 수 없는 섭외입니다." };
+  }
+
+  // 권한 축 분리 (기획 확정 2026-08-29 — 검수 F5): 응답 전 회수는
+  // engagementWithdraw(기본 레벨 4 — 요청을 보낸 사람이 거둘 수 있다),
+  // 확정 후 긴급 취소는 engagementCancel(레벨 3) 그대로.
+  const cancelFeature =
+    engagement.status === "requested" ? "engagementWithdraw" : "engagementCancel";
+  if (!(await canExecTenant(cancelFeature, user))) {
+    return { ok: false, error: execDeniedMessage(cancelFeature) };
   }
 
   // 부PM 실행 게이트 — 프로젝트에 붙은 섭외만 대상(미연결 건은 PM이 없다).

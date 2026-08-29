@@ -117,6 +117,7 @@ export default async function ProjectDetailPage({
     "planInput",
     "sessionNotice",
     "engagementCancel",
+    "engagementWithdraw",
   ] as const);
   const canExecute = exec.engagementRequest;
   const canEvaluate = exec.expertRecord;
@@ -885,6 +886,7 @@ export default async function ProjectDetailPage({
             canManage={canExecute}
             canInput={canInput}
             canCancel={exec.engagementCancel}
+            canWithdraw={exec.engagementWithdraw}
             expertsLite={expertsLite}
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),

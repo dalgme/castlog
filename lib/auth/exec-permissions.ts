@@ -27,13 +27,17 @@ export const EXEC_FEATURES = {
   /* ── 레벨 3까지 (개설·대량·되돌리기 어려운 것·자유 발송·설정류) ──── */
   projectCreate: { minGrade: "team_lead", label: "프로젝트 개설" },
   bulkImport: { minGrade: "team_lead", label: "일괄 등록 (엑셀·보유자료)" },
-  engagementCancel: { minGrade: "team_lead", label: "섭외 취소" },
+  engagementCancel: { minGrade: "team_lead", label: "섭외 긴급 취소 (확정 후)" },
   freeMessageSend: { minGrade: "team_lead", label: "일반 문자·이메일 발송" },
   projectBudget: { minGrade: "team_lead", label: "프로젝트 예산 수정" },
   sendTemplate: { minGrade: "team_lead", label: "발송 문구 관리" },
 
   /* ── 레벨 4까지 (발송·품의 실행 — PM을 맡는 레벨) ────────────────── */
   engagementRequest: { minGrade: "deputy", label: "섭외요청 발송" },
+  // 응답 전 회수는 긴급 취소와 위험도가 다르다 — 요청을 보낼 수 있는 사람이
+  // 자기 오발송을 거둘 수 있어야 한다 (검수 F5: 위험도-문턱 역전 해소,
+  // 기획 확정 2026-08-29). 확정 후 긴급 취소는 계속 레벨 3.
+  engagementWithdraw: { minGrade: "deputy", label: "섭외 요청 회수 (응답 전)" },
   sessionNotice: { minGrade: "deputy", label: "세션 안내문자 발송" },
   acceptanceSend: { minGrade: "deputy", label: "수락서 처리·리마인드" },
   planSubmit: { minGrade: "deputy", label: "섭외계획 품의 상신" },

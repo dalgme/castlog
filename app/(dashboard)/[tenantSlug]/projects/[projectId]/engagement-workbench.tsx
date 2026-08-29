@@ -109,6 +109,7 @@ export function EngagementWorkbench({
   canManage,
   canInput,
   canCancel,
+  canWithdraw,
   planGate,
   planPanel,
   stageByPosition,
@@ -129,8 +130,10 @@ export function EngagementWorkbench({
   canManage: boolean;
   /** 입력(후보·첨부) — 레벨 5부터 */
   canInput: boolean;
-  /** 섭외 취소·긴급 취소 — 레벨 3부터 */
+  /** 확정 후 긴급 취소 — 레벨 3부터 */
   canCancel: boolean;
+  /** 응답 전 회수 — 레벨 4부터 (권한 축 분리, 기획 확정 2026-08-29) */
+  canWithdraw: boolean;
   /** 섭외계획 품의 게이트 — 승인 전이면 요청 자체가 막힌다 */
   planGate: { blocked: boolean; message: string };
   /** 섭외계획 품의 패널 — 게이트에 걸렸을 때 그 자리에서 상신할 수 있게 */
@@ -411,6 +414,7 @@ export function EngagementWorkbench({
                   stageByPosition={stageByPosition}
                   canManage={canInput}
                   canCancel={canCancel}
+                  canWithdraw={canWithdraw}
                   canExecute={canManage}
                   expertsLite={expertsLite}
                   editable={canInput && projectState.stage === "assigning"}
@@ -471,7 +475,7 @@ export function EngagementWorkbench({
                       expertsLite={expertsLite}
                     />
                   )}
-                  {canCancel && e.status === "requested" && (
+                  {canWithdraw && e.status === "requested" && (
                     <EngagementCancelButton engagementId={e.id} />
                   )}
                   {canCancel && e.status === "accepted" && (

@@ -49,6 +49,7 @@ export function CandidateList({
   stageByPosition,
   canManage,
   canCancel,
+  canWithdraw,
   canExecute,
   expertsLite = false,
   sessionDuration,
@@ -61,8 +62,10 @@ export function CandidateList({
   positions: SlotPositionRow[];
   stageByPosition: Record<string, EngagementStage>;
   canManage: boolean;
-  /** 섭외 취소·긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
+  /** 확정 후 긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
   canCancel: boolean;
+  /** 응답 전 회수 버튼 — 레벨 4부터 (권한 축 분리, 기획 확정 2026-08-29) */
+  canWithdraw: boolean;
   /** 실행 축(섭외요청 등, 레벨 4부터) — 전화 섭외 수동 완료 버튼 */
   canExecute: boolean;
   /** 라이트 모드 — 수동 완료 시 '수락서 확인까지 한 번에' 옵션 노출 */
@@ -274,14 +277,14 @@ export function CandidateList({
                     expertsLite={expertsLite}
                   />
                 )}
-                {canCancel && p.engagementId && stage === "requested" && (
+                {canWithdraw && p.engagementId && stage === "requested" && (
                   <EngagementCancelButton engagementId={p.engagementId} />
                 )}
                 {/* 취소 권한 없는 담당자에게 경로를 말해 준다 — 버튼만 사라지면
                     잘못 보낸 요청을 어떻게 거두는지 알 수 없다 (검수 F3) */}
-                {!canCancel && p.engagementId && stage === "requested" && (
+                {!canWithdraw && p.engagementId && stage === "requested" && (
                   <span className="text-[11px] text-muted-foreground">
-                    회수 권한 없음 (권한 규칙 — 기본 레벨 3)
+                    회수 권한 없음 (권한 규칙 — 기본 레벨 4)
                   </span>
                 )}
                 {canCancel &&
