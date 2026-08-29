@@ -10,6 +10,7 @@ import {
   tenantIdFromUser,
 } from "@/lib/auth/tenant";
 import { isMonitorActive } from "@/lib/monitoring/flags";
+import { maskRrnInText } from "@/lib/crypto/rrn-mask";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +39,32 @@ const bodySchema = z.object({
 /** 분당 테넌트별 기록 상한 — 에러 루프 방어 */
 const MAX_PER_MINUTE = 30;
 
+/** 요청 본문 선차단 상한 — zod는 파싱 뒤에만 작동한다 (리뷰 6a) */
+const MAX_BODY_BYTES = 16 * 1024;
+
+/** 분당 사용자별 부상한 — 한 사용자의 에러 루프가 테넌트 예산을 다 먹지 않게 (리뷰 6b) */
+const MAX_PER_MINUTE_PER_USER = 10;
+
+/**
+ * 마스킹 필터 — 로그 파이프라인 최전단 (§5, 리뷰 1).
+ * 예외 문구에 무엇이 실릴지 통제할 수 없으므로 주민번호 패턴에 더해
+ * 휴대폰·계좌로 보이는 긴 숫자열도 가린다.
+ */
+function maskSensitive(text: string): string {
+  return maskRrnInText(text)
+    .replace(/\b01[016789][-\s]?\d{3,4}[-\s]?\d{4}\b/g, "01*-****-****")
+    .replace(/\b\d{11,16}\b/g, (m) => `${m.slice(0, 3)}${"*".repeat(m.length - 3)}`);
+}
+
 const accepted = () => NextResponse.json({ ok: true }, { status: 202 });
 
 export async function POST(request: Request) {
   if (!hasSupabaseEnv()) return accepted();
+
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(contentLength) || contentLength > MAX_BODY_BYTES) {
+    return accepted();
+  }
 
   let parsed: z.infer<typeof bodySchema>;
   try {
@@ -68,21 +91,31 @@ export async function POST(request: Request) {
   if (!tenant || !isMonitorActive(tenant.feature_flags)) return accepted();
 
   const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
-  const { count } = await admin
-    .from("client_error_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
-    .gte("created_at", oneMinuteAgo);
-  if ((count ?? 0) >= MAX_PER_MINUTE) return accepted();
+  const [{ count: tenantCount }, { count: userCount }] = await Promise.all([
+    admin
+      .from("client_error_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .gte("created_at", oneMinuteAgo),
+    admin
+      .from("client_error_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", oneMinuteAgo),
+  ]);
+  if ((tenantCount ?? 0) >= MAX_PER_MINUTE) return accepted();
+  if ((userCount ?? 0) >= MAX_PER_MINUTE_PER_USER) return accepted();
 
   await admin.from("client_error_logs").insert({
     tenant_id: tenantId,
     user_id: user.id,
     user_role: roleFromUser(user),
-    path: parsed.path?.split("?")[0] ?? null,
-    message: parsed.message,
+    path: maskSensitive(parsed.path?.split("?")[0] ?? "") || null,
+    message: maskSensitive(parsed.message),
     // 스택 최상단 5줄만 — 아래로 갈수록 프레임워크 내부라 해석 가치가 없다
-    stack_digest: parsed.stack?.split("\n").slice(0, 5).join("\n") ?? null,
+    stack_digest: parsed.stack
+      ? maskSensitive(parsed.stack.split("\n").slice(0, 5).join("\n"))
+      : null,
     error_digest: parsed.digest ?? null,
     source: parsed.source,
     user_agent: request.headers.get("user-agent")?.slice(0, 300) ?? null,

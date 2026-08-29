@@ -39,6 +39,10 @@ const PUBLIC_PATH_PREFIXES = [
   "/api/tenant-logo/",
   // 크론 실행기 — 세션이 없다. 자체 시크릿(CRON_SECRET)으로 인증한다.
   "/api/cron/",
+  // 에러 계측 — 에러 화면(로그인 페이지 붕괴 포함)에서 쏘는 POST가 로그인
+  // 리다이렉트로 튕기지 않게 한다. 라우트 스스로 세션 없는 요청을 조용히
+  // 버리고 항상 202를 돌려준다 (app/api/client-errors/route.ts).
+  "/api/client-errors",
 ];
 
 function isPublicPath(pathname: string): boolean {

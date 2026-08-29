@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { parseMonitorUntil } from "@/lib/monitoring/flags";
+import { maskRrnInText } from "@/lib/crypto/rrn-mask";
 import { auditActionLabel, auditRoleLabel } from "@/lib/audit/labels";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -13,6 +14,8 @@ import { InterpretButton } from "../interpret-button";
 import { MonitorToggle } from "../monitor-toggle";
 
 export const metadata = { title: "활동 피드 — 실시간 모니터링" };
+// 실시간 화면 — 빌드 시점 프리렌더(정적 스냅샷) 금지
+export const dynamic = "force-dynamic";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -174,7 +177,8 @@ export default async function MonitorFeedPage({
         at: r.created_at,
         kind: "event",
         title: `${r.event_type} — ${r.actor_label}`,
-        detail: r.note,
+        // 담당자가 쓴 자유 텍스트 — 마스킹 + 길이 제한 (원문 미노출 원칙, 리뷰 4)
+        detail: r.note ? maskRrnInText(r.note).slice(0, 120) : null,
         practice: r.is_practice,
       })
     ),

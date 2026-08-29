@@ -9,6 +9,7 @@ import { roleFromUser } from "@/lib/auth/tenant";
 import { parseMonitorUntil } from "@/lib/monitoring/flags";
 import type { Json } from "@/lib/supabase/database.types";
 import { generateText, isAiConfigured } from "@/lib/ai/client";
+import { maskRrnInText } from "@/lib/crypto/rrn-mask";
 
 /**
  * 실시간 사용자 테스트 모니터링 — 관리모드 서버 액션 (기획 2026-08-29)
@@ -168,17 +169,20 @@ export async function interpretErrorLog(
     .maybeSingle();
   if (!row) return { ok: false, error: "에러 기록을 찾을 수 없습니다." };
 
+  // 외부 API로 나가기 전 이중 마스킹 (§5 — 저장 시점에도 걸지만 최전단 원칙)
   const result = await generateText({
     system: INTERPRET_SYSTEM,
-    user: [
-      `발생 화면: ${row.path ?? "(모름)"}`,
-      `발생 지점: ${row.source}`,
-      `메시지: ${row.message}`,
-      row.error_digest ? `digest: ${row.error_digest}` : null,
-      row.stack_digest ? `스택 상단:\n${row.stack_digest}` : null,
-    ]
-      .filter((v): v is string => v !== null)
-      .join("\n"),
+    user: maskRrnInText(
+      [
+        `발생 화면: ${row.path ?? "(모름)"}`,
+        `발생 지점: ${row.source}`,
+        `메시지: ${row.message}`,
+        row.error_digest ? `digest: ${row.error_digest}` : null,
+        row.stack_digest ? `스택 상단:\n${row.stack_digest}` : null,
+      ]
+        .filter((v): v is string => v !== null)
+        .join("\n")
+    ),
     maxTokens: 400,
   });
   if (!result.ok) return { ok: false, error: result.error };

@@ -332,17 +332,6 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
 
   const projectId = position.engagement_slots?.project_id ?? null;
 
-  // 부PM 실행 게이트 — 진행 중 요청을 함께 회수하는 자리 해제는 회수 버튼과
-  // 같은 효과다. 이 경로만 승인 없이 열려 있으면 게이트가 우회된다 (시뮬레이션 P4)
-  if (projectId && position.engagement_id) {
-    const deputyGate = await gateDeputyAction({
-      projectId,
-      actionType: "engagement.withdraw",
-      targetId: position.engagement_id,
-    });
-    if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
-  }
-
   // 연결된 섭외 건의 상태를 먼저 확인한다.
   let engagementStatus: string | null = null;
   if (position.engagement_id) {
@@ -363,6 +352,18 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
 
     // 아직 응답 전인 요청은 함께 회수한다 — 살아 있는 동의 링크를 무효화한다.
     if (engagementStatus === "requested") {
+      // 부PM 실행 게이트 — 진행 중 요청을 함께 회수하는 자리 해제는 회수
+      // 버튼과 같은 효과다 (시뮬레이션 P4). 승인 1건을 소진하므로 실제 회수가
+      // 일어나는 이 지점에서만 건다 — 상태 확인보다 앞이면 accepted 거부에도
+      // 승인만 소진된다 (리뷰 3)
+      if (projectId) {
+        const deputyGate = await gateDeputyAction({
+          projectId,
+          actionType: "engagement.withdraw",
+          targetId: position.engagement_id,
+        });
+        if (!deputyGate.ok) return { ok: false, error: deputyGate.error };
+      }
       await supabase
         .from("expert_engagements")
         .update({ status: "canceled" })
