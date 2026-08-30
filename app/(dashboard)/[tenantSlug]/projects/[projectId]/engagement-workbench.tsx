@@ -118,6 +118,7 @@ export function EngagementWorkbench({
   projectState,
   planPreview,
   planApproverOptions = [],
+  planRelayOn = false,
   projectName,
   projectDescription = null,
   attachmentPanel,
@@ -158,6 +159,8 @@ export function EngagementWorkbench({
   planPreview: { lines: PlanPreviewLine[]; amount: number };
   /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
   planApproverOptions?: { id: string; name: string; gradeLabel: string }[];
+  /** 상급자 릴레이 결재(27번) 활성 — 픽커 안내 문구 분기 */
+  planRelayOn?: boolean;
   projectName: string;
   /** 프로젝트 설명 — 섭외요청의 '주제/행사 내용' 자동 채움용 */
   projectDescription?: string | null;
@@ -196,6 +199,7 @@ export function EngagementWorkbench({
               disabledReason="세션(코드넘버)을 먼저 등록하세요."
               lines={planPreview.lines}
               approverOptions={planApproverOptions}
+              relayOn={planRelayOn}
             />
           )}
           {canManage &&

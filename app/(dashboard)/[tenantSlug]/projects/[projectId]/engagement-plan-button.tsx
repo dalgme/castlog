@@ -51,6 +51,7 @@ export function EngagementPlanButton({
   disabledReason,
   lines,
   approverOptions = [],
+  relayOn = false,
 }: {
   projectId: string;
   disabled: boolean;
@@ -59,6 +60,8 @@ export function EngagementPlanButton({
   lines: PlanPreviewLine[];
   /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
   approverOptions?: ApproverOption[];
+  /** 상급자 릴레이 결재(27번) 활성 — 무선택 시 동작 안내를 실제와 일치시킨다 */
+  relayOn?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -192,6 +195,11 @@ export function EngagementPlanButton({
           selected={approverIds}
           onChange={setApproverIds}
           disabled={pending}
+          emptyHint={
+            relayOn
+              ? "비워 두면 상급자 릴레이(직급 단계 — 각 직급 이상 누구나)로 상신됩니다."
+              : "비워 두면 고정 결재선만으로 상신됩니다."
+          }
         />
 
         <div className="rounded-lg border">

@@ -41,6 +41,7 @@ export function EngagementPlanPanel({
   plan,
   canSubmit,
   approverOptions,
+  relayOn = false,
   sessionSummary = [],
 }: {
   tenantSlug: string;
@@ -49,6 +50,8 @@ export function EngagementPlanPanel({
   canSubmit: boolean;
   /** 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원) */
   approverOptions: { id: string; name: string; gradeLabel: string }[];
+  /** 상급자 릴레이 결재(27번) 활성 — 무선택 시 동작 안내 분기 */
+  relayOn?: boolean;
   /** 세션별 필요인원·등록 후보인원 한눈 요약 (기획 확정 2026-08-23) */
   sessionSummary?: {
     slotId: string;
@@ -313,17 +316,21 @@ export function EngagementPlanPanel({
             />
             {/* 항상 표시 (기획 개정 2026-08-30 — 30번): 후보 = 상위 직급만,
                 마지막은 상무이사 → 대표 고정 */}
-            {(
-              <div className="space-y-2 rounded-md border border-dashed p-2.5">
+            <div className="space-y-2 rounded-md border border-dashed p-2.5">
                 <p className="text-xs text-muted-foreground">
                   결재자를 직접 지정할 수 있습니다 (선택 순서대로 결재 단계).
                   선택과 무관하게 마지막은 <b>상무이사 → 대표 (고정)</b>로 자동
-                  연결됩니다.
+                  연결됩니다.{" "}
+                  {relayOn
+                    ? "비워 두면 상급자 릴레이(직급 단계)로 상신됩니다."
+                    : "비워 두면 고정 결재선만으로 상신됩니다."}
                 </p>
                 {approverOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    중간에 넣을 상위 직급 결재자가 없습니다 — 고정 결재선으로
-                    상신됩니다.
+                    중간에 넣을 상위 직급 결재자가 없습니다 —{" "}
+                    {relayOn
+                      ? "상급자 릴레이(직급 단계)로 상신됩니다."
+                      : "고정 결재선(상무이사 → 대표)으로 상신됩니다."}
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -359,7 +366,6 @@ export function EngagementPlanPanel({
                   </div>
                 )}
               </div>
-            )}
 
             <Button
               size="sm"

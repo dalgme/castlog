@@ -61,17 +61,27 @@ export async function buildLineWithFixedTail(
         error: `결재자는 상신자보다 높은 직급이어야 합니다 (규칙) — ${found.name}님을 확인하세요.`,
       };
     }
+    // 상무이사·대표는 선택이 아니라 고정 tail이다 — UI만 거르면 조작 요청으로
+    // '대표가 먼저, 상무가 나중' 같은 역전 라인이 만들어진다 (리뷰 P2-2,
+    // 게이트는 서버 강제 원칙)
+    if (found.grade === "director" || found.grade === "ceo") {
+      return {
+        ok: false,
+        error: `상무이사·대표는 고정 결재선으로 자동 포함됩니다 (규칙) — ${found.name}님은 선택에서 제외해 주세요.`,
+      };
+    }
     picked.push({ id: found.id, name: found.name });
   }
 
-  // ② 고정 임원 tail — 상무이사·대표 (본인·이미 선택된 사람 제외, 등록순 1인)
+  // ② 고정 임원 tail — 상무이사·대표 (등록순 1인). 상신자와 같은/낮은 직급
+  // 단계는 생략한다 (리뷰 P3-2: director 상신 시 동급 대입 방지, ceo 상신 시
+  // 하급 단독 결재 방지 — 그 경우 호출자 폴백이 자가결재를 처리한다)
   const firstOfGrade = (grade: UserGrade) =>
-    (staff ?? []).find(
-      (u) =>
-        u.grade === grade &&
-        u.id !== requesterUserId &&
-        !picked.some((p) => p.id === u.id)
-    ) ?? null;
+    gradeRank(grade) > requesterRank
+      ? ((staff ?? []).find(
+          (u) => u.grade === grade && u.id !== requesterUserId
+        ) ?? null)
+      : null;
   const tail: { id: string; name: string }[] = [];
   for (const grade of ["director", "ceo"] as UserGrade[]) {
     const found = firstOfGrade(grade);

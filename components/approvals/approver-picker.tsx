@@ -17,12 +17,15 @@ export function ApproverPicker({
   selected,
   onChange,
   disabled = false,
+  emptyHint = "비워 두면 고정 결재선만으로 상신됩니다.",
 }: {
   options: ApproverOption[];
   /** 선택 순서 = 결재 순서 */
   selected: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  /** '비워 두면' 동작 안내 — 릴레이 켠 테넌트 등 흐름별로 실제 동작과 일치시킨다 */
+  emptyHint?: string;
 }) {
   const toggle = (id: string) => {
     onChange(
@@ -39,12 +42,11 @@ export function ApproverPicker({
         상신자보다 높은 직급의 결재자(PL·PM 등)를 체크한 순서대로 넣을 수
         있습니다. 선택과 무관하게 마지막은{" "}
         <b className="text-foreground">상무이사 → 대표 (고정)</b>로 자동
-        연결됩니다. 비워 두면 고정 결재선만으로 상신됩니다.
+        연결됩니다. {emptyHint}
       </p>
       {options.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          중간에 넣을 상위 직급 결재자가 없습니다 — 상무이사 → 대표(고정)로
-          바로 상신됩니다.
+          중간에 넣을 상위 직급 결재자가 없습니다. {emptyHint}
         </p>
       ) : (
         <ul className="grid max-h-44 gap-1 overflow-y-auto sm:grid-cols-2">

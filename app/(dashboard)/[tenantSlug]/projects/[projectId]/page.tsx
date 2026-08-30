@@ -47,6 +47,7 @@ import {
   buildPlanSnapshot,
   evaluatePlanGate,
 } from "@/lib/integrations/engagement-plans";
+import { isPlanRelayEnabled } from "@/lib/approvals/relay";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -288,6 +289,8 @@ export default async function ProjectDetailPage({
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
   let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
+  // 상급자 릴레이(27번) 상태 — 픽커의 '비워 두면' 안내를 실제 동작과 일치시킨다
+  let planRelayOn = false;
   if (modules.experts) {
     const [gate, snapshot] = await Promise.all([
       evaluatePlanGate(project.id, modules.approvals),
@@ -334,6 +337,9 @@ export default async function ProjectDetailPage({
         gradeLabel: gradeLabel(u.grade),
       }));
 
+    if (modules.approvals) {
+      planRelayOn = await isPlanRelayEnabled();
+    }
   }
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
@@ -1055,6 +1061,7 @@ export default async function ProjectDetailPage({
         {tab === "experts" && modules.experts && (
           <EngagementWorkbench
             planApproverOptions={planApprovers}
+            planRelayOn={planRelayOn}
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
@@ -1075,6 +1082,7 @@ export default async function ProjectDetailPage({
                   plan={planPanel}
                   canSubmit={canExecute}
                   approverOptions={planApprovers}
+                  relayOn={planRelayOn}
                   sessionSummary={slotRows.map((s) => ({
                     slotId: s.id,
                     label: `${s.slotDate}${
