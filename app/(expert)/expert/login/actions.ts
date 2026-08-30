@@ -53,10 +53,20 @@ export async function requestExpertOtp(
   try {
     const { data: existingExpert } = await createAdminClient()
       .from("experts")
-      .select("id, auth_user_id")
+      .select("id, auth_user_id, is_active")
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 실계정 대상이 아니다
       .maybeSingle();
+    // 이용 중지된 전문가는 인증번호 발송 전에 막는다 — ban(계정 차단)은
+    // 계정이 연결된 경우에만 작동하므로 이 판정이 유일한 공통 차단선이다.
+    // (규칙 거부임을 명시 — §12-9)
+    if (existingExpert && existingExpert.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "이 번호의 계정은 이용이 중지된 상태입니다 (플랫폼 운영 기준). 문의는 캐스트로그로 연락해 주세요.",
+      };
+    }
     allowCreate = Boolean(existingExpert && !existingExpert.auth_user_id);
   } catch {
     // 판정 실패 시 기존 동작(생성 불가) 유지
@@ -131,6 +141,7 @@ export async function verifyExpertOtp(
       .select("id")
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 이어받기 대상 제외
+      .eq("is_active", true) // 이용 중지 건은 이어받기도 막는다 (관리모드 중지)
       .is("auth_user_id", null)
       .maybeSingle();
     if (unclaimed) {

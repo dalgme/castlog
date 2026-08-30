@@ -82,6 +82,9 @@ export default async function ExpertDetailPage({
       )
       .eq("id", params.expertId)
       .eq("is_practice", false)
+      // 이용 중지 전문가는 미연결 공개 경로에서 제외 (자사 연결 건은 위
+      // RLS 조회로 계속 보인다 — 진행 중 업무의 이름 표기 유지)
+      .eq("is_active", true)
       .maybeSingle());
   }
   if (!expert) notFound();

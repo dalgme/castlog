@@ -93,10 +93,18 @@ async function ensureExpertLink(
   // (연습 세션이 실제 관계를 남기거나, 실모드에 연습 시드가 붙는 것 방지).
   const { data: expert } = await admin
     .from("experts")
-    .select("id, is_practice")
+    .select("id, is_practice, is_active")
     .eq("id", expertId)
     .maybeSingle();
   if (!expert) return { ok: false, error: "전문가를 찾을 수 없습니다." };
+  // 이용 중지 전문가에게 새 관계를 만들지 않는다 (관리모드 중지 — 규칙 거부)
+  if (!expert.is_active) {
+    return {
+      ok: false,
+      error:
+        "플랫폼에서 이용이 중지된 전문가입니다 (규칙). 다른 후보를 선택해 주세요.",
+    };
+  }
   const practice = await isPracticeMode();
   if (expert.is_practice !== practice) {
     return { ok: false, error: "현재 모드에서 다룰 수 없는 전문가입니다." };

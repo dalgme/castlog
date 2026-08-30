@@ -2041,6 +2041,9 @@ export type Database = {
       }
       experts: {
         Row: {
+          is_active: boolean
+          deactivated_at: string | null
+          deactivation_note: string | null
           is_practice: boolean
           auth_user_id: string | null
           bio: string | null
@@ -2062,6 +2065,9 @@ export type Database = {
           job_title: string | null
         }
         Insert: {
+          is_active?: boolean
+          deactivated_at?: string | null
+          deactivation_note?: string | null
           is_practice?: boolean
           auth_user_id?: string | null
           bio?: string | null
@@ -2083,6 +2089,9 @@ export type Database = {
           job_title?: string | null
         }
         Update: {
+          is_active?: boolean
+          deactivated_at?: string | null
+          deactivation_note?: string | null
           is_practice?: boolean
           auth_user_id?: string | null
           bio?: string | null

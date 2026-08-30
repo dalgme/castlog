@@ -167,6 +167,9 @@ export default async function TenantExpertsPage({
       .from("experts")
       .select("id, name, phone, email, specialty, region, career_years, created_at")
       .eq("is_practice", practice)
+      // 관리모드에서 이용 중지된 전문가는 공개 풀에서 제외한다 (기존 이력
+      // 화면은 링크 기반 RLS 조회라 이름 표기가 유지된다)
+      .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(POOL_FETCH_LIMIT),
     supabase
