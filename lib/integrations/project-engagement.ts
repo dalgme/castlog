@@ -328,10 +328,25 @@ export async function refreshProjectEngagementStage(
 
   const { data: project } = await admin
     .from("projects")
-    .select("id, engagement_stage")
+    .select("id, tenant_id, engagement_stage")
     .eq("id", projectId)
     .maybeSingle();
   if (!project) return;
+
+  // 자동 전환 기록 — 담당자 행위와 무관한 시점에 배지가 바뀔 수 있으므로
+  // "왜 바뀌었나"를 추적할 수 있게 남긴다 (리뷰 2c)
+  const logStageChange = async (from: ProjectStage, to: ProjectStage) => {
+    await admin.from("audit_logs").insert({
+      tenant_id: project.tenant_id,
+      actor_auth_user_id: null,
+      actor_role: "system",
+      action: "project.stage_auto",
+      resource_type: "project",
+      resource_id: projectId,
+      before_data: { engagement_stage: from },
+      after_data: { engagement_stage: to },
+    });
+  };
 
   const stage = projectStage(project.engagement_stage);
   // 배정·품의 단계와 종료 이후 단계는 여기서 건드리지 않는다.
@@ -346,20 +361,42 @@ export async function refreshProjectEngagementStage(
 
   const { data: slots } = await admin
     .from("engagement_slots")
-    .select("id")
+    .select("id, required_count")
     .eq("project_id", projectId);
   const slotIds = (slots ?? []).map((s) => s.id);
   if (slotIds.length === 0) return;
 
   const { data: positions } = await admin
     .from("engagement_slot_positions")
-    .select("status, engagement_id")
+    .select("slot_id, status, engagement_id")
     .in("slot_id", slotIds);
 
   const live = (positions ?? []).filter((p) => p.status !== "canceled");
   if (live.length === 0) return;
 
-  const allFilled = live.every((p) => p.status === "filled");
+  // '전원 수락' = 세션마다 필요인원만큼 수락(filled)됐는가.
+  // 후보 순위 모델에서는 필요인원보다 많은 예비 코드가 남아 있는 게 정상이라,
+  // "모든 자리가 filled"로 재면 예비 자리 때문에 영원히 도달하지 못한다
+  // (렛츠 사전 시뮬레이션 P1 — 상신 게이트·발송 대상 산정과 같은 기준으로 정렬).
+  // 소급 강등 방지 (리뷰 2): 구기준(전 자리 filled)으로 이미 올라간 프로젝트가
+  // 이 기준 변경 때문에 내려오면 안 된다 —
+  //   · 후보를 전부 비운 세션(자체 인력 진행)은 판정에서 제외한다 (구동작 유지)
+  //   · 만든 자리 수가 필요인원보다 적으면 자리 수 기준으로 잰다 (구동작 유지)
+  const filledBySlot = new Map<string, number>();
+  const liveBySlot = new Map<string, number>();
+  for (const p of live) {
+    liveBySlot.set(p.slot_id, (liveBySlot.get(p.slot_id) ?? 0) + 1);
+    if (p.status === "filled") {
+      filledBySlot.set(p.slot_id, (filledBySlot.get(p.slot_id) ?? 0) + 1);
+    }
+  }
+  const allFilled = (slots ?? []).every((s) => {
+    const liveCount = liveBySlot.get(s.id) ?? 0;
+    if (liveCount === 0) return true;
+    return (
+      (filledBySlot.get(s.id) ?? 0) >= Math.min(s.required_count, liveCount)
+    );
+  });
   if (!allFilled) {
     // 한 자리라도 비었으면 요청 단계로 되돌린다 (긴급 취소·거절 후)
     if (stage !== "requesting") {
@@ -367,12 +404,15 @@ export async function refreshProjectEngagementStage(
         .from("projects")
         .update({ engagement_stage: "requesting" })
         .eq("id", projectId);
+      await logStageChange(stage, "requesting");
     }
     return;
   }
 
-  // 전원 확정 — 수락서가 모두 '확인 완료'면 확정 단계까지 올린다
+  // 전원 확정 — 수락한(filled) 자리의 수락서가 모두 '확인 완료'면 확정까지
+  // 올린다. 예비 자리의 진행 중 요청은 확정 판정에 넣지 않는다.
   const engagementIds = live
+    .filter((p) => p.status === "filled")
     .map((p) => p.engagement_id)
     .filter((id): id is string => id !== null);
   const { data: acceptances } = engagementIds.length
@@ -402,5 +442,6 @@ export async function refreshProjectEngagementStage(
       .from("projects")
       .update({ engagement_stage: next })
       .eq("id", projectId);
+    await logStageChange(stage, next);
   }
 }

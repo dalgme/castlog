@@ -34,9 +34,12 @@ type Turn = { role: "user" | "assistant"; content: string };
 export function HelpChat({
   tenantName,
   logoSrc,
+  testSupport = false,
 }: {
   tenantName: string | null;
   logoSrc: string | null;
+  /** 실시간 모니터링 창이 열림 — 테스트 지원 모드 배지·안내 */
+  testSupport?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -165,6 +168,7 @@ export function HelpChat({
               <p className="truncate text-sm font-bold">사용법 안내 · 개선 요청</p>
               <p className="truncate text-[11px] text-white/70">
                 {tenantName ?? "캐스트로그"} · 로그봇
+                {testSupport && " · 테스트 지원 중"}
               </p>
             </div>
             <button
@@ -183,6 +187,13 @@ export function HelpChat({
               <BotAvatar size={26} />
               <p className="max-w-[85%] rounded-lg rounded-tl-none border bg-white p-3 text-sm leading-relaxed">
                 {HELP_GREETING}
+                {testSupport && (
+                  <span className="mt-2 block rounded-md bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
+                    지금 사용자 테스트를 캐스트로그가 실시간으로 지원하고
+                    있습니다. 오류나 이상한 동작을 보시면 화면과 상황을 그대로
+                    적어 주세요 — 즉시 전달됩니다.
+                  </span>
+                )}
               </p>
             </div>
 

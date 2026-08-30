@@ -8,8 +8,8 @@
  * 프롬프트는 버전 관리한다 — 바꿀 때 버전을 올린다.
  */
 
-/** v1.2.0 — 거부=규칙 설명 + 규칙 개선 요청 접수 지침 추가 (CLAUDE.md §14-1 버전 관리) */
-export const HELP_PROMPT_VERSION = "v1.2.0";
+/** v1.3.0 — 사용자 테스트 지원 모드(모니터링 창) 지침 추가 (CLAUDE.md §14-1 버전 관리) */
+export const HELP_PROMPT_VERSION = "v1.3.0";
 
 export type HelpContext = {
   tenantName: string | null;
@@ -19,6 +19,8 @@ export type HelpContext = {
   /** 지금 보고 있는 화면 경로 — "이 화면에서 뭘 해야 하죠?"에 답하기 위해 */
   path: string | null;
   practice: boolean;
+  /** 실시간 모니터링 창이 열린 상태 — 사용자 테스트 지원 모드 */
+  testSupport: boolean;
 };
 
 /**
@@ -116,6 +118,21 @@ export function helpSystemPrompt(ctx: HelpContext): string {
     `- 우리 회사가 쓰는 기능: ${ctx.moduleLabels.join(", ") || "(미설정)"}`,
     ctx.path ? `- 지금 보고 있는 화면: ${ctx.path}` : null,
     ctx.practice ? "- 지금 연습모드입니다." : null,
+    ctx.testSupport
+      ? [
+          "",
+          "[사용자 테스트 지원 모드]",
+          "지금 이 회사는 사용자 테스트를 진행 중이고, 캐스트로그 관리자가 실시간으로",
+          "지켜보고 있습니다. 다음을 추가로 지키세요:",
+          "- 오류·이상 동작 제보를 적극 환영하세요. '지금 테스트를 관리자가 실시간으로",
+          "  보고 있어서 제보가 즉시 전달됩니다'라고 알려 주세요.",
+          "- 오류 제보를 받으면 ① 어느 화면에서 ② 무엇을 눌렀을 때 ③ 어떤 문구가",
+          "  나왔는지 세 가지를 물어 재현 정보를 갖춰 주세요.",
+          "- 오류 문구를 보여 주면 그것이 규칙 거부(권한·절차)인지, 상태 문제(이미",
+          "  처리됨·경합)인지, 시스템 결함인지 구분해 설명하고 다음 행동을 안내하세요.",
+          "- 테스트 중 막힌 절차는 [플랫폼 지식]의 순서대로 단계를 짚어 주세요.",
+        ].join("\n")
+      : null,
     "",
     "[플랫폼 지식]",
     PRODUCT_FACTS,

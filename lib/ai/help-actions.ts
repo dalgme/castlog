@@ -12,6 +12,8 @@ import { gradeLabel } from "@/lib/auth/grades";
 import { getTenantModules } from "@/lib/modules/server";
 import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
 
+import { isMonitorActive } from "@/lib/monitoring/flags";
+
 import { generateChat, isAiConfigured, type ChatMessage } from "./client";
 import { helpSystemPrompt, HELP_PROMPT_VERSION } from "./help-prompts";
 import { classifyFeedback } from "./feedback-classify";
@@ -65,9 +67,16 @@ export async function askHelpBot(input: {
   }
 
   const [{ data: tenant }, modules] = await Promise.all([
-    supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+    supabase
+      .from("tenants")
+      .select("name, feature_flags")
+      .eq("id", tenantId)
+      .maybeSingle(),
     getTenantModules(),
   ]);
+  // 모니터링 창이 열려 있으면 테스트 지원 모드 — 제보 접수·오류 해석을 강화한다.
+  // 실제 업무 데이터를 넘기지 않는 원칙은 그대로다(플래그 하나만 더 간다).
+  const testSupport = isMonitorActive(tenant?.feature_flags);
 
   // 답변과 분류를 함께 돌린다 — 분류는 마지막 질문만 보면 되므로 답을 기다릴
   // 이유가 없다. 순서대로 하면 사용자가 두 번 기다린다.
@@ -81,6 +90,7 @@ export async function askHelpBot(input: {
         ),
         path: input.path ?? null,
         practice: practiceFromUser(user),
+        testSupport,
       }),
       messages: history,
       maxTokens: 700,

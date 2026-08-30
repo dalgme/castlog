@@ -509,6 +509,51 @@ export type Database = {
         }
         Relationships: []
       }
+      client_error_logs: {
+        Row: {
+          created_at: string
+          error_digest: string | null
+          id: string
+          is_practice: boolean
+          message: string
+          path: string | null
+          source: string
+          stack_digest: string | null
+          tenant_id: string | null
+          user_agent: string | null
+          user_id: string | null
+          user_role: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_digest?: string | null
+          id?: string
+          is_practice?: boolean
+          message: string
+          path?: string | null
+          source?: string
+          stack_digest?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_digest?: string | null
+          id?: string
+          is_practice?: boolean
+          message?: string
+          path?: string | null
+          source?: string
+          stack_digest?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Relationships: []
+      }
       consents: {
         Row: {
           auth_user_id: string
@@ -986,7 +1031,15 @@ export type Database = {
           assigned_at?: string | null
           assigned_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "engagement_slot_positions_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "engagement_slots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       engagement_acceptance_attachments: {
         Row: {

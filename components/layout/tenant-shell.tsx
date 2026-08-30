@@ -10,6 +10,7 @@ import { getMyTurnApprovals } from "@/lib/approvals/my-turn";
 import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
 import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
+import { isMonitorActive } from "@/lib/monitoring/flags";
 import { shouldShowWelcomeTour } from "@/lib/onboarding/welcome-tour";
 import { WelcomeTour } from "@/components/onboarding/welcome-tour";
 import { SetupReturnBar } from "@/components/onboarding/setup-return-bar";
@@ -68,10 +69,16 @@ export async function TenantShell({
     modules.approvals && user ? (await getMyTurnApprovals(user.id)).length : 0;
 
   let tenantName: string | null = null;
+  let testSupport = false;
   if (hasSupabaseEnv() && tenantId) {
     const supabase = createClient();
-    const { data } = await supabase.from("tenants").select("name").maybeSingle();
+    const { data } = await supabase
+      .from("tenants")
+      .select("name, feature_flags")
+      .maybeSingle();
     tenantName = data?.name ?? null;
+    // 실시간 모니터링 창이 열려 있으면 챗봇이 테스트 지원 모드로 표시된다
+    testSupport = isMonitorActive(data?.feature_flags);
   }
   // 회사 로고 — 사이드바와 챗봇이 함께 쓴다
   const logoSrc = await tenantLogoSrc();
@@ -130,7 +137,11 @@ export async function TenantShell({
         <AlertBanner />
         {/* 도우미는 화면 오른쪽 아래에 떠 있는다 — 본문 흐름 밖이라 셸 최상위에
             둔다. 상단 바 안에 두면 사이드바 폭에 따라 위치가 흔들린다 */}
-        <HelpChat tenantName={tenantName} logoSrc={logoSrc} />
+        <HelpChat
+          tenantName={tenantName}
+          logoSrc={logoSrc}
+          testSupport={testSupport}
+        />
         {showTour && (
           <WelcomeTour tenantName={tenantName} logoSrc={logoSrc} />
         )}

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
+import { reportClientError } from "@/lib/monitoring/report-client-error";
 
 /**
  * 세그먼트 에러 바운더리 — 서버 컴포넌트·액션에서 처리되지 않은 예외를 잡는다.
@@ -16,8 +17,9 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // 운영 환경 에러 모니터링 연동 지점 (단계 19)
     console.error(error);
+    // 모니터링 창이 열린 테넌트만 서버가 기록한다 — 조건 없이 보고
+    reportClientError(error, "client");
   }, [error]);
 
   return (

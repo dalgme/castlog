@@ -166,12 +166,17 @@ export default async function ExpertPortalPage({
   );
 
   // 승인(서명) 대기 수락서 — 응답 필요 건만 세면 수락서가 와 있어도
-  // "할 일 없음"으로 보인다 (검수 C7)
+  // "할 일 없음"으로 보인다 (검수 C7). 섭외 건이 살아 있는(accepted) 것만 —
+  // 회수·취소된 계약의 수락서가 대기 건수로 계속 잡히지 않게 (시뮬레이션 P8)
   const { count: acceptanceAwaitingCount } = await admin
     .from("engagement_acceptances")
-    .select("id", { count: "exact", head: true })
+    .select("id, expert_engagements!inner (status)", {
+      count: "exact",
+      head: true,
+    })
     .eq("expert_id", expert.id)
-    .eq("status", "sent");
+    .eq("status", "sent")
+    .eq("expert_engagements.status", "accepted");
   const acceptanceAwaiting = acceptanceAwaitingCount ?? 0;
 
   // ── 이하 통계는 선택된 기간(period) 기준으로 계산 ──
