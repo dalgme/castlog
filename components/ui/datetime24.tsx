@@ -6,7 +6,10 @@
  * 값 형식은 기존과 동일한 "YYYY-MM-DDTHH:mm" — 서버 액션 수정 없이 교체된다.
  */
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINUTES = ["00", "10", "20", "30", "40", "50"];
+// 5분 단위 (기획 확정 2026-08-30 — 세션 시간 등 시간 입력 공통)
+const MINUTES = Array.from({ length: 12 }, (_, i) =>
+  String(i * 5).padStart(2, "0")
+);
 
 export function DateTime24Input({
   id,

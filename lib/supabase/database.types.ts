@@ -921,6 +921,7 @@ export type Database = {
       }
       engagement_slots: {
         Row: {
+          sort_order: number | null
           created_at: string
           created_by: string | null
           ends_time: string | null
@@ -940,6 +941,7 @@ export type Database = {
           session_name: string | null
         }
         Insert: {
+          sort_order?: number | null
           created_at?: string
           created_by?: string | null
           ends_time?: string | null
@@ -959,6 +961,7 @@ export type Database = {
           session_name?: string | null
         }
         Update: {
+          sort_order?: number | null
           created_at?: string
           created_by?: string | null
           ends_time?: string | null

@@ -20,9 +20,11 @@ import {
 } from "@/lib/operations/schemas";
 
 /**
- * 프로젝트 기본정보 수정·삭제 (기획 확정 2026-08-30).
- * 두 작업 모두 대표·이사(전사 권한자) 전용 — 담당 배정은 계단으로 위임되지만
- * 기초정보 변경과 삭제는 회사 단위 결정이다.
+ * 프로젝트 기본정보 수정·삭제·보관 (기획 확정 2026-08-30, 오후 개정).
+ * - 수정: 대표·이사 + **그 프로젝트의 PL·PM(겸임 포함)** — "PM급 이상에게
+ *   제목·내용·수정 권한을 기본 제공" 확정. DB 컬럼 가드도 같은 축으로 확장
+ *   (마이그레이션 20260830000003).
+ * - 삭제(빈 프로젝트)·보관(기록 있는 중복 정리): 대표·이사 전용 — 회사 단위 결정.
  */
 
 type BasicResult = { ok: true } | { ok: false; error: string };
@@ -50,7 +52,40 @@ async function requireExecutive(): Promise<
   return { ok: true, userId: user.id, tenantId, role };
 }
 
-/** 기본정보 수정 — 명·발주처·연도·코드·기간·예산·설명 */
+/** 수정 권한: 대표·이사 또는 그 프로젝트의 PL·PM(겸임) — PM급 이상 (기획 2026-08-30) */
+async function requireProjectEditor(projectId: string): Promise<
+  | { ok: true; userId: string; tenantId: string; role: string }
+  | { ok: false; error: string }
+> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  const grade = gradeFromUser(user);
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (isUserGrade(grade) && canViewAllProjects(grade)) {
+    return { ok: true, userId: user.id, tenantId, role };
+  }
+  const { data: mine } = await supabase
+    .from("project_assignments")
+    .select("assignment_role")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (mine && ["pl", "pl_pm", "pm"].includes(mine.assignment_role)) {
+    return { ok: true, userId: user.id, tenantId, role };
+  }
+  const message =
+    "프로젝트 기본정보 수정은 대표·이사 또는 이 프로젝트의 PL·PM만 할 수 있습니다 (권한 규칙).";
+  await recordActionDenial({ kind: "exec:projectBasicInfo", message, user });
+  return { ok: false, error: message };
+}
+
+/** 기본정보 수정 — 명·발주처·연도·코드·기간·예산·설명 (PM급 이상) */
 export async function updateProjectBasicInfo(
   projectId: string,
   input: ProjectCreateInput
@@ -58,7 +93,7 @@ export async function updateProjectBasicInfo(
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   }
-  const gate = await requireExecutive();
+  const gate = await requireProjectEditor(projectId);
   if (!gate.ok) return gate;
 
   const parsed = projectCreateSchema.safeParse(input);
@@ -174,6 +209,69 @@ export async function updateProjectBasicInfo(
 }
 
 /**
+ * 보관 처리 (기획 확정 2026-08-30) — 기록이 있어 삭제할 수 없는 중복·오생성
+ * 건을 '취소' 상태로 전환해 별도 공간(설정 > 프로젝트 보관)으로 이관한다.
+ * 데이터는 전량 보존된다(§14-4 — 삭제 대신 상태 전환). 대표·이사 전용,
+ * 사유 필수(§14-3 위험 작업).
+ */
+export async function archiveProject(
+  projectId: string,
+  note: string
+): Promise<BasicResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const gate = await requireExecutive();
+  if (!gate.ok) return gate;
+  const trimmed = note.trim();
+  if (!trimmed) {
+    return { ok: false, error: "보관(취소) 처리에는 사유 입력이 필수입니다." };
+  }
+
+  const supabase = createClient();
+  const { data: before } = await supabase
+    .from("projects")
+    .select("id, name, status")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (before.status === "completed" || before.status === "cancelled") {
+    return {
+      ok: false,
+      error: "이미 종결·보관된 프로젝트입니다. 설정 > 프로젝트 보관에서 확인하세요.",
+    };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("projects")
+    .update({ status: "cancelled" })
+    .eq("id", projectId)
+    .eq("status", before.status)
+    .select("id");
+  if (error || !updated || updated.length === 0) {
+    return {
+      ok: false,
+      error: "보관 처리에 실패했습니다 (다른 변경과 겹쳤거나 시스템 오류). 새로고침 후 다시 시도해 주세요.",
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: gate.tenantId,
+    actor_auth_user_id: gate.userId,
+    actor_role: gate.role,
+    action: "project.archive",
+    resource_type: "project",
+    resource_id: projectId,
+    before_data: { status: before.status },
+    after_data: { status: "cancelled", note: trimmed },
+  });
+
+  revalidatePath("/[tenantSlug]/projects", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
  * 프로젝트 삭제 — **실적이 없는 빈 프로젝트만** (중복 생성 정리용).
  * 세션·섭외·계획 품의가 하나라도 있으면 삭제 대신 상태 전환을 안내한다
  * (§14-4 — 기록이 있는 것은 지우지 않는다).
@@ -245,7 +343,7 @@ export async function deleteEmptyProject(projectId: string): Promise<BasicResult
     return {
       ok: false,
       error:
-        "세션·섭외·품의·결재·기여도 기록이 있는 프로젝트는 삭제할 수 없습니다 (기록 보존 규칙). 잘못 만든 중복 건이라면 기록이 없는 쪽을 삭제하고, 이 프로젝트는 상태를 '취소'로 바꿔 보관하세요.",
+        "세션·섭외·품의·결재·기여도 기록이 있는 프로젝트는 삭제할 수 없습니다 (기록 보존 규칙). 잘못 만든 중복 건이라면 이 창의 '보관 처리'로 취소 상태로 이관하세요 — 데이터는 보존되고 설정 > 프로젝트 보관에서 관리됩니다.",
     };
   }
 
