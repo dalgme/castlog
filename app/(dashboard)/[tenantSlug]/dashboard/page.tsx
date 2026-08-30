@@ -384,6 +384,31 @@ export default async function DashboardPage({
                 ))}
               </ul>
             )}
+            {/* 보관(취소) 건 — 진행 목록과 섞지 않고 분리 표시 (기획 2026-08-30).
+                집계(상태 구성·예산)에는 그대로 포함되어 있다 */}
+            {data.projects.archivedRows.length > 0 && (
+              <details className="mt-4 rounded-md border bg-secondary/40 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+                  보관(취소) 처리 {data.projects.archivedRows.length}건 — 설정
+                  &gt; 프로젝트 보관에서 관리
+                </summary>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {data.projects.archivedRows.map((row) => (
+                    <li key={row.id} className="flex items-baseline gap-2">
+                      <Link
+                        href={`/${slug}/projects/${row.id}`}
+                        className="truncate text-muted-foreground underline-offset-4 hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                      <Badge variant="outline" className="text-[10px]">
+                        보관(취소)
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </CardContent>
         </Card>
 

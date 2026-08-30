@@ -32,6 +32,8 @@ export type TenantDashboard = {
     byStatus: Record<string, number>;
     /** 진행률 상위 표시용 (진행중 우선, 진행률 낮은 순) */
     rows: ProjectProgressRow[];
+    /** 보관(취소) 건 — 집계에서 빼지 않고 분리 표시한다 (기획 2026-08-30) */
+    archivedRows: ProjectProgressRow[];
   };
   /** 카테고리별 프로젝트 수 (미지정 포함) */
   categories: { name: string; count: number }[];
@@ -167,6 +169,11 @@ export async function getTenantDashboard(
       (a.progress ?? 0) - (b.progress ?? 0)
   );
 
+  // 보관(취소) 건 분리 — 목록에서 빼는 게 아니라 별도 묶음으로 (기획 2026-08-30).
+  // byStatus·예산 합계에는 그대로 남는다 (집계 유지, 표시만 분리).
+  const archivedRows = rows.filter((r) => r.status === "cancelled");
+  const liveRows = rows.filter((r) => r.status !== "cancelled");
+
   // ---- 카테고리 구성 ----------------------------------------------------------
   const categoryNameById = new Map(
     (categoryResult.data ?? []).map((c) => [c.id, c.name])
@@ -239,7 +246,7 @@ export async function getTenantDashboard(
 
   return {
     year,
-    projects: { total: projects.length, byStatus, rows },
+    projects: { total: projects.length, byStatus, rows: liveRows, archivedRows },
     categories,
     cost,
     experts,
