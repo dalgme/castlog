@@ -70,6 +70,8 @@ import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { ProjectCalendar } from "./project-calendar";
+import { ConsultingPanel } from "./consulting-panel";
+import { ProjectKindToggle } from "./project-kind-toggle";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
 import {
@@ -149,13 +151,34 @@ export default async function ProjectDetailPage({
 
   const supabase = createClient();
 
-  const { data: project } = await supabase
+  // 신규 컬럼(주관·수행기관·D-Day·유형)은 42703 한정 폴백 (§14-10) —
+  // 마이그레이션 전 환경에서 상세 전체가 404로 죽으면 안 된다 (리뷰 P2-3)
+  const projectResult = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, host_org, executor_org, dday_date, project_kind"
     )
     .eq("id", params.projectId)
     .maybeSingle();
+  let project = projectResult.data;
+  if (projectResult.error?.code === "42703") {
+    const { data: legacyProject } = await supabase
+      .from("projects")
+      .select(
+        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
+      )
+      .eq("id", params.projectId)
+      .maybeSingle();
+    project = legacyProject
+      ? {
+          ...legacyProject,
+          host_org: null,
+          executor_org: null,
+          dday_date: null,
+          project_kind: "event",
+        }
+      : null;
+  }
 
   if (!project) notFound();
 
@@ -218,7 +241,7 @@ export default async function ProjectDetailPage({
       supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order"
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order, field_id, period_end_date"
         )
         .eq("project_id", project.id)
         .order("sort_order", { ascending: true, nullsFirst: false })
@@ -488,7 +511,12 @@ export default async function ProjectDetailPage({
       .eq("project_id", project.id)
       .order("slot_date", { ascending: true })
       .order("starts_time", { ascending: true });
-    slotRecords = (legacySlots ?? []).map((s) => ({ ...s, sort_order: null }));
+    slotRecords = (legacySlots ?? []).map((s) => ({
+      ...s,
+      sort_order: null,
+      field_id: null,
+      period_end_date: null,
+    }));
   }
   const slotIds = slotRecords.map((s) => s.id);
   const { data: positionRecords } = slotIds.length
@@ -539,6 +567,59 @@ export default async function ProjectDetailPage({
     ? await getCanceledExpertByPositionCode(project.id)
     : ({} as Record<string, string>);
 
+  // 세션 분야 마스터 (35번) + 멘티 정보 (34번) — 미적용 환경은 빈 목록 폴백
+  let sessionFieldOptions: { id: string; name: string }[] = [];
+  {
+    const { data: fieldRows, error: fieldError } = await supabase
+      .from("tenant_session_fields")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+    if (fieldError && fieldError.code !== "42P01") {
+      console.error("session fields query failed:", fieldError.message);
+    }
+    if (!fieldError) sessionFieldOptions = fieldRows ?? [];
+  }
+  const sessionFieldNameById = new Map(
+    sessionFieldOptions.map((f) => [f.id, f.name])
+  );
+  let menteesBySlot = new Map<
+    string,
+    {
+      id: string;
+      orgName: string;
+      positionTitle: string | null;
+      name: string;
+      itemName: string | null;
+      menteeType: string | null;
+    }[]
+  >();
+  if (project.project_kind === "consulting" && slotRecords.length > 0) {
+    const { data: menteeRows, error: menteeError } = await supabase
+      .from("slot_mentees")
+      .select("id, slot_id, org_name, position_title, name, item_name, mentee_type, sort_order")
+      .in("slot_id", slotRecords.map((sl) => sl.id))
+      .order("sort_order", { ascending: true });
+    if (menteeError && menteeError.code !== "42P01") {
+      console.error("slot mentees query failed:", menteeError.message);
+    }
+    if (!menteeError) {
+      menteesBySlot = new Map();
+      for (const m of menteeRows ?? []) {
+        const list = menteesBySlot.get(m.slot_id) ?? [];
+        list.push({
+          id: m.id,
+          orgName: m.org_name,
+          positionTitle: m.position_title,
+          name: m.name,
+          itemName: m.item_name,
+          menteeType: m.mentee_type,
+        });
+        menteesBySlot.set(m.slot_id, list);
+      }
+    }
+  }
+
   // 캘린더 일정표의 일자 스캐폴드 (29번) — 테이블 미적용(42P01)만 빈 목록 폴백.
   // 다른 에러를 삼키면 만들어 둔 빈 날짜가 조용히 사라져 보인다 (§14-10, 리뷰 P2-3)
   let calendarDays: string[] = [];
@@ -557,6 +638,8 @@ export default async function ProjectDetailPage({
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
     slotDate: s.slot_date,
+    fieldId: s.field_id,
+    periodEndDate: s.period_end_date,
     startsTime: s.starts_time,
     endsTime: s.ends_time,
     roleType: s.role_type,
@@ -861,34 +944,70 @@ export default async function ProjectDetailPage({
           </Card>
         )}
         {/* 예산은 프로젝트 기초정보 — 공통 기반 */}
-        {/* 캘린더 일정표 (기획 확정 2026-08-30 — 29번): 기간·개별 날짜로
-            일자를 만들고, 일자별 세션을 등록하면 그대로 세션 계획 등록의
-            세션이 된다 — 원본은 engagement_slots 하나다 */}
+        {/* 유형별 세션 계획 (기획 2026-08-30 — 29·34번): 행사 = 캘린더
+            일정표 / 컨설팅 = 수행기간·분야·멘티. 원본은 engagement_slots 하나다 */}
         {tab === "basic" && (
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">캘린더 일정표</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">
+                {project.project_kind === "consulting"
+                  ? "컨설팅 세션"
+                  : "캘린더 일정표"}
+              </CardTitle>
+              <ProjectKindToggle
+                projectId={project.id}
+                kind={
+                  project.project_kind === "consulting" ? "consulting" : "event"
+                }
+                canManage={canViewAllProjects(grade) || myAssignmentRole !== null}
+              />
             </CardHeader>
             <CardContent>
-              <ProjectCalendar
-                tenantSlug={params.tenantSlug}
-                projectId={project.id}
-                days={calendarDays}
-                sessions={slotRows.map((s) => ({
-                  id: s.id,
-                  date: s.slotDate,
-                  startsTime: s.startsTime,
-                  endsTime: s.endsTime,
-                  name: s.sessionName,
-                  roleType: s.roleType,
-                  requiredCount: s.requiredCount,
-                  locationName: s.locationName,
-                  roleDescription: s.roleDescription,
-                  notes: s.notes,
-                }))}
-                canManage={canInput}
-                expertsEnabled={modules.experts}
-              />
+              {project.project_kind === "consulting" ? (
+                <ConsultingPanel
+                  tenantSlug={params.tenantSlug}
+                  projectId={project.id}
+                  sessions={slotRows.map((s) => ({
+                    id: s.id,
+                    startsOn: s.slotDate,
+                    endsOn: s.periodEndDate,
+                    name: s.sessionName,
+                    fieldName: s.fieldId
+                      ? (sessionFieldNameById.get(s.fieldId) ?? null)
+                      : null,
+                    requiredCount: s.requiredCount,
+                    candidateCount: s.positions.filter(
+                      (p) => p.status !== "canceled"
+                    ).length,
+                    mentees: menteesBySlot.get(s.id) ?? [],
+                  }))}
+                  fieldOptions={sessionFieldOptions}
+                  canManage={canInput}
+                  expertsEnabled={modules.experts}
+                />
+              ) : (
+                <ProjectCalendar
+                  tenantSlug={params.tenantSlug}
+                  projectId={project.id}
+                  days={calendarDays}
+                  sessions={slotRows.map((s) => ({
+                    id: s.id,
+                    date: s.slotDate,
+                    startsTime: s.startsTime,
+                    endsTime: s.endsTime,
+                    name: s.sessionName,
+                    roleType: s.roleType,
+                    requiredCount: s.requiredCount,
+                    locationName: s.locationName,
+                    roleDescription: s.roleDescription,
+                    notes: s.notes,
+                    fieldId: s.fieldId,
+                  }))}
+                  fieldOptions={sessionFieldOptions}
+                  canManage={canInput}
+                  expertsEnabled={modules.experts}
+                />
+              )}
             </CardContent>
           </Card>
         )}
@@ -952,6 +1071,33 @@ export default async function ProjectDetailPage({
               <span className="text-muted-foreground">기간</span>{" "}
               {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
             </span>
+            {project.host_org && (
+              <span>
+                <span className="text-muted-foreground">주관</span>{" "}
+                {project.host_org}
+              </span>
+            )}
+            {project.executor_org && (
+              <span>
+                <span className="text-muted-foreground">수행기관</span>{" "}
+                {project.executor_org}
+              </span>
+            )}
+            {project.dday_date && (
+              <span className="font-bold text-[#FF6F61]">
+                {(() => {
+                  const diff = Math.ceil(
+                    (new Date(`${project.dday_date}T00:00:00+09:00`).getTime() -
+                      Date.now()) /
+                      (24 * 60 * 60 * 1000)
+                  );
+                  return diff > 0 ? `D-${diff}` : diff === 0 ? "D-Day" : `D+${-diff}`;
+                })()}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  ({project.dday_date})
+                </span>
+              </span>
+            )}
             <Badge>{PROJECT_STATUS_LABELS[project.status] ?? project.status}</Badge>
             {modules.operations && (
               <span className="ml-auto text-muted-foreground">
@@ -959,10 +1105,8 @@ export default async function ProjectDetailPage({
               </span>
             )}
             {tab === "basic" &&
-              (canViewAllProjects(grade) ||
-                myAssignmentRole === "pl" ||
-                myAssignmentRole === "pl_pm" ||
-                myAssignmentRole === "pm") && (
+              // 기획 개정 2026-08-30 (32번): 연결된 누구나 수정·추가 기입
+              (canViewAllProjects(grade) || myAssignmentRole !== null) && (
               <BasicInfoDialog
                 tenantSlug={params.tenantSlug}
                 projectId={project.id}
@@ -979,6 +1123,9 @@ export default async function ProjectDetailPage({
                       ? String(project.budget_amount)
                       : "",
                   description: project.description ?? "",
+                  hostOrg: project.host_org ?? "",
+                  executorOrg: project.executor_org ?? "",
+                  ddayDate: project.dday_date ?? "",
                 }}
               />
             )}

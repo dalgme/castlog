@@ -52,7 +52,7 @@ async function requireExecutive(): Promise<
   return { ok: true, userId: user.id, tenantId, role };
 }
 
-/** 수정 권한: 대표·이사 또는 그 프로젝트의 PL·PM(겸임) — PM급 이상 (기획 2026-08-30) */
+/** 수정 권한: 대표·이사 또는 그 프로젝트에 연결된 누구나 (기획 개정 2026-08-30 — 32번) */
 async function requireProjectEditor(projectId: string): Promise<
   | { ok: true; userId: string; tenantId: string; role: string }
   | { ok: false; error: string }
@@ -76,11 +76,13 @@ async function requireProjectEditor(projectId: string): Promise<
     .eq("project_id", projectId)
     .eq("user_id", user.id)
     .maybeSingle();
-  if (mine && ["pl", "pl_pm", "pm"].includes(mine.assignment_role)) {
+  // 기획 개정 2026-08-30 (32번): 그 프로젝트에 **연결된 누구나**(배정 역할
+  // 무관 — 부PM·담당 포함) 기본정보를 수정·추가 기입할 수 있다.
+  if (mine) {
     return { ok: true, userId: user.id, tenantId, role };
   }
   const message =
-    "프로젝트 기본정보 수정은 대표·이사 또는 이 프로젝트의 PL·PM만 할 수 있습니다 (권한 규칙).";
+    "프로젝트 기본정보 수정은 대표·이사 또는 이 프로젝트에 배정된 담당자만 할 수 있습니다 (권한 규칙).";
   await recordActionDenial({ kind: "exec:projectBasicInfo", message, user });
   return { ok: false, error: message };
 }
@@ -110,11 +112,28 @@ export async function updateProjectBasicInfo(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: before } = await supabase
+  // 신규 컬럼 42703 한정 폴백 (§14-10 — 리뷰 P2-3: 미적용 환경에서
+  // '프로젝트 없음'으로 오분류되면 안 된다)
+  const beforeResult = await supabase
     .from("projects")
-    .select("name, business_year, client_name, code, starts_on, ends_on, budget_amount")
+    .select(
+      "name, business_year, client_name, code, starts_on, ends_on, budget_amount, host_org, executor_org, dday_date"
+    )
     .eq("id", projectId)
     .maybeSingle();
+  let before = beforeResult.data;
+  if (beforeResult.error?.code === "42703") {
+    const { data: legacyBefore } = await supabase
+      .from("projects")
+      .select(
+        "name, business_year, client_name, code, starts_on, ends_on, budget_amount"
+      )
+      .eq("id", projectId)
+      .maybeSingle();
+    before = legacyBefore
+      ? { ...legacyBefore, host_org: null, executor_org: null, dday_date: null }
+      : null;
+  }
   if (!before) {
     return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
   }
@@ -178,6 +197,9 @@ export async function updateProjectBasicInfo(
       ends_on: data.endsOn || null,
       budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
       description: data.description || null,
+      host_org: data.hostOrg || null,
+      executor_org: data.executorOrg || null,
+      dday_date: data.ddayDate || null,
     })
     .eq("id", projectId)
     .eq("tenant_id", gate.tenantId)
@@ -204,6 +226,50 @@ export async function updateProjectBasicInfo(
   });
 
   revalidatePath("/[tenantSlug]/projects", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
+ * 프로젝트 유형 전환 (기획 확정 2026-08-30 — 34번): 행사(event) ↔ 컨설팅
+ * (consulting). 기존 세션 데이터는 지우지 않는다 — 화면 구성만 달라진다.
+ */
+export async function setProjectKind(
+  projectId: string,
+  kind: "event" | "consulting"
+): Promise<BasicResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const gate = await requireProjectEditor(projectId);
+  if (!gate.ok) return gate;
+  if (kind !== "event" && kind !== "consulting") {
+    return { ok: false, error: "알 수 없는 유형입니다." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({ project_kind: kind })
+    .eq("id", projectId)
+    .eq("tenant_id", gate.tenantId);
+  if (error) {
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "유형을 저장하지 못했습니다."),
+    };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: gate.tenantId,
+    actor_auth_user_id: gate.userId,
+    actor_role: gate.role,
+    action: "project.set_kind",
+    resource_type: "project",
+    resource_id: projectId,
+    after_data: { project_kind: kind },
+  });
+
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }

@@ -18,7 +18,12 @@ export const projectCreateSchema = z.object({
       const year = parseInt(v, 10);
       return year >= 2000 && year <= 2100;
     }, "사업연도는 2000~2100 사이여야 합니다."),
-  clientName: z.string().max(100, "100자 이내로 입력하세요.").optional(),
+  // 발주처 필수 (기획 개정 2026-08-30 — 31번: 개설 필수는 사업명·발주처 둘뿐)
+  clientName: z
+    .string()
+    .trim()
+    .min(1, "발주처를 입력하세요.")
+    .max(100, "100자 이내로 입력하세요."),
   // 분야별 카테고리 — 대표가 설정한 목록에서 고른다(하드코딩 없음).
   // 카테고리를 아직 만들지 않은 테넌트도 프로젝트를 열 수 있어야 하므로 선택이다.
   categoryId: z.string().uuid().optional().or(z.literal("")),
@@ -40,6 +45,14 @@ export const projectCreateSchema = z.object({
     .regex(/^\d{0,12}$/, "예산은 숫자만, 12자리(9,999억 원) 이내로 입력하세요.")
     .optional(),
   description: z.string().max(2000, "설명은 2000자 이내로 입력하세요.").optional(),
+  // 기본설정 확장 (기획 2026-08-30 — 32번): 주관·수행기관·D-Day
+  hostOrg: z.string().max(100, "주관은 100자 이내로 입력하세요.").optional(),
+  executorOrg: z.string().max(100, "수행기관은 100자 이내로 입력하세요.").optional(),
+  ddayDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식이 올바르지 않습니다.")
+    .optional()
+    .or(z.literal("")),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 

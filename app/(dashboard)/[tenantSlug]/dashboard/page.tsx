@@ -17,6 +17,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UrgentCancelMarquee } from "@/components/integrations/urgent-cancel-marquee";
+import { createClient } from "@/lib/supabase/server";
+import {
+  ProjectCalendarWidget,
+  type WidgetSession,
+} from "./project-calendar-widget";
 import { BarList } from "@/components/charts/bar-list";
 import { Donut } from "@/components/charts/donut";
 
@@ -154,6 +159,77 @@ export default async function DashboardPage({
 
   const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
 
+  // ── 나의 프로젝트 캘린더 (기획 확정 2026-08-30 — 33번) ────────────────
+  // RLS가 열람 범위를 정한다: 팀장 이하 = 배정 프로젝트만 → 자동으로 '나의'
+  // 캘린더. 대표·이사 = 전사 → 탭으로 [내 프로젝트/전체/직원별]을 오간다.
+  const supabase = createClient();
+  const todayIso = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10); // KST 기준 오늘
+  const rangeEnd = new Date(Date.now() + 9 * 60 * 60 * 1000 + 60 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const [slotResult, myAssignResult, allAssignResult, staffResult] =
+    await Promise.all([
+      supabase
+        .from("engagement_slots")
+        .select("id, project_id, slot_date, starts_time, ends_time, session_name")
+        .gte("slot_date", todayIso)
+        .lte("slot_date", rangeEnd)
+        .order("slot_date", { ascending: true })
+        .order("starts_time", { ascending: true })
+        .limit(400),
+      supabase
+        .from("project_assignments")
+        .select("project_id")
+        .eq("user_id", user?.id ?? ""),
+      // 직원별 탭용 — 대표·이사만 (팀장 이하는 자기 배정만 RLS로 보인다)
+      isExecutive
+        ? supabase.from("project_assignments").select("project_id, user_id")
+        : Promise.resolve({ data: [] as { project_id: string; user_id: string }[] }),
+      isExecutive
+        ? supabase
+            .from("users")
+            .select("id, name")
+            .eq("is_active", true)
+            .order("name", { ascending: true })
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    ]);
+  const calendarProjectIds = Array.from(
+    new Set((slotResult.data ?? []).map((sl) => sl.project_id))
+  );
+  const { data: calendarProjects } = calendarProjectIds.length
+    ? await supabase
+        .from("projects")
+        .select("id, name, status")
+        .in("id", calendarProjectIds)
+    : { data: [] as { id: string; name: string; status: string }[] };
+  const calProjectById = new Map(
+    (calendarProjects ?? []).map((pr) => [pr.id, pr])
+  );
+  const calendarSessions: WidgetSession[] = (slotResult.data ?? [])
+    // 보관(취소) 프로젝트 일정은 캘린더에서 뺀다 (16번 확정과 동일 원칙)
+    .filter((sl) => {
+      const pr = calProjectById.get(sl.project_id);
+      return pr !== undefined && pr.status !== "cancelled";
+    })
+    .map((sl) => ({
+      id: sl.id,
+      projectId: sl.project_id,
+      projectName: calProjectById.get(sl.project_id)?.name ?? "(프로젝트)",
+      date: sl.slot_date,
+      startsTime: sl.starts_time,
+      endsTime: sl.ends_time,
+      name: sl.session_name,
+    }));
+  const myProjectIds = Array.from(
+    new Set((myAssignResult.data ?? []).map((a) => a.project_id))
+  );
+  const projectsByUser: Record<string, string[]> = {};
+  for (const a of allAssignResult.data ?? []) {
+    (projectsByUser[a.user_id] ??= []).push(a.project_id);
+  }
+
   const statusSlices = Object.entries(data.projects.byStatus)
     .map(([status, count]) => ({
       label: PROJECT_STATUS_LABELS[status] ?? status,
@@ -250,6 +326,16 @@ export default async function DashboardPage({
         }
       />
       <main className="space-y-5 p-5">
+        {/* 나의 프로젝트 캘린더 — 첫 화면 최상단 (33번) */}
+        <ProjectCalendarWidget
+          tenantSlug={slug}
+          sessions={calendarSessions}
+          myProjectIds={myProjectIds}
+          isExecutive={isExecutive}
+          staff={staffResult.data ?? []}
+          projectsByUser={projectsByUser}
+          todayIso={todayIso}
+        />
         <p className="text-sm text-muted-foreground">
           {year}년 사업연도 기준 현황입니다.
           {!isExecutive && " 배정된 프로젝트만 집계됩니다."}

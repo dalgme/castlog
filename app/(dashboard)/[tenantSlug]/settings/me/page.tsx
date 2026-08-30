@@ -25,6 +25,7 @@ import { SettingsTabs } from "@/components/layout/settings-tabs";
 import { buildStaffJoinLink, buildTenantHomeLink } from "@/lib/routing/links";
 
 import { ProfileForm } from "./profile-form";
+import { SessionFieldsPanel } from "./fields-panel";
 import { TenantLogoForm } from "./logo-form";
 import { CompanyAddressCard } from "./company-address-card";
 
@@ -67,7 +68,13 @@ export default async function MySettingsPage({
   }
 
   const supabase = createClient();
-  const [{ data: me }, scopes, modules, payments] = await Promise.all([
+  const [
+    { data: me },
+    scopes,
+    modules,
+    payments,
+    sessionFieldsResult,
+  ] = await Promise.all([
     supabase
       .from("users")
       .select("name, email, phone, department, grade")
@@ -76,7 +83,16 @@ export default async function MySettingsPage({
     getAdminScopes(),
     getTenantModules(),
     canManagePayments(),
+    // 세션 분야 마스터 (35번) — 테이블 미적용 환경은 빈 목록 폴백
+    supabase
+      .from("tenant_session_fields")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
   ]);
+  const sessionFields = sessionFieldsResult.error
+    ? []
+    : (sessionFieldsResult.data ?? []);
   const logoSrc = await tenantLogoSrc();
   // 넥스트랩 운영자에게만 — 전환이 안 될 때 원인을 볼 수 있는 자리
   const canSwitchPlatform = canEnterPlatformMode(user);
@@ -152,6 +168,19 @@ export default async function MySettingsPage({
               <Button asChild variant="outline" size="sm">
                 <Link href="/account/password">비밀번호 변경</Link>
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* 세션 분야 — 누구나 추가, 회사 공용 (기획 2026-08-30 — 35번) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">분야 (세션 분야 — 회사 공용)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SessionFieldsPanel
+                fields={sessionFields}
+                canDeactivate={isCeo || scopes.settings}
+              />
             </CardContent>
           </Card>
         </Section>

@@ -34,6 +34,8 @@ export type CalendarSession = {
   /** 수정 팝업 왕복 보존용 (32번) — 없으면 저장 시 지워진다 */
   roleDescription: string | null;
   notes: string | null;
+  /** 세션 분야 (35번) */
+  fieldId: string | null;
 };
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
@@ -125,6 +127,7 @@ export function ProjectCalendar({
   sessions,
   canManage,
   expertsEnabled,
+  fieldOptions = [],
 }: {
   tenantSlug: string;
   projectId: string;
@@ -134,6 +137,8 @@ export function ProjectCalendar({
   canManage: boolean;
   /** experts 모듈 활성 — 꺼진 테넌트에는 섭외 진입 버튼을 숨긴다 (연동 규칙 1-2-4) */
   expertsEnabled: boolean;
+  /** 세션 분야 선택지 (35번 — 설정 > 내 설정 > 분야에서 누구나 추가) */
+  fieldOptions?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -163,6 +168,7 @@ export function ProjectCalendar({
     requiredCount: "1",
     roleDescription: "",
     notes: "",
+    fieldId: "",
   });
 
   const allDays = useMemo(() => {
@@ -257,6 +263,7 @@ export function ProjectCalendar({
       requiredCount: "1",
       roleDescription: "",
       notes: "",
+      fieldId: "",
     });
   }
 
@@ -273,6 +280,7 @@ export function ProjectCalendar({
       requiredCount: String(s.requiredCount),
       roleDescription: s.roleDescription ?? "",
       notes: s.notes ?? "",
+      fieldId: s.fieldId ?? "",
     });
   }
 
@@ -308,6 +316,7 @@ export function ProjectCalendar({
       locationName: draft.locationName.trim(),
       locationAddress: "",
       notes: draft.notes.trim(),
+      fieldId: draft.fieldId,
     };
     run(async () => {
       const res =
@@ -717,6 +726,23 @@ export function ProjectCalendar({
                 </span>
               )}
             </div>
+            {fieldOptions.length > 0 && (
+              <select
+                value={draft.fieldId}
+                onChange={(e) =>
+                  setDraft((p) => ({ ...p, fieldId: e.target.value }))
+                }
+                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                aria-label="분야"
+              >
+                <option value="">분야 선택 (선택)</option>
+                {fieldOptions.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <Input
               value={draft.locationName}
               onChange={(e) =>

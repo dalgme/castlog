@@ -48,6 +48,10 @@ export type ProjectBasicInfo = {
   endsOn: string;
   budgetAmount: string;
   description: string;
+  /** 주관·수행기관·D-Day (기획 2026-08-30 — 32번) */
+  hostOrg: string;
+  executorOrg: string;
+  ddayDate: string;
 };
 
 /**
@@ -209,9 +213,51 @@ export function BasicInfoDialog({
               name="clientName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>발주처</FormLabel>
+                  <FormLabel>발주처 (필수)</FormLabel>
                   <FormControl>
                     <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/* 주관·수행기관·D-Day (기획 2026-08-30 — 32번) */}
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="hostOrg"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>주관</FormLabel>
+                    <FormControl>
+                      <Input placeholder="예: OO시" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="executorOrg"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>수행기관</FormLabel>
+                    <FormControl>
+                      <Input placeholder="예: 넥스트랩" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="ddayDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>D-Day 기준일 (행사일 등)</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

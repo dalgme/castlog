@@ -120,7 +120,7 @@ export function CreateProjectDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>프로젝트명</FormLabel>
+                  <FormLabel>프로젝트명 (필수)</FormLabel>
                   <FormControl>
                     <Input placeholder="2026 청년창업 아카데미" {...field} />
                   </FormControl>
@@ -134,7 +134,7 @@ export function CreateProjectDialog({
                 name="businessYear"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>사업연도</FormLabel>
+                    <FormLabel>사업연도 (자동 — 올해)</FormLabel>
                     <FormControl>
                       <Input inputMode="numeric" maxLength={4} {...field} />
                     </FormControl>
@@ -161,7 +161,7 @@ export function CreateProjectDialog({
               name="clientName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>발주처·주관기관 (선택)</FormLabel>
+                  <FormLabel>발주처 (필수)</FormLabel>
                   <FormControl>
                     <Input placeholder="OO창조경제혁신센터" {...field} />
                   </FormControl>

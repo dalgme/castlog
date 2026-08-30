@@ -924,6 +924,8 @@ export type Database = {
       }
       engagement_slots: {
         Row: {
+          field_id: string | null
+          period_end_date: string | null
           sort_order: number | null
           created_at: string
           created_by: string | null
@@ -944,6 +946,8 @@ export type Database = {
           session_name: string | null
         }
         Insert: {
+          field_id?: string | null
+          period_end_date?: string | null
           sort_order?: number | null
           created_at?: string
           created_by?: string | null
@@ -964,6 +968,8 @@ export type Database = {
           session_name?: string | null
         }
         Update: {
+          field_id?: string | null
+          period_end_date?: string | null
           sort_order?: number | null
           created_at?: string
           created_by?: string | null
@@ -2247,6 +2253,115 @@ export type Database = {
             columns: ["field_id"]
             isOneToOne: false
             referencedRelation: "expertise_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      slot_mentees: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_practice: boolean
+          item_name: string | null
+          mentee_type: string | null
+          name: string
+          org_name: string
+          position_title: string | null
+          slot_id: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_practice?: boolean
+          item_name?: string | null
+          mentee_type?: string | null
+          name: string
+          org_name: string
+          position_title?: string | null
+          slot_id: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_practice?: boolean
+          item_name?: string | null
+          mentee_type?: string | null
+          name?: string
+          org_name?: string
+          position_title?: string | null
+          slot_id?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slot_mentees_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_mentees_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "engagement_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_mentees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_session_fields: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_session_fields_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_session_fields_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -3632,6 +3747,10 @@ export type Database = {
       }
       projects: {
         Row: {
+          host_org: string | null
+          executor_org: string | null
+          dday_date: string | null
+          project_kind: string
           category_id: string | null
           is_practice: boolean
           business_year: number
@@ -3665,6 +3784,10 @@ export type Database = {
           settlement_note: string | null
         }
         Insert: {
+          host_org?: string | null
+          executor_org?: string | null
+          dday_date?: string | null
+          project_kind?: string
           category_id?: string | null
           is_practice?: boolean
           business_year: number
@@ -3698,6 +3821,10 @@ export type Database = {
           settlement_note?: string | null
         }
         Update: {
+          host_org?: string | null
+          executor_org?: string | null
+          dday_date?: string | null
+          project_kind?: string
           category_id?: string | null
           is_practice?: boolean
           business_year?: number
