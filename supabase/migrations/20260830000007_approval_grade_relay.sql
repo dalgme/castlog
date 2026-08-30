@@ -47,10 +47,12 @@ comment on column public.approval_steps.step_grade is
   '직급 릴레이 단계 (기획 2026-08-30 — 27번): approver_user_id 없이 직급으로 지정된 단계. 그 직급 이상의 자사 직원 누구나 결재할 수 있고, 실제 처리자는 acted_by_user_id에 남는다.';
 
 -- 처리(승인·반려) 정책 확장: named 단계는 기존대로(본인·대결자),
--- 직급 단계는 그 직급 이상의 자사 직원(전문가 세션 제외).
--- 상신자 본인 배제는 별도 조건이 필요 없다 — 릴레이 단계는 항상 상신자보다
--- 높은 직급으로만 구성되므로 rank 비교에서 자연 배제된다. 앱 액션은
--- 상신자 일치도 별도로 검사한다(방어 이중화).
+-- 직급 단계는 그 직급 이상의 자사 직원(전문가 세션 제외) 또는 그런 직급
+-- 위임자의 유효한 대결자.
+-- 앱 판정과 동일 조건을 DB에도 둔다(리뷰 P3-1 — 앱↔DB 게이트 동일 원칙):
+--  · pending 단계만 (처리된 단계 재수정 차단)
+--  · 상신자 본인 제외 (상신 후 승급해도 자기 결재 불가)
+--  · 대결 경로는 위임자가 상신자 본인이면 제외 (대리 자기결재 방지, 리뷰 P2-3)
 drop policy if exists approval_steps_update on public.approval_steps;
 create policy approval_steps_update on public.approval_steps
   for update using (
@@ -61,8 +63,32 @@ create policy approval_steps_update on public.approval_steps
       or (
         approver_user_id is null
         and step_grade is not null
+        and status = 'pending'
         and app.user_role() <> 'expert'
-        and app.grade_rank(app.user_grade()) >= app.grade_rank(step_grade)
+        and not exists (
+          select 1 from public.approvals a
+          where a.id = approval_id and a.requester_user_id = auth.uid()
+        )
+        and (
+          app.grade_rank(app.user_grade()) >= app.grade_rank(step_grade)
+          or exists (
+            select 1
+            from public.approval_delegations d
+            join public.users u on u.id = d.delegator_user_id
+            where d.delegate_user_id = auth.uid()
+              and d.is_active
+              and d.starts_on <= current_date
+              and current_date <= d.ends_on
+              and u.tenant_id = app.tenant_id()
+              and u.is_active
+              and app.grade_rank(u.grade) >= app.grade_rank(step_grade)
+              and not exists (
+                select 1 from public.approvals a2
+                where a2.id = approval_id
+                  and a2.requester_user_id = d.delegator_user_id
+              )
+          )
+        )
       )
     )
   )

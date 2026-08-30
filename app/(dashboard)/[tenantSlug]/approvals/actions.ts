@@ -251,6 +251,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   // 내 차례 판정 — 본인 결재 단계 또는 유효한 대결 대상 단계
   let myStep = currentGroup.find((s) => s.approver_user_id === session.userId);
   let delegatorId: string | null = null;
+  let activeDelegatorIds: string[] = [];
 
   if (!myStep) {
     const { data: delegations } = await supabase
@@ -259,11 +260,14 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       .eq("delegate_user_id", session.userId)
       .eq("is_active", true);
     const today = new Date().toISOString().slice(0, 10);
-    const activeDelegators = new Set(
-      (delegations ?? [])
-        .filter((d) => d.starts_on <= today && today <= d.ends_on)
-        .map((d) => d.delegator_user_id)
+    activeDelegatorIds = Array.from(
+      new Set(
+        (delegations ?? [])
+          .filter((d) => d.starts_on <= today && today <= d.ends_on)
+          .map((d) => d.delegator_user_id)
+      )
     );
+    const activeDelegators = new Set(activeDelegatorIds);
     myStep = currentGroup.find(
       (s) => s.approver_user_id !== null && activeDelegators.has(s.approver_user_id)
     );
@@ -276,13 +280,40 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   // 직급이 그 사이 바뀌었을 수 있으므로 명시적으로 막는다).
   if (!myStep && session.userId !== approval.requester_user_id) {
     const myGrade = isUserGrade(session.grade) ? session.grade : null;
+    const gradeSteps = currentGroup.filter(
+      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+    );
     if (myGrade) {
-      myStep = currentGroup.find(
+      myStep = gradeSteps.find(
         (s) =>
-          s.approver_user_id === null &&
           isUserGrade(s.step_grade) &&
           gradeRank(myGrade) >= gradeRank(s.step_grade)
       );
+    }
+    // 대결(위임)도 직급 단계에 적용한다 — 마지막 단계는 늘 최상위 직급이라
+    // 대결이 안 먹히면 대표 부재 시 완전 교착이 된다 (리뷰 P2-3).
+    // 위임자가 상신자 본인이면 제외 (대리 자기결재 방지).
+    if (!myStep && gradeSteps.length > 0 && activeDelegatorIds.length > 0) {
+      const { data: delegatorRows } = await supabase
+        .from("users")
+        .select("id, grade")
+        .in("id", activeDelegatorIds)
+        .eq("is_active", true);
+      for (const step of gradeSteps) {
+        const grade = step.step_grade;
+        if (!isUserGrade(grade)) continue;
+        const delegator = (delegatorRows ?? []).find(
+          (u) =>
+            u.id !== approval.requester_user_id &&
+            isUserGrade(u.grade) &&
+            gradeRank(u.grade) >= gradeRank(grade)
+        );
+        if (delegator) {
+          myStep = step;
+          delegatorId = delegator.id;
+          break;
+        }
+      }
     }
   }
 
@@ -293,7 +324,9 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   const nowIso = new Date().toISOString();
   const newStepStatus = decision === "approve" ? "approved" : "rejected";
 
-  const { error: stepError } = await supabase
+  // 행수 확인(CAS) — 릴레이 단계는 같은 차례가 여러 상급자에게 동시에 열려
+  // 경합이 실제로 난다. 0행이면 이미 다른 결재권자가 처리한 것 (리뷰 P2-2)
+  const { data: actedRow, error: stepError } = await supabase
     .from("approval_steps")
     .update({
       status: newStepStatus,
@@ -302,10 +335,19 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       comment: comment || null,
     })
     .eq("id", myStep.id)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
   if (stepError) {
-    return { ok: false, error: "처리에 실패했습니다. 다시 시도해 주세요." };
+    return { ok: false, error: "처리에 실패했습니다 (시스템 오류). 다시 시도해 주세요." };
+  }
+  if (!actedRow) {
+    return {
+      ok: false,
+      error:
+        "이미 다른 결재권자가 이 단계를 처리했습니다 (규칙). 새로고침 후 진행 상황을 확인해 주세요.",
+    };
   }
 
   // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리)
@@ -430,9 +472,11 @@ export async function resubmitApproval(
     return { ok: false, error: "반려된 결재건만 재상신할 수 있습니다." };
   }
 
+  // step_grade 포함 — 릴레이 단계(approver null)를 빼고 복사하면
+  // actor_present 제약에 걸려 재상신이 반드시 실패한다 (리뷰 P2-1)
   const { data: originalSteps } = await supabase
     .from("approval_steps")
-    .select("step_order, step_kind, approver_user_id")
+    .select("step_order, step_kind, approver_user_id, step_grade")
     .eq("approval_id", approvalId)
     .order("step_order", { ascending: true });
 
@@ -463,6 +507,7 @@ export async function resubmitApproval(
       step_order: s.step_order,
       step_kind: s.step_kind,
       approver_user_id: s.approver_user_id,
+      step_grade: s.step_grade,
     }))
   );
 

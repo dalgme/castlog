@@ -52,7 +52,7 @@ async function gate(approvalId: string): Promise<Gate> {
 
   const { data: approval } = await supabase
     .from("approvals")
-    .select("id, status")
+    .select("id, status, requester_user_id")
     .eq("id", approvalId)
     .maybeSingle();
   if (!approval || approval.status !== "in_progress") {
@@ -75,8 +75,11 @@ async function gate(approvalId: string): Promise<Gate> {
     (s) =>
       s.step_order === currentOrder &&
       (s.approver_user_id === user.id ||
-        // 직급 릴레이 단계 (27번) — 그 직급 이상이면 지금 결재 차례다
+        // 직급 릴레이 단계 (27번) — 그 직급 이상이면 지금 결재 차례다.
+        // 상신자 본인은 제외 — 승급했더라도 자기 계획을 결재권자 자격으로
+        // 고치면 안 된다 (리뷰 P3-2)
         (s.approver_user_id === null &&
+          user.id !== approval.requester_user_id &&
           isUserGrade(s.step_grade) &&
           myGrade !== null &&
           gradeRank(myGrade) >= gradeRank(s.step_grade)))

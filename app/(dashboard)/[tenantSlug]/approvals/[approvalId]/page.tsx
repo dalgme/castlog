@@ -123,18 +123,53 @@ export default async function ApprovalDetailPage({
     }
     // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 그 직급 이상 누구나.
     // 상신자 본인은 제외 (표시용 — 서버 액션이 다시 검증한다)
-    if (!canAct && user.id !== approval.requester_user_id) {
+    const gradeSteps = currentGroup.filter(
+      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+    );
+    if (!canAct && user.id !== approval.requester_user_id && gradeSteps.length > 0) {
       const myGrade = gradeFromUser(user);
       if (
         myGrade &&
-        currentGroup.some(
+        gradeSteps.some(
           (s) =>
-            s.approver_user_id === null &&
             isUserGrade(s.step_grade) &&
             gradeRank(myGrade) >= gradeRank(s.step_grade)
         )
       ) {
         canAct = true;
+      }
+      // 직급 단계 대결 (리뷰 P2-3): 그 직급 이상 위임자의 유효한 대결자
+      if (!canAct) {
+        const { data: delegations } = await supabase
+          .from("approval_delegations")
+          .select("delegator_user_id, starts_on, ends_on")
+          .eq("delegate_user_id", user.id)
+          .eq("is_active", true);
+        const today = new Date().toISOString().slice(0, 10);
+        const delegatorIds = (delegations ?? [])
+          .filter((d) => d.starts_on <= today && today <= d.ends_on)
+          .map((d) => d.delegator_user_id)
+          .filter((id) => id !== approval.requester_user_id);
+        if (delegatorIds.length > 0) {
+          const { data: delegatorRows } = await supabase
+            .from("users")
+            .select("id, grade")
+            .in("id", delegatorIds)
+            .eq("is_active", true);
+          const maxRank = Math.max(
+            0,
+            ...(delegatorRows ?? [])
+              .map((u) => (isUserGrade(u.grade) ? gradeRank(u.grade) : 0))
+          );
+          if (
+            gradeSteps.some(
+              (s) => isUserGrade(s.step_grade) && maxRank >= gradeRank(s.step_grade)
+            )
+          ) {
+            canAct = true;
+            actingAsDelegate = true;
+          }
+        }
       }
     }
   }

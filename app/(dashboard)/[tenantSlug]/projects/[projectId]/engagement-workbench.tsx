@@ -403,6 +403,9 @@ export function EngagementWorkbench({
                   )}
                   {/* 필요인원 인라인 수정 + 코랄 표기 (기획 2026-08-30 — 28번) */}
                   <RequiredCountEditor
+                    // 외부 변경(다른 사용자·결재권자 수정)이 refresh로 오면
+                    // 낙관 표시를 재동기화한다 (리뷰 P3-3)
+                    key={`${slot.id}:${slot.requiredCount}`}
                     slotId={slot.id}
                     value={slot.requiredCount}
                     candidateCount={slot.positions.length}
