@@ -22,7 +22,8 @@ import type { EngineLineStep } from "./engine";
  * 진행 로직에 따라 다음 상급 직급이 자동으로 열린다.
  *
  * 활성화는 전자결재 메뉴의 스위치(tenants.feature_flags.approval_plan_relay).
- * 우선순위: 결재라인 직접 지정(18번) > 릴레이(켠 경우) > 전결규정 > 직급 폴백.
+ * 우선순위: 직접 지정+고정 tail(18·30번) > 릴레이(켠 경우) > 고정 임원선 >
+ * 전결규정 > 직급 폴백 (plan-actions resolveLine).
  * — 스위치를 켠 회사는 '규정 대신 직급 릴레이로 돌린다'는 명시적 선택이다.
  */
 

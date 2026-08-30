@@ -10,7 +10,7 @@ import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
 import { matchApprovalRule, createApprovalWithSteps } from "@/lib/approvals/engine";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
-import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
+import { buildLineWithFixedTail } from "@/lib/approvals/manual-line";
 import {
   getProjectSettlement,
   buildSettlementDocument,
@@ -332,7 +332,8 @@ export async function confirmSettlementReview(input: {
     | { ruleId?: string | null; steps: import("@/lib/approvals/engine").EngineLineStep[] }
     | null = null;
   if ((input.approverIds ?? []).length > 0) {
-    const manual = await buildManualApprovalLine(
+    // 상위 직급 선택 + 상무이사·대표 고정 tail (기획 개정 2026-08-30 — 30번)
+    const manual = await buildLineWithFixedTail(
       tenantId,
       user.id,
       input.approverIds ?? []
@@ -340,9 +341,16 @@ export async function confirmSettlementReview(input: {
     if (!manual.ok) return { ok: false, error: manual.error };
     line = { ruleId: null, steps: manual.steps };
   } else {
-    const rule = await matchApprovalRule("payment", settlement.totalGross);
-    line =
-      rule ?? (await buildGradeEscalationLine(user.id, settlement.totalGross));
+    // 무선택도 고정 임원선(상무이사 → 대표)이 기본이다 — 픽커 안내 문구와
+    // 실제 결재선이 달라지면 안 된다 (리뷰 P2-1). 임원 부재 시 기존 폴백.
+    const fixed = await buildLineWithFixedTail(tenantId, user.id, []);
+    if (fixed.ok) {
+      line = { ruleId: null, steps: fixed.steps };
+    } else {
+      const rule = await matchApprovalRule("payment", settlement.totalGross);
+      line =
+        rule ?? (await buildGradeEscalationLine(user.id, settlement.totalGross));
+    }
   }
   if (!line || line.steps.length === 0) {
     return {

@@ -21,7 +21,7 @@ import {
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
-import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
+import { buildLineWithFixedTail } from "@/lib/approvals/manual-line";
 import {
   buildGradeRelayLine,
   isPlanRelayEnabled,
@@ -81,10 +81,12 @@ type LineResult =
   | { ok: false; error: string };
 
 /**
- * 결재라인 결정 (기획 개정 2026-08-30 — 18번):
- * **직접 지정한 결재라인이 최우선**이다 — 상신자가 PL·PM 등 결재자를 골랐다면
- * 전결규정보다 그 선택을 따른다. 지정이 없으면 전결규정('프로젝트' 유형),
- * 그것도 없으면 직급 체계 에스컬레이션(마지막은 대표).
+ * 결재라인 결정 (기획 개정 2026-08-30 — 18·27·30번). 우선순위:
+ * ① 직접 선택(상위 직급만) + 고정 임원 tail → ② 상급자 릴레이(켠 경우)
+ * → ③ 고정 임원선(상무이사 → 대표) → ④ 전결규정('프로젝트' 유형)
+ * → ⑤ 직급 에스컬레이션(1인 기업 자가결재 포함).
+ * 임원 계정이 있는 회사에서는 ④가 사실상 쓰이지 않는다 — 30번 기획
+ * (상무이사·대표 고정 필수)이 규정보다 우선한다.
  */
 async function resolveLine(
   amount: number,
@@ -93,42 +95,49 @@ async function resolveLine(
   manualApproverIds: string[]
 ): Promise<LineResult> {
   const ids = Array.from(new Set(manualApproverIds.filter(Boolean)));
-  if (ids.length === 0) {
-    // 상급자 릴레이 (기획 확정 2026-08-30 — 27번): 전자결재 메뉴에서 켠
-    // 회사는 섭외계획 품의를 직급 단계(그 직급 이상 누구나 결재 → 다음
-    // 상급 직급 자동 진행)로 돌린다. 직접 지정이 있으면 그것이 우선(18번).
-    // 상급자가 아무도 없으면(1인 기업 등) 아래 기존 경로로 넘어간다.
-    if (await isPlanRelayEnabled()) {
-      const relay = await buildGradeRelayLine(requesterUserId);
-      if (relay) return { ok: true, ruleId: null, steps: relay.steps };
-    }
-    const matched = await matchApprovalRule("project", amount);
-    if (matched) {
-      if (matched.steps.some((s) => s.approverUserId === requesterUserId)) {
-        return {
-          ok: false,
-          error: "상신자 본인이 결재자로 지정된 전결규정입니다. 전결규정을 확인하세요.",
-        };
-      }
-      return { ok: true, ruleId: matched.ruleId, steps: matched.steps };
-    }
-    // 결재자를 고르지 않았으면 직급 체계로 위로 올린다. 상신자가 대표이고
-    // 상위 결재자가 없는 1인 기업이면 대표 자가결재로 진행한다 —
-    // 그렇지 않으면 섭외를 시작할 방법 자체가 없다.
-    const escalation = await buildGradeEscalationLine(requesterUserId, amount);
-    if (escalation) {
-      return { ok: true, ruleId: null, steps: escalation.steps };
-    }
-    return {
-      ok: false,
-      error:
-        "적용 가능한 전결규정이 없고 결재할 상위직급자도 없습니다. 결재자를 직접 지정하거나, 전결규정('프로젝트' 유형)을 등록하거나, 상위 직급 계정을 추가하세요.",
-    };
+
+  // 직접 선택 (기획 개정 2026-08-30 — 30번): 상신자의 **상위 직급**만 고를
+  // 수 있고, 선택과 무관하게 **상무이사·대표는 라인 끝에 고정(필수)** 이다.
+  if (ids.length > 0) {
+    const line = await buildLineWithFixedTail(tenantId, requesterUserId, ids);
+    if (!line.ok) return line;
+    return { ok: true, ruleId: null, steps: line.steps };
   }
-  // 공용 검증(중복 제거·상신자 제외·자사 활성 직원)은 한 곳만 유지한다
-  const manual = await buildManualApprovalLine(tenantId, requesterUserId, ids);
-  if (!manual.ok) return manual;
-  return { ok: true, ruleId: null, steps: manual.steps };
+
+  // 상급자 릴레이 (27번): 전자결재 메뉴에서 켠 회사는 직급 단계로 돌린다.
+  // 릴레이 라인은 늘 최상위 재직 직급(상무·대표 포함)까지 올라간다.
+  if (await isPlanRelayEnabled()) {
+    const relay = await buildGradeRelayLine(requesterUserId);
+    if (relay) return { ok: true, ruleId: null, steps: relay.steps };
+  }
+
+  // 선택이 없으면 고정 임원(상무이사 → 대표)만으로 라인을 만든다 (30번 —
+  // 임원 고정이 필수라, 계획 품의는 전결규정보다 이 기본선이 먼저다).
+  const fixed = await buildLineWithFixedTail(tenantId, requesterUserId, []);
+  if (fixed.ok) return { ok: true, ruleId: null, steps: fixed.steps };
+
+  // 임원 계정이 없는 회사 — 기존 폴백 유지 (규정 → 직급 에스컬레이션).
+  const matched = await matchApprovalRule("project", amount);
+  if (matched) {
+    if (matched.steps.some((s) => s.approverUserId === requesterUserId)) {
+      return {
+        ok: false,
+        error: "상신자 본인이 결재자로 지정된 전결규정입니다. 전결규정을 확인하세요.",
+      };
+    }
+    return { ok: true, ruleId: matched.ruleId, steps: matched.steps };
+  }
+  // 상신자가 대표이고 상위 결재자가 없는 1인 기업이면 대표 자가결재로
+  // 진행한다 — 그렇지 않으면 섭외를 시작할 방법 자체가 없다.
+  const escalation = await buildGradeEscalationLine(requesterUserId, amount);
+  if (escalation) {
+    return { ok: true, ruleId: null, steps: escalation.steps };
+  }
+  return {
+    ok: false,
+    error:
+      "결재선을 만들 수 없습니다 — 상위 직급·임원 계정이 없습니다. 상위 직급 계정을 추가하거나 전결규정('프로젝트' 유형)을 등록하세요.",
+  };
 }
 
 /** 계획 명세(스냅샷) 저장 — JSON 블롭이 아니라 정규화 행으로 (CLAUDE.md 8) */

@@ -151,7 +151,8 @@ export function SettlementPanel({
           placeholder="지급 시기, 증빙 요청, 예산 계정 등 — 지급품의서 본문에 함께 실립니다."
         />
 
-        {!summary.submitted && approverOptions.length > 0 && (
+        {/* 항상 표시 (30번) — 고정 결재선(상무이사 → 대표)을 상신 전에 보여 준다 */}
+        {!summary.submitted && (
           <ApproverPicker
             options={approverOptions}
             selected={approverIds}
