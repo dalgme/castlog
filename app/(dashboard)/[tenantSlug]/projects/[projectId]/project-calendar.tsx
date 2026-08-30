@@ -172,7 +172,8 @@ export function ProjectCalendar({
       max = Math.max(max, en);
     }
     const startH = Math.floor(min / 60);
-    const endH = Math.max(Math.ceil(max / 60), startH + 6);
+    // 23시대 시작 + 종료 미입력(+60분 보정)이 24시를 넘길 수 있다 — 축은 24시 캡
+    const endH = Math.min(Math.max(Math.ceil(max / 60), startH + 6), 24);
     return { startH, endH };
   }, [sessions]);
   const hourMarks = useMemo(
@@ -356,37 +357,39 @@ export function ProjectCalendar({
                     expanded ? "w-[380px]" : "w-52"
                   }`}
                 >
-                  {/* 일자 헤더 — 클릭하면 상세(확대) 보기 */}
-                  <button
-                    type="button"
-                    onClick={() => setExpandedDay(expanded ? null : day)}
-                    title={expanded ? "기본 폭으로" : "이 날짜 상세(확대) 보기"}
-                    className="flex h-9 w-full items-center gap-1.5 border-b bg-secondary/50 px-2 text-left"
-                  >
-                    <span className="text-xs font-bold">{dayLabel(day)}</span>
-                    {hasOverlap && (
-                      <span className="rounded bg-[#FF6F61] px-1 py-0.5 text-[9px] font-bold text-white">
-                        시간 겹침
+                  {/* 일자 헤더 — 라벨 클릭 = 상세(확대) 토글. 삭제는 별도
+                      실제 버튼 (리뷰 P2-1: 버튼 중첩·키보드 접근 불가 해소) */}
+                  <div className="flex h-9 items-center gap-1 border-b bg-secondary/50 px-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedDay(expanded ? null : day)}
+                      aria-expanded={expanded}
+                      title={expanded ? "기본 폭으로" : "이 날짜 상세(확대) 보기"}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    >
+                      <span className="text-xs font-bold">{dayLabel(day)}</span>
+                      {hasOverlap && (
+                        <span className="rounded bg-[#FF6F61] px-1 py-0.5 text-[9px] font-bold text-white">
+                          시간 겹침
+                        </span>
+                      )}
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        {daySessions.length}건
                       </span>
-                    )}
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {daySessions.length}건
-                    </span>
+                    </button>
                     {canManage && daySessions.length === 0 && (
-                      <span
-                        role="button"
+                      <button
+                        type="button"
                         aria-label={`${dayLabel(day)} 삭제`}
                         title="세션이 없는 날짜만 지울 수 있습니다"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!pending) run(() => removeCalendarDay(projectId, day));
-                        }}
-                        className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                        disabled={pending}
+                        onClick={() => run(() => removeCalendarDay(projectId, day))}
+                        className="rounded p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-40"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      </span>
+                      </button>
                     )}
-                  </button>
+                  </div>
 
                   {/* 시간 미정 세션 — 종일 띠 (구글 캘린더의 상단 띠와 동일 취지) */}
                   <div className="flex h-7 items-center gap-1 overflow-x-auto border-b bg-secondary/20 px-1.5">
@@ -402,8 +405,8 @@ export function ProjectCalendar({
                     ))}
                   </div>
 
-                  {/* 타임그리드 */}
-                  <div className="relative" style={{ height: gridHeight }}>
+                  {/* 타임그리드 — 최소 높이 블록이 하단을 뚫지 않게 잘라낸다 */}
+                  <div className="relative overflow-hidden" style={{ height: gridHeight }}>
                     {hourMarks.map((h) => (
                       <div
                         key={h}
@@ -419,7 +422,9 @@ export function ProjectCalendar({
                         ((b.endMin - b.startMin) / 60) * HOUR_PX,
                         22
                       );
-                      const width = 100 / trackCount;
+                      // 겹치지 않는 블록은 전폭 — 하루 중 한 쌍만 겹쳐도
+                      // 그날 전체가 좁아지던 부작용 방지 (리뷰 P3-1)
+                      const width = b.overlapped ? 100 / trackCount : 100;
                       const tall = height >= 52;
                       const info = `${timeLabel(b.s)} · ${b.s.name ?? "(세션명 없음)"} · ${
                         ENGAGEMENT_ROLE_TYPES[
@@ -445,7 +450,7 @@ export function ProjectCalendar({
                           style={{
                             top,
                             height,
-                            left: `${b.track * width}%`,
+                            left: b.overlapped ? `${b.track * width}%` : 0,
                             width: `calc(${width}% - 3px)`,
                           }}
                         >
