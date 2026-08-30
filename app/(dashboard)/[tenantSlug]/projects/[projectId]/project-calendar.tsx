@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { CalendarPlus, Plus, Trash2, UserSearch } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Time24Input } from "@/components/ui/datetime24";
@@ -32,6 +31,58 @@ const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 function dayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
+}
+
+/** 1시간의 화면 높이(px) — 타임그리드 배치 기준 (31번) */
+const HOUR_PX = 44;
+
+function toMin(t: string | null): number | null {
+  if (!t || t.length < 5) return null;
+  const h = parseInt(t.slice(0, 2), 10);
+  const m = parseInt(t.slice(3, 5), 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+type TimedBlock = {
+  s: CalendarSession;
+  startMin: number;
+  endMin: number;
+  /** 겹침 배치용 열 번호 — 같은 시간대 세션(분반)은 옆 열로 갈라 그린다 */
+  track: number;
+  overlapped: boolean;
+};
+
+/** 하루치 세션의 타임그리드 배치 — 시작순 그리디 열 배정 (구글 캘린더 방식) */
+function layoutTimed(list: CalendarSession[]): {
+  blocks: TimedBlock[];
+  trackCount: number;
+} {
+  const timed: TimedBlock[] = list
+    .filter((s) => toMin(s.startsTime) !== null)
+    .map((s) => {
+      const startMin = toMin(s.startsTime)!;
+      const endMin = Math.max(toMin(s.endsTime) ?? startMin + 60, startMin + 15);
+      return { s, startMin, endMin, track: 0, overlapped: false };
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+  const trackEnds: number[] = [];
+  for (const b of timed) {
+    let t = trackEnds.findIndex((end) => end <= b.startMin);
+    if (t === -1) {
+      t = trackEnds.length;
+      trackEnds.push(0);
+    }
+    b.track = t;
+    trackEnds[t] = b.endMin;
+  }
+  for (const b of timed) {
+    b.overlapped = timed.some(
+      (o) => o !== b && o.startMin < b.endMin && o.endMin > b.startMin
+    );
+  }
+  return { blocks: timed, trackCount: Math.max(trackEnds.length, 1) };
 }
 
 function timeLabel(s: CalendarSession): string {
@@ -76,6 +127,8 @@ export function ProjectCalendar({
   const [rangeTo, setRangeTo] = useState("");
   const [singleDate, setSingleDate] = useState("");
 
+  // 일자별 상세(확대) 보기 — 헤더 클릭으로 토글 (31번)
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   // 세션 추가 폼 — 열려 있는 날짜 하나만
   const [addingDay, setAddingDay] = useState<string | null>(null);
   const [draft, setDraft] = useState({
@@ -105,6 +158,33 @@ export function ProjectCalendar({
     }
     return map;
   }, [sessions]);
+
+  // 시간축 범위 — 전 일자 공통 (열끼리 같은 눈금이어야 비교가 된다).
+  // 기본 09~18시, 세션이 그 밖이면 그만큼 넓힌다.
+  const hourWindow = useMemo(() => {
+    let min = 9 * 60;
+    let max = 18 * 60;
+    for (const s of sessions) {
+      const st = toMin(s.startsTime);
+      if (st === null) continue;
+      const en = Math.max(toMin(s.endsTime) ?? st + 60, st + 15);
+      min = Math.min(min, st);
+      max = Math.max(max, en);
+    }
+    const startH = Math.floor(min / 60);
+    // 23시대 시작 + 종료 미입력(+60분 보정)이 24시를 넘길 수 있다 — 축은 24시 캡
+    const endH = Math.min(Math.max(Math.ceil(max / 60), startH + 6), 24);
+    return { startH, endH };
+  }, [sessions]);
+  const hourMarks = useMemo(
+    () =>
+      Array.from(
+        { length: hourWindow.endH - hourWindow.startH + 1 },
+        (_, i) => hourWindow.startH + i
+      ),
+    [hourWindow]
+  );
+  const gridHeight = (hourWindow.endH - hourWindow.startH) * HOUR_PX;
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -241,17 +321,62 @@ export function ProjectCalendar({
           개별 날짜를 추가하세요.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <div className="flex min-w-max gap-3 pb-1">
+        /* 구글 캘린더식 타임그리드 (기획 개정 2026-08-30 — 31번):
+           일자별 열 x 시간축 위에 세션 블록을 시간 구간 비율로 배치한다.
+           겹치는 세션(분반 등)은 나란히 갈라 그리고 코랄색으로 표시해
+           시간 중복을 상신 전에 눈으로 잡는다. */
+        <div className="overflow-x-auto rounded-lg border">
+          <div className="flex min-w-max">
+            {/* 시간축 — 가로 스크롤에서도 왼쪽에 고정 */}
+            <div className="sticky left-0 z-20 w-14 shrink-0 border-r bg-background">
+              <div className="h-9 border-b" />
+              <div className="h-7 border-b" />
+              <div className="relative" style={{ height: gridHeight }}>
+                {hourMarks.map((h) => (
+                  <span
+                    key={h}
+                    className="absolute right-1.5 -translate-y-1/2 text-[10px] tabular-nums text-muted-foreground"
+                    style={{ top: (h - hourWindow.startH) * HOUR_PX }}
+                  >
+                    {String(h).padStart(2, "0")}:00
+                  </span>
+                ))}
+              </div>
+            </div>
+
             {allDays.map((day) => {
               const daySessions = sessionsByDay.get(day) ?? [];
+              const { blocks, trackCount } = layoutTimed(daySessions);
+              const untimed = daySessions.filter((s) => toMin(s.startsTime) === null);
+              const hasOverlap = blocks.some((b) => b.overlapped);
+              const expanded = expandedDay === day;
               return (
                 <div
                   key={day}
-                  className="w-60 shrink-0 rounded-lg border bg-secondary/20"
+                  className={`shrink-0 border-r transition-[width] ${
+                    expanded ? "w-[380px]" : "w-52"
+                  }`}
                 >
-                  <div className="flex items-center justify-between border-b bg-secondary/50 px-2.5 py-1.5">
-                    <span className="text-xs font-bold">{dayLabel(day)}</span>
+                  {/* 일자 헤더 — 라벨 클릭 = 상세(확대) 토글. 삭제는 별도
+                      실제 버튼 (리뷰 P2-1: 버튼 중첩·키보드 접근 불가 해소) */}
+                  <div className="flex h-9 items-center gap-1 border-b bg-secondary/50 px-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedDay(expanded ? null : day)}
+                      aria-expanded={expanded}
+                      title={expanded ? "기본 폭으로" : "이 날짜 상세(확대) 보기"}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    >
+                      <span className="text-xs font-bold">{dayLabel(day)}</span>
+                      {hasOverlap && (
+                        <span className="rounded bg-[#FF6F61] px-1 py-0.5 text-[9px] font-bold text-white">
+                          시간 겹침
+                        </span>
+                      )}
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        {daySessions.length}건
+                      </span>
+                    </button>
                     {canManage && daySessions.length === 0 && (
                       <button
                         type="button"
@@ -259,61 +384,111 @@ export function ProjectCalendar({
                         title="세션이 없는 날짜만 지울 수 있습니다"
                         disabled={pending}
                         onClick={() => run(() => removeCalendarDay(projectId, day))}
-                        className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                        className="rounded p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-40"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                       </button>
                     )}
                   </div>
-                  <div className="space-y-1.5 p-2">
-                    {daySessions.length === 0 && addingDay !== day && (
-                      <p className="py-2 text-center text-[11px] text-muted-foreground">
-                        세션 없음
-                      </p>
-                    )}
-                    {daySessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="rounded-md border bg-background p-2 text-xs"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <Badge
-                            variant="secondary"
-                            className="px-1.5 py-0 font-mono text-[10px] tabular-nums"
-                          >
-                            {timeLabel(s)}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {ENGAGEMENT_ROLE_TYPES[
-                              s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
-                            ] ?? s.roleType}
-                          </span>
-                        </div>
-                        <p className="mt-1 truncate font-semibold" title={s.name ?? ""}>
-                          {s.name ?? "(세션명 없음)"}
-                        </p>
-                        <div className="mt-1 flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">
-                            필요 {s.requiredCount}명
-                            {s.locationName ? ` · ${s.locationName}` : ""}
-                          </span>
-                          {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (29번).
-                              experts 모듈이 꺼진 테넌트에는 숨긴다 (1-2-4) */}
-                          {expertsEnabled && (
-                            <Link
-                              href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
-                              className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[10px] font-semibold text-brand hover:bg-brand/10"
-                            >
-                              <UserSearch className="h-3 w-3" aria-hidden />
-                              섭외계획
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    ))}
 
-                    {canManage &&
-                      (addingDay === day ? (
+                  {/* 시간 미정 세션 — 종일 띠 (구글 캘린더의 상단 띠와 동일 취지) */}
+                  <div className="flex h-7 items-center gap-1 overflow-x-auto border-b bg-secondary/20 px-1.5">
+                    {untimed.map((s) => (
+                      <span
+                        key={s.id}
+                        title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명`}
+                        className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium"
+                      >
+                        {timeLabel(s) === "시간 미정" ? "" : `${timeLabel(s)} `}
+                        {s.name ?? "(세션명 없음)"}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* 타임그리드 — 최소 높이 블록이 하단을 뚫지 않게 잘라낸다 */}
+                  <div className="relative overflow-hidden" style={{ height: gridHeight }}>
+                    {hourMarks.map((h) => (
+                      <div
+                        key={h}
+                        className="absolute inset-x-0 border-t border-dashed border-muted"
+                        style={{ top: (h - hourWindow.startH) * HOUR_PX }}
+                        aria-hidden
+                      />
+                    ))}
+                    {blocks.map((b) => {
+                      const top =
+                        ((b.startMin - hourWindow.startH * 60) / 60) * HOUR_PX;
+                      const height = Math.max(
+                        ((b.endMin - b.startMin) / 60) * HOUR_PX,
+                        22
+                      );
+                      // 겹치지 않는 블록은 전폭 — 하루 중 한 쌍만 겹쳐도
+                      // 그날 전체가 좁아지던 부작용 방지 (리뷰 P3-1)
+                      const width = b.overlapped ? 100 / trackCount : 100;
+                      const tall = height >= 52;
+                      const info = `${timeLabel(b.s)} · ${b.s.name ?? "(세션명 없음)"} · ${
+                        ENGAGEMENT_ROLE_TYPES[
+                          b.s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
+                        ] ?? b.s.roleType
+                      } · 필요 ${b.s.requiredCount}명${
+                        b.s.locationName ? ` · ${b.s.locationName}` : ""
+                      }${b.overlapped ? " · ⚠ 같은 시간대 세션 있음" : ""}`;
+                      return (
+                        <Link
+                          key={b.s.id}
+                          href={
+                            expertsEnabled
+                              ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${b.s.id}`
+                              : `/${tenantSlug}/projects/${projectId}?tab=sessions`
+                          }
+                          title={info}
+                          className={`absolute overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-[10px] leading-tight shadow-sm transition-colors ${
+                            b.overlapped
+                              ? "border-[#FF6F61] bg-[#FF6F61]/15 hover:bg-[#FF6F61]/25"
+                              : "border-brand bg-brand/10 hover:bg-brand/20"
+                          }`}
+                          style={{
+                            top,
+                            height,
+                            left: b.overlapped ? `${b.track * width}%` : 0,
+                            width: `calc(${width}% - 3px)`,
+                          }}
+                        >
+                          <span className="block truncate font-mono text-[9px] text-muted-foreground">
+                            {timeLabel(b.s)}
+                          </span>
+                          <span
+                            className={`block font-semibold ${
+                              tall ? "" : "truncate"
+                            }`}
+                          >
+                            {b.s.name ?? "(세션명 없음)"}
+                          </span>
+                          {tall && (
+                            <span className="block truncate text-[9px] text-muted-foreground">
+                              {ENGAGEMENT_ROLE_TYPES[
+                                b.s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
+                              ] ?? b.s.roleType}
+                              {" · 필요 "}
+                              {b.s.requiredCount}명
+                              {b.s.locationName ? ` · ${b.s.locationName}` : ""}
+                            </span>
+                          )}
+                          {tall && expertsEnabled && (
+                            <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-semibold text-brand">
+                              <UserSearch className="h-2.5 w-2.5" aria-hidden />
+                              섭외계획
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+
+                  {/* 세션 추가 — 그리드 아래 */}
+                  {canManage && (
+                    <div className="border-t p-1.5">
+                      {addingDay === day ? (
                         <div className="space-y-1.5 rounded-md border border-brand/40 bg-background p-2">
                           <Input
                             value={draft.sessionName}
@@ -400,12 +575,13 @@ export function ProjectCalendar({
                           type="button"
                           disabled={pending}
                           onClick={() => openAdd(day)}
-                          className="w-full rounded-md border border-dashed py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-brand"
+                          className="w-full rounded-md border border-dashed py-1 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-brand"
                         >
                           + 세션 추가
                         </button>
-                      ))}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
