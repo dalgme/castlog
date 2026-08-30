@@ -140,6 +140,46 @@ async function resolveLine(
   };
 }
 
+
+/**
+ * 멘티 정보 동봉 (기획 확정 2026-08-30 — 34번): 컨설팅 세션의 멘티
+ * (소속/직위/이름/아이템명/유형)를 품의 본문에 실어 결재자에게 전달한다.
+ * 커버리지 세션에 멘티가 없으면 빈 문자열.
+ */
+async function buildMenteeSection(slotIds: string[]): Promise<string> {
+  if (slotIds.length === 0) return "";
+  const supabase = createClient();
+  const [{ data: mentees, error }, { data: slots }] = await Promise.all([
+    supabase
+      .from("slot_mentees")
+      .select("slot_id, org_name, position_title, name, item_name, mentee_type, sort_order")
+      .in("slot_id", slotIds)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("engagement_slots")
+      .select("id, session_name")
+      .in("id", slotIds),
+  ]);
+  // 테이블 미적용(42P01) 등 — 멘티 동봉 실패가 상신을 막지 않는다
+  if (error || !mentees || mentees.length === 0) return "";
+  const nameBySlot = new Map((slots ?? []).map((sl) => [sl.id, sl.session_name]));
+  const lines: string[] = ["", "멘티 정보:"];
+  for (const m of mentees) {
+    lines.push(
+      `· [${nameBySlot.get(m.slot_id) ?? "세션"}] ${[
+        m.org_name,
+        m.position_title,
+        m.name,
+      ]
+        .filter(Boolean)
+        .join("/")}${m.item_name ? ` — ${m.item_name}` : ""}${
+        m.mentee_type ? ` (${m.mentee_type})` : ""
+      }`
+    );
+  }
+  return lines.join("\n");
+}
+
 /** 계획 명세(스냅샷) 저장 — JSON 블롭이 아니라 정규화 행으로 (CLAUDE.md 8) */
 async function writePlanLines(
   planId: string,
@@ -292,6 +332,10 @@ export async function submitEngagementPlan(
     return { ok: false, error: "계획 명세 저장에 실패했습니다." };
   }
 
+  // 멘티 정보 동봉 (34번) — 계획에 담긴 세션 기준
+  const menteeSection = await buildMenteeSection(
+    snapshot.lines.map((l) => l.slotId)
+  );
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
@@ -300,6 +344,7 @@ export async function submitEngagementPlan(
       `섭외 인원 ${snapshot.positionCount}명 / 타임테이블 ${snapshot.slotCount}건\n` +
       `계획 섭외비 ${snapshot.plannedAmount.toLocaleString("ko-KR")}원\n\n` +
       (note.trim() || "") +
+      menteeSection +
       (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,
@@ -453,6 +498,7 @@ export async function submitEngagementPlanChange(
       `${snapshot.plannedAmount.toLocaleString("ko-KR")}원 ` +
       `(${diff >= 0 ? "+" : ""}${diff.toLocaleString("ko-KR")}원)\n\n` +
       `변경 사유: ${reason.trim()}` +
+      (await buildMenteeSection(snapshot.lines.map((l) => l.slotId))) +
       (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,

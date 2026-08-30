@@ -72,6 +72,9 @@ export type SlotNoticeData = {
 export type SlotRow = {
   id: string;
   slotDate: string;
+  /** 세션 분야 (35번) / 컨설팅 수행 종료일 (34번) */
+  fieldId: string | null;
+  periodEndDate: string | null;
   startsTime: string | null;
   endsTime: string | null;
   roleType: string;
@@ -98,6 +101,7 @@ const emptyDraft = {
   locationName: "",
   locationAddress: "",
   notes: "",
+  fieldId: "",
 };
 
 /**
@@ -187,6 +191,7 @@ export function SlotTable({
           locationName: d.locationName,
           locationAddress: d.locationAddress,
           notes: d.notes,
+          fieldId: d.fieldId,
         });
         if (!r.ok) setError(r.error);
         else {
@@ -214,6 +219,7 @@ export function SlotTable({
           locationName: d.locationName,
           locationAddress: d.locationAddress,
           notes: d.notes,
+          fieldId: d.fieldId,
         });
         if (!r.ok) {
           // 이미 만들어진 세트는 폼에서 제거 — 재시도 시 중복 생성을 막는다
@@ -249,6 +255,7 @@ export function SlotTable({
       sessionName: s.sessionName ?? "",
       roleDescription: s.roleDescription ?? "",
       requiredCount: String(s.requiredCount),
+      fieldId: s.fieldId ?? "",
       locationName: s.locationName ?? "",
       notes: s.notes ?? "",
     });
