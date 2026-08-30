@@ -33,7 +33,6 @@ import { ExpertRecruitFieldsCell } from "./recruit-fields-cell";
 import { ExpertNotesCell } from "./notes-cell";
 import { ExpertRecommendDialog } from "./recommend-dialog";
 import { InvitationActions } from "./invitation-actions";
-import { ExpertTagCell } from "./expert-tag-cell";
 import { ExpertQuickTag } from "./expert-quick-tag";
 import { ExpertsTabs } from "./experts-tabs";
 
@@ -729,12 +728,6 @@ export default async function TenantExpertsPage({
                       </TableHead>
                       <TableHead
                         className="cursor-help"
-                        title="우리 회사가 붙인 등급(즐겨찾기·VIP·주의) — 전문가에게 보이지 않고, 변경은 평가 로그에 남습니다"
-                      >
-                        등급
-                      </TableHead>
-                      <TableHead
-                        className="cursor-help"
                         title="우리 회사 내부 메모 — 댓글처럼 쌓이고 작성자·일시가 남습니다. 전문가에게 보이지 않습니다"
                       >
                         메모
@@ -751,6 +744,13 @@ export default async function TenantExpertsPage({
                         title="VIP 지정 — 클릭으로 켜고 끕니다 (연결된 전문가만)"
                       >
                         VIP
+                      </TableHead>
+                      {/* 등급 컬럼을 대체 — VIP 옆 버튼식 토글 (기획 2026-08-30 — 23번) */}
+                      <TableHead
+                        className="w-16 cursor-help"
+                        title="주의 지정 — 클릭으로 켜고 끕니다 (사유 필수 · 섭외 후보군 화면에 함께 표시 · 전문가에게 보이지 않음)"
+                      >
+                        주의
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -826,20 +826,6 @@ export default async function TenantExpertsPage({
                             })()}
                           </TableCell>
                           <TableCell>
-                            {isLinked ? (
-                              <ExpertTagCell
-                                expertId={expert.id}
-                                tag={tagByExpert.get(expert.id)?.tag ?? null}
-                                note={tagByExpert.get(expert.id)?.note ?? null}
-                                canManage={canManageTags}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                -
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
                             <ExpertNotesCell
                               expertId={expert.id}
                               expertName={expert.name}
@@ -866,6 +852,18 @@ export default async function TenantExpertsPage({
                               expertName={expert.name}
                               tag={tagAllByExpert.get(expert.id) ?? null}
                               target="vip"
+                              canManage={
+                                canManageTags && link?.status === "active"
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ExpertQuickTag
+                              expertId={expert.id}
+                              expertName={expert.name}
+                              tag={tagAllByExpert.get(expert.id) ?? null}
+                              tagNote={tagByExpert.get(expert.id)?.note ?? null}
+                              target="caution"
                               canManage={
                                 canManageTags && link?.status === "active"
                               }

@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { canExecTenant } from "@/lib/auth/exec-policy";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { buildPublicLink } from "@/lib/routing/links";
 import { getTenantModules } from "@/lib/modules/server";
 import { INVITATION_EXPIRES_DAYS } from "@/lib/experts/invitations";
@@ -56,8 +58,13 @@ async function gate(): Promise<Gate> {
 
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !["org_admin", "manager"].includes(role)) {
+  if (!user || !tenantId || !role || role === "expert") {
     return { ok: false, error: "일괄 등록 권한이 없습니다." };
+  }
+  // 기획 개정 2026-08-30 (24번): 전 직원 개방 — 실행 축(bulkImport, 기본
+  // 전 직원·회사 조정 가능)으로 판정한다. role 하드코딩은 회사 조정을 무시했다.
+  if (!(await canExecTenant("bulkImport", user))) {
+    return { ok: false, error: await deniedExec("bulkImport") };
   }
 
   const modules = await getTenantModules();

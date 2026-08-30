@@ -88,7 +88,7 @@ async function gate(): Promise<Gate> {
 async function loadPhoneSets(tenantId: string) {
   const admin = createAdminClient();
   const [{ data: experts }, { data: links }] = await Promise.all([
-    admin.from("experts").select("phone").eq("is_practice", false),
+    admin.from("experts").select("phone, name, email").eq("is_practice", false),
     admin
       .from("expert_tenant_links")
       .select("status, experts (phone)")
@@ -97,14 +97,23 @@ async function loadPhoneSets(tenantId: string) {
   ]);
 
   const existingPhones = new Set<string>();
+  // 이름·이메일 대조 색인 — 번호가 바뀐 동일인 재확인용 (기획 2026-08-30 — 24번)
+  const existingNames = new Set<string>();
+  const existingEmails = new Set<string>();
   for (const row of experts ?? []) {
     if (row.phone) existingPhones.add(row.phone);
+    if (row.name) existingNames.add(row.name.trim());
+    if (row.email) existingEmails.add(row.email.trim().toLowerCase());
   }
   const linkedPhones = new Set<string>();
   for (const link of links ?? []) {
     if (link.experts?.phone) linkedPhones.add(link.experts.phone);
   }
-  return { existingPhones, linkedPhones };
+  return {
+    existingPhones,
+    linkedPhones,
+    similar: { names: existingNames, emails: existingEmails },
+  };
 }
 
 const HEADER_TO_KEY: Record<string, keyof DirectImportRowInput | "expertiseFieldsText"> = {
@@ -180,10 +189,12 @@ export async function parseDirectImport(
     return out;
   });
 
-  const { existingPhones, linkedPhones } = await loadPhoneSets(g.tenantId);
+  const { existingPhones, linkedPhones, similar } = await loadPhoneSets(
+    g.tenantId
+  );
   return {
     ok: true,
-    rows: classifyDirectImportRows(mapped, existingPhones, linkedPhones),
+    rows: classifyDirectImportRows(mapped, existingPhones, linkedPhones, similar),
   };
 }
 
@@ -203,6 +214,8 @@ export async function commitDirectImport(
 
   const { existingPhones, linkedPhones } = await loadPhoneSets(g.tenantId);
   const judged = classifyDirectImportRows(rows, existingPhones, linkedPhones);
+  // 이름·이메일 대조(similar)는 확정 판정에 쓰지 않는다 — 재확인은 미리보기
+  // 단계의 UX이고, 같은 이름의 실제 다른 사람 등록을 서버가 막으면 안 된다.
 
   const actionable = judged.filter(
     (r) => r.status === "create" || r.status === "link"

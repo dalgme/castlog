@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Crown, Star } from "lucide-react";
+import { AlertTriangle, Crown, Star } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { expertTagLabel } from "@/lib/integrations/expert-tags";
@@ -20,6 +20,7 @@ export function ExpertQuickTag({
   expertId,
   expertName,
   tag,
+  tagNote = null,
   target,
   canManage,
 }: {
@@ -27,8 +28,10 @@ export function ExpertQuickTag({
   expertName: string;
   /** 현재 등급 (favorite/vip/caution/null) */
   tag: string | null;
+  /** '주의' 사유 — 주의 버튼 툴팁에 보여 준다 */
+  tagNote?: string | null;
   /** 이 버튼이 토글하는 등급 */
-  target: "favorite" | "vip";
+  target: "favorite" | "vip" | "caution";
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -36,7 +39,8 @@ export function ExpertQuickTag({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const active = tag === target;
-  const targetLabel = target === "favorite" ? "즐겨찾기" : "VIP";
+  const targetLabel =
+    target === "favorite" ? "즐겨찾기" : target === "vip" ? "VIP" : "주의";
 
   function toggle() {
     if (!canManage || pending) return;
@@ -46,9 +50,23 @@ export function ExpertQuickTag({
       );
       if (!ok) return;
     }
+    // '주의'는 사유가 필수다 — 섭외 후보군 화면에 함께 표시된다 (기획 23번)
+    let reason: string | undefined;
+    if (!active && target === "caution") {
+      const input = window.prompt(
+        "‘주의’ 지정 사유를 입력하세요 (섭외 후보군 화면에 함께 표시됩니다)",
+        tagNote ?? ""
+      );
+      if (input === null) return; // 취소
+      if (!input.trim()) {
+        toast({ variant: "destructive", description: "사유를 입력해야 합니다." });
+        return;
+      }
+      reason = input.trim();
+    }
     setError(null);
     startTransition(async () => {
-      const result = await setExpertTag(expertId, active ? "" : target);
+      const result = await setExpertTag(expertId, active ? "" : target, reason);
       if (!result.ok) {
         setError(result.error);
         toast({ variant: "destructive", description: result.error });
@@ -83,6 +101,34 @@ export function ExpertQuickTag({
           fill={active ? "currentColor" : "none"}
           aria-hidden
         />
+      </button>
+    );
+  }
+
+  if (target === "caution") {
+    // 활성 시 빨간 배경 (기획 지시 2026-08-30 — 23번)
+    return (
+      <button
+        type="button"
+        aria-label={title}
+        title={error ?? (active && tagNote ? `주의: ${tagNote}` : title)}
+        disabled={!canManage || pending}
+        onClick={toggle}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors",
+          active
+            ? "border-red-600 bg-red-600 text-white"
+            : canManage
+              ? "border-red-200 text-red-600 hover:bg-red-50"
+              : "cursor-default border-muted text-muted-foreground/50"
+        )}
+      >
+        <AlertTriangle
+          className="h-3 w-3"
+          fill={active ? "currentColor" : "none"}
+          aria-hidden
+        />
+        주의
       </button>
     );
   }

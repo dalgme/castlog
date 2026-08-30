@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Search, UserCheck } from "lucide-react";
+import { AlertTriangle, Crown, Search, Star, UserCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +54,9 @@ const LINK_STATUS_LABEL: Record<
   none: { label: "미연결", variant: "outline" },
 };
 
-type SortKey = "name" | "region";
+type SortKey = "name" | "region" | "rating";
+/** 태그·평가 조건 필터 (기획 2026-08-30 — 26번): 버튼 클릭으로 해당 조건만 */
+type TagFilter = "all" | "favorite" | "vip" | "rated";
 
 export function PositionRequestDialog({
   positionId,
@@ -82,7 +84,22 @@ export function PositionRequestDialog({
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<"all" | "linked">("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [tagFilter, setTagFilter] = useState<TagFilter>("all");
+  const [regionFilter, setRegionFilter] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // 지역 필터 선택지 — 불러온 목록에서 건수 상위 12개 (전문가 목록과 동일 방식)
+  const regionOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of experts ?? []) {
+      if (!e.region) continue;
+      counts.set(e.region, (counts.get(e.region) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([name]) => name);
+  }, [experts]);
 
   function load() {
     setError(null);
@@ -104,6 +121,11 @@ export function PositionRequestDialog({
     const digits = search.replace(/\D/g, "").replace(/^0/, "");
     let list = experts.filter((e) => {
       if (scope === "linked" && e.linkStatus !== "active") return false;
+      // 조건 필터 (기획 26번): 즐겨찾기·VIP·자사평가 있음·지역
+      if (tagFilter === "favorite" && e.tag !== "favorite") return false;
+      if (tagFilter === "vip" && e.tag !== "vip") return false;
+      if (tagFilter === "rated" && e.rating === null) return false;
+      if (regionFilter && (e.region ?? "") !== regionFilter) return false;
       if (!lowered) return true;
       const haystack = [
         e.name,
@@ -118,14 +140,24 @@ export function PositionRequestDialog({
         digits.length >= 4 && e.phone.replace(/\D/g, "").includes(digits);
       return haystack.includes(lowered) || phoneHit;
     });
-    list = [...list].sort((a, b) =>
-      sortKey === "region"
-        ? (a.region ?? "힣힣").localeCompare(b.region ?? "힣힣", "ko") ||
+    list = [...list].sort((a, b) => {
+      if (sortKey === "region") {
+        return (
+          (a.region ?? "힣힣").localeCompare(b.region ?? "힣힣", "ko") ||
           a.name.localeCompare(b.name, "ko")
-        : a.name.localeCompare(b.name, "ko")
-    );
+        );
+      }
+      if (sortKey === "rating") {
+        // 자사평가 높은 순 — 미평가는 뒤로
+        return (
+          (b.rating ?? -1) - (a.rating ?? -1) ||
+          a.name.localeCompare(b.name, "ko")
+        );
+      }
+      return a.name.localeCompare(b.name, "ko");
+    });
     return list;
-  }, [experts, search, scope, sortKey]);
+  }, [experts, search, scope, sortKey, tagFilter, regionFilter]);
 
   const capReached = selectedIds.length >= openCount;
 
@@ -247,12 +279,50 @@ export function PositionRequestDialog({
               </Button>
             ))}
           </div>
+          {/* 조건 필터 (기획 2026-08-30 — 26번) — 버튼 클릭으로 해당 조건만 */}
+          <div className="flex gap-1">
+            {(
+              [
+                { key: "favorite", label: "★ 즐겨찾기" },
+                { key: "vip", label: "VIP" },
+                { key: "rated", label: "자사평가 있음" },
+              ] as const
+            ).map((f) => (
+              <Button
+                key={f.key}
+                size="sm"
+                variant={tagFilter === f.key ? "default" : "outline"}
+                className="h-8 px-2.5 text-xs"
+                onClick={() =>
+                  setTagFilter((prev) => (prev === f.key ? "all" : f.key))
+                }
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          {regionOptions.length > 0 && (
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              aria-label="지역 필터"
+            >
+              <option value="">지역 전체</option>
+              {regionOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="ml-auto flex items-center gap-1">
             <span className="text-xs text-muted-foreground">정렬</span>
             {(
               [
                 { key: "name", label: "성명순" },
                 { key: "region", label: "지역순" },
+                { key: "rating", label: "자사평가순" },
               ] as const
             ).map((o) => (
               <Button
@@ -320,6 +390,21 @@ export function PositionRequestDialog({
                         />
                       </TableCell>
                       <TableCell className="whitespace-nowrap font-medium">
+                        {/* 즐겨찾기·VIP를 목록에서 바로 보이게 (기획 26번) */}
+                        {e.tag === "favorite" && (
+                          <Star
+                            className="mr-1 inline h-3.5 w-3.5 text-amber-500"
+                            fill="currentColor"
+                            aria-label="즐겨찾기"
+                          />
+                        )}
+                        {e.tag === "vip" && (
+                          <Crown
+                            className="mr-1 inline h-3.5 w-3.5 text-violet-600"
+                            fill="currentColor"
+                            aria-label="VIP"
+                          />
+                        )}
                         {e.name}
                         {e.alreadyInSlot && (
                           <span className="ml-1 text-[11px] text-muted-foreground">
@@ -346,7 +431,18 @@ export function PositionRequestDialog({
                         {e.avgScore ? ` · 평가 ${e.avgScore}` : ""}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {e.tag ? (expertTagLabel(e.tag) ?? e.tag) : "-"}
+                        {e.tag ? (
+                          <Badge
+                            variant={
+                              e.tag === "caution" ? "destructive" : "secondary"
+                            }
+                            className="px-1.5 py-0 text-[10px]"
+                          >
+                            {expertTagLabel(e.tag) ?? e.tag}
+                          </Badge>
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell className="text-xs">
                         {e.noteCount > 0 ? `${e.noteCount}건` : "-"}
