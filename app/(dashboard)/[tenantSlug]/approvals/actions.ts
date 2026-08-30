@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 import { getTenantModules } from "@/lib/modules/server";
 import {
   approvalActSchema,
@@ -25,12 +26,16 @@ import {
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
 import { onEngagementPlanApprovalResolved } from "@/lib/integrations/engagement-plans";
+import { PLAN_RELAY_FLAG } from "@/lib/approvals/relay";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { onProjectEngagementApprovalResolved } from "@/lib/integrations/project-engagement";
 
 type Session = {
   userId: string;
   tenantId: string;
   role: string;
+  /** 직급 (JWT app_metadata.grade — 릴레이 단계 판정용) */
+  grade: string | null;
 };
 
 async function requireApprovalsSession(): Promise<
@@ -52,12 +57,15 @@ async function requireApprovalsSession(): Promise<
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
   }
-  return { ok: true, session: { userId: user.id, tenantId, role } };
+  return {
+    ok: true,
+    session: { userId: user.id, tenantId, role, grade: gradeFromUser(user) },
+  };
 }
 
 /** 결재라인 입력 정합성 검사 + 결재자 테넌트 소속 확인 + 자기결재 차단 */
 async function validateLineSteps(
-  steps: { approverUserId: string }[],
+  steps: { approverUserId: string | null }[],
   tenantId: string,
   requesterUserId?: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -69,7 +77,15 @@ async function validateLineSteps(
   if (requesterUserId && steps.some((s) => s.approverUserId === requesterUserId)) {
     return { ok: false, error: "상신자 본인은 결재자로 지정할 수 없습니다." };
   }
-  const approverIds = Array.from(new Set(steps.map((s) => s.approverUserId)));
+  // 직급 릴레이 단계(approverUserId null)는 소속 검증 대상이 아니다 (27번)
+  const approverIds = Array.from(
+    new Set(
+      steps
+        .map((s) => s.approverUserId)
+        .filter((v): v is string => v !== null)
+    )
+  );
+  if (approverIds.length === 0) return { ok: true };
   const supabase = createClient();
   const { data: found } = await supabase
     .from("users")
@@ -204,7 +220,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const { data: approval } = await supabase
     .from("approvals")
-    .select("id, status")
+    .select("id, status, requester_user_id")
     .eq("id", approvalId)
     .maybeSingle();
   if (!approval) {
@@ -216,7 +232,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const { data: steps } = await supabase
     .from("approval_steps")
-    .select("id, step_order, approver_user_id, status")
+    .select("id, step_order, approver_user_id, step_grade, status")
     .eq("approval_id", approvalId)
     .order("step_order", { ascending: true });
 
@@ -235,6 +251,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   // 내 차례 판정 — 본인 결재 단계 또는 유효한 대결 대상 단계
   let myStep = currentGroup.find((s) => s.approver_user_id === session.userId);
   let delegatorId: string | null = null;
+  let activeDelegatorIds: string[] = [];
 
   if (!myStep) {
     const { data: delegations } = await supabase
@@ -243,13 +260,61 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       .eq("delegate_user_id", session.userId)
       .eq("is_active", true);
     const today = new Date().toISOString().slice(0, 10);
-    const activeDelegators = new Set(
-      (delegations ?? [])
-        .filter((d) => d.starts_on <= today && today <= d.ends_on)
-        .map((d) => d.delegator_user_id)
+    activeDelegatorIds = Array.from(
+      new Set(
+        (delegations ?? [])
+          .filter((d) => d.starts_on <= today && today <= d.ends_on)
+          .map((d) => d.delegator_user_id)
+      )
     );
-    myStep = currentGroup.find((s) => activeDelegators.has(s.approver_user_id));
+    const activeDelegators = new Set(activeDelegatorIds);
+    myStep = currentGroup.find(
+      (s) => s.approver_user_id !== null && activeDelegators.has(s.approver_user_id)
+    );
     if (myStep) delegatorId = myStep.approver_user_id;
+  }
+
+  // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 지정 결재자 없이 직급으로
+  // 열린 단계는 그 직급 이상의 자사 직원 누구나 처리할 수 있다.
+  // 상신자 본인은 제외한다 (릴레이 단계는 늘 상신자보다 높은 직급이지만,
+  // 직급이 그 사이 바뀌었을 수 있으므로 명시적으로 막는다).
+  if (!myStep && session.userId !== approval.requester_user_id) {
+    const myGrade = isUserGrade(session.grade) ? session.grade : null;
+    const gradeSteps = currentGroup.filter(
+      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+    );
+    if (myGrade) {
+      myStep = gradeSteps.find(
+        (s) =>
+          isUserGrade(s.step_grade) &&
+          gradeRank(myGrade) >= gradeRank(s.step_grade)
+      );
+    }
+    // 대결(위임)도 직급 단계에 적용한다 — 마지막 단계는 늘 최상위 직급이라
+    // 대결이 안 먹히면 대표 부재 시 완전 교착이 된다 (리뷰 P2-3).
+    // 위임자가 상신자 본인이면 제외 (대리 자기결재 방지).
+    if (!myStep && gradeSteps.length > 0 && activeDelegatorIds.length > 0) {
+      const { data: delegatorRows } = await supabase
+        .from("users")
+        .select("id, grade")
+        .in("id", activeDelegatorIds)
+        .eq("is_active", true);
+      for (const step of gradeSteps) {
+        const grade = step.step_grade;
+        if (!isUserGrade(grade)) continue;
+        const delegator = (delegatorRows ?? []).find(
+          (u) =>
+            u.id !== approval.requester_user_id &&
+            isUserGrade(u.grade) &&
+            gradeRank(u.grade) >= gradeRank(grade)
+        );
+        if (delegator) {
+          myStep = step;
+          delegatorId = delegator.id;
+          break;
+        }
+      }
+    }
   }
 
   if (!myStep) {
@@ -259,7 +324,9 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   const nowIso = new Date().toISOString();
   const newStepStatus = decision === "approve" ? "approved" : "rejected";
 
-  const { error: stepError } = await supabase
+  // 행수 확인(CAS) — 릴레이 단계는 같은 차례가 여러 상급자에게 동시에 열려
+  // 경합이 실제로 난다. 0행이면 이미 다른 결재권자가 처리한 것 (리뷰 P2-2)
+  const { data: actedRow, error: stepError } = await supabase
     .from("approval_steps")
     .update({
       status: newStepStatus,
@@ -268,10 +335,19 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
       comment: comment || null,
     })
     .eq("id", myStep.id)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
   if (stepError) {
-    return { ok: false, error: "처리에 실패했습니다. 다시 시도해 주세요." };
+    return { ok: false, error: "처리에 실패했습니다 (시스템 오류). 다시 시도해 주세요." };
+  }
+  if (!actedRow) {
+    return {
+      ok: false,
+      error:
+        "이미 다른 결재권자가 이 단계를 처리했습니다 (규칙). 새로고침 후 진행 상황을 확인해 주세요.",
+    };
   }
 
   // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리)
@@ -396,9 +472,11 @@ export async function resubmitApproval(
     return { ok: false, error: "반려된 결재건만 재상신할 수 있습니다." };
   }
 
+  // step_grade 포함 — 릴레이 단계(approver null)를 빼고 복사하면
+  // actor_present 제약에 걸려 재상신이 반드시 실패한다 (리뷰 P2-1)
   const { data: originalSteps } = await supabase
     .from("approval_steps")
-    .select("step_order, step_kind, approver_user_id")
+    .select("step_order, step_kind, approver_user_id, step_grade")
     .eq("approval_id", approvalId)
     .order("step_order", { ascending: true });
 
@@ -429,6 +507,7 @@ export async function resubmitApproval(
       step_order: s.step_order,
       step_kind: s.step_kind,
       approver_user_id: s.approver_user_id,
+      step_grade: s.step_grade,
     }))
   );
 
@@ -590,6 +669,73 @@ export async function deactivateApprovalRule(ruleId: string): Promise<ActResult>
   });
 
   revalidatePath("/[tenantSlug]/approvals/rules", "page");
+  return { ok: true };
+}
+
+/**
+ * 상급자 릴레이 결재 스위치 (기획 확정 2026-08-30 — 27번).
+ * 켜면 섭외계획 품의(최초·변경)가 직급 단계 결재선으로 상신된다 —
+ * 각 단계는 그 직급 이상 누구나 결재, 결재 시 다음 상급 직급 자동 진행.
+ * 대표 또는 '전결규정' 위임자만 바꿀 수 있다 (결재 경로를 바꾸는 운영 설정).
+ */
+export async function setPlanRelayEnabled(enabled: boolean): Promise<ActResult> {
+  const auth = await requireApprovalsSession();
+  if (!auth.ok) return auth;
+  const { session } = auth;
+  const gate = await requireAdminScope("approvals");
+  if (!gate.ok) {
+    return { ok: false, error: "전자결재 설정 권한이 없습니다 (권한 규칙 — 대표 또는 '전결규정' 위임자)." };
+  }
+
+  const admin = createAdminClient();
+  // 읽기-수정-쓰기 경합 방지 — 다른 feature_flags 쓰기와 겹칠 수 있다 (CAS 3회)
+  let saved = false;
+  for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("feature_flags, updated_at")
+      .eq("id", session.tenantId)
+      .maybeSingle();
+    if (!tenant) return { ok: false, error: "테넌트 정보를 확인할 수 없습니다." };
+    const priorFlags =
+      tenant.feature_flags !== null &&
+      typeof tenant.feature_flags === "object" &&
+      !Array.isArray(tenant.feature_flags)
+        ? (tenant.feature_flags as Record<string, unknown>)
+        : {};
+    if (priorFlags[PLAN_RELAY_FLAG] === true === enabled) {
+      saved = true;
+      break;
+    }
+    let updateQuery = admin
+      .from("tenants")
+      .update({
+        feature_flags: { ...priorFlags, [PLAN_RELAY_FLAG]: enabled },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.tenantId);
+    updateQuery = tenant.updated_at
+      ? updateQuery.eq("updated_at", tenant.updated_at)
+      : updateQuery.is("updated_at", null);
+    const { data: updated, error } = await updateQuery.select("id");
+    if (error) return { ok: false, error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    saved = (updated ?? []).length > 0;
+  }
+  if (!saved) {
+    return { ok: false, error: "다른 설정 변경과 겹쳤습니다. 잠시 후 다시 시도해 주세요." };
+  }
+
+  const supabase = createClient();
+  await supabase.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.role,
+    action: enabled ? "approval.relay_on" : "approval.relay_off",
+    resource_type: "tenant",
+    resource_id: session.tenantId,
+  });
+
+  revalidatePath("/[tenantSlug]/approvals", "page");
   return { ok: true };
 }
 

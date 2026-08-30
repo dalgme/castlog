@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
+import { gradeFromUser } from "@/lib/auth/tenant";
+import { gradeLabel, gradeRank, isUserGrade } from "@/lib/auth/grades";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -73,7 +75,7 @@ export default async function ApprovalDetailPage({
     .from("approval_steps")
     .select(
       `id, step_order, step_kind, status, acted_at, comment,
-       approver_user_id,
+       approver_user_id, step_grade,
        approver:users!approval_steps_approver_user_id_fkey (name),
        acted_by:users!approval_steps_acted_by_user_id_fkey (name)`
     )
@@ -110,9 +112,64 @@ export default async function ApprovalDetailPage({
           .filter((d) => d.starts_on <= today && today <= d.ends_on)
           .map((d) => d.delegator_user_id)
       );
-      if (currentGroup.some((s) => delegators.has(s.approver_user_id))) {
+      if (
+        currentGroup.some(
+          (s) => s.approver_user_id !== null && delegators.has(s.approver_user_id)
+        )
+      ) {
         canAct = true;
         actingAsDelegate = true;
+      }
+    }
+    // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 그 직급 이상 누구나.
+    // 상신자 본인은 제외 (표시용 — 서버 액션이 다시 검증한다)
+    const gradeSteps = currentGroup.filter(
+      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+    );
+    if (!canAct && user.id !== approval.requester_user_id && gradeSteps.length > 0) {
+      const myGrade = gradeFromUser(user);
+      if (
+        myGrade &&
+        gradeSteps.some(
+          (s) =>
+            isUserGrade(s.step_grade) &&
+            gradeRank(myGrade) >= gradeRank(s.step_grade)
+        )
+      ) {
+        canAct = true;
+      }
+      // 직급 단계 대결 (리뷰 P2-3): 그 직급 이상 위임자의 유효한 대결자
+      if (!canAct) {
+        const { data: delegations } = await supabase
+          .from("approval_delegations")
+          .select("delegator_user_id, starts_on, ends_on")
+          .eq("delegate_user_id", user.id)
+          .eq("is_active", true);
+        const today = new Date().toISOString().slice(0, 10);
+        const delegatorIds = (delegations ?? [])
+          .filter((d) => d.starts_on <= today && today <= d.ends_on)
+          .map((d) => d.delegator_user_id)
+          .filter((id) => id !== approval.requester_user_id);
+        if (delegatorIds.length > 0) {
+          const { data: delegatorRows } = await supabase
+            .from("users")
+            .select("id, grade")
+            .in("id", delegatorIds)
+            .eq("is_active", true);
+          const maxRank = Math.max(
+            0,
+            ...(delegatorRows ?? [])
+              .map((u) => (isUserGrade(u.grade) ? gradeRank(u.grade) : 0))
+          );
+          if (
+            gradeSteps.some(
+              (s) => isUserGrade(s.step_grade) && maxRank >= gradeRank(s.step_grade)
+            )
+          ) {
+            canAct = true;
+            actingAsDelegate = true;
+          }
+        }
       }
     }
   }
@@ -323,9 +380,21 @@ export default async function ApprovalDetailPage({
                         {STEP_KIND_LABELS[step.step_kind] ?? step.step_kind}
                       </Badge>
                       <span className="font-medium">
-                        {step.approver?.name ?? "-"}
+                        {step.approver?.name ??
+                          // 직급 릴레이 단계 — 처리 후에는 실제 처리자를 보여 준다 (27번)
+                          (step.step_grade
+                            ? step.status === "pending"
+                              ? `${gradeLabel(step.step_grade)} 이상 누구나 (직급 릴레이)`
+                              : (step.acted_by?.name ?? gradeLabel(step.step_grade))
+                            : "-")}
                       </span>
+                      {step.step_grade && step.status !== "pending" && (
+                        <span className="text-xs text-muted-foreground">
+                          {gradeLabel(step.step_grade)} 단계
+                        </span>
+                      )}
                       {step.acted_by?.name &&
+                        !step.step_grade &&
                         step.acted_by.name !== step.approver?.name && (
                           <span className="text-xs text-brand">
                             대결: {step.acted_by.name}

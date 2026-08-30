@@ -22,6 +22,10 @@ import {
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
+import {
+  buildGradeRelayLine,
+  isPlanRelayEnabled,
+} from "@/lib/approvals/relay";
 
 /**
  * 직접 지정 결재라인 표기 — 결재자·감사로그 열람자가 규정 라인과 구분할 수
@@ -90,6 +94,14 @@ async function resolveLine(
 ): Promise<LineResult> {
   const ids = Array.from(new Set(manualApproverIds.filter(Boolean)));
   if (ids.length === 0) {
+    // 상급자 릴레이 (기획 확정 2026-08-30 — 27번): 전자결재 메뉴에서 켠
+    // 회사는 섭외계획 품의를 직급 단계(그 직급 이상 누구나 결재 → 다음
+    // 상급 직급 자동 진행)로 돌린다. 직접 지정이 있으면 그것이 우선(18번).
+    // 상급자가 아무도 없으면(1인 기업 등) 아래 기존 경로로 넘어간다.
+    if (await isPlanRelayEnabled()) {
+      const relay = await buildGradeRelayLine(requesterUserId);
+      if (relay) return { ok: true, ruleId: null, steps: relay.steps };
+    }
     const matched = await matchApprovalRule("project", amount);
     if (matched) {
       if (matched.steps.some((s) => s.approverUserId === requesterUserId)) {
