@@ -174,8 +174,8 @@ export async function loadSlotPickerData(
     .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(1000);
-  // 부재 폴백 (§14-10): is_active 미적용 환경에서는 필터 없이 재시도
-  const { data: pool } = poolFirst.error
+  // 부재 폴백 (§14-10): is_active 미적용 환경(42703)에서만 필터 없이 재시도
+  const { data: pool } = poolFirst.error?.code === "42703"
     ? await admin
         .from("experts")
         .select("id, name, phone, specialty, region, career_years")

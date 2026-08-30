@@ -86,8 +86,8 @@ export default async function ExpertDetailPage({
       .eq("is_practice", false)
       .eq("is_active", true)
       .maybeSingle();
-    if (fallback.error) {
-      // 부재 폴백 (§14-10): is_active 컬럼 미적용 환경에서 필터 없이 재시도
+    if (fallback.error?.code === "42703") {
+      // 부재 폴백 (§14-10): is_active 컬럼 미적용 환경에서만 필터 없이 재시도 (리뷰 12)
       ({ data: expert } = await admin
         .from("experts")
         .select(
@@ -96,7 +96,7 @@ export default async function ExpertDetailPage({
         .eq("id", params.expertId)
         .eq("is_practice", false)
         .maybeSingle());
-    } else {
+    } else if (!fallback.error) {
       expert = fallback.data;
     }
   }

@@ -75,27 +75,47 @@ export async function updateProjectBasicInfo(
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 이름·코드 중복 가드 — 자기 자신은 제외 (생성 가드와 같은 규칙)
+  const { data: before } = await supabase
+    .from("projects")
+    .select("name, business_year, client_name, code, starts_on, ends_on, budget_amount")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!before) {
+    return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  }
+
+  // 이름·코드 중복 가드 — **바뀐 값에만** 건다 (리뷰 4). 기존 중복 데이터가
+  // 있는 상태에서 예산·기간만 고치는 저장까지 막으면 정리 자체가 불가능해진다.
+  // 자기 자신·취소 보관 건은 제외, 대소문자 차이는 ilike로 잡는다 (리뷰 5).
   const admin = createAdminClient();
   const practice = practiceFromUser(user);
+  const nameChanged =
+    before.name.toLowerCase() !== data.name.toLowerCase() ||
+    before.business_year !== parseInt(data.businessYear, 10);
+  const newCode = data.code ?? "";
+  const codeChanged = newCode !== "" && before.code !== newCode;
   const [{ data: sameName }, { data: sameCode }] = await Promise.all([
-    admin
-      .from("projects")
-      .select("id")
-      .eq("tenant_id", gate.tenantId)
-      .eq("is_practice", practice)
-      .eq("name", data.name)
-      .eq("business_year", parseInt(data.businessYear, 10))
-      .neq("id", projectId)
-      .limit(1),
-    data.code
+    nameChanged
       ? admin
           .from("projects")
           .select("id")
           .eq("tenant_id", gate.tenantId)
           .eq("is_practice", practice)
-          .eq("code", data.code)
+          .ilike("name", data.name)
+          .eq("business_year", parseInt(data.businessYear, 10))
           .neq("id", projectId)
+          .neq("status", "cancelled")
+          .limit(1)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    codeChanged
+      ? admin
+          .from("projects")
+          .select("id")
+          .eq("tenant_id", gate.tenantId)
+          .eq("is_practice", practice)
+          .eq("code", newCode)
+          .neq("id", projectId)
+          .neq("status", "cancelled")
           .limit(1)
       : Promise.resolve({ data: [] as { id: string }[] }),
   ]);
@@ -111,12 +131,6 @@ export async function updateProjectBasicInfo(
       error: `같은 코드(${data.code})의 프로젝트가 이미 있습니다 (중복 방지 규칙). 다른 코드를 사용해 주세요.`,
     };
   }
-
-  const { data: before } = await supabase
-    .from("projects")
-    .select("name, business_year, client_name, code, starts_on, ends_on, budget_amount")
-    .eq("id", projectId)
-    .maybeSingle();
 
   const { data: updated, error } = await supabase
     .from("projects")
@@ -174,35 +188,64 @@ export async function deleteEmptyProject(projectId: string): Promise<BasicResult
   const admin = createAdminClient();
   const { data: project } = await admin
     .from("projects")
-    .select("id, tenant_id, name, code, business_year")
+    .select("id, tenant_id, name, code, business_year, status")
     .eq("id", projectId)
     .eq("tenant_id", gate.tenantId)
     .maybeSingle();
   if (!project) {
     return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
   }
-
-  // 실적 존재 검사 — 하나라도 있으면 삭제 불가
-  const [{ count: slots }, { count: engagements }, { count: plans }] =
-    await Promise.all([
-      admin
-        .from("engagement_slots")
-        .select("id", { count: "exact", head: true })
-        .eq("project_id", projectId),
-      admin
-        .from("expert_engagements")
-        .select("id", { count: "exact", head: true })
-        .eq("project_id", projectId),
-      admin
-        .from("engagement_plans")
-        .select("id", { count: "exact", head: true })
-        .eq("project_id", projectId),
-    ]);
-  if ((slots ?? 0) > 0 || (engagements ?? 0) > 0 || (plans ?? 0) > 0) {
+  // 종결·보류·취소 처리된 프로젝트는 이미 '기록'이다 — 보관으로만 관리
+  if (project.status !== "planned" && project.status !== "active") {
     return {
       ok: false,
       error:
-        "세션·섭외·품의 기록이 있는 프로젝트는 삭제할 수 없습니다 (기록 보존 규칙). 잘못 만든 중복 건이라면 기록이 없는 쪽을 삭제하고, 이 프로젝트는 상태를 '취소'로 바꿔 보관하세요.",
+        "종결·보류·취소 처리된 프로젝트는 삭제할 수 없습니다 (기록 보존 규칙). 설정 > 프로젝트 보관에서 확인하세요.",
+    };
+  }
+
+  // 실적 존재 검사 — 하나라도 있으면 삭제 불가.
+  // approvals는 FK가 set null이라 삭제 시 결재함에 고아가 남는다 (리뷰 1) —
+  // 기여도(project_contributions)도 실적이다.
+  const [
+    { count: slots },
+    { count: engagements },
+    { count: plans },
+    { count: approvals },
+    { count: contributions },
+  ] = await Promise.all([
+    admin
+      .from("engagement_slots")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId),
+    admin
+      .from("expert_engagements")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId),
+    admin
+      .from("engagement_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId),
+    admin
+      .from("approvals")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId),
+    admin
+      .from("project_contributions")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId),
+  ]);
+  if (
+    (slots ?? 0) > 0 ||
+    (engagements ?? 0) > 0 ||
+    (plans ?? 0) > 0 ||
+    (approvals ?? 0) > 0 ||
+    (contributions ?? 0) > 0
+  ) {
+    return {
+      ok: false,
+      error:
+        "세션·섭외·품의·결재·기여도 기록이 있는 프로젝트는 삭제할 수 없습니다 (기록 보존 규칙). 잘못 만든 중복 건이라면 기록이 없는 쪽을 삭제하고, 이 프로젝트는 상태를 '취소'로 바꿔 보관하세요.",
     };
   }
 

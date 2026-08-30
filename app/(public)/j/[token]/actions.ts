@@ -236,12 +236,21 @@ export async function completeExpertRegistration(
     }
     expertId = existingExpert.id;
     if (!existingExpert.auth_user_id) {
-      const { error: claimError } = await admin
+      let { error: claimError } = await admin
         .from("experts")
         .update({ auth_user_id: user.id })
         .eq("id", expertId)
         .eq("is_active", true)
         .is("auth_user_id", null);
+      // 부재 폴백 (§14-10): is_active 컬럼 미적용 환경(42703)에서만 필터 없이
+      // 재시도 — 그때는 중지 건 자체가 없다 (리뷰 13, 로그인 경로와 동일 기준)
+      if (claimError?.code === "42703") {
+        ({ error: claimError } = await admin
+          .from("experts")
+          .update({ auth_user_id: user.id })
+          .eq("id", expertId)
+          .is("auth_user_id", null));
+      }
       if (claimError) {
         return { error: "계정 연결에 실패했습니다. 다시 시도해 주세요." };
       }

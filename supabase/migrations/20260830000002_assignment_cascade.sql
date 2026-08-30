@@ -24,14 +24,25 @@ stable
 security definer
 set search_path = public
 as $$
-  select app.can_view_all_projects()
-    or case app.project_assignment_role(p_project_id)
-         when 'pl'        then p_role in ('pm', 'deputy_pm', 'member')
-         when 'pl_pm'     then p_role in ('pm', 'deputy_pm', 'member')
-         when 'pm'        then p_role in ('deputy_pm', 'member')
-         when 'deputy_pm' then p_role = 'member'
-         else false
-       end
+  -- 대상 프로젝트가 자기 테넌트·현재 모드의 것인지 먼저 확인한다 —
+  -- 대표·이사가 타 테넌트 프로젝트 id에 행을 꽂는 경로 차단 (리뷰 10)
+  select exists (
+      select 1
+      from public.projects p
+      where p.id = p_project_id
+        and p.tenant_id = app.tenant_id()
+        and p.is_practice = app.is_practice()
+    )
+    and (
+      app.can_view_all_projects()
+      or case app.project_assignment_role(p_project_id)
+           when 'pl'        then p_role in ('pm', 'deputy_pm', 'member')
+           when 'pl_pm'     then p_role in ('pm', 'deputy_pm', 'member')
+           when 'pm'        then p_role in ('deputy_pm', 'member')
+           when 'deputy_pm' then p_role = 'member'
+           else false
+         end
+    )
 $$;
 
 revoke all on function app.can_assign_project_role(uuid, text) from public;

@@ -102,8 +102,11 @@ export async function createProject(
         .select("id")
         .eq("tenant_id", tenantId)
         .eq("is_practice", practice)
-        .eq("name", data.name)
+        // 대소문자 차이 우회 방지(ilike). 취소 보관된 중복 정리 건과는
+        // 같은 이름 재사용을 허용한다 (리뷰 4·5)
+        .ilike("name", data.name)
         .eq("business_year", parseInt(data.businessYear, 10))
+        .neq("status", "cancelled")
         .limit(1),
       data.code
         ? admin
@@ -112,6 +115,7 @@ export async function createProject(
             .eq("tenant_id", tenantId)
             .eq("is_practice", practice)
             .eq("code", data.code)
+            .neq("status", "cancelled")
             .limit(1)
         : Promise.resolve({ data: [] as { id: string }[] }),
     ]);
@@ -181,13 +185,24 @@ export async function createProject(
       if (!roleMinGradeError("pl", grade, mins)) {
         // 배정 RLS는 계단 판정(기존 배정 기준)이라 첫 배정은 통과할 수 없다 —
         // 개설 게이트를 이미 통과한 서버 판단이므로 admin으로 심는다.
-        await createAdminClient().from("project_assignments").insert({
-          tenant_id: tenantId,
-          project_id: project.id,
-          user_id: user.id,
-          assignment_role: "pl",
-          assigned_by: user.id,
-        });
+        // 주의: admin 경로에는 JWT가 없어 역할 최소레벨 트리거가 회사 조정값
+        // 대신 기본값(PL=팀장)으로 판정한다 — 위 앱 검사와 어긋나면 아래
+        // 실패 분기로 떨어진다 (리뷰 3).
+        const { error: plError } = await createAdminClient()
+          .from("project_assignments")
+          .insert({
+            tenant_id: tenantId,
+            project_id: project.id,
+            user_id: user.id,
+            assignment_role: "pl",
+            assigned_by: user.id,
+          });
+        if (plError) {
+          // 실패를 삼키면 이 기획이 고치려던 막다른 길(팀 구성 불가)이
+          // 무증상으로 재현된다 (리뷰 2) — 프로젝트는 만들어졌으므로 성공을
+          // 유지하되, 로그를 남긴다. 화면에는 배정 패널이 없는 상태로 보인다.
+          console.warn("[project-create] auto PL assign failed:", plError.code);
+        }
       }
     }
   }

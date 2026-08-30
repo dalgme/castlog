@@ -197,10 +197,10 @@ export default async function TenantExpertsPage({
     admin.from("expert_expertise_fields").select("expert_id, field_id"),
   ]);
 
-  // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경에서 필터 오류로
-  // 풀 목록이 통째로 비지 않게 — 실패 시 필터 없이 1회 재시도한다
+  // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경(42703)에서만 필터
+  // 없이 재시도한다 — 일시 오류에까지 폴백하면 중지 제외가 무효화된다 (리뷰 12)
   let poolRows = poolResult.data;
-  if (poolResult.error) {
+  if (poolResult.error?.code === "42703") {
     ({ data: poolRows } = await admin
       .from("experts")
       .select("id, name, phone, email, specialty, region, career_years, created_at")

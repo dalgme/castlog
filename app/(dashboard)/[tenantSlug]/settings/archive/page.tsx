@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireRole } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -77,13 +79,16 @@ export default async function ProjectArchivePage({
   }
   const years = Array.from(byYear.keys()).sort((a, b) => b - a);
 
+  // 라벨은 공용 사전을 그대로 쓴다 — 화면마다 다른 이름을 만들지 않는다 (리뷰 11)
   const statusBadge = (status: string) =>
     status === "completed" ? (
-      <Badge className="bg-emerald-600 hover:bg-emerald-600">종결</Badge>
+      <Badge className="bg-emerald-600 hover:bg-emerald-600">
+        {PROJECT_STATUS_LABELS.completed ?? status}
+      </Badge>
     ) : status === "cancelled" ? (
-      <Badge variant="outline">취소</Badge>
+      <Badge variant="outline">{PROJECT_STATUS_LABELS.cancelled ?? status}</Badge>
     ) : (
-      <Badge variant="secondary">보류</Badge>
+      <Badge variant="secondary">{PROJECT_STATUS_LABELS.on_hold ?? status}</Badge>
     );
 
   return (
@@ -148,12 +153,12 @@ export default async function ProjectArchivePage({
                         key={p.id}
                         className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2"
                       >
-                        <a
+                        <Link
                           href={`/${params.tenantSlug}/projects/${p.id}`}
                           className="font-medium underline-offset-2 hover:underline"
                         >
                           {p.name}
-                        </a>
+                        </Link>
                         {p.code && (
                           <span className="font-mono text-xs text-muted-foreground">
                             {p.code}
@@ -182,11 +187,7 @@ export default async function ProjectArchivePage({
         )}
 
         <p className="text-xs text-muted-foreground">
-          상태 라벨:{" "}
-          {Object.entries(PROJECT_STATUS_LABELS)
-            .map(([, label]) => label)
-            .join(" · ")}
-          . 이 화면은 대표·이사만 볼 수 있습니다 (전사 열람 권한 — §3-1).
+          이 화면은 대표·이사만 볼 수 있습니다 (전사 열람 권한 — §3-1).
         </p>
       </main>
     </div>

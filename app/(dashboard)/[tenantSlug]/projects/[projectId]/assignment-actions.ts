@@ -144,15 +144,25 @@ export async function assignProjectMember(
     assigned_by: auth.userId,
   });
   if (error) {
-    // (project_id, user_id) 중복이면 멱등, PM/부PM 중복이면 안내
+    // (project_id, user_id) 중복이면 기존 역할 안내, PM/부PM 중복이면 안내.
+    // 자동 PL(개설자) 때문에 '이미 배정된 사람'이 흔해졌다 — 조용한 성공으로
+    // 두면 역할이 안 바뀌었는데 바뀐 줄 안다 (리뷰 9)
     if (error.code === "23505") {
       const { data: existing } = await supabase
         .from("project_assignments")
-        .select("id")
+        .select("assignment_role")
         .eq("project_id", projectId)
         .eq("user_id", userId)
         .maybeSingle();
-      if (existing) return { ok: true };
+      if (existing) {
+        const label = isAssignmentRole(existing.assignment_role)
+          ? ASSIGNMENT_ROLE_LABELS[existing.assignment_role]
+          : existing.assignment_role;
+        return {
+          ok: false,
+          error: `이미 '${label}'(으)로 배정되어 있습니다. 역할을 바꾸려면 배정 목록에서 역할 변경을 사용하세요.`,
+        };
+      }
       return { ok: false, error: roleConflictError(assignmentRole) };
     }
     // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
@@ -210,8 +220,7 @@ export async function setAssignmentRole(
   if (!updated || updated.length === 0) {
     return {
       ok: false,
-      error:
-        "역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다 (권한 규칙 — 역할 변경은 대표·이사). 필요하면 권한자에게 요청하세요.",
+      error: `역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다${CASCADE_HINT}. 현재 역할이 계단상 상위이면 상위 역할자에게 요청하세요.`,
     };
   }
 

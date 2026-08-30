@@ -44,6 +44,7 @@ export async function GET() {
       )
       .eq("is_practice", false)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: true }) // 동률·수집 중 삽입에 대한 안정 정렬 (리뷰 15)
       .range(from, from + CHUNK - 1);
     experts.push(...(page ?? []));
     if (!page || page.length < CHUNK) break;

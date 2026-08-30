@@ -58,11 +58,11 @@ export async function requestExpertOtp(
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 실계정 대상이 아니다
       .maybeSingle();
-    // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경에서 조회 오류가
-    // "등록되지 않은 번호" 오귀책 거부가 되지 않게 — 필터 없는 조회로 재시도
+    // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경(42703)에서만 —
+    // 일시 오류에까지 폴백하면 중지 차단이 무효화된다 (리뷰 12)
     let existingExpert: { id: string; auth_user_id: string | null; is_active?: boolean } | null =
       first.data;
-    if (first.error) {
+    if (first.error?.code === "42703") {
       const legacy = await admin
         .from("experts")
         .select("id, auth_user_id")
@@ -157,9 +157,9 @@ export async function verifyExpertOtp(
       .eq("is_active", true) // 이용 중지 건은 이어받기도 막는다 (관리모드 중지)
       .is("auth_user_id", null)
       .maybeSingle();
-    // 부재 폴백 (§14-10): 컬럼 미적용 환경에서는 중지 건 자체가 없다 —
-    // 필터 없이 재시도해 이어받기가 조용히 생략되지 않게 한다
-    if (unclaimedError) {
+    // 부재 폴백 (§14-10): 컬럼 미적용 환경(42703)에서만 — 그때는 중지 건
+    // 자체가 없어 필터 없는 재시도가 안전하다 (리뷰 12)
+    if (unclaimedError?.code === "42703") {
       ({ data: unclaimed } = await admin
         .from("experts")
         .select("id")

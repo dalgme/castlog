@@ -320,8 +320,8 @@ export async function commitDirectImport(
         .select("id, is_active")
         .eq("phone", row.phoneE164)
         .maybeSingle();
-      if (existingError) {
-        // 부재 폴백 (§14-10) — 컬럼 미적용 환경
+      if (existingError?.code === "42703") {
+        // 부재 폴백 (§14-10) — 컬럼 미적용 환경에서만 (리뷰 12)
         const { data: legacy } = await admin
           .from("experts")
           .select("id")
