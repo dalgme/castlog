@@ -22,7 +22,7 @@ create table if not exists public.settlement_line_attachments (
   storage_path text not null,
   mime_type text,
   file_size_bytes bigint,
-  uploaded_by uuid,
+  uploaded_by uuid references public.users (id) on delete set null,
   is_practice boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -48,11 +48,24 @@ create policy settlement_line_attachments_insert on public.settlement_line_attac
   for insert with check (
     tenant_id = app.tenant_id() and app.can_exec('expertRecord')
   );
+drop policy if exists settlement_line_attachments_update on public.settlement_line_attachments;
+create policy settlement_line_attachments_update on public.settlement_line_attachments
+  for update using (
+    tenant_id = app.tenant_id() and app.can_exec('expertRecord')
+  )
+  with check (
+    tenant_id = app.tenant_id() and app.can_exec('expertRecord')
+  );
 drop policy if exists settlement_line_attachments_delete on public.settlement_line_attachments;
 create policy settlement_line_attachments_delete on public.settlement_line_attachments
   for delete using (
     tenant_id = app.tenant_id() and app.can_exec('expertRecord')
   );
+
+-- 연습모드 격리 — 자매 첨부 테이블들과 동일한 restrictive 정책 (리뷰 C-5)
+drop policy if exists settlement_line_attachments_practice on public.settlement_line_attachments;
+create policy settlement_line_attachments_practice on public.settlement_line_attachments
+  as restrictive for select using (is_practice = app.is_practice());
 
 comment on table public.settlement_line_attachments is
   '종료 품의 증빙 — 참여 건(전문가×세션)당 파일 1개, 선택 (기획 2026-08-30)';

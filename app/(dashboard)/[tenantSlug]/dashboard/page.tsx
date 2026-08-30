@@ -344,7 +344,7 @@ export default async function DashboardPage({
             {data.projects.rows.length > PROGRESS_ROW_LIMIT && (
               <Button asChild variant="ghost" size="sm">
                 <Link href={`/${slug}/projects`}>
-                  전체 {data.projects.rows.length}건
+                  진행 {data.projects.rows.length}건
                 </Link>
               </Button>
             )}

@@ -75,11 +75,11 @@ export async function createSlot(
       starts_time: d.startsTime || null,
       ends_time: d.endsTime || null,
       role_type: d.roleType,
-      session_name: d.sessionName || null,
+      session_name: d.sessionName,
       role_description: d.roleDescription || null,
       required_count: d.requiredCount,
       fee_amount: d.feeAmount ? parseInt(d.feeAmount, 10) : null,
-      location_name: d.locationName || null,
+      location_name: d.locationName,
       location_address: d.locationAddress || null,
       notes: d.notes || null,
       created_by: auth.userId,
@@ -398,6 +398,15 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
     .eq("id", slotId)
     .maybeSingle();
   if (!source) return { ok: false, error: "복사할 세션을 찾을 수 없습니다." };
+  // 세션명·장소 필수화 이후의 우회 방지 — 필수값 없는 구세션은 복사 대신
+  // 원본을 먼저 채우게 한다 (리뷰 A-2)
+  if (!source.session_name || !source.location_name) {
+    return {
+      ok: false,
+      error:
+        "원본 세션에 세션명·장소가 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
+    };
+  }
 
   const copyName = source.session_name
     ? `${source.session_name} (복사)`.slice(0, 120)

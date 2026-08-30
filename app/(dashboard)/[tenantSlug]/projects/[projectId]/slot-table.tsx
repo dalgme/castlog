@@ -164,6 +164,12 @@ export function SlotTable({
 
   const onCreate = () => {
     setError(null);
+    // 필수값 선검증 — 다중 일정 세트 생성 도중 서버 거부를 받으면 일부만
+    // 만들어진 채 멈춘다 (리뷰 A-4)
+    if (!d.sessionName.trim() || !d.locationName.trim()) {
+      setError("세션명과 장소는 필수입니다 (③ 세션 정보).");
+      return;
+    }
     startTransition(async () => {
       if (editingId) {
         const r = await updateSlot(editingId, {
@@ -448,6 +454,12 @@ export function SlotTable({
                 )}
               </span>
             </div>
+
+            {s.notes && (
+              <p className="mt-1 pl-1 text-xs text-muted-foreground" title="비고">
+                비고: {s.notes}
+              </p>
+            )}
 
             <div className="mt-2 flex flex-wrap gap-1.5">
               {s.positions.map((p) =>

@@ -249,10 +249,14 @@ export default async function ExecutivePage({
         </p>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <ExecTile label="프로젝트" value={`${projects.length}건`} />
+          <ExecTile label="프로젝트"
+            value={`${projects.length}건${archivedProjects.length > 0 ? ` (보관 ${archivedProjects.length} 포함)` : ""}`}
+          />
           <ExecTile label="진행 중" value={`${activeProjects}건`} />
           <ExecTile label="종료" value={`${closedProjects}건`} />
-          <ExecTile label="전사 예산" value={formatKrw(totalBudget)} />
+          <ExecTile label="전사 예산"
+            value={`${formatKrw(totalBudget)}${archivedProjects.length > 0 ? " (보관 포함)" : ""}`}
+          />
         </div>
 
         {pmlessProjects.length > 0 && (

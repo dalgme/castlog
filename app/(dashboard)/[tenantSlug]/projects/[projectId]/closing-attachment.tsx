@@ -54,12 +54,21 @@ export function ClosingAttachment({
   }
 
   function onView() {
+    if (!attachment) return;
     setError(null);
+    // 팝업은 클릭 콜스택 안에서 먼저 연다 — 서버 왕복 뒤 open은 Safari 등이
+    // 차단한다 (리뷰 C-6). URL이 오면 그 창을 이동시킨다.
+    const win = window.open("", "_blank", "noopener");
     startTransition(async () => {
-      if (!attachment) return;
       const result = await getSettlementLineAttachmentUrl(attachment.id);
-      if (!result.ok) setError(result.error);
-      else window.open(result.url, "_blank", "noopener");
+      if (!result.ok) {
+        win?.close();
+        setError(result.error);
+      } else if (win) {
+        win.location.href = result.url;
+      } else {
+        setError("팝업이 차단되었습니다. 브라우저 팝업 허용 후 다시 시도해 주세요.");
+      }
     });
   }
 

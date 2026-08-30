@@ -967,10 +967,13 @@ export default async function ProjectDetailPage({
                   contributionsOnly={modules.experts}
                 />
               )}
-              <p className="mt-3 text-xs text-muted-foreground">
-                합계가 100%가 되어야 프로젝트 종료 및 지급 품의 탭의 다음
-                단계(지급 품의 검토 요청)가 열립니다.
-              </p>
+              {!isClosed && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {modules.experts
+                    ? "합계가 100%가 되어야 프로젝트 종료 및 지급 품의 탭의 다음 단계(지급 품의 검토 요청)가 열립니다."
+                    : "참여율 합계 100%를 맞춘 뒤 여기서 종료를 상신합니다."}
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
