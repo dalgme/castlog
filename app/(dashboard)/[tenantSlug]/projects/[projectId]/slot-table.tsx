@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -110,6 +111,7 @@ export function SlotTable({
   canManage,
   canNotice,
   expertsLite = false,
+  expertsEnabled = true,
   noticeTemplates,
   defaultNoticeBody,
 }: {
@@ -121,6 +123,8 @@ export function SlotTable({
   canNotice: boolean;
   /** 라이트 모드 — 안내문자 버튼을 숨긴다 (검수 A6: 눌러야 거부되는 막다른 버튼 금지) */
   expertsLite?: boolean;
+  /** experts 모듈 활성 — 꺼진 테넌트에는 섭외 진입 버튼을 숨긴다 (연동 규칙 1-2-4) */
+  expertsEnabled?: boolean;
   noticeTemplates: NoticeTemplateOption[];
   defaultNoticeBody: string;
 }) {
@@ -383,6 +387,16 @@ export function SlotTable({
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">
+                {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (기획 29번).
+                    experts 모듈이 꺼진 테넌트에는 숨긴다 (1-2-4) */}
+                {expertsEnabled && (
+                  <Link
+                    href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
+                    className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                  >
+                    섭외계획
+                  </Link>
+                )}
                 {canNotice && !expertsLite && (
                   <SessionNoticeDialog
                     slotId={s.id}

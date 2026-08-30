@@ -388,7 +388,8 @@ export function EngagementWorkbench({
         ) : (
           <ul className="space-y-3">
             {slots.map((slot) => (
-              <li key={slot.id} className="rounded-lg border p-3">
+              // 앵커 — 캘린더·세션 계획의 '섭외계획' 버튼이 이 세션으로 점프한다 (29번)
+              <li key={slot.id} id={`slot-${slot.id}`} className="rounded-lg border p-3 scroll-mt-24">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
                   <span className="font-semibold">
                     {slot.sessionName ?? roleTypeLabel(slot.roleType) ?? slot.roleType}

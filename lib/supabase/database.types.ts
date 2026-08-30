@@ -3277,6 +3277,58 @@ export type Database = {
           },
         ]
       }
+      project_calendar_days: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          day: string
+          id: string
+          is_practice: boolean
+          project_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          day: string
+          id?: string
+          is_practice?: boolean
+          project_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          day?: string
+          id?: string
+          is_practice?: boolean
+          project_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_calendar_days_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_calendar_days_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_calendar_days_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_lifecycle_steps: {
         Row: {
           assignee_user_id: string | null
