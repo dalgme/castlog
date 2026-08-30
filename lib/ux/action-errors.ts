@@ -75,10 +75,6 @@ export async function explainActionError(
     return describeDbError(message, fallback);
   }
 
-  // 모니터링 창이 열려 있으면 RLS 거부를 피드에 자동 기록 (규칙 거부 가시화).
-  // 문구 조립 실패와 무관하게 먼저 남긴다 — 기록 실패는 헬퍼가 삼킨다.
-  await recordActionDenial({ kind: "rls", message: fallback });
-
   // 권한 변경 반영 시차인지 판별 — 최신 권한(인증 서버) vs 토큰 클레임
   try {
     const supabase = createClient();
@@ -108,21 +104,26 @@ export async function explainActionError(
         newLabel && oldLabel
           ? `권한단계가 ${oldLabel}에서 ${newLabel}(으)로 변경된 지 얼마 되지 않아`
           : "권한이 최근 변경되어";
-      return (
+      const staleMessage =
         `${fallback} 오류가 아닙니다 — ${change} 아직 이 작업에 반영되지 않았습니다. ` +
         "보안을 위해 권한 변경은 다시 로그인할 때(늦어도 1시간 안에) 적용됩니다. " +
-        "로그아웃 후 다시 로그인하면 바로 사용할 수 있습니다." +
-        CHATBOT_TAIL
-      );
+        "로그아웃 후 다시 로그인하면 바로 사용할 수 있습니다.";
+      // 최종 분류가 확정된 뒤 기록한다 — '반영 시차'는 규칙 거부와 다른 축이다 (리뷰 5)
+      await recordActionDenial({
+        kind: "rls:stale-token",
+        message: staleMessage,
+        user,
+      });
+      return staleMessage + CHATBOT_TAIL;
     }
   } catch {
     // 판별 실패는 일반 규칙 거부 문구로 떨어진다 — 문구를 만들다 실패를
     // 또 만들면 안 된다
   }
 
-  return (
+  const ruleMessage =
     `${fallback} 시스템 오류가 아니라 회사의 권한 규칙에 따라 거부된 것입니다. ` +
-    "이 작업에 필요한 권한이 없다면 대표 또는 관리 권한자에게 요청하세요." +
-    CHATBOT_TAIL
-  );
+    "이 작업에 필요한 권한이 없다면 대표 또는 관리 권한자에게 요청하세요.";
+  await recordActionDenial({ kind: "rls", message: ruleMessage });
+  return ruleMessage + CHATBOT_TAIL;
 }

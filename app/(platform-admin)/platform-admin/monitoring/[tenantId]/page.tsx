@@ -103,7 +103,8 @@ export default async function MonitorFeedPage({
   const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const PER_SOURCE = 60;
 
-  const [errors, audits, events, sms, emails, feedback] = await Promise.all([
+  const [errors, audits, denials, events, sms, emails, feedback] =
+    await Promise.all([
     admin
       .from("client_error_logs")
       .select("id, path, message, error_digest, source, is_practice, created_at")
@@ -113,8 +114,20 @@ export default async function MonitorFeedPage({
       .limit(PER_SOURCE),
     admin
       .from("audit_logs")
-      .select("id, action, actor_role, resource_type, after_data, created_at")
+      .select("id, action, actor_role, resource_type, created_at")
       .eq("tenant_id", tenant.id)
+      .neq("action", "action.denied")
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(PER_SOURCE),
+    // 규칙 거부는 별도 쿼리 — 일반 행위 로그와 60행 예산을 나눠 쓰면
+    // 활발한 테넌트에서 거부가 밀려나 타일이 0으로 왜곡된다 (리뷰 4).
+    // after_data도 이 쿼리에서만 끌어온다.
+    admin
+      .from("audit_logs")
+      .select("id, actor_role, after_data, created_at")
+      .eq("tenant_id", tenant.id)
+      .eq("action", "action.denied")
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .limit(PER_SOURCE),
@@ -162,40 +175,45 @@ export default async function MonitorFeedPage({
         errorId: r.id,
       })
     ),
-    ...(audits.data ?? []).map((r): FeedItem => {
-      // 규칙 거부는 별도 칩으로 — 테스트 중 "안 돼요"의 대부분이 여기다
-      if (r.action === "action.denied") {
-        const extra =
-          r.after_data !== null &&
-          typeof r.after_data === "object" &&
-          !Array.isArray(r.after_data)
-            ? (r.after_data as { kind?: unknown; message?: unknown; path?: unknown })
-            : {};
-        return {
-          key: `aud-${r.id}`,
-          at: r.created_at,
-          kind: "denial",
-          title:
-            typeof extra.message === "string"
-              ? extra.message.slice(0, 160)
-              : "실행이 규칙에 따라 거부되었습니다",
-          detail: [
-            auditRoleLabel(r.actor_role),
-            typeof extra.kind === "string" ? extra.kind : null,
-            typeof extra.path === "string" ? extra.path : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          practice: false,
-        };
-      }
-      return {
+    ...(audits.data ?? []).map(
+      (r): FeedItem => ({
         key: `aud-${r.id}`,
         at: r.created_at,
         kind: "audit",
         title: auditActionLabel(r.action),
         detail: `${auditRoleLabel(r.actor_role)} · ${r.resource_type}`,
         practice: false,
+      })
+    ),
+    // 규칙 거부 — 테스트 중 "안 돼요"의 대부분이 여기다
+    ...(denials.data ?? []).map((r): FeedItem => {
+      const extra =
+        r.after_data !== null &&
+        typeof r.after_data === "object" &&
+        !Array.isArray(r.after_data)
+          ? (r.after_data as {
+              kind?: unknown;
+              message?: unknown;
+              path?: unknown;
+              practice?: unknown;
+            })
+          : {};
+      return {
+        key: `den-${r.id}`,
+        at: r.created_at,
+        kind: "denial",
+        title:
+          typeof extra.message === "string"
+            ? extra.message.slice(0, 160)
+            : "실행이 규칙에 따라 거부되었습니다",
+        detail: [
+          auditRoleLabel(r.actor_role),
+          typeof extra.kind === "string" ? extra.kind : null,
+          typeof extra.path === "string" ? extra.path : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        practice: extra.practice === true,
       };
     }),
     ...(events.data ?? []).map(
@@ -244,9 +262,7 @@ export default async function MonitorFeedPage({
     .slice(0, 200);
 
   const errorCount = (errors.data ?? []).length;
-  const denialCount = (audits.data ?? []).filter(
-    (r) => r.action === "action.denied"
-  ).length;
+  const denialCount = (denials.data ?? []).length;
   const failedSends =
     (sms.data ?? []).filter((r) => r.status === "failed").length +
     (emails.data ?? []).filter((r) => r.status === "failed").length;

@@ -38,7 +38,7 @@ export async function requireExecGrade(
   if (!canExecWithPolicy(policy, feature, grade, role)) {
     return {
       ok: false,
-      error: await deniedExec(feature, policy.overrides[feature]),
+      error: await deniedExec(feature, policy.overrides[feature], user),
     };
   }
   return { ok: true, userId: user.id, tenantId, role };
