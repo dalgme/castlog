@@ -75,17 +75,30 @@ export default async function ExpertDetailPage({
     .eq("id", params.expertId)
     .maybeSingle();
   if (!expert) {
-    ({ data: expert } = await admin
+    // 이용 중지 전문가는 미연결 공개 경로에서 제외 (자사 연결 건은 위
+    // RLS 조회로 계속 보인다 — 진행 중 업무의 이름 표기 유지)
+    const fallback = await admin
       .from("experts")
       .select(
         "id, name, phone, email, specialty, region, career_years, bio, degree_certifications, expertise_other"
       )
       .eq("id", params.expertId)
       .eq("is_practice", false)
-      // 이용 중지 전문가는 미연결 공개 경로에서 제외 (자사 연결 건은 위
-      // RLS 조회로 계속 보인다 — 진행 중 업무의 이름 표기 유지)
       .eq("is_active", true)
-      .maybeSingle());
+      .maybeSingle();
+    if (fallback.error) {
+      // 부재 폴백 (§14-10): is_active 컬럼 미적용 환경에서 필터 없이 재시도
+      ({ data: expert } = await admin
+        .from("experts")
+        .select(
+          "id, name, phone, email, specialty, region, career_years, bio, degree_certifications, expertise_other"
+        )
+        .eq("id", params.expertId)
+        .eq("is_practice", false)
+        .maybeSingle());
+    } else {
+      expert = fallback.data;
+    }
   }
   if (!expert) notFound();
 

@@ -46,15 +46,19 @@ export function ProjectAssignmentPanel({
   projectId,
   staff,
   assigned,
+  allowedRoles,
 }: {
   projectId: string;
   staff: StaffOption[];
   assigned: AssignedMember[];
+  /** 내가 지정할 수 있는 역할 (배정 계단 — 서버 게이트와 동일 목록) */
+  allowedRoles: AssignmentRole[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState("");
   const [pickRole, setPickRole] = useState<AssignmentRole>("member");
+  const canManageRole = (role: AssignmentRole) => allowedRoles.includes(role);
 
   const assignedIds = new Set(assigned.map((a) => a.userId));
   const assignable = staff.filter((s) => !assignedIds.has(s.id));
@@ -91,9 +95,10 @@ export function ProjectAssignmentPanel({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        배정된 담당자만 이 프로젝트를 볼 수 있습니다. 대표·이사(권한자)는 배정과 무관하게
-        전체 프로젝트를 봅니다. PL·PM은 프로젝트당 각 1명이며, 한 사람이 둘 다 맡으면
-        &lsquo;PL·PM 겸임&rsquo;으로 지정합니다. 부PM·담당은 인원 제한이 없습니다.
+        배정된 담당자만 이 프로젝트를 볼 수 있습니다. 대표·이사는 배정과 무관하게
+        전체 프로젝트를 봅니다. 배정은 계단식입니다 — 대표·이사는 PL 이하 전부,
+        PL은 PM 이하, PM은 부PM 이하, 부PM은 담당을 지정합니다. PL·PM은
+        프로젝트당 각 1명(겸임 가능), 부PM·담당은 인원 제한이 없습니다.
       </p>
 
       {assigned.length === 0 ? (
@@ -109,31 +114,42 @@ export function ProjectAssignmentPanel({
             >
               {m.name}
               <span className="text-[11px] text-muted-foreground">{m.gradeLabel}</span>
-              <Select
-                value={m.assignmentRole}
-                onValueChange={(next) => onChangeRole(m.userId, next)}
-                disabled={pending}
-              >
-                <SelectTrigger className="h-6 w-[104px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ASSIGNMENT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {ASSIGNMENT_ROLE_LABELS[r]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <button
-                type="button"
-                onClick={() => onRemove(m.userId)}
-                disabled={pending}
-                aria-label="배정 해제"
-                className="text-muted-foreground hover:text-red-600"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              {canManageRole(m.assignmentRole) ? (
+                <Select
+                  value={m.assignmentRole}
+                  onValueChange={(next) => onChangeRole(m.userId, next)}
+                  disabled={pending}
+                >
+                  <SelectTrigger className="h-6 w-[104px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSIGNMENT_ROLES.filter(canManageRole).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ASSIGNMENT_ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span
+                  className="text-[11px] text-muted-foreground"
+                  title="이 역할은 상위 역할자만 변경할 수 있습니다 (배정 계단 규칙)"
+                >
+                  {ASSIGNMENT_ROLE_LABELS[m.assignmentRole]}
+                </span>
+              )}
+              {canManageRole(m.assignmentRole) && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(m.userId)}
+                  disabled={pending}
+                  aria-label="배정 해제"
+                  className="text-muted-foreground hover:text-red-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </span>
           ))}
         </div>
@@ -173,7 +189,7 @@ export function ProjectAssignmentPanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ASSIGNMENT_ROLES.map((r) => (
+            {ASSIGNMENT_ROLES.filter(canManageRole).map((r) => (
               <SelectItem key={r} value={r}>
                 {ASSIGNMENT_ROLE_LABELS[r]}
               </SelectItem>

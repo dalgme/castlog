@@ -14,26 +14,42 @@ export const dynamic = "force-dynamic";
  * 데이터(평가·이력)는 어떤 내보내기에도 포함하지 않는다.
  */
 export async function GET() {
+  // 비관리자는 requireRole이 리다이렉트한다. env 부재(빌드 환경)만 null 반환
   const user = await requireRole(["platform_admin"]);
-  if (!user) {
+  if (!user || !hasSupabaseEnv()) {
     return NextResponse.json({ ok: false }, { status: 401 });
-  }
-  if (!hasSupabaseEnv()) {
-    return NextResponse.redirect(
-      new URL("/platform-admin/experts", process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000")
-    );
   }
 
   const admin = createAdminClient();
-  const { data: experts } = await admin
-    .from("experts")
-    .select(
-      "name, phone, email, organization, job_title, specialty, region, career_years, auth_user_id, is_active, created_at"
-    )
-    .eq("is_practice", false)
-    .order("created_at", { ascending: false });
+  // PostgREST 기본 상한(1000행)에 조용히 잘리지 않게 range로 전량 수집 (리뷰 9)
+  const experts: {
+    name: string;
+    phone: string;
+    email: string | null;
+    organization: string | null;
+    job_title: string | null;
+    specialty: string | null;
+    region: string | null;
+    career_years: number | null;
+    auth_user_id: string | null;
+    is_active: boolean;
+    created_at: string;
+  }[] = [];
+  const CHUNK = 1000;
+  for (let from = 0; ; from += CHUNK) {
+    const { data: page } = await admin
+      .from("experts")
+      .select(
+        "name, phone, email, organization, job_title, specialty, region, career_years, auth_user_id, is_active, created_at"
+      )
+      .eq("is_practice", false)
+      .order("created_at", { ascending: false })
+      .range(from, from + CHUNK - 1);
+    experts.push(...(page ?? []));
+    if (!page || page.length < CHUNK) break;
+  }
 
-  const rows = (experts ?? []).map((e) => ({
+  const rows = experts.map((e) => ({
     이름: e.name,
     휴대폰: formatKrMobile(e.phone),
     이메일: e.email ?? "",
@@ -50,7 +66,7 @@ export async function GET() {
   }));
 
   // 전역 반출 — tenant_id 없이 기록 (audit_logs.tenant_id nullable 설계)
-  await admin.from("audit_logs").insert({
+  const { error: auditError } = await admin.from("audit_logs").insert({
     tenant_id: null,
     actor_auth_user_id: user.id,
     actor_role: "platform_admin",
@@ -59,6 +75,9 @@ export async function GET() {
     resource_id: null,
     after_data: { rows: rows.length },
   });
+  if (auditError) {
+    console.warn("[experts-export] audit insert failed:", auditError.code);
+  }
 
   return xlsxResponse("전문가DB", [["전문가", rows]]);
 }

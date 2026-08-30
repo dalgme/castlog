@@ -97,14 +97,15 @@ export default async function PlatformExpertsPage({
 
   if (q) {
     const phoneFragment = phoneSearchFragment(q);
-    const escaped = q.replace(/[%_,]/g, "");
+    // PostgREST or= 문법 예약문자 제거 — 괄호는 그룹으로 해석돼 400을 낸다 (리뷰 8)
+    const escaped = q.replace(/[%_,()\\]/g, "");
     const ors = [
-      `name.ilike.%${escaped}%`,
-      `email.ilike.%${escaped}%`,
-      `organization.ilike.%${escaped}%`,
+      escaped ? `name.ilike.%${escaped}%` : null,
+      escaped ? `email.ilike.%${escaped}%` : null,
+      escaped ? `organization.ilike.%${escaped}%` : null,
       phoneFragment ? `phone.ilike.%${phoneFragment}%` : null,
     ].filter((v): v is string => v !== null);
-    query = query.or(ors.join(","));
+    if (ors.length > 0) query = query.or(ors.join(","));
   }
   if (status === "active") query = query.eq("is_active", true);
   if (status === "inactive") query = query.eq("is_active", false);

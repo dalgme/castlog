@@ -102,6 +102,18 @@ export async function resolvePublicProfile(
     .maybeSingle();
   if (!expert) return null;
 
+  // 이용 중지 전문가의 공개 명함은 내린다 (관리모드 중지 — 허위 프로필·본인
+  // 요청 탈퇴가 중지의 대표 사유다). 별도 조회 + 오류 통과 — is_active 컬럼
+  // 미적용 환경에서 /p 전체가 죽지 않게 (§14-10 부재 폴백)
+  {
+    const { data: activeRow, error: activeError } = await admin
+      .from("experts")
+      .select("is_active")
+      .eq("id", profile.expert_id)
+      .maybeSingle();
+    if (!activeError && activeRow && activeRow.is_active === false) return null;
+  }
+
   let portfolio: PortfolioItem[] = [];
   if (visible.portfolio) {
     const { data: items } = await admin

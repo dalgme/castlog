@@ -75,9 +75,11 @@ export function ExpertActiveToggle({
             <DialogHeader>
               <DialogTitle>{expertName} 님 이용 중지</DialogTitle>
               <DialogDescription>
-                공개 풀·탐색·신규 연결에서 빠지고 포털 로그인이 차단됩니다.
-                이미 진행 중인 섭외·이력·지급 기록은 그대로 남습니다. 중지
-                사실과 문의 안내가 본인에게 통지됩니다.
+                공개 풀·탐색·신규 연결·공개 프로필에서 빠지고 포털 로그인이
+                차단됩니다. 진행 중 섭외의 <b>포털 서명도 불가</b>해집니다 —
+                이미 합의된 건은 담당자가 &lsquo;수동 완료&rsquo;로 처리하세요.
+                기록(이력·지급)은 그대로 남고, 중지 사실과 문의 안내가 본인에게
+                통지됩니다.
               </DialogDescription>
             </DialogHeader>
             <Textarea

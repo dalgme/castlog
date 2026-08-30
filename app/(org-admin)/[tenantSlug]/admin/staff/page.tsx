@@ -17,8 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { roleFromUser } from "@/lib/auth/tenant";
-import { GRADE_LABELS, gradeLabel, isUserGrade, type UserGrade } from "@/lib/auth/grades";
+import { roleFromUser, gradeFromUser } from "@/lib/auth/tenant";
+import { GRADE_LABELS, gradeLabel, isUserGrade, type UserGrade, canViewAllProjects } from "@/lib/auth/grades";
 import { EXEC_FEATURES, type ExecFeature } from "@/lib/auth/exec-permissions";
 import { isAdminScope } from "@/lib/auth/admin-scope-keys";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
@@ -212,6 +212,10 @@ export default async function StaffSettingsPage({
   const activeCount = staffRows.filter((s) => s.is_active).length;
   const inactiveCount = staffRows.length - activeCount;
 
+  // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
+  const archiveGrade = gradeFromUser(gateUser);
+  const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
@@ -224,6 +228,7 @@ export default async function StaffSettingsPage({
         showSms={isCeo || scopeSet.sending}
         showOrg={isCeo || Object.values(scopeSet).some(Boolean)}
         showRules={modules.approvals && (isCeo || scopeSet.approvals)}
+        showArchive={showArchiveTab}
       />
       <main className="space-y-5 p-5">
         {/* 요약 — 지금 몇 명이고 무엇이 밀려 있는지가 첫 줄이어야 한다 */}

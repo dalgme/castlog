@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth/session";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { roleFromUser, gradeFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { getTenantModules } from "@/lib/modules/server";
 
+import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
 import { SmsConnectionPanel } from "./sms-connection-panel";
@@ -144,6 +145,10 @@ export default async function SettingsPage({
   // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
   const modules = await getTenantModules();
 
+  // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
+  const archiveGrade = gradeFromUser(gateUser);
+  const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
+
   return (
     <div>
       <PageHeader title="설정" />
@@ -153,6 +158,7 @@ export default async function SettingsPage({
         showSms={canManageSending}
         showOrg={canRequestModules}
         showRules={modules.approvals && canManageRules}
+        showArchive={showArchiveTab}
       />
       {/* 기업관리·전결규정 탭과 같은 폭을 쓴다 — 탭을 옮길 때마다 본문 폭이
           달라지면 같은 화면이 아닌 것처럼 읽힌다 */}

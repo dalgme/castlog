@@ -11,6 +11,7 @@ import {
   isAssignmentRole,
   isPlRole,
   isPmRole,
+  type AssignmentRole,
 } from "@/lib/integrations/assignment-roles";
 import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import {
@@ -53,6 +54,7 @@ import { AttachmentPanel } from "./attachment-panel";
 import { StepStatusButtons } from "./step-status-buttons";
 import { type ExpertReviewTarget } from "./expert-review-form";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { BasicInfoDialog } from "./basic-info-dialog";
 import {
   ActionRequestPanel,
   type ActionRequestRow,
@@ -264,8 +266,10 @@ export default async function ProjectDetailPage({
   }));
   // 레벨 1~3 — 예산·마감·스텝 등 결정 성격의 도구
   const canManage = role === "org_admin" || role === "manager";
-  // Phase A-1: 배정 패널용 — 배정은 전사 열람 권한자(대표·이사)가 한다 (§3-1)
-  const canAssign = canViewAllProjects(grade);
+  // 배정 계단 (기획 확정 2026-08-30): 대표·이사 → PL 이하 전부,
+  // PL(겸임) → PM 이하, PM(겸임) → 부PM 이하, 부PM → 담당.
+  // 서버(assignment-actions)·RLS(can_assign_project_role)와 같은 표 —
+  // assignableRoles(아래)가 그 판정이다.
   // 세션·코드넘버·후보 입력 (실무 입력선 — 기본 레벨 5, 회사 조정 반영)
   const canInput = exec.planInput;
 
@@ -343,6 +347,17 @@ export default async function ProjectDetailPage({
   // 부PM 실행 → PM 승인 관계 (공통 기반 — approvals 모듈과 무관)
   const myAssignmentRole =
     assignedMembers.find((m) => m.userId === user?.id)?.assignmentRole ?? null;
+
+  // 배정 계단 — 내가 지정할 수 있는 역할 (서버·RLS와 동일 표)
+  const assignableRoles: AssignmentRole[] = canViewAllProjects(grade)
+    ? ["pl", "pl_pm", "pm", "deputy_pm", "member"]
+    : myAssignmentRole === "pl" || myAssignmentRole === "pl_pm"
+      ? ["pm", "deputy_pm", "member"]
+      : myAssignmentRole === "pm"
+        ? ["deputy_pm", "member"]
+        : myAssignmentRole === "deputy_pm"
+          ? ["member"]
+          : [];
   const { data: actionRequestRecords } = await supabase
     .from("project_action_requests")
     .select(
@@ -748,7 +763,7 @@ export default async function ProjectDetailPage({
             modules={{ experts: modules.experts, approvals: modules.approvals }}
           />
         )}
-        {tab === "basic" && canAssign && (
+        {tab === "basic" && assignableRoles.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">담당자 배정</CardTitle>
@@ -758,6 +773,7 @@ export default async function ProjectDetailPage({
                 projectId={project.id}
                 staff={staffForAssign}
                 assigned={assignedMembers}
+                allowedRoles={assignableRoles}
               />
             </CardContent>
           </Card>
@@ -843,6 +859,25 @@ export default async function ProjectDetailPage({
               <span className="ml-auto text-muted-foreground">
                 진행 {done}/{stepRows.length}
               </span>
+            )}
+            {tab === "basic" && canViewAllProjects(grade) && (
+              <BasicInfoDialog
+                tenantSlug={params.tenantSlug}
+                projectId={project.id}
+                initial={{
+                  name: project.name,
+                  businessYear: String(project.business_year),
+                  clientName: project.client_name ?? "",
+                  code: project.code ?? "",
+                  startsOn: project.starts_on ?? "",
+                  endsOn: project.ends_on ?? "",
+                  budgetAmount:
+                    project.budget_amount !== null
+                      ? String(project.budget_amount)
+                      : "",
+                  description: project.description ?? "",
+                }}
+              />
             )}
           </CardContent>
         </Card>

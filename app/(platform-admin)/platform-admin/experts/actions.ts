@@ -114,7 +114,7 @@ export async function setExpertActive(input: {
   }
 
   // 전역 행위 — tenant_id 없이 기록한다 (audit_logs.tenant_id nullable 설계)
-  await admin.from("audit_logs").insert({
+  const { error: auditError } = await admin.from("audit_logs").insert({
     tenant_id: null,
     actor_auth_user_id: gate.userId,
     actor_role: "platform_admin",
@@ -123,6 +123,9 @@ export async function setExpertActive(input: {
     resource_id: expertId,
     after_data: { note },
   });
+  if (auditError) {
+    console.warn("[expert-active] audit insert failed:", auditError.code);
+  }
 
   // 본인 통지 (best-effort) — 당사자가 모르는 상태 변화를 만들지 않는다
   await notifyExpert({

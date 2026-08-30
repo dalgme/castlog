@@ -33,3 +33,30 @@ create index if not exists experts_inactive_idx
 
 comment on column public.experts.is_active is
   '플랫폼 이용 상태 — false면 공개 풀·탐색·신규 연결·포털 로그인에서 제외 (기존 이력은 유지)';
+
+-- ---- 본인 되돌리기 차단 ------------------------------------------------------
+-- experts_update_self(RLS)는 컬럼을 제한하지 않으므로, 유효 토큰을 가진
+-- 전문가가 PostgREST 직접 호출로 자기 is_active를 되돌릴 수 있다.
+-- 이 플래그는 플랫폼 운영 전용이다 — 세션(auth.uid() 있음) 갱신에서는
+-- 변경을 거부하고, service_role(관리모드 액션)만 바꿀 수 있게 한다.
+create or replace function app.protect_expert_active_flag()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if auth.uid() is not null and (
+    new.is_active is distinct from old.is_active
+    or new.deactivated_at is distinct from old.deactivated_at
+    or new.deactivation_note is distinct from old.deactivation_note
+  ) then
+    raise exception '이용 상태는 캐스트로그 관리모드에서만 변경할 수 있습니다';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists experts_protect_active_flag on public.experts;
+create trigger experts_protect_active_flag
+  before update on public.experts
+  for each row execute function app.protect_expert_active_flag();

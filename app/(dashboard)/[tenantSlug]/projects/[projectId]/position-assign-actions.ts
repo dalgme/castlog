@@ -71,6 +71,25 @@ async function ensureExpertLink(
   // 판정은 자사 링크 실상태 기준 — 세션 RLS에 기대지 않고 admin으로
   // tenant_id를 명시해 읽는다 (담당자 본인이 전문가이기도 한 경우의 오판 방지).
   const admin = createAdminClient();
+
+  // 이용 중지 전문가는 기존 링크 유무와 무관하게 신규 배정을 거부한다 —
+  // 링크가 이미 있으면 아래 조기 통과로 우회되던 구멍 (리뷰 3).
+  // 조회 실패(컬럼 미적용 환경)는 통과 — 부재 폴백 (§14-10)
+  {
+    const { data: activeCheck, error: activeError } = await admin
+      .from("experts")
+      .select("is_active")
+      .eq("id", expertId)
+      .maybeSingle();
+    if (!activeError && activeCheck && activeCheck.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "플랫폼에서 이용이 중지된 전문가입니다 (규칙). 다른 후보를 선택해 주세요.",
+      };
+    }
+  }
+
   const { data: links, error: readError } = await admin
     .from("expert_tenant_links")
     .select("id, status")

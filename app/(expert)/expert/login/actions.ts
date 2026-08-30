@@ -50,13 +50,27 @@ export async function requestExpertOtp(
   // 첫 로그인에서 계정을 만들어야 한다 — 그 외에는 종전대로 기존 계정만.
   // 등록 여부 확인은 전역 판정이라 admin 클라이언트를 쓴다.
   let allowCreate = false;
-  try {
-    const { data: existingExpert } = await createAdminClient()
+  {
+    const admin = createAdminClient();
+    const first = await admin
       .from("experts")
       .select("id, auth_user_id, is_active")
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 실계정 대상이 아니다
       .maybeSingle();
+    // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경에서 조회 오류가
+    // "등록되지 않은 번호" 오귀책 거부가 되지 않게 — 필터 없는 조회로 재시도
+    let existingExpert: { id: string; auth_user_id: string | null; is_active?: boolean } | null =
+      first.data;
+    if (first.error) {
+      const legacy = await admin
+        .from("experts")
+        .select("id, auth_user_id")
+        .eq("phone", phone)
+        .eq("is_practice", false)
+        .maybeSingle();
+      existingExpert = legacy.data;
+    }
     // 이용 중지된 전문가는 인증번호 발송 전에 막는다 — ban(계정 차단)은
     // 계정이 연결된 경우에만 작동하므로 이 판정이 유일한 공통 차단선이다.
     // (규칙 거부임을 명시 — §12-9)
@@ -68,8 +82,6 @@ export async function requestExpertOtp(
       };
     }
     allowCreate = Boolean(existingExpert && !existingExpert.auth_user_id);
-  } catch {
-    // 판정 실패 시 기존 동작(생성 불가) 유지
   }
 
   const supabase = createClient();
@@ -136,7 +148,8 @@ export async function verifyExpertOtp(
   // 소유 증명이다. auth_user_id가 비어 있는 행만 잇는다 (탈취 불가 가드).
   try {
     const admin = createAdminClient();
-    const { data: unclaimed } = await admin
+    // eslint-disable-next-line prefer-const
+    let { data: unclaimed, error: unclaimedError } = await admin
       .from("experts")
       .select("id")
       .eq("phone", phone)
@@ -144,6 +157,17 @@ export async function verifyExpertOtp(
       .eq("is_active", true) // 이용 중지 건은 이어받기도 막는다 (관리모드 중지)
       .is("auth_user_id", null)
       .maybeSingle();
+    // 부재 폴백 (§14-10): 컬럼 미적용 환경에서는 중지 건 자체가 없다 —
+    // 필터 없이 재시도해 이어받기가 조용히 생략되지 않게 한다
+    if (unclaimedError) {
+      ({ data: unclaimed } = await admin
+        .from("experts")
+        .select("id")
+        .eq("phone", phone)
+        .eq("is_practice", false)
+        .is("auth_user_id", null)
+        .maybeSingle());
+    }
     if (unclaimed) {
       await admin
         .from("experts")

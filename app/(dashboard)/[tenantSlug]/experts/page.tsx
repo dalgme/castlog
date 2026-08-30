@@ -155,7 +155,7 @@ export default async function TenantExpertsPage({
   // 컬럼만** 명시해 가져온다. 연락처는 여기서 아예 가져오지 않는다 — 연결된
   // 전문가의 연락처만 아래 links(세션·RLS) 경유로 얻는다.
   const [
-    { data: poolRows },
+    poolResult,
     { data: linkRows },
     { data: invitations },
     { data: recruitFields },
@@ -196,6 +196,18 @@ export default async function TenantExpertsPage({
       .order("name", { ascending: true }),
     admin.from("expert_expertise_fields").select("expert_id, field_id"),
   ]);
+
+  // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경에서 필터 오류로
+  // 풀 목록이 통째로 비지 않게 — 실패 시 필터 없이 1회 재시도한다
+  let poolRows = poolResult.data;
+  if (poolResult.error) {
+    ({ data: poolRows } = await admin
+      .from("experts")
+      .select("id, name, phone, email, specialty, region, career_years, created_at")
+      .eq("is_practice", practice)
+      .order("created_at", { ascending: false })
+      .limit(POOL_FETCH_LIMIT));
+  }
 
   // 자사 연결 상태 (RLS 범위 — 관계기업 판정)
   const linkByExpert = new Map<string, { status: string }>();
