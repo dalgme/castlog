@@ -80,14 +80,30 @@ export async function requestEngagementForPosition(input: {
     return { ok: false, error: "이미 섭외가 진행 중이거나 확정된 인원입니다." };
   }
 
-  const { data: slot } = await supabase
+  // period_end_date(컨설팅 수행 종료일 — 34번)는 42703 한정 폴백 (§14-10)
+  let slotEndsOn: string | null = null;
+  const slotResult = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
+  let slot = slotResult.data;
+  if (slotResult.error?.code === "42703") {
+    const { data: legacySlot } = await supabase
+      .from("engagement_slots")
+      .select(
+        "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
+      )
+      .eq("id", position.slot_id)
+      .maybeSingle();
+    slot = legacySlot ? { ...legacySlot, period_end_date: null } : null;
+  }
   if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
+  // 컨설팅 세션은 수행기간(시작~종료)이 계약 기간이다 (리뷰 P2-1) —
+  // 섭외요청·수락서·전문가 화면·일정충돌 판정 전부 이 기간을 쓴다
+  slotEndsOn = slot.period_end_date ?? slot.slot_date;
 
   // 섭외계획 품의 게이트 (approvals 모듈 활성 테넌트만)
   const modules = await getTenantModules();
@@ -160,7 +176,7 @@ export async function requestEngagementForPosition(input: {
       message: input.message?.trim() || null,
       fee_amount: slot.fee_amount,
       starts_on: slot.slot_date,
-      ends_on: slot.slot_date,
+      ends_on: slotEndsOn,
       starts_time: slot.starts_time,
       ends_time: slot.ends_time,
       location_name: slot.location_name,
@@ -236,7 +252,7 @@ export async function requestEngagementForPosition(input: {
       input.programName?.trim() || null,
       formatEventSchedule(
         slot.slot_date,
-        slot.slot_date,
+        slotEndsOn,
         slot.starts_time,
         slot.ends_time
       ),
@@ -258,7 +274,7 @@ export async function requestEngagementForPosition(input: {
   // 업무연락 메일 — 동의 링크 전달
   const schedule = formatEventSchedule(
     slot.slot_date,
-    slot.slot_date,
+    slotEndsOn,
     slot.starts_time,
     slot.ends_time
   );

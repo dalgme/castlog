@@ -160,8 +160,15 @@ async function buildMenteeSection(slotIds: string[]): Promise<string> {
       .select("id, session_name")
       .in("id", slotIds),
   ]);
-  // 테이블 미적용(42P01) 등 — 멘티 동봉 실패가 상신을 막지 않는다
-  if (error || !mentees || mentees.length === 0) return "";
+  // 테이블 미적용(42P01)만 조용히 넘긴다 — 다른 오류는 흔적을 남긴다
+  // (리뷰 P3-5). 어느 쪽이든 멘티 동봉 실패가 상신을 막지는 않는다.
+  if (error) {
+    if (error.code !== "42P01") {
+      console.error("mentee section query failed:", error.message);
+    }
+    return "";
+  }
+  if (!mentees || mentees.length === 0) return "";
   const nameBySlot = new Map((slots ?? []).map((sl) => [sl.id, sl.session_name]));
   const lines: string[] = ["", "멘티 정보:"];
   for (const m of mentees) {

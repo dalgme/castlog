@@ -112,13 +112,28 @@ export async function updateProjectBasicInfo(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: before } = await supabase
+  // 신규 컬럼 42703 한정 폴백 (§14-10 — 리뷰 P2-3: 미적용 환경에서
+  // '프로젝트 없음'으로 오분류되면 안 된다)
+  const beforeResult = await supabase
     .from("projects")
     .select(
       "name, business_year, client_name, code, starts_on, ends_on, budget_amount, host_org, executor_org, dday_date"
     )
     .eq("id", projectId)
     .maybeSingle();
+  let before = beforeResult.data;
+  if (beforeResult.error?.code === "42703") {
+    const { data: legacyBefore } = await supabase
+      .from("projects")
+      .select(
+        "name, business_year, client_name, code, starts_on, ends_on, budget_amount"
+      )
+      .eq("id", projectId)
+      .maybeSingle();
+    before = legacyBefore
+      ? { ...legacyBefore, host_org: null, executor_org: null, dday_date: null }
+      : null;
+  }
   if (!before) {
     return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
   }

@@ -42,9 +42,14 @@ create table if not exists public.tenant_session_fields (
   name text not null,
   is_active boolean not null default true,
   created_by uuid references public.users (id) on delete set null,
-  created_at timestamptz not null default now(),
-  unique (tenant_id, name)
+  created_at timestamptz not null default now()
 );
+
+-- 활성 행에만 유일성 — 비활성화된 이름은 재등록할 수 있어야 한다
+-- (리뷰 P2-2: 전체 유니크면 비활성 동명 행이 영구 막다른 길이 된다)
+create unique index if not exists tenant_session_fields_active_name_uidx
+  on public.tenant_session_fields (tenant_id, name)
+  where is_active;
 
 alter table public.tenant_session_fields enable row level security;
 
@@ -128,6 +133,14 @@ create policy slot_mentees_write on public.slot_mentees
   with check (
     tenant_id = app.tenant_id()
     and app.can_exec('planInput')
+    -- INSERT는 with check만 적용된다 — 열람 범위 밖 슬롯으로의 삽입을 막는다
+    -- (리뷰 P3-1: using과 동일한 가시성 상속)
+    and exists (
+      select 1
+      from public.engagement_slots sl
+      join public.projects p on p.id = sl.project_id
+      where sl.id = slot_id
+    )
   );
 
 drop policy if exists slot_mentees_practice on public.slot_mentees;

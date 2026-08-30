@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireAdminScope } from "@/lib/auth/admin-scopes";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { explainActionError } from "@/lib/ux/action-errors";
 
 /**
  * 세션 분야 마스터 (기획 확정 2026-08-30 — 35번).
@@ -42,7 +43,10 @@ export async function addSessionField(name: string): Promise<FieldResult> {
     if (error.code === "23505") {
       return { ok: false, error: `'${trimmed}' 분야는 이미 등록되어 있습니다.` };
     }
-    return { ok: false, error: "분야 추가에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "분야 추가에 실패했습니다."),
+    };
   }
 
   await supabase.from("audit_logs").insert({

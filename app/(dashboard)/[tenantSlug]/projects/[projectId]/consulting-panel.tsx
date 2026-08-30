@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, UserSearch, Users } from "lucide-react";
+import { Pencil, Plus, Trash2, UserSearch, Users } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-import { createConsultingSlot } from "./slot-actions";
+import {
+  createConsultingSlot,
+  deleteSlot,
+  updateConsultingSlot,
+} from "./slot-actions";
 import { addSlotMentee, removeSlotMentee } from "./mentee-actions";
 
 export type ConsultingSession = {
@@ -76,6 +80,9 @@ export function ConsultingPanel({
   // 멘티 입력 폼 — 세션별로 하나만 연다
   const [menteeSlot, setMenteeSlot] = useState<string | null>(null);
   const [mentee, setMentee] = useState(EMPTY_MENTEE);
+  // 세션 수정 (리뷰 P3-2 — 삭제·재생성만 가능하던 막다른 길 해소)
+  const [editingSlot, setEditingSlot] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({ startsOn: "", endsOn: "", fieldId: "" });
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -240,16 +247,131 @@ export function ConsultingPanel({
                 <span className="text-xs text-muted-foreground">
                   · 후보 TO {s.candidateCount}
                 </span>
-                {expertsEnabled && (
-                  <Link
-                    href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
-                    className="ml-auto inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                  >
-                    <UserSearch className="h-3 w-3" aria-hidden />
-                    섭외계획
-                  </Link>
-                )}
+                <span className="ml-auto flex items-center gap-1">
+                  {canManage && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="컨설팅 세션 수정"
+                        title="수행기간·분야 수정"
+                        disabled={pending}
+                        onClick={() => {
+                          setEditingSlot(editingSlot === s.id ? null : s.id);
+                          setEditDraft({
+                            startsOn: s.startsOn,
+                            endsOn: s.endsOn ?? "",
+                            fieldId:
+                              fieldOptions.find((f) => f.name === s.fieldName)
+                                ?.id ?? "",
+                          });
+                        }}
+                        className="rounded p-1 text-muted-foreground hover:text-brand"
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="컨설팅 세션 삭제"
+                        title="섭외 요청이 나간 세션은 삭제되지 않습니다"
+                        disabled={pending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "이 컨설팅 세션을 삭제할까요? 코드넘버(TO)·멘티 정보도 함께 사라집니다."
+                            )
+                          ) {
+                            run(() => deleteSlot(s.id));
+                          }
+                        }}
+                        className="rounded p-1 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </>
+                  )}
+                  {expertsEnabled && (
+                    <Link
+                      href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
+                      className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                    >
+                      <UserSearch className="h-3 w-3" aria-hidden />
+                      섭외계획
+                    </Link>
+                  )}
+                </span>
               </div>
+
+              {editingSlot === s.id && canManage && (
+                <div className="mt-2 flex flex-wrap items-end gap-2 rounded-md border border-brand/40 bg-background p-2">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground">수행 시작</label>
+                    <Input
+                      type="date"
+                      value={editDraft.startsOn}
+                      onChange={(e) =>
+                        setEditDraft((p) => ({ ...p, startsOn: e.target.value }))
+                      }
+                      className="h-7 w-34 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground">수행 종료</label>
+                    <Input
+                      type="date"
+                      value={editDraft.endsOn}
+                      onChange={(e) =>
+                        setEditDraft((p) => ({ ...p, endsOn: e.target.value }))
+                      }
+                      className="h-7 w-34 text-xs"
+                    />
+                  </div>
+                  <select
+                    value={editDraft.fieldId}
+                    onChange={(e) =>
+                      setEditDraft((p) => ({ ...p, fieldId: e.target.value }))
+                    }
+                    className="h-7 w-36 rounded-md border bg-background px-1.5 text-xs"
+                    aria-label="분야"
+                  >
+                    <option value="">분야 선택</option>
+                    {fieldOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={pending}
+                    onClick={() => {
+                      if (!editDraft.startsOn || !editDraft.endsOn || !editDraft.fieldId) {
+                        toast({
+                          variant: "destructive",
+                          description: "수행기간과 분야를 모두 선택하세요.",
+                        });
+                        return;
+                      }
+                      run(async () => {
+                        const res = await updateConsultingSlot(s.id, editDraft);
+                        if (res.ok) setEditingSlot(null);
+                        return res;
+                      });
+                    }}
+                  >
+                    저장
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={pending}
+                    onClick={() => setEditingSlot(null)}
+                  >
+                    취소
+                  </Button>
+                </div>
+              )}
 
               {/* 멘티 정보 — 세션 작성 후 기입 (품의에 동봉) */}
               <div className="mt-2 rounded-md bg-secondary/30 p-2">

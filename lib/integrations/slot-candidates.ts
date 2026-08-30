@@ -72,6 +72,8 @@ export type SlotCandidate = {
 export type SlotContext = {
   positionId: string;
   slotId: string;
+  /** 컨설팅 수행 종료일 (34번) — 행사 세션은 null */
+  periodEndDate: string | null;
   code: string;
   status: string;
   slotDate: string;
@@ -120,13 +122,25 @@ export async function getPositionContext(
     .maybeSingle();
   if (!position) return null;
 
-  const { data: slot } = await supabase
+  // period_end_date는 42703 한정 폴백 (§14-10 — 마이그레이션 전 환경)
+  const slotResult = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
+  let slot = slotResult.data;
+  if (slotResult.error?.code === "42703") {
+    const { data: legacySlot } = await supabase
+      .from("engagement_slots")
+      .select(
+        "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address"
+      )
+      .eq("id", position.slot_id)
+      .maybeSingle();
+    slot = legacySlot ? { ...legacySlot, period_end_date: null } : null;
+  }
   if (!slot) return null;
 
   const { data: project } = await supabase
@@ -139,6 +153,7 @@ export async function getPositionContext(
   return {
     positionId: position.id,
     slotId: slot.id,
+    periodEndDate: slot.period_end_date ?? null,
     code: position.code,
     status: position.status,
     slotDate: slot.slot_date,
@@ -187,7 +202,11 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
   if (candidates.length === 0) return [];
 
   const ids = candidates.map((c) => c.id);
-  const [from, to] = slotWindow(ctx.slotDate, ctx.startsTime, ctx.endsTime);
+  const [from, toSameDay] = slotWindow(ctx.slotDate, ctx.startsTime, ctx.endsTime);
+  // 컨설팅 세션은 수행기간(시작~종료) 전체가 충돌 창이다 (리뷰 P2-1)
+  const to = ctx.periodEndDate
+    ? new Date(`${ctx.periodEndDate}T23:59:00`).getTime()
+    : toSameDay;
 
   const admin = createAdminClient();
   const [{ data: engagements }, { data: externals }] = await Promise.all([
@@ -337,6 +356,9 @@ export async function getSlotCandidates(ctx: SlotContext): Promise<SlotCandidate
     const slot = assignedSlotById.get(a.slot_id);
     const expertId = a.assigned_expert_id;
     if (!slot || !expertId) continue;
+    // 배정 슬롯의 period_end_date는 이 조회에 없다(레거시 호환) — 시작일
+    // 기준 판정 유지. 컨설팅 대상 세션의 창(from~to)은 위에서 이미 기간
+    // 전체로 넓혔다 (리뷰 P2-1 부분 반영).
     if (!overlapsDay(from, to, slot.slot_date, slot.slot_date)) continue;
     ensure(expertId).own.push({
       kind: "assigned",

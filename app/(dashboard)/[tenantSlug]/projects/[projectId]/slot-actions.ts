@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 
@@ -292,7 +293,12 @@ export async function createConsultingSlot(
     .select("id")
     .single();
   if (error || !slot) {
-    return { ok: false, error: "컨설팅 세션 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      error: error
+        ? await explainActionError(error.message, "컨설팅 세션 생성에 실패했습니다.")
+        : "컨설팅 세션 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
   }
 
   const positionError = await createPositions(
@@ -307,6 +313,69 @@ export async function createConsultingSlot(
   if (positionError) {
     await supabase.from("engagement_slots").delete().eq("id", slot.id);
     return { ok: false, error: positionError };
+  }
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+const consultingUpdateSchema = z
+  .object({
+    startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "수행 시작일을 입력하세요."),
+    endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "수행 종료일을 입력하세요."),
+    fieldId: z.string().uuid("분야를 선택하세요."),
+  })
+  .refine((v) => v.startsOn <= v.endsOn, {
+    message: "수행 종료일은 시작일 이후여야 합니다.",
+    path: ["endsOn"],
+  });
+
+/**
+ * 컨설팅 세션 수정 (리뷰 P3-2 — 만든 뒤 기간·분야를 고칠 수 없던 막다른 길).
+ * 필요인원은 adjustSlotCount, 삭제는 deleteSlot을 그대로 쓴다.
+ */
+export async function updateConsultingSlot(
+  slotId: string,
+  input: z.input<typeof consultingUpdateSchema>
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const parsed = consultingUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+  const d = parsed.data;
+
+  const supabase = createClient();
+  const { data: field } = await supabase
+    .from("tenant_session_fields")
+    .select("id, name")
+    .eq("id", d.fieldId)
+    .maybeSingle();
+  if (!field) {
+    return { ok: false, error: "선택한 분야를 찾을 수 없습니다." };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("engagement_slots")
+    .update({
+      slot_date: d.startsOn,
+      period_end_date: d.endsOn,
+      field_id: field.id,
+      session_name: `컨설팅 · ${field.name}`,
+    })
+    .eq("id", slotId)
+    .select("id")
+    .maybeSingle();
+  if (error || !updated) {
+    return {
+      ok: false,
+      error: error
+        ? await explainActionError(error.message, "컨설팅 세션 수정에 실패했습니다.")
+        : "세션을 찾을 수 없거나 수정 권한이 없습니다 (권한 규칙).",
+    };
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

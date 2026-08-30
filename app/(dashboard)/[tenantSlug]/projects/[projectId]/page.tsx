@@ -151,13 +151,34 @@ export default async function ProjectDetailPage({
 
   const supabase = createClient();
 
-  const { data: project } = await supabase
+  // 신규 컬럼(주관·수행기관·D-Day·유형)은 42703 한정 폴백 (§14-10) —
+  // 마이그레이션 전 환경에서 상세 전체가 404로 죽으면 안 된다 (리뷰 P2-3)
+  const projectResult = await supabase
     .from("projects")
     .select(
       "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, host_org, executor_org, dday_date, project_kind"
     )
     .eq("id", params.projectId)
     .maybeSingle();
+  let project = projectResult.data;
+  if (projectResult.error?.code === "42703") {
+    const { data: legacyProject } = await supabase
+      .from("projects")
+      .select(
+        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
+      )
+      .eq("id", params.projectId)
+      .maybeSingle();
+    project = legacyProject
+      ? {
+          ...legacyProject,
+          host_org: null,
+          executor_org: null,
+          dday_date: null,
+          project_kind: "event",
+        }
+      : null;
+  }
 
   if (!project) notFound();
 

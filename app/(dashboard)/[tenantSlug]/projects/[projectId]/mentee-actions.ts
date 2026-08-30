@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { isPracticeMode } from "@/lib/practice/server";
+import { explainActionError } from "@/lib/ux/action-errors";
 
 /**
  * 컨설팅 세션 멘티 정보 (기획 확정 2026-08-30 — 34번).
@@ -38,6 +39,15 @@ export async function addSlotMentee(input: MenteeInput): Promise<MenteeResult> {
   const d = parsed.data;
 
   const supabase = createClient();
+  // 슬롯 가시성 확인 — 열람 범위 밖 슬롯으로의 삽입 차단 (리뷰 P3-1, RLS와 동일)
+  const { data: slot } = await supabase
+    .from("engagement_slots")
+    .select("id")
+    .eq("id", d.slotId)
+    .maybeSingle();
+  if (!slot) {
+    return { ok: false, error: "세션을 찾을 수 없거나 접근 권한이 없습니다 (권한 규칙)." };
+  }
   const { count } = await supabase
     .from("slot_mentees")
     .select("id", { count: "exact", head: true })
@@ -56,7 +66,10 @@ export async function addSlotMentee(input: MenteeInput): Promise<MenteeResult> {
     created_by: auth.userId,
   });
   if (error) {
-    return { ok: false, error: "멘티 등록에 실패했습니다 (시스템 오류·권한). 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "멘티 등록에 실패했습니다."),
+    };
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
