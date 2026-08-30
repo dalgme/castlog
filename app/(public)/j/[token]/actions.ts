@@ -57,6 +57,24 @@ export async function requestJoinOtp(
     };
   }
 
+  // 이용 중지 전문가는 등록 링크로도 들어올 수 없다 — 로그인 차단(is_active)의
+  // 유일한 우회로가 /j였다 (관리모드 중지, 리뷰 1)
+  {
+    const { data: existing } = await createAdminClient()
+      .from("experts")
+      .select("id, is_active")
+      .eq("phone", phone)
+      .eq("is_practice", false)
+      .maybeSingle();
+    if (existing && existing.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "이 번호의 계정은 이용이 중지된 상태입니다 (플랫폼 운영 기준). 문의는 캐스트로그로 연락해 주세요.",
+      };
+    }
+  }
+
   // 이 인증이 어느 회사의 등록 링크에서 시작됐는지 기록한다 — 인증 훅
   // (send-sms-hook)이 이 행을 보고 그 회사의 BYO 솔라피 계정·발신번호로
   // 인증번호를 발송한다. 기록이 실패해도 발송을 막지 않는다(플랫폼 계정 폴백).
@@ -199,23 +217,40 @@ export async function completeExpertRegistration(
   // 1) 전문가 계정 — 휴대폰 기준 1인 1계정 (기존 계정이 있으면 연결만)
   const { data: existingExpert } = await admin
     .from("experts")
-    .select("id, auth_user_id")
+    .select("id, auth_user_id, is_active")
     .eq("phone", phone)
     .maybeSingle();
 
   let expertId: string;
 
   if (existingExpert) {
+    // 이용 중지 건은 연결(claim)도 막는다 (관리모드 중지 — 리뷰 1)
+    if (existingExpert.is_active === false) {
+      return {
+        error:
+          "이 번호의 계정은 이용이 중지된 상태입니다 (플랫폼 운영 기준). 문의는 캐스트로그로 연락해 주세요.",
+      };
+    }
     if (existingExpert.auth_user_id && existingExpert.auth_user_id !== user.id) {
       return { error: "이미 다른 계정에 연결된 휴대폰 번호입니다. 고객센터에 문의하세요." };
     }
     expertId = existingExpert.id;
     if (!existingExpert.auth_user_id) {
-      const { error: claimError } = await admin
+      let { error: claimError } = await admin
         .from("experts")
         .update({ auth_user_id: user.id })
         .eq("id", expertId)
+        .eq("is_active", true)
         .is("auth_user_id", null);
+      // 부재 폴백 (§14-10): is_active 컬럼 미적용 환경(42703)에서만 필터 없이
+      // 재시도 — 그때는 중지 건 자체가 없다 (리뷰 13, 로그인 경로와 동일 기준)
+      if (claimError?.code === "42703") {
+        ({ error: claimError } = await admin
+          .from("experts")
+          .update({ auth_user_id: user.id })
+          .eq("id", expertId)
+          .is("auth_user_id", null));
+      }
       if (claimError) {
         return { error: "계정 연결에 실패했습니다. 다시 시도해 주세요." };
       }

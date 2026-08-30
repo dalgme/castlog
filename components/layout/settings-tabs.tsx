@@ -25,12 +25,15 @@ export function SettingsTabs({
   showSms,
   showOrg,
   showRules,
+  showArchive,
 }: {
   tenantSlug: string;
   showStaff?: boolean;
   showSms: boolean;
   showOrg: boolean;
   showRules: boolean;
+  /** 프로젝트 보관 — 대표·이사(전사 열람)만 */
+  showArchive?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -67,6 +70,13 @@ export function SettingsTabs({
       label: "전결규정",
       href: `/${tenantSlug}/approvals/rules`,
       show: showRules,
+    },
+    {
+      // 종결 프로젝트 보관 체계 확인 — 대표·이사 전용 (기획 2026-08-30)
+      key: "archive",
+      label: "프로젝트 보관",
+      href: `/${tenantSlug}/settings/archive`,
+      show: Boolean(showArchive),
     },
   ].filter((t) => t.show);
 

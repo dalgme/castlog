@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { tenantIdFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { tenantIdFromUser, roleFromUser, gradeFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { MODULE_KEYS, MODULE_LABELS } from "@/lib/modules/modules";
@@ -24,6 +24,7 @@ import {
 } from "@/app/(dashboard)/[tenantSlug]/settings/module-request-panel";
 import { LiteModePanel } from "@/app/(dashboard)/[tenantSlug]/settings/lite-mode-panel";
 
+import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 import { PermissionLevelGuide } from "@/components/org/permission-level-guide";
 
@@ -222,6 +223,10 @@ export default async function OrgAdminPage({
     }));
   }
 
+  // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
+  const archiveGrade = gradeFromUser(gateUser);
+  const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
+
   return (
     <div className="min-h-screen bg-secondary/50">
       <PageHeader
@@ -257,6 +262,7 @@ export default async function OrgAdminPage({
         showSms={isCeo || scopeSet.sending}
         showOrg
         showRules={modules.approvals && (isCeo || scopeSet.approvals)}
+        showArchive={showArchiveTab}
       />
       <main className="space-y-5 p-5">
         {/* 처음 쓰는 회사용 — 직급/권한 레벨/프로젝트 역할 관계 안내 (기획 확정 2026-08-23) */}

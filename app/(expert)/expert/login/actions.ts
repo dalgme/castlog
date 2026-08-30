@@ -50,16 +50,38 @@ export async function requestExpertOtp(
   // 첫 로그인에서 계정을 만들어야 한다 — 그 외에는 종전대로 기존 계정만.
   // 등록 여부 확인은 전역 판정이라 admin 클라이언트를 쓴다.
   let allowCreate = false;
-  try {
-    const { data: existingExpert } = await createAdminClient()
+  {
+    const admin = createAdminClient();
+    const first = await admin
       .from("experts")
-      .select("id, auth_user_id")
+      .select("id, auth_user_id, is_active")
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 실계정 대상이 아니다
       .maybeSingle();
+    // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경(42703)에서만 —
+    // 일시 오류에까지 폴백하면 중지 차단이 무효화된다 (리뷰 12)
+    let existingExpert: { id: string; auth_user_id: string | null; is_active?: boolean } | null =
+      first.data;
+    if (first.error?.code === "42703") {
+      const legacy = await admin
+        .from("experts")
+        .select("id, auth_user_id")
+        .eq("phone", phone)
+        .eq("is_practice", false)
+        .maybeSingle();
+      existingExpert = legacy.data;
+    }
+    // 이용 중지된 전문가는 인증번호 발송 전에 막는다 — ban(계정 차단)은
+    // 계정이 연결된 경우에만 작동하므로 이 판정이 유일한 공통 차단선이다.
+    // (규칙 거부임을 명시 — §12-9)
+    if (existingExpert && existingExpert.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "이 번호의 계정은 이용이 중지된 상태입니다 (플랫폼 운영 기준). 문의는 캐스트로그로 연락해 주세요.",
+      };
+    }
     allowCreate = Boolean(existingExpert && !existingExpert.auth_user_id);
-  } catch {
-    // 판정 실패 시 기존 동작(생성 불가) 유지
   }
 
   const supabase = createClient();
@@ -126,13 +148,26 @@ export async function verifyExpertOtp(
   // 소유 증명이다. auth_user_id가 비어 있는 행만 잇는다 (탈취 불가 가드).
   try {
     const admin = createAdminClient();
-    const { data: unclaimed } = await admin
+    // eslint-disable-next-line prefer-const
+    let { data: unclaimed, error: unclaimedError } = await admin
       .from("experts")
       .select("id")
       .eq("phone", phone)
       .eq("is_practice", false) // 연습모드 가상 전문가는 이어받기 대상 제외
+      .eq("is_active", true) // 이용 중지 건은 이어받기도 막는다 (관리모드 중지)
       .is("auth_user_id", null)
       .maybeSingle();
+    // 부재 폴백 (§14-10): 컬럼 미적용 환경(42703)에서만 — 그때는 중지 건
+    // 자체가 없어 필터 없는 재시도가 안전하다 (리뷰 12)
+    if (unclaimedError?.code === "42703") {
+      ({ data: unclaimed } = await admin
+        .from("experts")
+        .select("id")
+        .eq("phone", phone)
+        .eq("is_practice", false)
+        .is("auth_user_id", null)
+        .maybeSingle());
+    }
     if (unclaimed) {
       await admin
         .from("experts")

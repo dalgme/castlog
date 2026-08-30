@@ -6,9 +6,18 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { explainActionError } from "@/lib/ux/action-errors";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import {
+  gradeFromUser,
+  practiceFromUser,
+  roleFromUser,
+  tenantIdFromUser,
+} from "@/lib/auth/tenant";
+import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
+import { getAssignmentRoleMinGrades } from "@/lib/auth/exec-policy";
+import { roleMinGradeError } from "@/lib/integrations/assignment-role-rules";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
@@ -80,6 +89,54 @@ export async function createProject(
     }
   }
 
+  // 중복 생성 가드 — 같은 이름·사업연도(또는 같은 코드)의 프로젝트가 이미
+  // 있으면 막는다. 생성 후 화면 전환이 지연될 때 '생성'을 거듭 눌러 같은
+  // 프로젝트가 여럿 생기던 실사용 결함 (렛츠 2026-08-30). 판정은 팀장의
+  // 열람 범위(배정분만) 밖까지 봐야 하므로 admin으로 자사 전체를 확인한다.
+  {
+    const admin = createAdminClient();
+    const practice = practiceFromUser(user);
+    const [{ data: sameName }, { data: sameCode }] = await Promise.all([
+      admin
+        .from("projects")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_practice", practice)
+        // 대소문자 차이 우회 방지(ilike). 취소 보관된 중복 정리 건과는
+        // 같은 이름 재사용을 허용한다 (리뷰 4·5)
+        .ilike("name", data.name)
+        .eq("business_year", parseInt(data.businessYear, 10))
+        .neq("status", "cancelled")
+        .limit(1),
+      data.code
+        ? admin
+            .from("projects")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_practice", practice)
+            .eq("code", data.code)
+            .neq("status", "cancelled")
+            .limit(1)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+    ]);
+    if ((sameName ?? []).length > 0) {
+      return {
+        ok: false,
+        error:
+          `같은 이름의 프로젝트가 ${data.businessYear}년에 이미 있습니다 (중복 생성 방지 규칙). ` +
+          "이미 만들어졌을 수 있으니 프로젝트 목록을 새로고침해 확인하고, 새 프로젝트라면 이름을 바꿔 주세요.",
+      };
+    }
+    if ((sameCode ?? []).length > 0) {
+      return {
+        ok: false,
+        error:
+          `같은 코드(${data.code})의 프로젝트가 이미 있습니다 (중복 생성 방지 규칙). ` +
+          "프로젝트 목록을 확인하거나 다른 코드를 사용해 주세요.",
+      };
+    }
+  }
+
   /**
    * id를 앱에서 생성하고 RETURNING(.select)을 쓰지 않는다.
    *
@@ -115,6 +172,40 @@ export async function createProject(
     };
   }
   const project = { id: projectId };
+
+  // 개설자 자동 PL 배정 (기획 확정 2026-08-30 — 배정 권한 계단화).
+  // 대표·이사 아래(팀장)가 개설하면 본인이 이 프로젝트의 PL이 된다 — 그래야
+  // 개설자가 PM 이하를 직접 지정해 일을 시작할 수 있다(계단: 대표·이사→PL,
+  // PL→PM 이하). 대표·이사는 전사 열람·배정 권한이 있어 PL 슬롯을 점유하지
+  // 않는다. PL 최소 레벨에 못 미치면(회사가 개설 문턱을 내린 경우) 건너뛴다.
+  {
+    const grade = gradeFromUser(user);
+    if (isUserGrade(grade) && !canViewAllProjects(grade)) {
+      const mins = await getAssignmentRoleMinGrades();
+      if (!roleMinGradeError("pl", grade, mins)) {
+        // 배정 RLS는 계단 판정(기존 배정 기준)이라 첫 배정은 통과할 수 없다 —
+        // 개설 게이트를 이미 통과한 서버 판단이므로 admin으로 심는다.
+        // 주의: admin 경로에는 JWT가 없어 역할 최소레벨 트리거가 회사 조정값
+        // 대신 기본값(PL=팀장)으로 판정한다 — 위 앱 검사와 어긋나면 아래
+        // 실패 분기로 떨어진다 (리뷰 3).
+        const { error: plError } = await createAdminClient()
+          .from("project_assignments")
+          .insert({
+            tenant_id: tenantId,
+            project_id: project.id,
+            user_id: user.id,
+            assignment_role: "pl",
+            assigned_by: user.id,
+          });
+        if (plError) {
+          // 실패를 삼키면 이 기획이 고치려던 막다른 길(팀 구성 불가)이
+          // 무증상으로 재현된다 (리뷰 2) — 프로젝트는 만들어졌으므로 성공을
+          // 유지하되, 로그를 남긴다. 화면에는 배정 패널이 없는 상태로 보인다.
+          console.warn("[project-create] auto PL assign failed:", plError.code);
+        }
+      }
+    }
+  }
 
   // 기본 21스텝 복사 — operations 모듈 활성 테넌트만 (구성 정보만, 실적 없음)
   if (modules.operations) {

@@ -313,15 +313,29 @@ export async function commitDirectImport(
           .upsert(junctions, { ignoreDuplicates: true });
       }
     } else {
-      // 기존 전문가 — 데이터는 건드리지 않고 관계만 추가한다
-      const { data: existing } = await admin
+      // 기존 전문가 — 데이터는 건드리지 않고 관계만 추가한다.
+      // 이용 중지 전문가에게는 신규 관계도 만들지 않는다 (관리모드 중지, 리뷰 4)
+      const { data: existing, error: existingError } = await admin
         .from("experts")
-        .select("id")
+        .select("id, is_active")
         .eq("phone", row.phoneE164)
         .maybeSingle();
-      if (!existing) continue;
-      expertId = existing.id;
-      linked += 1;
+      if (existingError?.code === "42703") {
+        // 부재 폴백 (§14-10) — 컬럼 미적용 환경에서만 (리뷰 12)
+        const { data: legacy } = await admin
+          .from("experts")
+          .select("id")
+          .eq("phone", row.phoneE164)
+          .maybeSingle();
+        if (!legacy) continue;
+        expertId = legacy.id;
+        linked += 1;
+      } else {
+        if (!existing) continue;
+        if (existing.is_active === false) continue;
+        expertId = existing.id;
+        linked += 1;
+      }
     }
 
     // 관계기업 — 자사 링크 (revoked였던 링크는 되살린다)

@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { getAssignmentRoleMinGrades } from "@/lib/auth/exec-policy";
 import { roleMinGradeError } from "@/lib/integrations/assignment-role-rules";
+import { recordActionDenial } from "@/lib/monitoring/action-denials";
 import {
   ASSIGNMENT_ROLE_LABELS,
   isAssignmentRole,
@@ -15,9 +17,25 @@ import {
 
 export type AssignResult = { ok: true } | { ok: false; error: string };
 
-const MANAGER_ROLES = ["org_admin", "manager"];
+/**
+ * 배정 계단 (기획 확정 2026-08-30) — DB app.can_assign_project_role과 동일 유지:
+ * 대표·이사 → PL 이하 전부 / PL(겸임) → PM 이하 / PM(겸임) → 부PM 이하 /
+ * 부PM → 담당. 역할 최소 레벨(트리거)은 별개로 계속 강제된다.
+ */
+const ASSIGN_CASCADE: Record<string, readonly AssignmentRole[]> = {
+  pl: ["pm", "deputy_pm", "member"],
+  pl_pm: ["pm", "deputy_pm", "member"],
+  pm: ["deputy_pm", "member"],
+  deputy_pm: ["member"],
+};
 
-async function requireManager(): Promise<
+const CASCADE_HINT =
+  " (배정 계단 규칙 — 대표·이사→PL 이하, PL→PM 이하, PM→부PM 이하, 부PM→담당)";
+
+async function requireAssigner(
+  projectId: string,
+  targetRole: AssignmentRole
+): Promise<
   { ok: true; userId: string; tenantId: string } | { ok: false; error: string }
 > {
   const supabase = createClient();
@@ -26,8 +44,36 @@ async function requireManager(): Promise<
   } = await supabase.auth.getUser();
   const tenantId = tenantIdFromUser(user);
   const role = roleFromUser(user);
-  if (!user || !tenantId || !role || !MANAGER_ROLES.includes(role)) {
-    return { ok: false, error: "프로젝트 배정 권한이 없습니다(대표·이사 등)." };
+  if (!user || !tenantId || !role || role === "expert") {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+
+  // 대표·이사는 전 역할 지정 가능
+  const grade = gradeFromUser(user);
+  if (isUserGrade(grade) && canViewAllProjects(grade)) {
+    return { ok: true, userId: user.id, tenantId };
+  }
+
+  // 그 외에는 이 프로젝트에서의 내 역할이 계단상 지정 가능한 역할인지 본다
+  const { data: mine } = await supabase
+    .from("project_assignments")
+    .select("assignment_role")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const allowed = mine ? (ASSIGN_CASCADE[mine.assignment_role] ?? []) : [];
+  if (!allowed.includes(targetRole)) {
+    const message = mine
+      ? `'${ASSIGNMENT_ROLE_LABELS[targetRole]}' 지정·해제는 지금 역할로 할 수 없습니다${CASCADE_HINT}. 상위 역할자에게 요청하세요.`
+      : `이 프로젝트에 배정된 사람만 담당자를 지정할 수 있습니다${CASCADE_HINT}.`;
+    await recordActionDenial({
+      kind: `assign:${targetRole}`,
+      message,
+      resourceType: "project",
+      resourceId: projectId,
+      user,
+    });
+    return { ok: false, error: message };
   }
   return { ok: true, userId: user.id, tenantId };
 }
@@ -67,7 +113,10 @@ export async function assignProjectMember(
   assignmentRole: string = "member"
 ): Promise<AssignResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  const auth = await requireManager();
+  if (!isAssignmentRole(assignmentRole)) {
+    return { ok: false, error: "담당 역할을 확인하세요." };
+  }
+  const auth = await requireAssigner(projectId, assignmentRole);
   if (!auth.ok) return auth;
 
   const supabase = createClient();
@@ -95,15 +144,25 @@ export async function assignProjectMember(
     assigned_by: auth.userId,
   });
   if (error) {
-    // (project_id, user_id) 중복이면 멱등, PM/부PM 중복이면 안내
+    // (project_id, user_id) 중복이면 기존 역할 안내, PM/부PM 중복이면 안내.
+    // 자동 PL(개설자) 때문에 '이미 배정된 사람'이 흔해졌다 — 조용한 성공으로
+    // 두면 역할이 안 바뀌었는데 바뀐 줄 안다 (리뷰 9)
     if (error.code === "23505") {
       const { data: existing } = await supabase
         .from("project_assignments")
-        .select("id")
+        .select("assignment_role")
         .eq("project_id", projectId)
         .eq("user_id", userId)
         .maybeSingle();
-      if (existing) return { ok: true };
+      if (existing) {
+        const label = isAssignmentRole(existing.assignment_role)
+          ? ASSIGNMENT_ROLE_LABELS[existing.assignment_role]
+          : existing.assignment_role;
+        return {
+          ok: false,
+          error: `이미 '${label}'(으)로 배정되어 있습니다. 역할을 바꾸려면 배정 목록에서 역할 변경을 사용하세요.`,
+        };
+      }
       return { ok: false, error: roleConflictError(assignmentRole) };
     }
     // 역할 최소 레벨 트리거 거부 — 트리거 문구가 이미 사용자용 한국어다
@@ -125,12 +184,12 @@ export async function setAssignmentRole(
   assignmentRole: string
 ): Promise<AssignResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  const auth = await requireManager();
-  if (!auth.ok) return auth;
-
   if (!isAssignmentRole(assignmentRole)) {
     return { ok: false, error: "담당 역할을 확인하세요." };
   }
+  // 새 역할 기준으로 계단 판정 — 기존 역할은 RLS(update 정책)가 함께 본다
+  const auth = await requireAssigner(projectId, assignmentRole);
+  if (!auth.ok) return auth;
 
   const supabase = createClient();
   const { data: target } = await supabase
@@ -161,8 +220,7 @@ export async function setAssignmentRole(
   if (!updated || updated.length === 0) {
     return {
       ok: false,
-      error:
-        "역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다 (권한 규칙 — 역할 변경은 대표·이사). 필요하면 권한자에게 요청하세요.",
+      error: `역할 변경 권한이 없거나 대상 배정을 찾을 수 없습니다${CASCADE_HINT}. 현재 역할이 계단상 상위이면 상위 역할자에게 요청하세요.`,
     };
   }
 
@@ -177,16 +235,38 @@ export async function unassignProjectMember(
   userId: string
 ): Promise<AssignResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  const auth = await requireManager();
+
+  // 해제 대상의 현재 역할 기준으로 계단 판정 (그 역할을 지정할 수 있는
+  // 사람이 해제도 할 수 있다). 대상 조회는 계단 판정 전에 세션(RLS)으로.
+  const supabase = createClient();
+  const { data: existing } = await supabase
+    .from("project_assignments")
+    .select("assignment_role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!existing) {
+    return { ok: false, error: "해제할 배정을 찾을 수 없습니다. 새로고침 후 확인해 주세요." };
+  }
+  const targetRole = isAssignmentRole(existing.assignment_role)
+    ? existing.assignment_role
+    : ("member" as const);
+  const auth = await requireAssigner(projectId, targetRole);
   if (!auth.ok) return auth;
 
-  const supabase = createClient();
-  const { error } = await supabase
+  const { data: removed, error } = await supabase
     .from("project_assignments")
     .delete()
     .eq("project_id", projectId)
-    .eq("user_id", userId);
-  if (error) return { ok: false, error: "해제에 실패했습니다." };
+    .eq("user_id", userId)
+    .select("id");
+  if (error) return { ok: false, error: "해제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (!removed || removed.length === 0) {
+    return {
+      ok: false,
+      error: `해제 권한이 없거나 이미 해제되었습니다${CASCADE_HINT}.`,
+    };
+  }
 
   revalidatePath("/[tenantSlug]/projects", "page");
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

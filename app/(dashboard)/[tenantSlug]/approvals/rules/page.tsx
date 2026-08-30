@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { requireRole, postLoginPath } from "@/lib/auth/session";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { roleFromUser, gradeFromUser } from "@/lib/auth/tenant";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 import { PermissionLevelGuide } from "@/components/org/permission-level-guide";
 
@@ -152,6 +153,10 @@ export default async function ApprovalRulesPage({
     );
   };
 
+  // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
+  const archiveGrade = gradeFromUser(gateUser);
+  const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
+
   return (
     <div>
       <PageHeader
@@ -174,6 +179,7 @@ export default async function ApprovalRulesPage({
         showSms={isCeoHere || scopes.sending}
         showOrg={isCeoHere || Object.values(scopes).some(Boolean)}
         showRules
+        showArchive={showArchiveTab}
       />
       <main className="space-y-5 p-5">
         {/* 처음 쓰는 회사용 — 직급/권한 레벨/프로젝트 역할 관계 안내 (기획 확정 2026-08-23) */}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
@@ -110,6 +111,23 @@ export async function requestEngagementForPosition(input: {
     .maybeSingle();
   if (!link || link.status !== "active") {
     return { ok: false, error: "활성 연결이 있는 전문가만 이 경로로 섭외할 수 있습니다 (규칙). 미연결 전문가는 '섭외후보 등록' 탭에서 탐색·배정하면 관계가 자동 생성됩니다." };
+  }
+
+  // 이용 중지 전문가에게는 신규 섭외를 보내지 않는다 — 기존 연결이 있어도
+  // 중지 후 새 요청은 막는다 (관리모드 중지, 리뷰 3). 조회 실패는 통과(§14-10)
+  {
+    const { data: activeCheck, error: activeError } = await createAdminClient()
+      .from("experts")
+      .select("is_active")
+      .eq("id", input.expertId)
+      .maybeSingle();
+    if (!activeError && activeCheck && activeCheck.is_active === false) {
+      return {
+        ok: false,
+        error:
+          "플랫폼에서 이용이 중지된 전문가입니다 (규칙). 다른 후보를 선택해 주세요.",
+      };
+    }
   }
 
   const token = generateLinkToken();

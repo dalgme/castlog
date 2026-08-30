@@ -165,13 +165,24 @@ export async function loadSlotPickerData(
       .filter(Boolean) as string[]
   );
 
-  // 전문가 풀 — 전문가 메뉴와 같은 전면 공개 기준 (연습모드는 연결분만)
-  const { data: pool } = await admin
+  // 전문가 풀 — 전문가 메뉴와 같은 전면 공개 기준 (연습모드는 연결분만).
+  // 이용 중지 전문가는 탐색에서 제외한다 (관리모드 중지, 리뷰 3).
+  const poolFirst = await admin
     .from("experts")
     .select("id, name, phone, specialty, region, career_years")
     .eq("is_practice", practice)
+    .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(1000);
+  // 부재 폴백 (§14-10): is_active 미적용 환경(42703)에서만 필터 없이 재시도
+  const { data: pool } = poolFirst.error?.code === "42703"
+    ? await admin
+        .from("experts")
+        .select("id, name, phone, specialty, region, career_years")
+        .eq("is_practice", practice)
+        .order("created_at", { ascending: false })
+        .limit(1000)
+    : poolFirst;
   const poolRows = pool ?? [];
 
   const [

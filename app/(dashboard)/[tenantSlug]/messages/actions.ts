@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { deniedExec } from "@/lib/monitoring/action-denials";
@@ -146,8 +147,33 @@ export async function sendMessage(
     return { ok: false, error: "수신 대상을 찾을 수 없습니다." };
   }
 
+  // 광고성은 이용 중지 전문가를 수신 대상에서 뺀다 — 본인 요청 탈퇴가 중지의
+  // 대표 사유라 광고가 계속 가면 §5-1 위반 소지 (리뷰 12). 업무연락은 기존
+  // 계약 이행 통지라 유지. 조회 실패(컬럼 미적용)는 제외 없이 통과(§14-10)
+  let sendTargets = experts;
+  if (data.messageType === "advertising") {
+    const { data: inactiveRows, error: inactiveError } = await createAdminClient()
+      .from("experts")
+      .select("id")
+      .in(
+        "id",
+        experts.map((e) => e.id)
+      )
+      .eq("is_active", false);
+    if (!inactiveError && (inactiveRows ?? []).length > 0) {
+      const inactiveIds = new Set((inactiveRows ?? []).map((r) => r.id));
+      sendTargets = experts.filter((e) => !inactiveIds.has(e.id));
+      if (sendTargets.length === 0) {
+        return {
+          ok: false,
+          error: "선택한 수신 대상이 모두 이용 중지 상태라 광고성 발송에서 제외되었습니다.",
+        };
+      }
+    }
+  }
+
   if (data.channel === "sms") {
-    const recipients: SmsRecipient[] = experts.map((e) => ({
+    const recipients: SmsRecipient[] = sendTargets.map((e) => ({
       phone: e.phone,
       expertId: e.id,
       name: e.name,
@@ -326,7 +352,7 @@ export async function sendMessage(
   }
 
   // ── 이메일 (예약 미지원 — 즉시 발송) ─────────────────────────────
-  const withEmail = experts.filter(
+  const withEmail = sendTargets.filter(
     (e): e is typeof e & { email: string } => !!e.email
   );
   if (withEmail.length === 0) {

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
+import { canViewAllProjects, gradeLabel, isUserGrade } from "@/lib/auth/grades";
 import {
   getAdminScopes,
   ADMIN_SCOPE_LABELS,
@@ -100,6 +100,10 @@ export default async function MySettingsPage({
     addresses = null;
   }
 
+  // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
+  const archiveGrade = gradeFromUser(user);
+  const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
+
   return (
     <div>
       <PageHeader title="설정" />
@@ -109,6 +113,7 @@ export default async function MySettingsPage({
         showSms={canManageSending}
         showOrg={canRequestModules}
         showRules={modules.approvals && (isCeo || scopes.approvals)}
+        showArchive={showArchiveTab}
       />
       <main className="space-y-6 p-4 sm:p-5">
         {/* ── 1. 내 계정 ──────────────────────────────────────────────────
