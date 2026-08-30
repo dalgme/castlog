@@ -116,6 +116,7 @@ export function EngagementWorkbench({
   unlinked,
   projectState,
   planPreview,
+  planApproverOptions = [],
   projectName,
   projectDescription = null,
   attachmentPanel,
@@ -154,6 +155,8 @@ export function EngagementWorkbench({
   };
   /** 품의서 미리보기 (상신 전 확인용) */
   planPreview: { lines: PlanPreviewLine[]; amount: number };
+  /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
+  planApproverOptions?: { id: string; name: string; gradeLabel: string }[];
   projectName: string;
   /** 프로젝트 설명 — 섭외요청의 '주제/행사 내용' 자동 채움용 */
   projectDescription?: string | null;
@@ -186,14 +189,12 @@ export function EngagementWorkbench({
           {canManage && projectState.stage === "assigning" && (
             <EngagementPlanButton
               projectId={projectId}
-              disabled={!projectState.fullyAssigned}
-              disabledReason={
-                projectState.total === 0
-                  ? "세션(코드넘버)을 먼저 등록하세요."
-                  : `아직 배정되지 않은 자리가 ${projectState.open}개 있습니다. 전부 배정하면 열립니다.`
-              }
+              // 세션별 선택 상신 (기획 2026-08-30 — 22번): 전체 배정 완료를
+              // 기다리지 않는다 — 완성된 세션만 골라 먼저 상신할 수 있다.
+              disabled={projectState.total === 0}
+              disabledReason="세션(코드넘버)을 먼저 등록하세요."
               lines={planPreview.lines}
-              amount={planPreview.amount}
+              approverOptions={planApproverOptions}
             />
           )}
           {canManage &&

@@ -1333,6 +1333,77 @@ export type Database = {
           },
         ]
       }
+      engagement_bundles: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expert_id: string
+          id: string
+          is_practice: boolean
+          project_id: string | null
+          responded_at: string | null
+          status: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expert_id: string
+          id?: string
+          is_practice?: boolean
+          project_id?: string | null
+          responded_at?: string | null
+          status?: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expert_id?: string
+          id?: string
+          is_practice?: boolean
+          project_id?: string | null
+          responded_at?: string | null
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_bundles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_bundles_expert_id_fkey"
+            columns: ["expert_id"]
+            isOneToOne: false
+            referencedRelation: "experts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_bundles_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_bundles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expert_documents: {
         Row: {
           created_at: string
@@ -1389,6 +1460,7 @@ export type Database = {
       expert_engagements: {
         Row: {
           is_practice: boolean
+          bundle_id: string | null
           created_at: string
           ends_on: string | null
           ends_time: string | null
@@ -1419,6 +1491,7 @@ export type Database = {
         }
         Insert: {
           is_practice?: boolean
+          bundle_id?: string | null
           created_at?: string
           ends_on?: string | null
           ends_time?: string | null
@@ -1449,6 +1522,7 @@ export type Database = {
         }
         Update: {
           is_practice?: boolean
+          bundle_id?: string | null
           created_at?: string
           ends_on?: string | null
           ends_time?: string | null

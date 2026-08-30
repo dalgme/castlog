@@ -71,6 +71,7 @@ export type SlotCandidate = {
 
 export type SlotContext = {
   positionId: string;
+  slotId: string;
   code: string;
   status: string;
   slotDate: string;
@@ -137,6 +138,7 @@ export async function getPositionContext(
 
   return {
     positionId: position.id,
+    slotId: slot.id,
     code: position.code,
     status: position.status,
     slotDate: slot.slot_date,

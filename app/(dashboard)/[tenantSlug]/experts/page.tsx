@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireRole, getSessionUser } from "@/lib/auth/session";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
+import { isExtraFeatureEnabled } from "@/lib/features/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -123,6 +124,8 @@ export default async function TenantExpertsPage({
   const admin = createAdminClient();
   const modules = await getTenantModules();
   const practice = await isPracticeMode();
+  // '코드 없이 바로 섭외(예외)'는 기본 숨김 — 관리모드에서 회사별로 연다 (기획 17)
+  const directEngagementOn = await isExtraFeatureEnabled("direct_engagement");
 
   const basePath = `/${params.tenantSlug}/experts`;
   const query = (searchParams?.q ?? "").trim();
@@ -517,10 +520,12 @@ export default async function TenantExpertsPage({
               </Link>
             </Button>
             <ExpertRecommendDialog />
-            <EngagementDialog
-              experts={activeExpertOptions}
-              projects={projects}
-            />
+            {directEngagementOn && (
+              <EngagementDialog
+                experts={activeExpertOptions}
+                projects={projects}
+              />
+            )}
             <InviteExpertDialog />
           </div>
         }

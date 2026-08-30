@@ -52,6 +52,9 @@ export default async function PlatformAdminPage() {
       {/* 원래 회사 화면으로 — 관리모드에서 나가는 문이 없으면 로그아웃밖에 없다 */}
       {backToTenant && <PlatformModeButton mode="exit" />}
       <Button asChild variant="outline" size="sm">
+        <a href="/platform-admin/tenant-features">기업별 기능 추가</a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
         <a href="/platform-admin/experts">전문가 DB</a>
       </Button>
       <Button asChild variant="outline" size="sm">

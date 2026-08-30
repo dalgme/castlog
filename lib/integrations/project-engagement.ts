@@ -134,6 +134,12 @@ export type PlanDraftLine = {
   rank: number;
   /** 순위 상위 '필요인원'에 들어 실제 섭외·금액 대상인가 */
   selected: boolean;
+  /** 소속 세션(슬롯) — 세션별 선택 상신 그룹 키 (기획 2026-08-30 — 22번) */
+  slotId: string;
+  /** 전문가가 배정된 자리인가 (미배정 TO 자리는 false) */
+  assigned: boolean;
+  /** 세션 필요인원 */
+  requiredCount: number;
 };
 
 export type PlanDraft = {
@@ -228,6 +234,9 @@ export async function buildEngagementPlanDraft(
         fee,
         rank: idx + 1,
         selected,
+        slotId: slot.id,
+        assigned: Boolean(expertId),
+        requiredCount: slot.required_count,
       });
     });
   }

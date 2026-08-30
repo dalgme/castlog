@@ -28,7 +28,7 @@ import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 
 export type RequestFromPositionResult =
-  | { ok: true; url: string }
+  | { ok: true; url: string; engagementId: string }
   | { ok: false; error: string; needsPmApproval?: true };
 
 
@@ -46,6 +46,12 @@ export async function requestEngagementForPosition(input: {
   responseDeadline?: string;
   /** 발송 수단 — 일괄 발송에서 지정한다. 없으면 문자·이메일 모두 */
   channel?: "sms" | "email" | "both";
+  /**
+   * 건별 발송(문자·메일·포털 알림)을 억제한다 — 묶음 섭외(기획 2026-08-30,
+   * 20번)에서 호출자가 전문가 단위로 1건만 보내기 위해 쓴다. 섭외 건 생성·
+   * 감사로그·이력 기록은 그대로 남는다.
+   */
+  suppressSend?: boolean;
 }): Promise<RequestFromPositionResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
 
@@ -85,7 +91,11 @@ export async function requestEngagementForPosition(input: {
 
   // 섭외계획 품의 게이트 (approvals 모듈 활성 테넌트만)
   const modules = await getTenantModules();
-  const planGate = await assertEngagementAllowed(slot.project_id, modules.approvals);
+  const planGate = await assertEngagementAllowed(
+    slot.project_id,
+    modules.approvals,
+    slot.id // 부분 상신 계획이면 계획에 담긴 세션만 통과 (기획 2026-08-30 — 22번)
+  );
   if (!planGate.ok) return planGate;
 
   // 부PM 실행 게이트 — PM 승인 1건을 소진한다. PM·대표·이사는 그대로 통과.
@@ -217,6 +227,7 @@ export async function requestEngagementForPosition(input: {
     isPractice: await isPracticeMode(),
   });
 
+  if (!input.suppressSend)
   await notifyExpert({
     expertId: input.expertId,
     category: "engagement_request",
@@ -252,8 +263,8 @@ export async function requestEngagementForPosition(input: {
     slot.ends_time
   );
   const channel = input.channel ?? "both";
-  const useEmail = channel === "email" || channel === "both";
-  const useSms = channel === "sms" || channel === "both";
+  const useEmail = !input.suppressSend && (channel === "email" || channel === "both");
+  const useSms = !input.suppressSend && (channel === "sms" || channel === "both");
 
   if (useEmail)
   await sendEngagementEmail({
@@ -307,7 +318,7 @@ export async function requestEngagementForPosition(input: {
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  return { ok: true, url };
+  return { ok: true, url, engagementId: engagement.id };
 }
 
 export type SimpleResult = { ok: true } | { ok: false; error: string };

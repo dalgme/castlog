@@ -64,10 +64,15 @@ export type PlanSnapshot = {
  * 계획 레코드를 재동기화해야 한다 (plan-review-actions가 수행).
  */
 export async function buildPlanSnapshot(
-  projectId: string
+  projectId: string,
+  /**
+   * 세션(슬롯) 부분 선택 (기획 확정 2026-08-30 — 22번): 지정하면 그 세션들만
+   * 계획에 담는다. 미지정(undefined)·빈 배열 = 전체 (기존 동작).
+   */
+  onlySlotIds?: string[]
 ): Promise<PlanSnapshot> {
   const supabase = createClient();
-  const { data: slots } = await supabase
+  const { data: allSlots } = await supabase
     .from("engagement_slots")
     .select(
       "id, slot_date, starts_time, ends_time, role_type, role_description, required_count, fee_amount, location_name"
@@ -75,6 +80,10 @@ export async function buildPlanSnapshot(
     .eq("project_id", projectId)
     .order("slot_date", { ascending: true })
     .order("starts_time", { ascending: true });
+  const slots =
+    onlySlotIds && onlySlotIds.length > 0
+      ? (allSlots ?? []).filter((s) => onlySlotIds.includes(s.id))
+      : allSlots;
 
   type CandidateRow = {
     id: string;
@@ -161,6 +170,85 @@ export async function buildPlanSnapshot(
   };
 }
 
+/**
+ * 계획이 덮는 세션(슬롯) 집합 (기획 확정 2026-08-30 — 22번).
+ * 별도 컬럼 없이 계획 명세(engagement_plan_lines)의 slot_id에서 파생한다 —
+ * 명세가 진실이고, 레거시(전체 상신) 계획도 그대로 맞는다.
+ * 반환 null = 명세에 slot_id가 하나도 없는 아주 옛 계획 — 전체로 간주.
+ */
+export async function getPlanCoveredSlotIds(
+  planId: string
+): Promise<string[] | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("engagement_plan_lines")
+    .select("slot_id")
+    .eq("plan_id", planId);
+  const ids = (data ?? [])
+    .map((l) => l.slot_id)
+    .filter((id): id is string => id !== null);
+  if (ids.length === 0) return null;
+  return Array.from(new Set(ids));
+}
+
+export type UnreadySlot = {
+  slotId: string;
+  label: string;
+  /** 후보 미배정(전문가가 붙지 않은) 자리 수 */
+  unassigned: number;
+  assignedCount: number;
+  requiredCount: number;
+};
+
+/**
+ * 상신하려는 세션의 완성 여부 검사 (기획 확정 2026-08-30 — 22번).
+ * '후보 미배정' 자리가 남아 있거나 배정 인원이 필요인원에 못 미치는 세션을
+ * 돌려준다 — 사용자에게 "미배정 항목을 삭제하거나 배정한 뒤 다시 상신"을
+ * 안내하기 위한 근거.
+ */
+export async function findUnreadySlots(
+  projectId: string,
+  onlySlotIds?: string[]
+): Promise<UnreadySlot[]> {
+  const supabase = createClient();
+  const { data: allSlots } = await supabase
+    .from("engagement_slots")
+    .select("id, slot_date, session_name, role_type, required_count")
+    .eq("project_id", projectId)
+    .order("slot_date", { ascending: true });
+  const slots =
+    onlySlotIds && onlySlotIds.length > 0
+      ? (allSlots ?? []).filter((s) => onlySlotIds.includes(s.id))
+      : (allSlots ?? []);
+  if (slots.length === 0) return [];
+
+  const { data: positions } = await supabase
+    .from("engagement_slot_positions")
+    .select("slot_id, status, assigned_expert_id")
+    .in(
+      "slot_id",
+      slots.map((s) => s.id)
+    )
+    .neq("status", "canceled");
+
+  const result: UnreadySlot[] = [];
+  for (const slot of slots) {
+    const rows = (positions ?? []).filter((p) => p.slot_id === slot.id);
+    const assignedCount = rows.filter((p) => p.assigned_expert_id).length;
+    const unassigned = rows.length - assignedCount;
+    if (unassigned > 0 || assignedCount < slot.required_count) {
+      result.push({
+        slotId: slot.id,
+        label: `${slot.slot_date} ${slot.session_name ?? slot.role_type}`,
+        unassigned,
+        assignedCount,
+        requiredCount: slot.required_count,
+      });
+    }
+  }
+  return result;
+}
+
 export type ActivePlan = {
   id: string;
   revision: number;
@@ -220,6 +308,12 @@ export type PlanGate =
         | "changed"; // 승인 후 섭외 테이블 변경 — 변경 품의 필요
       plan: ActivePlan | null;
       message: string;
+      /**
+       * 계획이 덮는 세션 집합 (기획 2026-08-30 — 22번).
+       * null = 전체(계획 없음 포함). 부분 상신 계획이면 승인 효력도 이 세션들에만
+       * 미친다 — 밖의 세션은 보완(변경) 품의로 추가한 뒤 섭외할 수 있다.
+       */
+      coveredSlotIds: string[] | null;
     };
 
 /**
@@ -232,10 +326,7 @@ export async function evaluatePlanGate(
 ): Promise<PlanGate> {
   if (!approvalsEnabled) return { required: false, reason: "module_off" };
 
-  const [plan, snapshot] = await Promise.all([
-    getActivePlan(projectId),
-    buildPlanSnapshot(projectId),
-  ]);
+  const plan = await getActivePlan(projectId);
 
   if (!plan) {
     return {
@@ -245,8 +336,12 @@ export async function evaluatePlanGate(
       plan: null,
       message:
         "섭외계획 품의가 상신되지 않았습니다. 섭외 테이블을 확정한 뒤 계획 품의를 올려 주세요.",
+      coveredSlotIds: null,
     };
   }
+
+  // 부분 상신 계획(기획 2026-08-30 — 22번)은 담긴 세션 기준으로만 대조한다.
+  const coveredSlotIds = await getPlanCoveredSlotIds(plan.id);
 
   if (plan.status === "in_progress") {
     return {
@@ -255,6 +350,7 @@ export async function evaluatePlanGate(
       state: "in_progress",
       plan,
       message: "섭외계획 품의가 결재 진행중입니다. 승인 후 섭외요청을 보낼 수 있습니다.",
+      coveredSlotIds,
     };
   }
 
@@ -267,10 +363,14 @@ export async function evaluatePlanGate(
       message: plan.lastRejectionNote
         ? `섭외계획 품의가 반려되었습니다. 사유: ${plan.lastRejectionNote}`
         : "섭외계획 품의를 상신해 주세요.",
+      coveredSlotIds,
     };
   }
 
-  // approved — 승인 이후 섭외 테이블이 바뀌었는지 대조
+  // approved — 승인 이후 '계획에 담긴 세션'이 바뀌었는지 대조.
+  // 계획 밖 세션의 추가·수정은 변경으로 치지 않는다 — 보완(변경) 품의로
+  // 추가하기 전에는 그 세션의 섭외요청 자체가 막혀 있기 때문이다.
+  const snapshot = await buildPlanSnapshot(projectId, coveredSlotIds ?? undefined);
   if (plan.planSignature !== snapshot.signature) {
     return {
       required: true,
@@ -279,6 +379,7 @@ export async function evaluatePlanGate(
       plan,
       message:
         "승인된 계획과 현재 섭외 테이블이 다릅니다(인원·비용·일정 변경). 계획 변경 품의를 올린 뒤 진행해 주세요.",
+      coveredSlotIds,
     };
   }
 
@@ -288,6 +389,7 @@ export async function evaluatePlanGate(
     state: "approved",
     plan,
     message: `섭외계획 승인 완료 (리비전 ${plan.revision}).`,
+    coveredSlotIds,
   };
 }
 
@@ -297,14 +399,24 @@ export async function evaluatePlanGate(
  */
 export async function assertEngagementAllowed(
   projectId: string | null,
-  approvalsEnabled: boolean
+  approvalsEnabled: boolean,
+  /** 요청이 속한 세션 — 부분 상신 계획이면 계획에 담긴 세션만 통과 (22번) */
+  slotId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   // 프로젝트에 연결되지 않은 단건 섭외는 계획 대상이 아니다
   if (!projectId) return { ok: true };
 
   const gate = await evaluatePlanGate(projectId, approvalsEnabled);
-  if (!gate.required || gate.allowed) return { ok: true };
-  return { ok: false, error: gate.message };
+  if (!gate.required) return { ok: true };
+  if (!gate.allowed) return { ok: false, error: gate.message };
+  if (slotId && gate.coveredSlotIds && !gate.coveredSlotIds.includes(slotId)) {
+    return {
+      ok: false,
+      error:
+        "이 세션은 승인된 섭외계획에 포함되지 않았습니다 (규칙). 섭외계획 패널에서 보완(변경) 품의로 세션을 추가·승인받은 뒤 진행해 주세요.",
+    };
+  }
+  return { ok: true };
 }
 
 /**

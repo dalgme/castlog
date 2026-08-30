@@ -19,6 +19,10 @@ import {
 import { formatKrw } from "@/lib/approvals/constants";
 
 import { confirmSettlementReview } from "./closing-actions";
+import {
+  ApproverPicker,
+  type ApproverOption,
+} from "@/components/approvals/approver-picker";
 
 export type SettlementSummary = {
   expertCount: number;
@@ -71,10 +75,13 @@ export function SettlementPanel({
   projectId,
   summary,
   canReview,
+  approverOptions = [],
 }: {
   projectId: string;
   summary: SettlementSummary;
   canReview: boolean;
+  /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
+  approverOptions?: ApproverOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -82,6 +89,7 @@ export function SettlementPanel({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState(summary.note ?? "");
   const [confirming, setConfirming] = useState(false);
+  const [approverIds, setApproverIds] = useState<string[]>([]);
 
   if (!canReview) {
     return (
@@ -98,7 +106,7 @@ export function SettlementPanel({
   function confirm() {
     setError(null);
     startTransition(async () => {
-      const res = await confirmSettlementReview({ projectId, note });
+      const res = await confirmSettlementReview({ projectId, note, approverIds });
       if (!res.ok) {
         setError(res.error);
         setConfirming(false);
@@ -142,6 +150,15 @@ export function SettlementPanel({
           disabled={summary.submitted || pending}
           placeholder="지급 시기, 증빙 요청, 예산 계정 등 — 지급품의서 본문에 함께 실립니다."
         />
+
+        {!summary.submitted && approverOptions.length > 0 && (
+          <ApproverPicker
+            options={approverOptions}
+            selected={approverIds}
+            onChange={setApproverIds}
+            disabled={pending}
+          />
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

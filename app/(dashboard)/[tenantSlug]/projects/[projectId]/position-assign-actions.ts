@@ -17,6 +17,7 @@ import { getProjectEngagementState } from "@/lib/integrations/project-engagement
 import {
   getActivePlan,
   buildPlanSnapshot,
+  getPlanCoveredSlotIds,
 } from "@/lib/integrations/engagement-plans";
 import { submitEngagementPlan as submitPlanRecord } from "./plan-actions";
 import {
@@ -24,11 +25,18 @@ import {
   copyProjectAttachmentsToAcceptance,
 } from "@/lib/integrations/acceptance";
 import { notifyExpert } from "@/lib/experts/notifications";
-import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
+import {
+  buildEngagementBundleSms,
+  sendEngagementSms,
+} from "@/lib/integrations/engagement-sms";
 import {
   sendEngagementEmail,
   portalUrl,
 } from "@/lib/integrations/engagement-email";
+import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
+import { buildPublicLink } from "@/lib/routing/links";
+import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
+import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
 
 export type PositionAssignResult = { ok: true } | { ok: false; error: string };
@@ -410,7 +418,11 @@ export type PlanSubmitResult =
  * 넘긴다. 없는 절차를 기다리게 만들면 아무것도 진행되지 않는다.
  */
 export async function submitEngagementPlan(
-  projectId: string
+  projectId: string,
+  // 결재라인 직접 지정 (기획 2026-08-30 — 18번). 비우면 규정→직급 체계
+  approverIds: string[] = [],
+  // 세션 부분 선택 (기획 2026-08-30 — 22번). 빈 배열 = 전체 세션
+  slotIds: string[] = []
 ): Promise<PlanSubmitResult> {
   const auth = await requireManager("planSubmit");
   if (!auth.ok) return auth;
@@ -422,10 +434,12 @@ export async function submitEngagementPlan(
   if (state.stage !== "assigning") {
     return { ok: false, error: "이미 품의가 상신되었거나 다음 단계로 넘어갔습니다." };
   }
-  if (!state.fullyAssigned) {
+  // 세션을 골라 부분 상신하는 경우(22번)에는 전체 배정 완료를 요구하지 않는다 —
+  // 선택 세션의 완성 검사는 계획 상신(plan-actions)에서 수행한다.
+  if (slotIds.length === 0 && !state.fullyAssigned) {
     return {
       ok: false,
-      error: `아직 배정되지 않은 자리가 ${state.open}개 있습니다. 전부 배정한 뒤 상신하세요.`,
+      error: `아직 배정되지 않은 자리가 ${state.open}개 있습니다. 전부 배정하거나, 완성된 세션만 선택해 상신하세요.`,
     };
   }
 
@@ -449,16 +463,27 @@ export async function submitEngagementPlan(
    * 계획 레코드 상신(plan-actions)에 위임하고, 단계 기계는 **같은 결재건**을
    * 바라본다. 승인 한 번에 지문 게이트와 단계가 함께 열린다.
    */
-  const [activePlan, snapshot] = await Promise.all([
-    getActivePlan(projectId),
-    buildPlanSnapshot(projectId),
-  ]);
+  const activePlan = await getActivePlan(projectId);
+  const snapshot = await buildPlanSnapshot(
+    projectId,
+    slotIds.length > 0 ? slotIds : undefined
+  );
 
   // 예전 패널 경로로 이미 승인·결재중인 계획이 있는 프로젝트 — 새 결재를
-  // 만들지 않고 단계만 그 결재건에 연결한다 (기존 데이터 구제)
+  // 만들지 않고 단계만 그 결재건에 연결한다 (기존 데이터 구제).
+  // 부분 상신 계획(22번)은 커버리지 세션 기준으로 지문을 대조한다.
+  const rescueSignature =
+    activePlan?.status === "approved"
+      ? (
+          await buildPlanSnapshot(
+            projectId,
+            (await getPlanCoveredSlotIds(activePlan.id)) ?? undefined
+          )
+        ).signature
+      : null;
   if (
     activePlan?.status === "approved" &&
-    activePlan.planSignature === snapshot.signature
+    activePlan.planSignature === rescueSignature
   ) {
     await supabase
       .from("projects")
@@ -482,7 +507,7 @@ export async function submitEngagementPlan(
     return { ok: true, approvalId: activePlan.approvalId, autoApproved: false };
   }
 
-  const submitted = await submitPlanRecord(projectId, "");
+  const submitted = await submitPlanRecord(projectId, "", approverIds, slotIds);
   if (!submitted.ok) return submitted;
   const approvalId = submitted.approvalId ?? null;
 
@@ -579,33 +604,253 @@ export async function dispatchProjectEngagements(input: {
     rank: number | null;
     position_no: number;
   };
+  // 부분 상신 계획(기획 2026-08-30 — 22번)이면 승인 커버리지 밖 세션은 처음부터
+  // 대상에서 뺀다 — 건별 게이트에 맡기면 묶음 생성·취소가 헛돌고(리뷰 P2-3·P2-5),
+  // 매 발송이 '실패'투성이로 보인다. 뺀 세션은 규칙 사유로 명시한다 (§12-9).
+  const failed: { code: string; reason: string }[] = [];
+  const modulesForDispatch = await getTenantModules();
+  let coveredSlotIds: string[] | null = null;
+  if (modulesForDispatch.approvals) {
+    const activePlan = await getActivePlan(input.projectId);
+    if (activePlan?.status === "approved") {
+      coveredSlotIds = await getPlanCoveredSlotIds(activePlan.id);
+    }
+  }
+
   const targets: DispatchTarget[] = [];
   for (const slot of slots ?? []) {
     const slotTargets = (positions ?? [])
       .filter((p) => p.slot_id === slot.id && p.assigned_expert_id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
       .slice(0, slot.required_count);
+    if (coveredSlotIds !== null && !coveredSlotIds.includes(slot.id)) {
+      for (const p of slotTargets) {
+        failed.push({
+          code: p.code,
+          reason:
+            "승인된 섭외계획에 포함되지 않은 세션입니다 (규칙). 섭외계획 패널의 보완(추가) 품의로 승인받은 뒤 발송됩니다.",
+        });
+      }
+      continue;
+    }
     targets.push(...slotTargets);
   }
   if (targets.length === 0) {
-    return { ok: false, error: "발송할 배정 건이 없습니다." };
+    return {
+      ok: false,
+      error:
+        failed.length > 0
+          ? `발송 가능한 건이 없습니다. (${failed[0]?.reason ?? ""})`
+          : "발송할 배정 건이 없습니다.",
+    };
   }
 
-  const failed: { code: string; reason: string }[] = [];
   let sent = 0;
 
+  // 묶음 섭외 (기획 확정 2026-08-30 — 20번): 같은 전문가에게 가는 여러 자리는
+  // 문자 1건 + 승인 URL 1개(/b)로 묶는다. 섭외 건 자체는 자리마다 그대로
+  // 만들어진다(계약·수락서·자리 전환의 원본) — 발송만 전문가 단위로 합친다.
+  const byExpert = new Map<string, DispatchTarget[]>();
   for (const position of targets) {
-    const result = await requestEngagementForPosition({
-      positionId: position.id,
-      expertId: position.assigned_expert_id!,
-      programName: input.programName,
-      eventSummary: input.eventSummary,
-      specialNotes: input.memo,
-      responseDeadline: input.deadline,
-      channel: input.channel,
+    const key = position.assigned_expert_id!;
+    const group = byExpert.get(key);
+    if (group) group.push(position);
+    else byExpert.set(key, [position]);
+  }
+
+  const admin = createAdminClient();
+  const isPractice = await isPracticeMode();
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", auth.session.tenantId)
+    .maybeSingle();
+
+  for (const [expertId, group] of Array.from(byExpert.entries())) {
+    const [firstPosition] = group;
+    if (group.length === 1 && firstPosition) {
+      const position = firstPosition;
+      const result = await requestEngagementForPosition({
+        positionId: position.id,
+        expertId,
+        programName: input.programName,
+        eventSummary: input.eventSummary,
+        specialNotes: input.memo,
+        responseDeadline: input.deadline,
+        channel: input.channel,
+      });
+      if (result.ok) sent += 1;
+      else failed.push({ code: position.code, reason: result.error });
+      continue;
+    }
+
+    // ① 묶음 생성 — 회신 마감은 건별 토큰과 같은 값
+    const bundleToken = generateLinkToken();
+    const expiresAtIso = (input.deadline
+      ? new Date(input.deadline)
+      : new Date(Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000)
+    ).toISOString();
+    const { data: bundle, error: bundleError } = await supabase
+      .from("engagement_bundles")
+      .insert({
+        tenant_id: auth.session.tenantId,
+        project_id: input.projectId,
+        expert_id: expertId,
+        token_hash: hashLinkToken(bundleToken),
+        token_expires_at: expiresAtIso,
+        is_practice: isPractice,
+        created_by: auth.session.userId,
+      })
+      .select("id")
+      .single();
+    if (bundleError || !bundle) {
+      for (const position of group) {
+        failed.push({
+          code: position.code,
+          reason: "묶음 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+        });
+      }
+      continue;
+    }
+
+    // ② 건별 섭외 생성 — 발송만 억제 (감사로그·이력은 건별로 남는다).
+    // sent는 아직 올리지 않는다 — 묶음 연결·발송까지 끝나야 '나간' 것이다
+    // (리뷰 P2-3: 연결 실패 시 같은 자리가 sent와 failed에 동시 집계되던 결함)
+    const createdIds: string[] = [];
+    const createdPositions: DispatchTarget[] = [];
+    for (const position of group) {
+      const result = await requestEngagementForPosition({
+        positionId: position.id,
+        expertId,
+        programName: input.programName,
+        eventSummary: input.eventSummary,
+        specialNotes: input.memo,
+        responseDeadline: input.deadline,
+        channel: input.channel,
+        suppressSend: true,
+      });
+      if (result.ok) {
+        createdIds.push(result.engagementId);
+        createdPositions.push(position);
+      } else {
+        failed.push({ code: position.code, reason: result.error });
+      }
+    }
+    if (createdIds.length === 0) {
+      // 묶음에 담긴 건이 하나도 없다 — 빈 링크가 나가면 안 된다
+      await admin
+        .from("engagement_bundles")
+        .update({ status: "canceled" })
+        .eq("id", bundle.id)
+        .eq("status", "requested");
+      continue;
+    }
+
+    // ③ 건 → 묶음 연결 (service_role — 컬럼 미적용 DB에서도 발송 자체는 산다)
+    let bundleLinked = true;
+    try {
+      const { error: linkError } = await admin
+        .from("expert_engagements")
+        .update({ bundle_id: bundle.id })
+        .in("id", createdIds);
+      if (linkError) bundleLinked = false;
+    } catch {
+      bundleLinked = false;
+    }
+
+    // ④ 전문가에게 1건만 발송 — 연결 실패 시 묶음 링크는 빈 화면이 되므로
+    //    첫 건의 단건 안내로 대신하지 않고 실패로 알린다 (건은 이미 생성됨)
+    const { data: itemRows } = await admin
+      .from("expert_engagements")
+      .select("id, session_name, fee_amount, starts_on, ends_on, starts_time, ends_time, location_name")
+      .in("id", createdIds);
+    const items = itemRows ?? [];
+    const feeValues = items.map((i) => i.fee_amount).filter((v): v is number => v !== null);
+    const totalFee = feeValues.length > 0 ? feeValues.reduce((a, b) => a + b, 0) : null;
+
+    let bundleUrl: string;
+    try {
+      bundleUrl = buildPublicLink("engagementBundle", bundleToken);
+    } catch {
+      bundleUrl = `/b/${bundleToken}`;
+    }
+
+    if (!bundleLinked) {
+      // 생성에 성공한 자리만 실패로 알린다 — 생성 단계에서 이미 실패한 자리를
+      // 다시 넣으면 같은 코드가 두 번 찍힌다 (리뷰 P2-3)
+      for (const position of createdPositions) {
+        failed.push({
+          code: position.code,
+          reason:
+            "섭외 건은 만들어졌으나 묶음 연결에 실패해 발송하지 못했습니다 (시스템 결함). 자리를 해제한 뒤 다시 발송해 주세요.",
+        });
+      }
+      continue;
+    }
+    // 묶음 연결·발송까지 확정된 시점에 집계한다
+    sent += createdIds.length;
+
+    await notifyExpert({
+      expertId,
+      category: "engagement_request",
+      title: `새로운 섭외 요청 ${createdIds.length}건이 도착했습니다`,
+      body: [input.programName?.trim() || null, `${createdIds.length}개 세션`]
+        .filter(Boolean)
+        .join(" · "),
+      link: "/expert/engagements",
+      tenantId: auth.session.tenantId,
     });
-    if (result.ok) sent += 1;
-    else failed.push({ code: position.code, reason: result.error });
+
+    const useEmail = input.channel === "email" || input.channel === "both";
+    const useSms = input.channel === "sms" || input.channel === "both";
+    const deadlineLabel = new Date(expiresAtIso).toLocaleDateString("ko-KR", {
+      timeZone: "Asia/Seoul",
+    });
+
+    if (useEmail) {
+      const lines = items.map((i) => {
+        const schedule = formatEventSchedule(
+          i.starts_on,
+          i.ends_on,
+          i.starts_time,
+          i.ends_time
+        );
+        return `· ${[i.session_name, schedule, i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
+      });
+      await sendEngagementEmail({
+        tenantId: auth.session.tenantId,
+        senderUserId: auth.session.userId,
+        expertId,
+        subject: `[섭외 요청 ${createdIds.length}건] ${input.programName?.trim() || "프로젝트 섭외"}`,
+        body:
+          `섭외를 요청드립니다. 아래 ${createdIds.length}건입니다.\n\n` +
+          lines.join("\n") +
+          // 단건 발송(/e)과 같은 정보량을 유지한다 — 수락 = 계약 성립인데
+          // 행사 내용·특이사항을 못 보고 수락하게 해서는 안 된다 (리뷰 P2-2)
+          (input.eventSummary?.trim()
+            ? `\n\n· 행사 내용: ${input.eventSummary.trim()}`
+            : "") +
+          (input.memo?.trim() ? `\n· 특이사항: ${input.memo.trim()}` : "") +
+          `\n\n· 회신 마감: ${deadlineLabel}까지` +
+          `\n\n아래 링크에서 각 건을 확인하고 건별로 수락 또는 거절해 주세요.\n${bundleUrl}\n` +
+          `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,
+      });
+    }
+    if (useSms) {
+      await sendEngagementSms({
+        tenantId: auth.session.tenantId,
+        senderUserId: auth.session.userId,
+        expertId,
+        body: buildEngagementBundleSms({
+          tenantName: tenantRow?.name ?? "기업",
+          programName: input.programName?.trim() || null,
+          itemCount: createdIds.length,
+          totalFee,
+          deadline: expiresAtIso,
+          url: bundleUrl,
+        }),
+      });
+    }
   }
 
   if (sent === 0) {
@@ -653,9 +898,10 @@ export type AcceptanceSendResult =
 /**
  * 수락서 일괄 송신 — 전원 수락 후, 프로젝트의 전문가 전원에게 한 번에 보낸다.
  *
- * **수락서 자체는 파일로 나가지 않는다.** 캐스트로그 화면에서만 열린다. 문자·
- * 이메일은 '수락서가 도착했으니 캐스트로그에서 확인하라'는 안내일 뿐이다.
- * (사용자 확정 사항: 수락서는 화면으로만 볼 수 있도록 한다)
+ * **송신 시점에 수락서를 파일로 첨부하지 않는다.** 문자·이메일은 '수락서가
+ * 도착했으니 캐스트로그에서 확인하라'는 안내일 뿐이다.
+ * (기획 변경 2026-08-30 — 19번: 전문가가 승인(서명)을 마친 뒤에는 기업
+ *  담당자가 PDF로 내려받을 수 있다. 전문가 측은 계속 화면 열람만이다.)
  *
  * 동봉 자료(공통·개별 첨부)는 이 시점에 각 수락서로 **스냅샷 복사**된다. 보낸
  * 문서는 보낸 그대로 남아야 하기 때문이다 — 프로젝트 첨부를 나중에 지워도
