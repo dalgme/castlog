@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
-import { canViewAllProjects, gradeLabel } from "@/lib/auth/grades";
+import {
+  canViewAllProjects,
+  gradeLabel,
+  gradeRank,
+  isUserGrade,
+} from "@/lib/auth/grades";
 import { getExecFlags } from "@/lib/auth/exec-policy";
 import { canManagePayments } from "@/lib/auth/admin-scopes";
 import {
@@ -283,7 +288,6 @@ export default async function ProjectDetailPage({
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
   let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
-  let hasProjectRule = false;
   if (modules.experts) {
     const [gate, snapshot] = await Promise.all([
       evaluatePlanGate(project.id, modules.approvals),
@@ -312,22 +316,24 @@ export default async function ProjectDetailPage({
     };
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
+    // 결재라인 후보 (기획 개정 2026-08-30 — 30번): 상신자보다 **높은 직급**만.
+    // 상무이사·대표는 어차피 고정(필수)으로 라인 끝에 붙으므로 후보에서 뺀다.
+    const myRank = isUserGrade(grade) ? gradeRank(grade) : 0;
     planApprovers = (staffResult.data ?? [])
       .filter((u) => u.is_active && u.id !== user?.id)
+      .filter(
+        (u) =>
+          isUserGrade(u.grade) &&
+          gradeRank(u.grade) > myRank &&
+          u.grade !== "director" &&
+          u.grade !== "ceo"
+      )
       .map((u) => ({
         id: u.id,
         name: u.name,
         gradeLabel: gradeLabel(u.grade),
       }));
 
-    if (modules.approvals) {
-      const { count } = await supabase
-        .from("approval_rules")
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true)
-        .or("approval_type.is.null,approval_type.eq.project");
-      hasProjectRule = (count ?? 0) > 0;
-    }
   }
   const staffForAssign = (staffResult.data ?? []).map((u) => ({
     id: u.id,
@@ -1069,7 +1075,6 @@ export default async function ProjectDetailPage({
                   plan={planPanel}
                   canSubmit={canExecute}
                   approverOptions={planApprovers}
-                  hasProjectRule={hasProjectRule}
                   sessionSummary={slotRows.map((s) => ({
                     slotId: s.id,
                     label: `${s.slotDate}${

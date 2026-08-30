@@ -174,7 +174,8 @@ export function EngagementPlanButton({
           <DialogTitle>섭외 품의서 — 상신 전 확인</DialogTitle>
           <DialogDescription>
             프로젝트 기본정보와 세션별 배정 명단으로 품의서가 자동 작성됩니다.
-            상신하면 전결규정(없으면 직급 체계)에 따라 상급자에게 올라갑니다.
+            결재라인은 아래에서 직접 고를 수 있으며, 마지막은 상무이사 →
+            대표(고정)입니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -184,14 +185,14 @@ export function EngagementPlanButton({
           </Alert>
         )}
 
-        {approverOptions.length > 0 && (
-          <ApproverPicker
-            options={approverOptions}
-            selected={approverIds}
-            onChange={setApproverIds}
-            disabled={pending}
-          />
-        )}
+        {/* 항상 표시 (기획 개정 2026-08-30 — 30번): 후보가 없어도 고정
+            결재선(상무이사 → 대표)이 어떻게 잡히는지 상신 전에 보여 준다 */}
+        <ApproverPicker
+          options={approverOptions}
+          selected={approverIds}
+          onChange={setApproverIds}
+          disabled={pending}
+        />
 
         <div className="rounded-lg border">
           <div className="flex items-baseline justify-between border-b bg-secondary/40 px-3 py-2">

@@ -10,7 +10,7 @@ import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
 import { matchApprovalRule, createApprovalWithSteps } from "@/lib/approvals/engine";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
-import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
+import { buildLineWithFixedTail } from "@/lib/approvals/manual-line";
 import {
   getProjectSettlement,
   buildSettlementDocument,
@@ -332,7 +332,8 @@ export async function confirmSettlementReview(input: {
     | { ruleId?: string | null; steps: import("@/lib/approvals/engine").EngineLineStep[] }
     | null = null;
   if ((input.approverIds ?? []).length > 0) {
-    const manual = await buildManualApprovalLine(
+    // 상위 직급 선택 + 상무이사·대표 고정 tail (기획 개정 2026-08-30 — 30번)
+    const manual = await buildLineWithFixedTail(
       tenantId,
       user.id,
       input.approverIds ?? []

@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * 결재라인 직접 지정 (기획 확정 2026-08-30 — 18번).
- * 체크한 순서가 결재 순서다 — 각 항목에 "N차" 뱃지로 보여 준다.
- * 비워 두면 전결규정(없으면 직급 체계)이 적용된다.
+ * 결재라인 직접 지정 (기획 확정 2026-08-30 — 18번, 개정 30번).
+ * 후보는 **상신자보다 높은 직급**만 내려온다(서버도 강제). 체크한 순서가
+ * 결재 순서고, 선택과 무관하게 **상무이사 → 대표는 고정(필수)** 으로 라인
+ * 끝에 자동 연결된다.
  */
 export type ApproverOption = {
   id: string;
@@ -33,15 +34,17 @@ export function ApproverPicker({
 
   return (
     <div className="rounded-md border bg-secondary/30 p-3">
-      <p className="mb-1 text-xs font-semibold">결재라인 직접 지정 (선택)</p>
+      <p className="mb-1 text-xs font-semibold">결재라인 직접 지정</p>
       <p className="mb-2 text-[11px] leading-tight text-muted-foreground">
-        체크한 순서대로 결재가 올라갑니다 — PL·PM 등 필요한 결재자를 넣을 수
-        있습니다. 비워 두면 전결규정(없으면 직급 체계 — 마지막은 대표)이
-        적용됩니다.
+        상신자보다 높은 직급의 결재자(PL·PM 등)를 체크한 순서대로 넣을 수
+        있습니다. 선택과 무관하게 마지막은{" "}
+        <b className="text-foreground">상무이사 → 대표 (고정)</b>로 자동
+        연결됩니다. 비워 두면 고정 결재선만으로 상신됩니다.
       </p>
       {options.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          지정할 수 있는 직원이 없습니다.
+          중간에 넣을 상위 직급 결재자가 없습니다 — 상무이사 → 대표(고정)로
+          바로 상신됩니다.
         </p>
       ) : (
         <ul className="grid max-h-44 gap-1 overflow-y-auto sm:grid-cols-2">
