@@ -26,6 +26,8 @@ export async function GET(
     .select(
       "name, code, business_year, client_name, status, starts_on, ends_on, project_lifecycle_steps (status)"
     )
+    // 보관(취소) 건은 목록과 동일하게 제외 — 화면과 엑셀이 달라지면 안 된다 (리뷰 5)
+    .neq("status", "cancelled")
     .order("business_year", { ascending: false })
     .order("created_at", { ascending: false });
 

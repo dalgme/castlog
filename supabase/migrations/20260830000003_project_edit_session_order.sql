@@ -25,12 +25,24 @@ declare
     'engagement_channel', 'engagement_deadline', 'engagement_requested_at',
     'acceptance_channel', 'acceptance_sent_at', 'updated_at'
   ];
+  -- PM급(그 프로젝트의 PL·PM·겸임)에게 열리는 것은 **기초정보 컬럼뿐**이다.
+  -- 전체 통과로 열면 상태(status)·종결(closed_at)·정산 연결 컬럼까지
+  -- PostgREST 직접 호출로 변조 가능해진다 (리뷰 1 — 심층방어 유지).
+  v_basic text[] := array[
+    'name', 'business_year', 'client_name', 'code', 'category_id',
+    'starts_on', 'ends_on', 'budget_amount', 'description', 'updated_at'
+  ];
 begin
-  if auth.role() = 'service_role'
-     or app.can_exec('projectBudget')
-     -- PM급 이상(그 프로젝트의 PL·PM·겸임)은 기초정보를 수정할 수 있다
-     -- (기획 확정 2026-08-30 — 배정 계단과 같은 역할 축)
-     or app.project_assignment_role(new.id) in ('pl', 'pl_pm', 'pm') then
+  if auth.role() = 'service_role' or app.can_exec('projectBudget') then
+    return new;
+  end if;
+  -- PM급 이상(그 프로젝트의 PL·PM·겸임)은 기초정보를 수정할 수 있다
+  -- (기획 확정 2026-08-30 — 배정 계단과 같은 역할 축)
+  if app.project_assignment_role(new.id) in ('pl', 'pl_pm', 'pm') then
+    if (to_jsonb(new) - v_basic - v_open) is distinct from (to_jsonb(old) - v_basic - v_open) then
+      raise exception '기초정보 외 컬럼(상태·종결·정산 등)은 이 권한으로 수정할 수 없습니다 (권한 규칙).'
+        using errcode = 'check_violation';
+    end if;
     return new;
   end if;
   if (to_jsonb(new) - v_open) is distinct from (to_jsonb(old) - v_open) then
@@ -40,6 +52,23 @@ begin
   return new;
 end;
 $$;
+
+-- ---- 1-2. RLS 행 정책도 같은 축으로 — 주임·사원 PM의 저장이 0행으로
+-- 조용히 실패하지 않게 (리뷰 2: 앱 게이트·컬럼 가드·행 정책 3층 일치)
+drop policy if exists projects_update on public.projects;
+create policy projects_update on public.projects
+  for update using (
+    tenant_id = app.tenant_id()
+    and (app.can_exec('planSubmit') or app.can_exec('engagementRequest')
+         or app.can_exec('acceptanceSend') or app.can_exec('projectBudget')
+         or app.project_assignment_role(id) in ('pl', 'pl_pm', 'pm'))
+  )
+  with check (
+    tenant_id = app.tenant_id()
+    and (app.can_exec('planSubmit') or app.can_exec('engagementRequest')
+         or app.can_exec('acceptanceSend') or app.can_exec('projectBudget')
+         or app.project_assignment_role(id) in ('pl', 'pl_pm', 'pm'))
+  );
 
 -- ---- 2. 세션 수동 정렬 -------------------------------------------------------
 alter table public.engagement_slots

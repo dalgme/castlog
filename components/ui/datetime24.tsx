@@ -81,7 +81,7 @@ export function DateTime24Input({
 /**
  * 24시간제 시각(시:분) 입력 — 날짜 없이 시간만 고르는 자리용 (세션 시작·종료 등).
  * 값 형식은 "HH:mm" 또는 빈 문자열 — 기존 type="time" 값 계약과 동일해
- * 서버 액션 수정 없이 교체된다. 분은 10분 단위 (DateTime24Input과 동일).
+ * 서버 액션 수정 없이 교체된다. 분은 5분 단위 (DateTime24Input과 동일).
  */
 export function Time24Input({
   id,

@@ -253,7 +253,16 @@ export function SlotTable({
 
   const commitOrder = (next: string[]) => {
     setOrder(next);
-    run(() => reorderSlots(projectId, next));
+    setError(null);
+    startTransition(async () => {
+      const r = await reorderSlots(projectId, next);
+      if (!r.ok) {
+        setError(r.error);
+        // 실패한 낙관적 순서가 화면에 눌러앉지 않게 서버 순서로 복원 (리뷰 3)
+        setOrder(slots.map((slot) => slot.id));
+      }
+      router.refresh();
+    });
   };
   // 위/아래 이동 — 드래그는 터치 기기에서 동작하지 않는다 (검수 G2 · §10)
   const moveSlotBy = (id: string, delta: number) => {
@@ -302,19 +311,22 @@ export function SlotTable({
           <div
             key={s.id}
             className="rounded-lg border p-3"
-            draggable={canManage && !pending}
-            onDragStart={() => setDragId(s.id)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onSlotDrop(s.id)}
-            onDragEnd={() => setDragId(null)}
           >
             <div className="flex flex-wrap items-center gap-2">
               {canManage && (
                 <span className="inline-flex items-center gap-0.5">
-                  <GripVertical
-                    className="h-4 w-4 cursor-grab text-muted-foreground/60"
-                    aria-hidden
-                  />
+                  {/* 드래그는 손잡이에서만 — 카드 안 입력·텍스트 선택과 충돌 방지 (리뷰 10) */}
+                  <span
+                    draggable={!pending}
+                    onDragStart={() => setDragId(s.id)}
+                    onDragEnd={() => setDragId(null)}
+                    className="cursor-grab"
+                    aria-label="세션 순서 드래그"
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground/60" aria-hidden />
+                  </span>
                   <button
                     type="button"
                     aria-label="세션 위로"
@@ -359,7 +371,7 @@ export function SlotTable({
                 <Users className="h-3.5 w-3.5" /> {filled}/{s.requiredCount} 확정
                 {requested > 0 && ` · ${requested} 요청중`}
                 {" · 후보 TO "}
-                {s.positions.length}
+                {s.positions.filter((p) => p.status !== "canceled").length}
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">

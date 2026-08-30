@@ -246,12 +246,20 @@ export async function archiveProject(
     .from("projects")
     .update({ status: "cancelled" })
     .eq("id", projectId)
+    .eq("tenant_id", gate.tenantId)
     .eq("status", before.status)
     .select("id");
-  if (error || !updated || updated.length === 0) {
+  if (error) {
+    // 규칙 거부/시스템 결함을 구분해 말한다 (§12-9, 리뷰 7)
     return {
       ok: false,
-      error: "보관 처리에 실패했습니다 (다른 변경과 겹쳤거나 시스템 오류). 새로고침 후 다시 시도해 주세요.",
+      error: await explainActionError(error.message, "보관 처리하지 못했습니다."),
+    };
+  }
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error: "그 사이 프로젝트 상태가 바뀌어 보관하지 못했습니다. 새로고침 후 다시 확인해 주세요.",
     };
   }
 

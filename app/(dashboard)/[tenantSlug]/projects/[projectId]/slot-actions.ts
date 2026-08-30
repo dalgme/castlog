@@ -395,7 +395,7 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   if (!source) return { ok: false, error: "복사할 세션을 찾을 수 없습니다." };
 
   const copyName = source.session_name
-    ? `${source.session_name} (복사)`.slice(0, 150)
+    ? `${source.session_name} (복사)`.slice(0, 120)
     : "(복사)";
   const { data: created, error } = await supabase
     .from("engagement_slots")
@@ -413,8 +413,6 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
       location_name: source.location_name,
       location_address: source.location_address,
       notes: source.notes,
-      // 원본 바로 아래에 오도록 — null이면 날짜 정렬 폴백이라 그대로 둔다
-      sort_order: source.sort_order !== null ? source.sort_order + 1 : null,
       created_by: auth.userId,
     })
     .select("id")
@@ -435,6 +433,28 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   if (positionError) {
     await supabase.from("engagement_slots").delete().eq("id", created.id);
     return { ok: false, error: positionError };
+  }
+
+  // 복사본이 원본 바로 아래 오도록 전체 순서를 다시 매긴다 — sort_order+1
+  // 단순 삽입은 다음 세션과 동률이 되어 정렬이 흔들린다 (리뷰 4).
+  // 실패해도 복사 자체는 유효하므로 삼킨다(다음 드래그가 재번호를 부여한다).
+  {
+    const { data: ordered } = await supabase
+      .from("engagement_slots")
+      .select("id")
+      .eq("project_id", source.project_id)
+      .order("sort_order", { ascending: true, nullsFirst: false })
+      .order("slot_date", { ascending: true })
+      .order("starts_time", { ascending: true });
+    const ids = (ordered ?? []).map((r) => r.id).filter((id) => id !== created.id);
+    const at = ids.indexOf(slotId);
+    ids.splice(at >= 0 ? at + 1 : ids.length, 0, created.id);
+    for (let i = 0; i < ids.length; i++) {
+      await supabase
+        .from("engagement_slots")
+        .update({ sort_order: i + 1 })
+        .eq("id", ids[i]!);
+    }
   }
 
   await supabase.from("audit_logs").insert({
@@ -475,7 +495,7 @@ export async function reorderSlots(
     .eq("project_id", projectId);
   const valid = new Set((rows ?? []).map((r) => r.id));
   const ids = orderedSlotIds.filter((id) => valid.has(id));
-  if (ids.length !== valid.size) {
+  if (ids.length !== valid.size || new Set(ids).size !== ids.length) {
     return { ok: false, error: "세션 목록이 갱신되었습니다. 새로고침 후 다시 시도하세요." };
   }
 

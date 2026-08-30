@@ -201,12 +201,28 @@ export function CandidateList({
               {editable &&
               canManage &&
               (p.expertName ?? p.assignedExpertName) === null ? (
-                <span
-                  className="text-xs text-muted-foreground/70"
-                  title="후보 전문가를 먼저 배정하면 예정가를 입력할 수 있습니다"
-                >
-                  예정가 — 후보 배정 후 입력
-                </span>
+                p.expectedFee !== null ? (
+                  // 배정 해제 등으로 남은 금액 — 숨기면 보이지 않는 값이 품의
+                  // 합계에 흘러간다 (리뷰 6). 표시 + 비우기만 허용
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    예정가 {formatKrw(p.expectedFee)} (미배정 잔존)
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => run(() => setCandidateFee(p.id, ""), "예정가를 비웠습니다.")}
+                      className="underline underline-offset-2 hover:text-red-600"
+                    >
+                      비우기
+                    </button>
+                  </span>
+                ) : (
+                  <span
+                    className="text-xs text-muted-foreground/70"
+                    title="후보 전문가를 먼저 배정하면 예정가를 입력할 수 있습니다"
+                  >
+                    예정가 — 후보 배정 후 입력
+                  </span>
+                )
               ) : editable && canManage ? (
                 <span className="inline-flex items-center gap-1 text-xs">
                   <Input
