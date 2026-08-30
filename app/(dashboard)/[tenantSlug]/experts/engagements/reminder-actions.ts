@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
@@ -81,7 +81,7 @@ export async function remindEngagement(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("acceptanceSend", user))) {
-    return { ok: false, error: execDeniedMessage("acceptanceSend") };
+    return { ok: false, error: await deniedExec("acceptanceSend") };
   }
 
   const { data: engagement } = await supabase

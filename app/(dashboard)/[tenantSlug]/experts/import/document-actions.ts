@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
@@ -51,7 +51,7 @@ async function gate(): Promise<Gate> {
   }
   // service_role 경로라 RLS가 아닌 이 게이트가 유일한 강제 지점 — 회사 조정 반영
   if (!(await canExecTenant("bulkImport", user))) {
-    return { ok: false, error: execDeniedMessage("bulkImport") };
+    return { ok: false, error: await deniedExec("bulkImport") };
   }
   const modules = await getTenantModules();
   if (!modules.experts) {

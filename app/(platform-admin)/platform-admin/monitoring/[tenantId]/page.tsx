@@ -23,7 +23,7 @@ const UUID =
 type FeedItem = {
   key: string;
   at: string;
-  kind: "error" | "audit" | "event" | "sms" | "email" | "feedback";
+  kind: "error" | "denial" | "audit" | "event" | "sms" | "email" | "feedback";
   title: string;
   detail: string | null;
   practice: boolean;
@@ -35,6 +35,7 @@ const KIND_META: Record<
   { label: string; className: string }
 > = {
   error: { label: "에러", className: "bg-red-100 text-red-800" },
+  denial: { label: "규칙 거부", className: "bg-orange-100 text-orange-800" },
   audit: { label: "행위", className: "bg-slate-100 text-slate-700" },
   event: { label: "섭외", className: "bg-blue-100 text-blue-800" },
   sms: { label: "문자", className: "bg-amber-100 text-amber-800" },
@@ -102,7 +103,8 @@ export default async function MonitorFeedPage({
   const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const PER_SOURCE = 60;
 
-  const [errors, audits, events, sms, emails, feedback] = await Promise.all([
+  const [errors, audits, denials, events, sms, emails, feedback] =
+    await Promise.all([
     admin
       .from("client_error_logs")
       .select("id, path, message, error_digest, source, is_practice, created_at")
@@ -114,6 +116,18 @@ export default async function MonitorFeedPage({
       .from("audit_logs")
       .select("id, action, actor_role, resource_type, created_at")
       .eq("tenant_id", tenant.id)
+      .neq("action", "action.denied")
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(PER_SOURCE),
+    // 규칙 거부는 별도 쿼리 — 일반 행위 로그와 60행 예산을 나눠 쓰면
+    // 활발한 테넌트에서 거부가 밀려나 타일이 0으로 왜곡된다 (리뷰 4).
+    // after_data도 이 쿼리에서만 끌어온다.
+    admin
+      .from("audit_logs")
+      .select("id, actor_role, after_data, created_at")
+      .eq("tenant_id", tenant.id)
+      .eq("action", "action.denied")
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .limit(PER_SOURCE),
@@ -171,6 +185,37 @@ export default async function MonitorFeedPage({
         practice: false,
       })
     ),
+    // 규칙 거부 — 테스트 중 "안 돼요"의 대부분이 여기다
+    ...(denials.data ?? []).map((r): FeedItem => {
+      const extra =
+        r.after_data !== null &&
+        typeof r.after_data === "object" &&
+        !Array.isArray(r.after_data)
+          ? (r.after_data as {
+              kind?: unknown;
+              message?: unknown;
+              path?: unknown;
+              practice?: unknown;
+            })
+          : {};
+      return {
+        key: `den-${r.id}`,
+        at: r.created_at,
+        kind: "denial",
+        title:
+          typeof extra.message === "string"
+            ? extra.message.slice(0, 160)
+            : "실행이 규칙에 따라 거부되었습니다",
+        detail: [
+          auditRoleLabel(r.actor_role),
+          typeof extra.kind === "string" ? extra.kind : null,
+          typeof extra.path === "string" ? extra.path : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        practice: extra.practice === true,
+      };
+    }),
     ...(events.data ?? []).map(
       (r): FeedItem => ({
         key: `evt-${r.id}`,
@@ -217,6 +262,7 @@ export default async function MonitorFeedPage({
     .slice(0, 200);
 
   const errorCount = (errors.data ?? []).length;
+  const denialCount = (denials.data ?? []).length;
   const failedSends =
     (sms.data ?? []).filter((r) => r.status === "failed").length +
     (emails.data ?? []).filter((r) => r.status === "failed").length;
@@ -251,7 +297,7 @@ export default async function MonitorFeedPage({
         <AutoRefresh />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-xl border bg-card p-3">
           <p className="text-2xl font-bold tabular-nums">{items.length}</p>
           <p className="text-xs text-muted-foreground">최근 24시간 활동</p>
@@ -261,6 +307,12 @@ export default async function MonitorFeedPage({
             {errorCount}
           </p>
           <p className="text-xs text-muted-foreground">런타임 에러</p>
+        </div>
+        <div className="rounded-xl border bg-card p-3">
+          <p className="text-2xl font-bold tabular-nums text-orange-600">
+            {denialCount}
+          </p>
+          <p className="text-xs text-muted-foreground">규칙 거부</p>
         </div>
         <div className="rounded-xl border bg-card p-3">
           <p className="text-2xl font-bold tabular-nums">{failedSends}</p>

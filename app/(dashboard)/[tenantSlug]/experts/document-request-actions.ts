@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
@@ -54,7 +54,7 @@ export async function createDocumentRequest(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   // 활성 연결 확인
@@ -140,7 +140,7 @@ export async function cancelDocumentRequest(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   const { data: updated, error } = await supabase

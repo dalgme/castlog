@@ -8,6 +8,7 @@ import {
   deputyActionLabel,
   type DeputyGatedAction,
 } from "@/lib/integrations/deputy-actions";
+import { recordActionDenial } from "@/lib/monitoring/action-denials";
 
 /**
  * 부PM 실행 게이트 (공통 기반 — approvals 모듈과 무관)
@@ -96,13 +97,17 @@ export async function gateDeputyAction(input: {
     .maybeSingle();
 
   if (!approval) {
-    return {
-      ok: false,
-      needsPmApproval: true,
-      error: `부PM이 ‘${deputyActionLabel(
-        input.actionType
-      )}’을 실행하려면 PM 승인이 먼저 필요합니다. 승인 요청을 보낸 뒤 다시 시도하세요.`,
-    };
+    const message = `부PM이 ‘${deputyActionLabel(
+      input.actionType
+    )}’을 실행하려면 PM 승인이 먼저 필요합니다. 승인 요청을 보낸 뒤 다시 시도하세요.`;
+    // 모니터링 창이 열려 있으면 피드에 자동 기록 (규칙 거부 가시화)
+    await recordActionDenial({
+      kind: `deputy:${input.actionType}`,
+      message,
+      resourceType: "project",
+      resourceId: input.projectId,
+    });
+    return { ok: false, needsPmApproval: true, error: message };
   }
 
   // 소진은 조건부 UPDATE로 — 동시에 두 번 눌러도 한 번만 통과한다.

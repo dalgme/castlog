@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import {
   messageSendSchema,
@@ -63,7 +63,7 @@ export async function uploadMmsImageAction(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("freeMessageSend", user))) {
-    return { ok: false, error: execDeniedMessage("freeMessageSend") };
+    return { ok: false, error: await deniedExec("freeMessageSend") };
   }
 
   const file = formData.get("file");
@@ -133,7 +133,7 @@ export async function sendMessage(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("freeMessageSend", user))) {
-    return { ok: false, error: execDeniedMessage("freeMessageSend") };
+    return { ok: false, error: await deniedExec("freeMessageSend") };
   }
 
   // 수신 대상: 활성 연결 전문가만 (RLS)
@@ -394,7 +394,7 @@ export async function cancelScheduledMessage(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("freeMessageSend", user))) {
-    return { ok: false, error: execDeniedMessage("freeMessageSend") };
+    return { ok: false, error: await deniedExec("freeMessageSend") };
   }
 
   // 조건부 갱신 — 이미 발송 중·완료된 건은 건드리지 않는다

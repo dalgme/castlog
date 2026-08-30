@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { isPracticeMode } from "@/lib/practice/server";
 import {
@@ -58,7 +58,7 @@ export async function requestEngagementForPosition(input: {
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("engagementRequest", user))) {
-    return { ok: false, error: execDeniedMessage("engagementRequest") };
+    return { ok: false, error: await deniedExec("engagementRequest") };
   }
 
   const { data: position } = await supabase
@@ -319,7 +319,7 @@ export async function releasePosition(positionId: string): Promise<SimpleResult>
   // 자리 해제는 응답 전 요청만 함께 회수한다(accepted는 거부) — 회수 축과
   // 같은 위험도라 engagementWithdraw로 판정한다 (리뷰 3: 축 분리 정합)
   if (!(await canExecTenant("engagementWithdraw", user))) {
-    return { ok: false, error: execDeniedMessage("engagementWithdraw") };
+    return { ok: false, error: await deniedExec("engagementWithdraw") };
   }
 
   const { data: position } = await supabase

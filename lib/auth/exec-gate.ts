@@ -3,11 +3,9 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import {
-  execDeniedMessage,
-  type ExecFeature,
-} from "@/lib/auth/exec-permissions";
+import { type ExecFeature } from "@/lib/auth/exec-permissions";
 import { canExecWithPolicy, getExecPolicy } from "@/lib/auth/exec-policy";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 
 export type ExecGateResult =
   | { ok: true; userId: string; tenantId: string; role: string }
@@ -38,7 +36,10 @@ export async function requireExecGrade(
   const policy = await getExecPolicy(user.id);
   const grade = gradeFromUser(user);
   if (!canExecWithPolicy(policy, feature, grade, role)) {
-    return { ok: false, error: execDeniedMessage(feature, policy.overrides[feature]) };
+    return {
+      ok: false,
+      error: await deniedExec(feature, policy.overrides[feature], user),
+    };
   }
   return { ok: true, userId: user.id, tenantId, role };
 }

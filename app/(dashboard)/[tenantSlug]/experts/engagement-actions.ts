@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import {
   ENGAGEMENT_EVENT_LABELS,
@@ -93,7 +93,7 @@ export async function createEngagement(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("engagementRequest", user))) {
-    return { ok: false, error: execDeniedMessage("engagementRequest") };
+    return { ok: false, error: await deniedExec("engagementRequest") };
   }
 
   // 활성 연결이 있는 전문가만 (RLS + 명시 확인)
@@ -326,7 +326,7 @@ export async function cancelEngagement(
   const cancelFeature =
     engagement.status === "requested" ? "engagementWithdraw" : "engagementCancel";
   if (!(await canExecTenant(cancelFeature, user))) {
-    return { ok: false, error: execDeniedMessage(cancelFeature) };
+    return { ok: false, error: await deniedExec(cancelFeature) };
   }
 
   // 부PM 실행 게이트 — 프로젝트에 붙은 섭외만 대상(미연결 건은 PM이 없다).
@@ -543,7 +543,7 @@ export async function manualAcceptEngagement(
   }
   // 섭외요청 실행과 같은 축 — 요청을 보낼 수 있는 사람이 완료 처리도 한다
   if (!(await canExecTenant("engagementRequest", user))) {
-    return { ok: false, error: execDeniedMessage("engagementRequest") };
+    return { ok: false, error: await deniedExec("engagementRequest") };
   }
 
   // 자사 건인지 확인 — RLS에 더해 tenant_id를 명시한다. 담당자가 다른 회사의

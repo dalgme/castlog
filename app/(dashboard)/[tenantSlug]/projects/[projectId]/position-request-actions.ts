@@ -4,6 +4,8 @@ import { roleFromUser } from "@/lib/auth/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isPracticeMode } from "@/lib/practice/server";
+// 조회성 로드 액션뿐이라 거부 기록(deniedExec) 대상이 아니다 — 다이얼로그를
+// 열 때마다 호출돼 피드에 반복 적재된다 (리뷰 8)
 import { execDeniedMessage } from "@/lib/auth/exec-permissions";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { requireUser } from "@/lib/auth/session";

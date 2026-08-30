@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { recordActionDenial } from "@/lib/monitoring/action-denials";
 
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "./tenant";
 import { gradeAtLeast } from "./grades";
@@ -135,10 +136,10 @@ export async function requireAdminScope(
     .maybeSingle();
 
   if (!grant) {
-    return {
-      ok: false,
-      error: `${ADMIN_SCOPE_LABELS[scope]} 관리 권한이 없습니다.`,
-    };
+    const message = `${ADMIN_SCOPE_LABELS[scope]} 관리 권한이 없습니다.`;
+    // 모니터링 창이 열려 있으면 피드에 자동 기록 (규칙 거부 가시화)
+    await recordActionDenial({ kind: `scope:${scope}`, message });
+    return { ok: false, error: message };
   }
 
   return { ok: true, userId: user.id, tenantId, tenantSlug, isCeo: false };
