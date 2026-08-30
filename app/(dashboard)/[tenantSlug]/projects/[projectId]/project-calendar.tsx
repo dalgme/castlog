@@ -7,13 +7,20 @@ import { CalendarPlus, Plus, Trash2, UserSearch } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Time24Input } from "@/components/ui/datetime24";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { useToast } from "@/hooks/use-toast";
 
 import { addCalendarDays, removeCalendarDay } from "./calendar-actions";
-import { createSlot } from "./slot-actions";
+import { createSlot, deleteSlot, updateSlot } from "./slot-actions";
 
 export type CalendarSession = {
   id: string;
@@ -24,6 +31,9 @@ export type CalendarSession = {
   roleType: string;
   requiredCount: number;
   locationName: string | null;
+  /** 수정 팝업 왕복 보존용 (32번) — 없으면 저장 시 지워진다 */
+  roleDescription: string | null;
+  notes: string | null;
 };
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
@@ -42,6 +52,13 @@ function toMin(t: string | null): number | null {
   const m = parseInt(t.slice(3, 5), 10);
   if (Number.isNaN(h) || Number.isNaN(m)) return null;
   return h * 60 + m;
+}
+
+function minToTime(min: number): string {
+  const clamped = Math.max(0, Math.min(min, 23 * 60 + 55));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 type TimedBlock = {
@@ -129,15 +146,23 @@ export function ProjectCalendar({
 
   // 일자별 상세(확대) 보기 — 헤더 클릭으로 토글 (31번)
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
-  // 세션 추가 폼 — 열려 있는 날짜 하나만
-  const [addingDay, setAddingDay] = useState<string | null>(null);
+  // 세션 등록/수정 팝업 (기획 2026-08-30 — 32번): 블록 클릭 = 수정,
+  // 빈 시간 영역 클릭 = 그 시간이 채워진 등록 팝업 (구글 캘린더 방식)
+  const [editor, setEditor] = useState<
+    | { mode: "create"; day: string }
+    | { mode: "edit"; sessionId: string }
+    | null
+  >(null);
   const [draft, setDraft] = useState({
+    day: "",
     sessionName: "",
     startsTime: "",
     endsTime: "",
     roleType: "lecturer",
     locationName: "",
     requiredCount: "1",
+    roleDescription: "",
+    notes: "",
   });
 
   const allDays = useMemo(() => {
@@ -219,39 +244,94 @@ export function ProjectCalendar({
     });
   }
 
-  function openAdd(day: string) {
-    setAddingDay(day);
+  function openCreate(day: string, startsTime = "", endsTime = "") {
+    if (!canManage) return;
+    setEditor({ mode: "create", day });
     setDraft({
+      day,
       sessionName: "",
-      startsTime: "",
-      endsTime: "",
+      startsTime,
+      endsTime,
       roleType: "lecturer",
       locationName: "",
       requiredCount: "1",
+      roleDescription: "",
+      notes: "",
     });
   }
 
-  function submitSession(day: string) {
+  function openEdit(s: CalendarSession) {
+    if (!canManage) return;
+    setEditor({ mode: "edit", sessionId: s.id });
+    setDraft({
+      day: s.date,
+      sessionName: s.name ?? "",
+      startsTime: s.startsTime ? s.startsTime.slice(0, 5) : "",
+      endsTime: s.endsTime ? s.endsTime.slice(0, 5) : "",
+      roleType: s.roleType,
+      locationName: s.locationName ?? "",
+      requiredCount: String(s.requiredCount),
+      roleDescription: s.roleDescription ?? "",
+      notes: s.notes ?? "",
+    });
+  }
+
+  /** 빈 시간 영역 클릭 → 클릭 지점 시각(30분 스냅)이 채워진 등록 팝업 */
+  function onGridClick(day: string, e: React.MouseEvent<HTMLDivElement>) {
+    if (!canManage || e.target !== e.currentTarget) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rawMin =
+      hourWindow.startH * 60 + ((e.clientY - rect.top) / HOUR_PX) * 60;
+    const startMin = Math.floor(rawMin / 30) * 30;
+    openCreate(day, minToTime(startMin), minToTime(startMin + 60));
+  }
+
+  function submitEditor() {
+    if (!editor) return;
     if (!draft.sessionName.trim() || !draft.locationName.trim()) {
       setError("세션명과 장소는 필수입니다.");
       return;
     }
-    const required = parseInt(draft.requiredCount, 10);
+    const base = {
+      slotDate: draft.day,
+      startsTime: draft.startsTime,
+      endsTime: draft.endsTime,
+      roleType: draft.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES,
+      sessionName: draft.sessionName.trim(),
+      roleDescription: draft.roleDescription.trim(),
+      feeAmount: "",
+      locationName: draft.locationName.trim(),
+      locationAddress: "",
+      notes: draft.notes.trim(),
+    };
     run(async () => {
-      const res = await createSlot(projectId, {
-        slotDate: day,
-        startsTime: draft.startsTime,
-        endsTime: draft.endsTime,
-        roleType: draft.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES,
-        sessionName: draft.sessionName.trim(),
-        roleDescription: "",
-        requiredCount: Number.isInteger(required) && required >= 1 ? required : 1,
-        feeAmount: "",
-        locationName: draft.locationName.trim(),
-        locationAddress: "",
-        notes: "",
-      });
-      if (res.ok) setAddingDay(null);
+      const res =
+        editor.mode === "create"
+          ? await createSlot(projectId, {
+              ...base,
+              requiredCount: (() => {
+                const n = parseInt(draft.requiredCount, 10);
+                return Number.isInteger(n) && n >= 1 ? n : 1;
+              })(),
+            })
+          : await updateSlot(editor.sessionId, base);
+      if (res.ok) setEditor(null);
+      return res;
+    });
+  }
+
+  function deleteSession() {
+    if (!editor || editor.mode !== "edit") return;
+    if (
+      !window.confirm(
+        "이 세션을 삭제할까요? 코드넘버(TO)도 함께 사라집니다. 이미 섭외를 요청한 인원이 있으면 삭제되지 않습니다."
+      )
+    ) {
+      return;
+    }
+    run(async () => {
+      const res = await deleteSlot(editor.sessionId);
+      if (res.ok) setEditor(null);
       return res;
     });
   }
@@ -394,23 +474,31 @@ export function ProjectCalendar({
                   {/* 시간 미정 세션 — 종일 띠 (구글 캘린더의 상단 띠와 동일 취지) */}
                   <div className="flex h-7 items-center gap-1 overflow-x-auto border-b bg-secondary/20 px-1.5">
                     {untimed.map((s) => (
-                      <span
+                      <button
                         key={s.id}
-                        title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명`}
-                        className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium"
+                        type="button"
+                        disabled={!canManage || pending}
+                        onClick={() => openEdit(s)}
+                        title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명${canManage ? " · 클릭하여 수정" : ""}`}
+                        className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium disabled:cursor-default enabled:hover:bg-secondary/70"
                       >
                         {timeLabel(s) === "시간 미정" ? "" : `${timeLabel(s)} `}
                         {s.name ?? "(세션명 없음)"}
-                      </span>
+                      </button>
                     ))}
                   </div>
 
-                  {/* 타임그리드 — 최소 높이 블록이 하단을 뚫지 않게 잘라낸다 */}
-                  <div className="relative overflow-hidden" style={{ height: gridHeight }}>
+                  {/* 타임그리드 — 빈 영역 클릭 = 그 시각으로 새 세션 팝업 (32번) */}
+                  <div
+                    className={`relative overflow-hidden ${canManage ? "cursor-copy" : ""}`}
+                    style={{ height: gridHeight }}
+                    onClick={(e) => onGridClick(day, e)}
+                    title={canManage ? "빈 시간을 클릭하면 그 시각으로 세션을 등록합니다" : undefined}
+                  >
                     {hourMarks.map((h) => (
                       <div
                         key={h}
-                        className="absolute inset-x-0 border-t border-dashed border-muted"
+                        className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted"
                         style={{ top: (h - hourWindow.startH) * HOUR_PX }}
                         aria-hidden
                       />
@@ -433,27 +521,19 @@ export function ProjectCalendar({
                       } · 필요 ${b.s.requiredCount}명${
                         b.s.locationName ? ` · ${b.s.locationName}` : ""
                       }${b.overlapped ? " · ⚠ 같은 시간대 세션 있음" : ""}`;
-                      return (
-                        <Link
-                          key={b.s.id}
-                          href={
-                            expertsEnabled
-                              ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${b.s.id}`
-                              : `/${tenantSlug}/projects/${projectId}?tab=sessions`
-                          }
-                          title={info}
-                          className={`absolute overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-[10px] leading-tight shadow-sm transition-colors ${
-                            b.overlapped
-                              ? "border-[#FF6F61] bg-[#FF6F61]/15 hover:bg-[#FF6F61]/25"
-                              : "border-brand bg-brand/10 hover:bg-brand/20"
-                          }`}
-                          style={{
-                            top,
-                            height,
-                            left: b.overlapped ? `${b.track * width}%` : 0,
-                            width: `calc(${width}% - 3px)`,
-                          }}
-                        >
+                      const blockClass = `absolute overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm transition-colors ${
+                        b.overlapped
+                          ? "border-[#FF6F61] bg-[#FF6F61]/15 hover:bg-[#FF6F61]/25"
+                          : "border-brand bg-brand/10 hover:bg-brand/20"
+                      }`;
+                      const blockStyle = {
+                        top,
+                        height,
+                        left: b.overlapped ? `${b.track * width}%` : 0,
+                        width: `calc(${width}% - 3px)`,
+                      } as const;
+                      const inner = (
+                        <>
                           <span className="block truncate font-mono text-[9px] text-muted-foreground">
                             {timeLabel(b.s)}
                           </span>
@@ -474,112 +554,53 @@ export function ProjectCalendar({
                               {b.s.locationName ? ` · ${b.s.locationName}` : ""}
                             </span>
                           )}
-                          {tall && expertsEnabled && (
-                            <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-semibold text-brand">
-                              <UserSearch className="h-2.5 w-2.5" aria-hidden />
-                              섭외계획
-                            </span>
-                          )}
+                        </>
+                      );
+                      // 블록 클릭 = 세션 수정 팝업 (32번). 입력 권한이 없으면
+                      // 기존처럼 섭외/세션 화면 링크로만 동작한다.
+                      return canManage ? (
+                        <button
+                          key={b.s.id}
+                          type="button"
+                          title={`${info} · 클릭하여 수정`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(b.s);
+                          }}
+                          className={blockClass}
+                          style={blockStyle}
+                        >
+                          {inner}
+                        </button>
+                      ) : (
+                        <Link
+                          key={b.s.id}
+                          href={
+                            expertsEnabled
+                              ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${b.s.id}`
+                              : `/${tenantSlug}/projects/${projectId}?tab=sessions`
+                          }
+                          title={info}
+                          className={blockClass}
+                          style={blockStyle}
+                        >
+                          {inner}
                         </Link>
                       );
                     })}
                   </div>
 
-                  {/* 세션 추가 — 그리드 아래 */}
+                  {/* 세션 추가 — 그리드 아래 (팝업으로 등록, 32번) */}
                   {canManage && (
                     <div className="border-t p-1.5">
-                      {addingDay === day ? (
-                        <div className="space-y-1.5 rounded-md border border-brand/40 bg-background p-2">
-                          <Input
-                            value={draft.sessionName}
-                            onChange={(e) =>
-                              setDraft((p) => ({ ...p, sessionName: e.target.value }))
-                            }
-                            placeholder="세션명 (필수)"
-                            className="h-7 text-xs"
-                            maxLength={120}
-                          />
-                          <div className="flex items-center gap-1">
-                            <Time24Input
-                              value={draft.startsTime}
-                              onChange={(v) =>
-                                setDraft((p) => ({ ...p, startsTime: v }))
-                              }
-                              ariaLabel="시작 시각"
-                            />
-                            <span className="text-[10px] text-muted-foreground">~</span>
-                            <Time24Input
-                              value={draft.endsTime}
-                              onChange={(v) => setDraft((p) => ({ ...p, endsTime: v }))}
-                              ariaLabel="종료 시각"
-                            />
-                          </div>
-                          <div className="flex gap-1.5">
-                            <select
-                              value={draft.roleType}
-                              onChange={(e) =>
-                                setDraft((p) => ({ ...p, roleType: e.target.value }))
-                              }
-                              className="h-7 flex-1 rounded-md border bg-background px-1.5 text-xs"
-                              aria-label="역할"
-                            >
-                              {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
-                                <option key={k} value={k}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={draft.requiredCount}
-                              onChange={(e) =>
-                                setDraft((p) => ({ ...p, requiredCount: e.target.value }))
-                              }
-                              className="h-7 w-14 text-xs"
-                              aria-label="필요 인원"
-                            />
-                          </div>
-                          <Input
-                            value={draft.locationName}
-                            onChange={(e) =>
-                              setDraft((p) => ({ ...p, locationName: e.target.value }))
-                            }
-                            placeholder="장소 (필수)"
-                            className="h-7 text-xs"
-                            maxLength={150}
-                          />
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 flex-1 text-xs"
-                              disabled={pending}
-                              onClick={() => setAddingDay(null)}
-                            >
-                              취소
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="h-7 flex-1 text-xs"
-                              disabled={pending}
-                              onClick={() => submitSession(day)}
-                            >
-                              {pending ? "등록 중…" : "세션 등록"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={() => openAdd(day)}
-                          className="w-full rounded-md border border-dashed py-1 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-brand"
-                        >
-                          + 세션 추가
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => openCreate(day)}
+                        className="w-full rounded-md border border-dashed py-1 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-brand"
+                      >
+                        + 세션 추가
+                      </button>
                     </div>
                   )}
                 </div>
@@ -588,6 +609,149 @@ export function ProjectCalendar({
           </div>
         </div>
       )}
+
+      {/* 세션 등록/수정 팝업 (기획 확정 2026-08-30 — 32번) */}
+      <Dialog open={editor !== null} onOpenChange={(v) => !v && setEditor(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editor?.mode === "edit" ? "세션 수정" : "새 세션 등록"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2.5">
+            <div>
+              <label className="text-[11px] text-muted-foreground">날짜</label>
+              <Input
+                type="date"
+                value={draft.day}
+                onChange={(e) => setDraft((p) => ({ ...p, day: e.target.value }))}
+                className="h-8"
+              />
+            </div>
+            <div className="flex items-end gap-1.5">
+              <div>
+                <label className="text-[11px] text-muted-foreground">시작</label>
+                <Time24Input
+                  value={draft.startsTime}
+                  onChange={(v) => setDraft((p) => ({ ...p, startsTime: v }))}
+                  ariaLabel="시작 시각"
+                />
+              </div>
+              <span className="pb-2 text-xs text-muted-foreground">~</span>
+              <div>
+                <label className="text-[11px] text-muted-foreground">종료</label>
+                <Time24Input
+                  value={draft.endsTime}
+                  onChange={(v) => setDraft((p) => ({ ...p, endsTime: v }))}
+                  ariaLabel="종료 시각"
+                />
+              </div>
+            </div>
+            <Input
+              value={draft.sessionName}
+              onChange={(e) =>
+                setDraft((p) => ({ ...p, sessionName: e.target.value }))
+              }
+              placeholder="세션명 (필수)"
+              maxLength={120}
+            />
+            <div className="flex gap-1.5">
+              <select
+                value={draft.roleType}
+                onChange={(e) =>
+                  setDraft((p) => ({ ...p, roleType: e.target.value }))
+                }
+                className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+                aria-label="역할"
+              >
+                {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {editor?.mode === "create" ? (
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={draft.requiredCount}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, requiredCount: e.target.value }))
+                  }
+                  className="h-9 w-20"
+                  aria-label="필요 인원"
+                  placeholder="필요"
+                />
+              ) : (
+                <span className="flex h-9 items-center rounded-md border px-2 text-xs text-muted-foreground">
+                  필요 {draft.requiredCount}명 — 인원 조정은 섭외후보 등록에서
+                </span>
+              )}
+            </div>
+            <Input
+              value={draft.locationName}
+              onChange={(e) =>
+                setDraft((p) => ({ ...p, locationName: e.target.value }))
+              }
+              placeholder="장소 (필수)"
+              maxLength={150}
+            />
+            <Input
+              value={draft.roleDescription}
+              onChange={(e) =>
+                setDraft((p) => ({ ...p, roleDescription: e.target.value }))
+              }
+              placeholder="역할 설명 (선택 — 예: 기조강연, 1:1 멘토링)"
+              maxLength={100}
+            />
+            <Textarea
+              rows={2}
+              value={draft.notes}
+              onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
+              placeholder="비고 (선택)"
+              maxLength={500}
+            />
+            {editor?.mode === "edit" && expertsEnabled && (
+              <Link
+                href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${editor.sessionId}`}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-brand underline-offset-4 hover:underline"
+              >
+                <UserSearch className="h-3.5 w-3.5" aria-hidden />
+                이 세션의 섭외계획으로 이동
+              </Link>
+            )}
+            <div className="flex gap-2 pt-1">
+              {editor?.mode === "edit" && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={pending}
+                  onClick={deleteSession}
+                >
+                  삭제
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                disabled={pending}
+                onClick={() => setEditor(null)}
+              >
+                취소
+              </Button>
+              <Button size="sm" disabled={pending} onClick={submitEditor}>
+                {pending
+                  ? "저장 중…"
+                  : editor?.mode === "edit"
+                    ? "저장"
+                    : "세션 등록"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         여기에서 등록한 세션은 <b>세션 계획 등록</b> 탭에 일자·시작시간 순으로
