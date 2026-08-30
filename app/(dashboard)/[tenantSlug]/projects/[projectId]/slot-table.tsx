@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -383,6 +384,13 @@ export function SlotTable({
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">
+                {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (기획 29번) */}
+                <Link
+                  href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
+                  className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                >
+                  섭외계획
+                </Link>
                 {canNotice && !expertsLite && (
                   <SessionNoticeDialog
                     slotId={s.id}

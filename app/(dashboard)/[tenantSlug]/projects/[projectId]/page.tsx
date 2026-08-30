@@ -63,6 +63,7 @@ import {
 import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
+import { ProjectCalendar } from "./project-calendar";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
 import {
@@ -526,6 +527,17 @@ export default async function ProjectDetailPage({
     ? await getCanceledExpertByPositionCode(project.id)
     : ({} as Record<string, string>);
 
+  // 캘린더 일정표의 일자 스캐폴드 (29번) — 테이블 미적용(42P01) 환경은 빈 목록
+  let calendarDays: string[] = [];
+  {
+    const { data: dayRows, error: dayError } = await supabase
+      .from("project_calendar_days")
+      .select("day")
+      .eq("project_id", project.id)
+      .order("day", { ascending: true });
+    if (!dayError) calendarDays = (dayRows ?? []).map((d) => d.day);
+  }
+
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
     slotDate: s.slot_date,
@@ -833,6 +845,34 @@ export default async function ProjectDetailPage({
           </Card>
         )}
         {/* 예산은 프로젝트 기초정보 — 공통 기반 */}
+        {/* 캘린더 일정표 (기획 확정 2026-08-30 — 29번): 기간·개별 날짜로
+            일자를 만들고, 일자별 세션을 등록하면 그대로 세션 계획 등록의
+            세션이 된다 — 원본은 engagement_slots 하나다 */}
+        {tab === "basic" && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">캘린더 일정표</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ProjectCalendar
+                tenantSlug={params.tenantSlug}
+                projectId={project.id}
+                days={calendarDays}
+                sessions={slotRows.map((s) => ({
+                  id: s.id,
+                  date: s.slotDate,
+                  startsTime: s.startsTime,
+                  endsTime: s.endsTime,
+                  name: s.sessionName,
+                  roleType: s.roleType,
+                  requiredCount: s.requiredCount,
+                  locationName: s.locationName,
+                }))}
+                canManage={canInput}
+              />
+            </CardContent>
+          </Card>
+        )}
         {tab === "basic" && (
         <Card>
             <CardHeader className="pb-3">
