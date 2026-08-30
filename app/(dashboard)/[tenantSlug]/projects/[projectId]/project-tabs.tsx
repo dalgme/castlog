@@ -17,6 +17,7 @@ export const PROJECT_TAB_KEYS = [
   "basic",
   "sessions",
   "experts",
+  "contrib",
   "closing",
 ] as const;
 
@@ -59,6 +60,15 @@ const TAB_DEFS: readonly {
     activeClass: "border-orange-600 bg-orange-600 text-white shadow-sm",
     idleClass:
       "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100",
+  },
+  {
+    // 참여율 배분 — 종료 탭에서 분리 (기획 확정 2026-08-30). 공통 기반이라
+    // 모듈 게이트 없음
+    key: "contrib",
+    label: "참여율 배분",
+    activeClass: "border-rose-600 bg-rose-600 text-white shadow-sm",
+    idleClass:
+      "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
   },
   {
     key: "closing",

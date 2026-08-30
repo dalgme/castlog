@@ -75,6 +75,7 @@ import {
   type UnlinkedEngagement,
 } from "./engagement-workbench";
 import { ClosingTab } from "./closing-tab";
+import { ProjectClosing } from "./project-closing";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -207,7 +208,7 @@ export default async function ProjectDetailPage({
       supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, sort_order"
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order"
         )
         .eq("project_id", project.id)
         .order("sort_order", { ascending: true, nullsFirst: false })
@@ -464,7 +465,7 @@ export default async function ProjectDetailPage({
     const { data: legacySlots } = await supabase
       .from("engagement_slots")
       .select(
-        "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
+        "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes"
       )
       .eq("project_id", project.id)
       .order("slot_date", { ascending: true })
@@ -531,6 +532,7 @@ export default async function ProjectDetailPage({
     requiredCount: s.required_count,
     feeAmount: s.fee_amount,
     locationName: s.location_name,
+    notes: s.notes,
     positions: (positionRecords ?? [])
       .filter((p) => p.slot_id === s.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
@@ -739,6 +741,22 @@ export default async function ProjectDetailPage({
 
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
+  // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
+  // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
+  const settlementAttachments: Record<string, { id: string; fileName: string }> = {};
+  {
+    const { data: attachRows } = await supabase
+      .from("settlement_line_attachments")
+      .select("id, engagement_id, file_name")
+      .eq("project_id", project.id);
+    for (const row of attachRows ?? []) {
+      settlementAttachments[row.engagement_id] = {
+        id: row.id,
+        fileName: row.file_name,
+      };
+    }
+  }
+
   return (
     <div>
       {/* '지금 할 일' 전광판 — 목록의 전광판 내용을 페이지 최상단에서 그대로
@@ -913,20 +931,63 @@ export default async function ProjectDetailPage({
 
         {/* 프로젝트 종료 및 지급 품의 — 마감의 모든 절차를 한 탭에 모은다.
             참여율 → 세션별 만족도 → 회계담당자 검토 → 지급 품의 송신 순서다 */}
+        {/* 참여율 배분 — 종료 탭에서 분리된 별도 탭 (기획 확정 2026-08-30) */}
+        {tab === "contrib" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">참여율 배분 (직원 합 100%)</CardTitle>
+              <Badge
+                variant={
+                  (settlement?.contributionTotal ?? 0) === 100
+                    ? "default"
+                    : "secondary"
+                }
+              >
+                합계 {settlement?.contributionTotal ?? 0}%
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              {!canEvaluate ? (
+                <p className="text-sm text-muted-foreground">
+                  참여율 입력은 레벨 4 이상만 할 수 있습니다 (권한 규칙). 현재
+                  배분 합계는 위 뱃지로 확인할 수 있습니다.
+                </p>
+              ) : isClosed ? (
+                <p className="text-sm text-muted-foreground">
+                  종료된 프로젝트입니다. 참여율은 임원 대시보드 성과 집계에
+                  반영됩니다.
+                </p>
+              ) : (
+                <ProjectClosing
+                  projectId={project.id}
+                  staff={staffOptions}
+                  initial={contributionInitial}
+                  closingInProgress={closingInProgress}
+                  approvalsActive={modules.approvals}
+                  contributionsOnly={modules.experts}
+                />
+              )}
+              {!isClosed && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {modules.experts
+                    ? "합계가 100%가 되어야 프로젝트 종료 및 지급 품의 탭의 다음 단계(지급 품의 검토 요청)가 열립니다."
+                    : "참여율 합계 100%를 맞춘 뒤 여기서 종료를 상신합니다."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
         {tab === "closing" && (
           <ClosingTab
+            attachmentsByEngagement={settlementAttachments}
             projectId={project.id}
             settlement={settlement}
             hasExperts={modules.experts}
-            hasApprovals={modules.approvals}
             canManage={canManage}
             canEvaluate={canEvaluate}
             canReviewSettlement={canReviewSettlementDoc}
             isClosed={isClosed}
             closedAt={project.closed_at}
-            closingInProgress={closingInProgress}
-            staff={staffOptions}
-            contributionInitial={contributionInitial}
             reviewTargets={reviewTargets}
             expertsLite={expertsLite}
           />

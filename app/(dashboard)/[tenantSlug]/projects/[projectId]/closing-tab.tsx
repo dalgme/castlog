@@ -10,7 +10,12 @@ import {
 import type { ProjectSettlement } from "@/lib/integrations/project-settlement";
 import { buildSettlementDocument } from "@/lib/integrations/project-settlement";
 
-import { ProjectClosing, type StaffOption } from "./project-closing";
+import Link from "next/link";
+
+import {
+  ClosingAttachment,
+  type SettlementAttachment,
+} from "./closing-attachment";
 import { ClosingStageButtons } from "./closing-stage-buttons";
 import {
   SatisfactionForm,
@@ -121,32 +126,27 @@ export function ClosingTab({
   projectId,
   settlement,
   hasExperts,
-  hasApprovals,
   canManage,
   canEvaluate,
   canReviewSettlement,
   isClosed,
   closedAt,
-  closingInProgress,
-  staff,
-  contributionInitial,
   reviewTargets,
+  attachmentsByEngagement = {},
   expertsLite = false,
 }: {
   projectId: string;
   settlement: ProjectSettlement | null;
   hasExperts: boolean;
-  hasApprovals: boolean;
   canManage: boolean;
   canEvaluate: boolean;
   /** 지급품의서 열람 권한 (회계담당관·임원 이상) */
   canReviewSettlement: boolean;
   isClosed: boolean;
   closedAt: string | null;
-  closingInProgress: boolean;
-  staff: StaffOption[];
-  contributionInitial: Record<string, number>;
   reviewTargets: ExpertReviewTarget[];
+  /** 참여 건별 증빙 첨부 (engagementId → 파일) — 기획 2026-08-30 */
+  attachmentsByEngagement?: Record<string, SettlementAttachment>;
   /** 라이트 모드 — 지급 기능이 닫혀 있으므로 ③·④의 성격을 안내한다 (검수 A8) */
   expertsLite?: boolean;
 }) {
@@ -223,8 +223,8 @@ export function ClosingTab({
         </CardContent>
       </Card>
 
-      {/* ① 참여율 — 권한 미달자에게도 카드는 보인다. 단계 띠에 ①이 있는데
-          카드가 통째로 사라지면 ①이 어디 있는지 찾게 된다 (검수 F3) */}
+      {/* ① 참여율 — 별도 탭으로 분리됐다 (기획 확정 2026-08-30). 단계 띠의
+          ①이 어디로 갔는지 찾지 않도록, 합계와 가는 길만 여기 남긴다 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
           <CardTitle className="text-sm">① 참여율 배분</CardTitle>
@@ -233,26 +233,19 @@ export function ClosingTab({
           </Badge>
         </CardHeader>
         <CardContent>
-          {!canEvaluate ? (
-            <p className="text-sm text-muted-foreground">
-              참여율 입력은 레벨 4 이상만 할 수 있습니다 (권한 규칙). 현재 배분
-              합계는 위 뱃지로 확인할 수 있습니다.
-            </p>
-          ) : isClosed ? (
-            <p className="text-sm text-muted-foreground">
-              종료된 프로젝트입니다. 참여율은 임원 대시보드 성과 집계에
-              반영됩니다.
-            </p>
-          ) : (
-            <ProjectClosing
-              projectId={projectId}
-              staff={staff}
-              initial={contributionInitial}
-              closingInProgress={closingInProgress}
-              approvalsActive={hasApprovals}
-              contributionsOnly={hasExperts}
-            />
-          )}
+          <p className="text-sm text-muted-foreground">
+            참여율 입력은{" "}
+            <Link
+              href="?tab=contrib"
+              className="font-medium text-brand underline underline-offset-2"
+            >
+              참여율 배분 탭
+            </Link>
+            에서 합니다.{" "}
+            {hasExperts
+              ? "합계가 100%가 되어야 다음 단계(지급 품의 검토 요청)로 넘어갈 수 있습니다."
+              : "참여율을 정리한 뒤 그 탭에서 종료를 상신합니다."}
+          </p>
         </CardContent>
       </Card>
 
@@ -272,21 +265,31 @@ export function ClosingTab({
             ) : (
               <ul className="divide-y">
                 {settlement.lines.map((line) => (
-                  <SatisfactionForm
-                    key={line.engagementId}
-                    projectId={projectId}
-                    disabled={!canEvaluate || !inClosing}
-                    row={{
-                      expertId: line.expertId,
-                      expertName: line.expertName,
-                      slotId: line.slotId,
-                      sessionName: line.sessionName,
-                      schedule: line.schedule,
-                      positionCode: line.positionCode,
-                      satisfaction: line.satisfaction,
-                      memo: line.memo,
-                    }}
-                  />
+                  <li key={line.engagementId} className="space-y-1">
+                    <SatisfactionForm
+                      projectId={projectId}
+                      disabled={!canEvaluate || !inClosing}
+                      row={{
+                        expertId: line.expertId,
+                        expertName: line.expertName,
+                        slotId: line.slotId,
+                        sessionName: line.sessionName,
+                        schedule: line.schedule,
+                        positionCode: line.positionCode,
+                        satisfaction: line.satisfaction,
+                        memo: line.memo,
+                      }}
+                    />
+                    {/* 참여 건별 증빙 — 파일 1개, 선택 (기획 2026-08-30) */}
+                    <div className="pb-2 pl-1">
+                      <ClosingAttachment
+                        projectId={projectId}
+                        engagementId={line.engagementId}
+                        attachment={attachmentsByEngagement[line.engagementId] ?? null}
+                        canManage={canEvaluate}
+                      />
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}

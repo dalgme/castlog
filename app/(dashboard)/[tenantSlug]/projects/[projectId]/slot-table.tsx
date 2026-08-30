@@ -79,6 +79,7 @@ export type SlotRow = {
   requiredCount: number;
   feeAmount: number | null;
   locationName: string | null;
+  notes: string | null;
   positions: SlotPositionRow[];
   /** 세션 안내문자 — 확정 전문가 대상·발송 내역 */
   notice: SlotNoticeData;
@@ -163,6 +164,12 @@ export function SlotTable({
 
   const onCreate = () => {
     setError(null);
+    // 필수값 선검증 — 다중 일정 세트 생성 도중 서버 거부를 받으면 일부만
+    // 만들어진 채 멈춘다 (리뷰 A-4)
+    if (!d.sessionName.trim() || !d.locationName.trim()) {
+      setError("세션명과 장소는 필수입니다 (③ 세션 정보).");
+      return;
+    }
     startTransition(async () => {
       if (editingId) {
         const r = await updateSlot(editingId, {
@@ -239,6 +246,7 @@ export function SlotTable({
       roleDescription: s.roleDescription ?? "",
       requiredCount: String(s.requiredCount),
       locationName: s.locationName ?? "",
+      notes: s.notes ?? "",
     });
   };
 
@@ -446,6 +454,12 @@ export function SlotTable({
                 )}
               </span>
             </div>
+
+            {s.notes && (
+              <p className="mt-1 pl-1 text-xs text-muted-foreground" title="비고">
+                비고: {s.notes}
+              </p>
+            )}
 
             <div className="mt-2 flex flex-wrap gap-1.5">
               {s.positions.map((p) =>
@@ -684,13 +698,13 @@ export function SlotTable({
 
             <div className="rounded-md border border-violet-200 bg-white p-3">
               <p className="mb-2 text-xs font-semibold text-violet-800">
-                ③ 세션 정보 (선택)
+                ③ 세션 정보 (세션명·장소 필수)
               </p>
               <div className="space-y-2">
                 <Input
                   value={d.sessionName}
                   onChange={(e) => set("sessionName", e.target.value)}
-                  placeholder="세션명 (예: 1일차 오전 강의, 데모데이 심사)"
+                  placeholder="세션명 (필수 — 예: 1일차 오전 강의, 데모데이 심사)"
                 />
                 <Input
                   value={d.roleDescription}
@@ -700,7 +714,13 @@ export function SlotTable({
                 <Input
                   value={d.locationName}
                   onChange={(e) => set("locationName", e.target.value)}
-                  placeholder="장소"
+                  placeholder="장소 (필수)"
+                />
+                <Input
+                  value={d.notes}
+                  onChange={(e) => set("notes", e.target.value)}
+                  placeholder="비고 (선택 — 내부 메모, 500자 이내)"
+                  maxLength={500}
                 />
               </div>
             </div>

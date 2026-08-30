@@ -33,11 +33,12 @@ const slotSchema = z
       "assistant",
       "other",
     ]),
-    sessionName: z.string().trim().max(120).optional(),
+    // 세션명·장소 필수 (기획 확정 2026-08-30 — 안내문자·수락서에 그대로 실린다)
+    sessionName: z.string().trim().min(1, "세션명을 입력하세요.").max(120),
     roleDescription: z.string().trim().max(100).optional(),
     requiredCount: z.number().int().min(1, "필요 인원은 1명 이상").max(100),
     feeAmount: z.string().regex(/^\d*$/, "비용은 숫자만 입력하세요.").optional(),
-    locationName: z.string().trim().max(150).optional(),
+    locationName: z.string().trim().min(1, "장소를 입력하세요.").max(150),
     locationAddress: z.string().trim().max(200).optional(),
     notes: z.string().trim().max(500).optional(),
   })
@@ -74,11 +75,11 @@ export async function createSlot(
       starts_time: d.startsTime || null,
       ends_time: d.endsTime || null,
       role_type: d.roleType,
-      session_name: d.sessionName || null,
+      session_name: d.sessionName,
       role_description: d.roleDescription || null,
       required_count: d.requiredCount,
       fee_amount: d.feeAmount ? parseInt(d.feeAmount, 10) : null,
-      location_name: d.locationName || null,
+      location_name: d.locationName,
       location_address: d.locationAddress || null,
       notes: d.notes || null,
       created_by: auth.userId,
@@ -144,8 +145,8 @@ async function createPositions(
 /**
  * 세션 수정 (기획 확정 2026-08-23) — 일정·세션명·역할·장소.
  * 필요인원은 코드 발급이 얽혀 adjustSlotCount 경로로만 바꾼다.
- * feeAmount·locationAddress·notes는 스키마 재사용 관계로 받지만 쓰지 않는다
- * — 비용은 후보별 예정가로 관리(개정 2026-08-22).
+ * feeAmount·locationAddress는 스키마 재사용 관계로 받지만 쓰지 않는다
+ * — 비용은 후보별 예정가로 관리(개정 2026-08-22). notes(비고)는 저장한다.
  * 승인된 계획 이후의 수정은 계획 서명(signature) 불일치로 잡혀
  * '변경 상신(재승인)'이 활성화된다 — 변경은 감사로그에 남긴다.
  */
@@ -167,7 +168,7 @@ export async function updateSlot(
   const { data: before } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, location_name"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, location_name, notes"
     )
     .eq("id", slotId)
     .maybeSingle();
@@ -183,6 +184,8 @@ export async function updateSlot(
       session_name: d.sessionName || null,
       role_description: d.roleDescription || null,
       location_name: d.locationName || null,
+      // 비고 — 화면 입력 신설 (기획 2026-08-30). 생성과 수정이 같은 컬럼을 쓴다
+      notes: d.notes || null,
     })
     .eq("id", slotId);
   if (error) return { ok: false, error: "세션 수정에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
@@ -202,6 +205,7 @@ export async function updateSlot(
       role_type: before.role_type,
       role_description: before.role_description,
       location_name: before.location_name,
+      notes: before.notes,
     },
     after_data: {
       slot_date: d.slotDate,
@@ -211,6 +215,7 @@ export async function updateSlot(
       role_type: d.roleType,
       role_description: d.roleDescription || null,
       location_name: d.locationName || null,
+      notes: d.notes || null,
     },
   });
 
@@ -393,6 +398,15 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
     .eq("id", slotId)
     .maybeSingle();
   if (!source) return { ok: false, error: "복사할 세션을 찾을 수 없습니다." };
+  // 세션명·장소 필수화 이후의 우회 방지 — 필수값 없는 구세션은 복사 대신
+  // 원본을 먼저 채우게 한다 (리뷰 A-2)
+  if (!source.session_name || !source.location_name) {
+    return {
+      ok: false,
+      error:
+        "원본 세션에 세션명·장소가 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
+    };
+  }
 
   const copyName = source.session_name
     ? `${source.session_name} (복사)`.slice(0, 120)

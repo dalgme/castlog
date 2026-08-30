@@ -3752,6 +3752,48 @@ export type Database = {
         }
         Relationships: []
       }
+      settlement_line_attachments: {
+        Row: {
+          created_at: string
+          engagement_id: string
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          is_practice: boolean
+          mime_type: string | null
+          project_id: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          engagement_id: string
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          is_practice?: boolean
+          mime_type?: string | null
+          project_id: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          engagement_id?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          is_practice?: boolean
+          mime_type?: string | null
+          project_id?: string
+          storage_path?: string
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
       sms_logs: {
         Row: {
           batch_id: string | null

@@ -70,7 +70,11 @@ export default async function ExecutivePage({
 
   const projects = projectsData ?? [];
   const users = usersData ?? [];
-  const projectIds = projects.map((p) => p.id);
+  // 보관(취소) 건 분리 (기획 재확정 2026-08-30 저녁) — 집계·현황 전부
+  // 진행 건 기준. 보관 건은 하단 별도 묶음으로만 보인다.
+  const liveProjects = projects.filter((p) => p.status !== "cancelled");
+  const archivedProjects = projects.filter((p) => p.status === "cancelled");
+  const projectIds = liveProjects.map((p) => p.id);
 
   const [{ data: stepsData }, { data: contribData }, engagementsResult] =
     await Promise.all([
@@ -159,7 +163,7 @@ export default async function ExecutivePage({
 
   type CategoryAgg = { name: string; projects: number; budget: number };
   const categoryAgg = new Map<string, CategoryAgg>();
-  for (const p of projects) {
+  for (const p of liveProjects) {
     const key = p.category_id ?? "__none__";
     const name = p.category_id
       ? (categoryNameById.get(p.category_id) ?? "(삭제된 분야)")
@@ -173,14 +177,14 @@ export default async function ExecutivePage({
     (a, b) => b.projects - a.projects
   );
 
-  const totalBudget = projects.reduce((sum, p) => sum + (p.budget_amount ?? 0), 0);
-  const activeProjects = projects.filter((p) => p.status === "active").length;
-  const closedProjects = projects.filter((p) => p.closed_at).length;
+  const totalBudget = liveProjects.reduce((sum, p) => sum + (p.budget_amount ?? 0), 0);
+  const activeProjects = liveProjects.filter((p) => p.status === "active").length;
+  const closedProjects = liveProjects.filter((p) => p.closed_at).length;
 
   // PM 편중 — 한 사람이 진행 중 프로젝트를 몇 개나 이고 있는가.
   // 인원 배분이 무너진 상태는 숫자로 보이지 않으면 아무도 손대지 않는다.
-  const liveProjectIds = projects
-    .filter((p) => p.status !== "completed" && p.status !== "canceled")
+  const liveProjectIds = liveProjects
+    .filter((p) => p.status !== "completed")
     .map((p) => p.id);
   const { data: pmAssignments } = liveProjectIds.length
     ? await supabase
@@ -245,7 +249,9 @@ export default async function ExecutivePage({
         </p>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <ExecTile label="프로젝트" value={`${projects.length}건`} />
+          <ExecTile label="프로젝트"
+            value={`${liveProjects.length}건${archivedProjects.length > 0 ? ` (보관 ${archivedProjects.length}건 별도)` : ""}`}
+          />
           <ExecTile label="진행 중" value={`${activeProjects}건`} />
           <ExecTile label="종료" value={`${closedProjects}건`} />
           <ExecTile label="전사 예산" value={formatKrw(totalBudget)} />
@@ -380,11 +386,14 @@ export default async function ExecutivePage({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">
-              프로젝트별 현황 ({projects.length})
+              프로젝트별 현황 ({liveProjects.length}
+              {archivedProjects.length > 0 &&
+                ` · 보관 ${archivedProjects.length}`}
+              )
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {projects.length === 0 ? (
+            {liveProjects.length === 0 && archivedProjects.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {year}년 프로젝트가 없습니다.
               </p>
@@ -403,7 +412,7 @@ export default async function ExecutivePage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {projects.map((p) => {
+                    {liveProjects.map((p) => {
                       const total = projStepTotal.get(p.id) ?? 0;
                       const contribTotal = projContribTotal.get(p.id) ?? 0;
                       return (
@@ -450,6 +459,31 @@ export default async function ExecutivePage({
                   </TableBody>
                 </Table>
               </div>
+            )}
+            {/* 보관(취소) 건 — 진행 표와 섞지 않고 분리 표시 (기획 2026-08-30).
+                예산 등 상단 집계에는 그대로 포함되어 있다 */}
+            {archivedProjects.length > 0 && (
+              <details className="mt-4 rounded-md border bg-secondary/40 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+                  보관(취소) 처리 {archivedProjects.length}건 — 설정 &gt;
+                  프로젝트 보관에서 관리
+                </summary>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {archivedProjects.map((p) => (
+                    <li key={p.id} className="flex items-baseline gap-2">
+                      <Link
+                        href={`/${params.tenantSlug}/projects/${p.id}`}
+                        className="text-muted-foreground underline-offset-4 hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        예산 {formatKrw(p.budget_amount ?? 0)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </CardContent>
         </Card>
