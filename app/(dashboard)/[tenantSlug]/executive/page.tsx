@@ -70,7 +70,11 @@ export default async function ExecutivePage({
 
   const projects = projectsData ?? [];
   const users = usersData ?? [];
-  const projectIds = projects.map((p) => p.id);
+  // 보관(취소) 건 분리 (기획 재확정 2026-08-30 저녁) — 집계·현황 전부
+  // 진행 건 기준. 보관 건은 하단 별도 묶음으로만 보인다.
+  const liveProjects = projects.filter((p) => p.status !== "cancelled");
+  const archivedProjects = projects.filter((p) => p.status === "cancelled");
+  const projectIds = liveProjects.map((p) => p.id);
 
   const [{ data: stepsData }, { data: contribData }, engagementsResult] =
     await Promise.all([
@@ -159,7 +163,7 @@ export default async function ExecutivePage({
 
   type CategoryAgg = { name: string; projects: number; budget: number };
   const categoryAgg = new Map<string, CategoryAgg>();
-  for (const p of projects) {
+  for (const p of liveProjects) {
     const key = p.category_id ?? "__none__";
     const name = p.category_id
       ? (categoryNameById.get(p.category_id) ?? "(삭제된 분야)")
@@ -173,18 +177,14 @@ export default async function ExecutivePage({
     (a, b) => b.projects - a.projects
   );
 
-  // 보관(취소) 건 분리 — 집계에서 빼지 않고 별도 묶음으로 표시 (기획 2026-08-30)
-  const liveProjects = projects.filter((p) => p.status !== "cancelled");
-  const archivedProjects = projects.filter((p) => p.status === "cancelled");
-  const totalBudget = projects.reduce((sum, p) => sum + (p.budget_amount ?? 0), 0);
-  const activeProjects = projects.filter((p) => p.status === "active").length;
-  const closedProjects = projects.filter((p) => p.closed_at).length;
+  const totalBudget = liveProjects.reduce((sum, p) => sum + (p.budget_amount ?? 0), 0);
+  const activeProjects = liveProjects.filter((p) => p.status === "active").length;
+  const closedProjects = liveProjects.filter((p) => p.closed_at).length;
 
   // PM 편중 — 한 사람이 진행 중 프로젝트를 몇 개나 이고 있는가.
   // 인원 배분이 무너진 상태는 숫자로 보이지 않으면 아무도 손대지 않는다.
-  const liveProjectIds = projects
-    // "canceled"(l 하나) 오타로 취소 건이 PM 편중·공백 집계에 섞이던 결함 수정
-    .filter((p) => p.status !== "completed" && p.status !== "cancelled")
+  const liveProjectIds = liveProjects
+    .filter((p) => p.status !== "completed")
     .map((p) => p.id);
   const { data: pmAssignments } = liveProjectIds.length
     ? await supabase
@@ -250,13 +250,11 @@ export default async function ExecutivePage({
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <ExecTile label="프로젝트"
-            value={`${projects.length}건${archivedProjects.length > 0 ? ` (보관 ${archivedProjects.length} 포함)` : ""}`}
+            value={`${liveProjects.length}건${archivedProjects.length > 0 ? ` (보관 ${archivedProjects.length}건 별도)` : ""}`}
           />
           <ExecTile label="진행 중" value={`${activeProjects}건`} />
           <ExecTile label="종료" value={`${closedProjects}건`} />
-          <ExecTile label="전사 예산"
-            value={`${formatKrw(totalBudget)}${archivedProjects.length > 0 ? " (보관 포함)" : ""}`}
-          />
+          <ExecTile label="전사 예산" value={formatKrw(totalBudget)} />
         </div>
 
         {pmlessProjects.length > 0 && (

@@ -169,17 +169,22 @@ export async function getTenantDashboard(
       (a.progress ?? 0) - (b.progress ?? 0)
   );
 
-  // 보관(취소) 건 분리 — 목록에서 빼는 게 아니라 별도 묶음으로 (기획 2026-08-30).
-  // byStatus·예산 합계에는 그대로 남는다 (집계 유지, 표시만 분리).
+  // 보관(취소) 건 분리 (기획 재확정 2026-08-30 저녁) — 목록만이 아니라
+  // **집계에서도** 분리한다: 상태 구성·예산·비용 합계는 진행 건 기준이고,
+  // 보관 건은 별도 묶음(archivedRows)으로만 보인다.
   const archivedRows = rows.filter((r) => r.status === "cancelled");
   const liveRows = rows.filter((r) => r.status !== "cancelled");
+  // byStatus에서 취소 제거 — 도넛·상태 구성은 진행 건만
+  delete byStatus.cancelled;
 
   // ---- 카테고리 구성 ----------------------------------------------------------
   const categoryNameById = new Map(
     (categoryResult.data ?? []).map((c) => [c.id, c.name])
   );
   const categoryCount = new Map<string, number>();
+  const liveIds = new Set(liveRows.map((r) => r.id));
   for (const p of projects) {
+    if (!liveIds.has(p.id)) continue; // 보관(취소) 건은 카테고리 구성에서도 분리
     const name = p.category_id
       ? (categoryNameById.get(p.category_id) ?? "(삭제된 분야)")
       : "미지정";
@@ -197,10 +202,10 @@ export async function getTenantDashboard(
   );
   const paidRows = batchResult.data ?? [];
   const cost = {
-    budgetTotal: rows.reduce((sum, r) => sum + r.budget, 0),
+    budgetTotal: liveRows.reduce((sum, r) => sum + r.budget, 0),
     plannedCost,
-    requestedCost: rows.reduce((sum, r) => sum + r.requestedCost, 0),
-    confirmedCost: rows.reduce((sum, r) => sum + r.confirmedCost, 0),
+    requestedCost: liveRows.reduce((sum, r) => sum + r.requestedCost, 0),
+    confirmedCost: liveRows.reduce((sum, r) => sum + r.confirmedCost, 0),
     paidGross: paidRows.reduce((sum, b) => sum + b.total_gross, 0),
     paidNet: paidRows.reduce((sum, b) => sum + b.total_net, 0),
     paidBatches: paidRows.length,
@@ -246,7 +251,7 @@ export async function getTenantDashboard(
 
   return {
     year,
-    projects: { total: projects.length, byStatus, rows: liveRows, archivedRows },
+    projects: { total: liveRows.length, byStatus, rows: liveRows, archivedRows },
     categories,
     cost,
     experts,
