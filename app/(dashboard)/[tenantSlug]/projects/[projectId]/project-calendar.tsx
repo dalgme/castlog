@@ -283,13 +283,18 @@ export function ProjectCalendar({
     const rawMin =
       hourWindow.startH * 60 + ((e.clientY - rect.top) / HOUR_PX) * 60;
     const startMin = Math.floor(rawMin / 30) * 30;
-    openCreate(day, minToTime(startMin), minToTime(startMin + 60));
+    // 자정 직전 클릭은 종료를 비워 둔다 — 23:55~23:55 프리필은 시스템이
+    // 만든 오류를 사용자가 고치게 만든다 (리뷰 P3-2)
+    const endsTime = startMin + 60 > 23 * 60 + 55 ? "" : minToTime(startMin + 60);
+    openCreate(day, minToTime(startMin), endsTime);
   }
 
   function submitEditor() {
     if (!editor) return;
     if (!draft.sessionName.trim() || !draft.locationName.trim()) {
-      setError("세션명과 장소는 필수입니다.");
+      // 모달 위에 보이는 토스트로 — 페이지 상단 Alert는 오버레이에 가려
+      // '눌러도 무반응'으로 보인다 (리뷰 P2-1, §12-9)
+      toast({ variant: "destructive", description: "세션명과 장소는 필수입니다." });
       return;
     }
     const base = {
@@ -473,19 +478,30 @@ export function ProjectCalendar({
 
                   {/* 시간 미정 세션 — 종일 띠 (구글 캘린더의 상단 띠와 동일 취지) */}
                   <div className="flex h-7 items-center gap-1 overflow-x-auto border-b bg-secondary/20 px-1.5">
-                    {untimed.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        disabled={!canManage || pending}
-                        onClick={() => openEdit(s)}
-                        title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명${canManage ? " · 클릭하여 수정" : ""}`}
-                        className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium disabled:cursor-default enabled:hover:bg-secondary/70"
-                      >
-                        {timeLabel(s) === "시간 미정" ? "" : `${timeLabel(s)} `}
-                        {s.name ?? "(세션명 없음)"}
-                      </button>
-                    ))}
+                    {untimed.map((s) =>
+                      canManage ? (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={pending}
+                          onClick={() => openEdit(s)}
+                          title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명 · 클릭하여 수정`}
+                          className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium hover:bg-secondary/70"
+                        >
+                          {timeLabel(s) === "시간 미정" ? "" : `${timeLabel(s)} `}
+                          {s.name ?? "(세션명 없음)"}
+                        </button>
+                      ) : (
+                        <span
+                          key={s.id}
+                          title={`${s.name ?? ""} · 시간 미정 · 필요 ${s.requiredCount}명`}
+                          className="max-w-[140px] truncate rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium"
+                        >
+                          {timeLabel(s) === "시간 미정" ? "" : `${timeLabel(s)} `}
+                          {s.name ?? "(세션명 없음)"}
+                        </span>
+                      )
+                    )}
                   </div>
 
                   {/* 타임그리드 — 빈 영역 클릭 = 그 시각으로 새 세션 팝업 (32번) */}
@@ -585,6 +601,12 @@ export function ProjectCalendar({
                           style={blockStyle}
                         >
                           {inner}
+                          {tall && expertsEnabled && (
+                            <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-semibold text-brand">
+                              <UserSearch className="h-2.5 w-2.5" aria-hidden />
+                              섭외계획
+                            </span>
+                          )}
                         </Link>
                       );
                     })}
@@ -647,12 +669,18 @@ export function ProjectCalendar({
                 />
               </div>
             </div>
+            {editor?.mode === "edit" && (
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                날짜·역할을 바꿔도 이미 발급된 코드넘버는 유지됩니다.
+              </p>
+            )}
             <Input
               value={draft.sessionName}
               onChange={(e) =>
                 setDraft((p) => ({ ...p, sessionName: e.target.value }))
               }
               placeholder="세션명 (필수)"
+              aria-label="세션명"
               maxLength={120}
             />
             <div className="flex gap-1.5">
@@ -695,6 +723,7 @@ export function ProjectCalendar({
                 setDraft((p) => ({ ...p, locationName: e.target.value }))
               }
               placeholder="장소 (필수)"
+              aria-label="장소"
               maxLength={150}
             />
             <Input
@@ -703,6 +732,7 @@ export function ProjectCalendar({
                 setDraft((p) => ({ ...p, roleDescription: e.target.value }))
               }
               placeholder="역할 설명 (선택 — 예: 기조강연, 1:1 멘토링)"
+              aria-label="역할 설명"
               maxLength={100}
             />
             <Textarea
@@ -710,6 +740,7 @@ export function ProjectCalendar({
               value={draft.notes}
               onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
               placeholder="비고 (선택)"
+              aria-label="비고"
               maxLength={500}
             />
             {editor?.mode === "edit" && expertsEnabled && (
@@ -755,8 +786,9 @@ export function ProjectCalendar({
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         여기에서 등록한 세션은 <b>세션 계획 등록</b> 탭에 일자·시작시간 순으로
-        그대로 올라갑니다(코드넘버 TO 자동 발급 포함). 세부 항목(역할 설명·주소·
-        비고)은 세션 계획 등록에서 이어서 편집하세요.
+        그대로 올라갑니다(코드넘버 TO 자동 발급 포함). 세션을 클릭하면 바로
+        수정·삭제할 수 있고, 장소 주소·후보별 예정가는 세션 계획 등록·섭외후보
+        등록에서 이어서 관리합니다.
       </p>
     </div>
   );
