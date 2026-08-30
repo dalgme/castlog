@@ -87,9 +87,9 @@ export async function createSlot(
     .single();
   if (error || !slot) return { ok: false, error: "슬롯 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
-  // 후보 순위 모델 (개정 2026-08-22): 임시후보 코드를 기본 3개 발급한다
-  // (필요인원이 3명을 넘으면 필요인원만큼). 후보는 이후 추가할 수 있다.
-  const candidateCount = Math.max(3, d.requiredCount);
+  // 후보 순위 모델 (개정 2026-08-30): 후보 TO를 **필요인원의 3배수**로
+  // 발급한다 — 거절·미회신을 감안한 예비 폭 (기획 확정). 이후 추가·삭제 가능.
+  const candidateCount = Math.min(100, d.requiredCount * 3);
   const positionError = await createPositions(
     supabase,
     auth.tenantId,
@@ -266,7 +266,7 @@ export async function adjustSlotCount(
   if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
 
   // 후보 순위 모델: 필요인원은 '실제 섭외 인원 수'일 뿐, 후보 수와 분리다.
-  // 늘릴 때 후보가 부족하면 그만큼 임시후보 코드를 추가 발급하고,
+  // 늘릴 때 후보 TO가 3배수에 못 미치면 그만큼 추가 발급하고(기획 2026-08-30),
   // 줄일 때는 후보를 지우지 않는다(초과 후보는 예비 후보로 남는다).
   const { count: candidateCount } = await supabase
     .from("engagement_slot_positions")
@@ -274,7 +274,8 @@ export async function adjustSlotCount(
     .eq("slot_id", slotId)
     .neq("status", "canceled");
   const existing = candidateCount ?? 0;
-  if (nextCount > existing) {
+  const targetCandidates = Math.min(100, nextCount * 3);
+  if (targetCandidates > existing) {
     const { data: maxRow } = await supabase
       .from("engagement_slot_positions")
       .select("position_no")
@@ -290,7 +291,7 @@ export async function adjustSlotCount(
       slot.slot_date,
       slot.role_type,
       from,
-      from + (nextCount - existing) - 1
+      from + (targetCandidates - existing) - 1
     );
     if (err) return { ok: false, error: err };
   }
@@ -368,6 +369,153 @@ export async function addCandidate(slotId: string): Promise<SlotResult> {
     no
   );
   if (err) return { ok: false, error: err };
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
+ * 세션 복사 (기획 확정 2026-08-30) — 구성(날짜·시간·역할·세션명·장소)만 복제하고
+ * 실적(후보 배정·섭외건)은 복제하지 않는다. 후보 TO는 3배수 규칙으로 새로 발급.
+ * 복사본은 세션명에 "(복사)"를 붙여 바로 구분·수정할 수 있게 한다.
+ */
+export async function duplicateSlot(slotId: string): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const supabase = createClient();
+  const { data: source } = await supabase
+    .from("engagement_slots")
+    .select(
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order"
+    )
+    .eq("id", slotId)
+    .maybeSingle();
+  if (!source) return { ok: false, error: "복사할 세션을 찾을 수 없습니다." };
+
+  const copyName = source.session_name
+    ? `${source.session_name} (복사)`.slice(0, 120)
+    : "(복사)";
+  const { data: created, error } = await supabase
+    .from("engagement_slots")
+    .insert({
+      tenant_id: auth.tenantId,
+      project_id: source.project_id,
+      slot_date: source.slot_date,
+      starts_time: source.starts_time,
+      ends_time: source.ends_time,
+      role_type: source.role_type,
+      session_name: copyName,
+      role_description: source.role_description,
+      required_count: source.required_count,
+      fee_amount: source.fee_amount,
+      location_name: source.location_name,
+      location_address: source.location_address,
+      notes: source.notes,
+      created_by: auth.userId,
+    })
+    .select("id")
+    .single();
+  if (error || !created) {
+    return { ok: false, error: "세션 복사에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  }
+
+  const positionError = await createPositions(
+    supabase,
+    auth.tenantId,
+    created.id,
+    source.slot_date,
+    source.role_type,
+    1,
+    Math.min(100, source.required_count * 3)
+  );
+  if (positionError) {
+    await supabase.from("engagement_slots").delete().eq("id", created.id);
+    return { ok: false, error: positionError };
+  }
+
+  // 복사본이 원본 바로 아래 오도록 전체 순서를 다시 매긴다 — sort_order+1
+  // 단순 삽입은 다음 세션과 동률이 되어 정렬이 흔들린다 (리뷰 4).
+  // 실패해도 복사 자체는 유효하므로 삼킨다(다음 드래그가 재번호를 부여한다).
+  {
+    const { data: ordered } = await supabase
+      .from("engagement_slots")
+      .select("id")
+      .eq("project_id", source.project_id)
+      .order("sort_order", { ascending: true, nullsFirst: false })
+      .order("slot_date", { ascending: true })
+      .order("starts_time", { ascending: true });
+    const ids = (ordered ?? []).map((r) => r.id).filter((id) => id !== created.id);
+    const at = ids.indexOf(slotId);
+    ids.splice(at >= 0 ? at + 1 : ids.length, 0, created.id);
+    for (let i = 0; i < ids.length; i++) {
+      await supabase
+        .from("engagement_slots")
+        .update({ sort_order: i + 1 })
+        .eq("id", ids[i]!);
+    }
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.role,
+    action: "slot.duplicate",
+    resource_type: "engagement_slot",
+    resource_id: created.id,
+    after_data: { source_slot_id: slotId },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
+ * 세션 순서 변경 (드래그·위아래 버튼 — 기획 확정 2026-08-30).
+ * 프로젝트의 전 세션에 sort_order를 1부터 다시 매긴다. sort_order가 없는
+ * 환경(마이그레이션 전)에서는 컬럼 부재 오류를 사유와 함께 돌려준다.
+ */
+export async function reorderSlots(
+  projectId: string,
+  orderedSlotIds: string[]
+): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  if (!Array.isArray(orderedSlotIds) || orderedSlotIds.length === 0) {
+    return { ok: false, error: "순서가 비어 있습니다." };
+  }
+
+  const supabase = createClient();
+  // 대상 검증 — 이 프로젝트의 세션만 (타 프로젝트 id 섞임 방지)
+  const { data: rows } = await supabase
+    .from("engagement_slots")
+    .select("id")
+    .eq("project_id", projectId);
+  const valid = new Set((rows ?? []).map((r) => r.id));
+  const ids = orderedSlotIds.filter((id) => valid.has(id));
+  if (ids.length !== valid.size || new Set(ids).size !== ids.length) {
+    return { ok: false, error: "세션 목록이 갱신되었습니다. 새로고침 후 다시 시도하세요." };
+  }
+
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (!id) continue;
+    const { error } = await supabase
+      .from("engagement_slots")
+      .update({ sort_order: i + 1 })
+      .eq("id", id);
+    if (error) {
+      return {
+        ok: false,
+        error:
+          error.code === "42703"
+            ? "세션 순서 저장 기능이 아직 준비되지 않았습니다 (마이그레이션 미적용) — 캐스트로그에 알려 주세요."
+            : "순서 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+      };
+    }
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

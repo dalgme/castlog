@@ -63,13 +63,22 @@ export default async function ProjectsPage({
   }
 
   const supabase = createClient();
-  const { data: projects } = await supabase
-    .from("projects")
-    .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, engagement_stage, project_lifecycle_steps (status)"
-    )
-    .order("business_year", { ascending: false })
-    .order("created_at", { ascending: false });
+  // 취소 보관 건은 목록에서 뺀다 — 별도 공간(설정 > 프로젝트 보관)으로
+  // 이관된 것이다 (기획 확정 2026-08-30). 종결(완료)은 실적이므로 계속 표시.
+  const [{ data: projects }, { count: archivedCount }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        "id, name, code, business_year, client_name, status, starts_on, ends_on, engagement_stage, project_lifecycle_steps (status)"
+      )
+      .neq("status", "cancelled")
+      .order("business_year", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("projects")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "cancelled"),
+  ]);
 
   const rows = projects ?? [];
 
@@ -243,6 +252,19 @@ export default async function ProjectsPage({
               </div>
             </CardContent>
           </Card>
+        )}
+        {(archivedCount ?? 0) > 0 && (
+          <p className="text-xs text-muted-foreground">
+            보관(취소) 처리된 프로젝트 {archivedCount}건은 이 목록에 나오지
+            않습니다 —{" "}
+            <a
+              href={`/${params.tenantSlug}/settings/archive`}
+              className="underline underline-offset-2"
+            >
+              설정 &gt; 프로젝트 보관
+            </a>
+            에서 확인하세요 (대표·이사).
+          </p>
         )}
       </main>
     </div>

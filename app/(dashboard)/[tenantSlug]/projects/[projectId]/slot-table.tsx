@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  GripVertical,
+  Pencil,
+  Plus,
+  Trash2,
+  Users,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +28,14 @@ import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { PositionRequestDialog } from "./position-request-dialog";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
 
-import { createSlot, deleteSlot, adjustSlotCount, updateSlot } from "./slot-actions";
+import {
+  createSlot,
+  deleteSlot,
+  adjustSlotCount,
+  updateSlot,
+  duplicateSlot,
+  reorderSlots,
+} from "./slot-actions";
 import { Time24Input } from "@/components/ui/datetime24";
 import { durationLabel } from "@/lib/integrations/time-duration";
 import { PlanVersionsDialog } from "./plan-versions-dialog";
@@ -118,6 +134,22 @@ export function SlotTable({
   >([]);
   // 세션 수정 모드 — 같은 폼을 재사용한다 (일정은 단일 세트)
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 세션 순서 (드래그·▲▼ — 기획 2026-08-30). 서버 목록이 바뀌면 재동기화
+  const [order, setOrder] = useState<string[]>(slots.map((s) => s.id));
+  const [dragId, setDragId] = useState<string | null>(null);
+  useEffect(() => {
+    const ids = slots.map((s) => s.id);
+    setOrder((prev) =>
+      prev.length === ids.length && prev.every((id) => ids.includes(id))
+        ? prev
+        : ids
+    );
+  }, [slots]);
+  const slotsById = new Map(slots.map((s) => [s.id, s]));
+  const orderedSlots = order
+    .map((id) => slotsById.get(id))
+    .filter((s): s is SlotRow => Boolean(s));
+
 
   const set = (k: keyof typeof emptyDraft, v: string) =>
     setD((prev) => ({ ...prev, [k]: v }));
@@ -219,6 +251,37 @@ export function SlotTable({
     });
   };
 
+  const commitOrder = (next: string[]) => {
+    setOrder(next);
+    setError(null);
+    startTransition(async () => {
+      const r = await reorderSlots(projectId, next);
+      if (!r.ok) {
+        setError(r.error);
+        // 실패한 낙관적 순서가 화면에 눌러앉지 않게 서버 순서로 복원 (리뷰 3)
+        setOrder(slots.map((slot) => slot.id));
+      }
+      router.refresh();
+    });
+  };
+  // 위/아래 이동 — 드래그는 터치 기기에서 동작하지 않는다 (검수 G2 · §10)
+  const moveSlotBy = (id: string, delta: number) => {
+    const idx = order.indexOf(id);
+    const to = idx + delta;
+    if (idx < 0 || to < 0 || to >= order.length) return;
+    const next = [...order];
+    next.splice(idx, 1);
+    next.splice(to, 0, id);
+    commitOrder(next);
+  };
+  const onSlotDrop = (targetId: string) => {
+    if (!dragId || dragId === targetId) return;
+    const next = order.filter((id) => id !== dragId);
+    next.splice(next.indexOf(targetId) + (order.indexOf(dragId) < order.indexOf(targetId) ? 1 : 0), 0, dragId);
+    setDragId(null);
+    commitOrder(next);
+  };
+
   const timeLabel = (s: SlotRow) =>
     s.startsTime && s.endsTime
       ? `${s.startsTime.slice(0, 5)}~${s.endsTime.slice(0, 5)}`
@@ -241,12 +304,49 @@ export function SlotTable({
         </p>
       )}
 
-      {slots.map((s) => {
+      {orderedSlots.map((s, slotIdx) => {
         const filled = s.positions.filter((p) => p.status === "filled").length;
         const requested = s.positions.filter((p) => p.status === "requested").length;
         return (
-          <div key={s.id} className="rounded-lg border p-3">
+          <div
+            key={s.id}
+            className="rounded-lg border p-3"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => onSlotDrop(s.id)}
+          >
             <div className="flex flex-wrap items-center gap-2">
+              {canManage && (
+                <span className="inline-flex items-center gap-0.5">
+                  {/* 드래그는 손잡이에서만 — 카드 안 입력·텍스트 선택과 충돌 방지 (리뷰 10) */}
+                  <span
+                    draggable={!pending}
+                    onDragStart={() => setDragId(s.id)}
+                    onDragEnd={() => setDragId(null)}
+                    className="cursor-grab"
+                    aria-label="세션 순서 드래그"
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground/60" aria-hidden />
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="세션 위로"
+                    disabled={pending || slotIdx === 0}
+                    onClick={() => moveSlotBy(s.id, -1)}
+                    className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="세션 아래로"
+                    disabled={pending || slotIdx === orderedSlots.length - 1}
+                    onClick={() => moveSlotBy(s.id, 1)}
+                    className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
               <span className="text-sm font-semibold">{s.slotDate}</span>
               <span className="text-sm text-muted-foreground">
                 {timeLabel(s)}
@@ -270,6 +370,8 @@ export function SlotTable({
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Users className="h-3.5 w-3.5" /> {filled}/{s.requiredCount} 확정
                 {requested > 0 && ` · ${requested} 요청중`}
+                {" · 후보 TO "}
+                {s.positions.filter((p) => p.status !== "canceled").length}
               </span>
               {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">
@@ -300,6 +402,16 @@ export function SlotTable({
                         }
                       }}
                     />
+                    <button
+                      type="button"
+                      aria-label="세션 복사"
+                      title="이 세션의 구성(날짜·시간·역할·장소)을 복제합니다"
+                      disabled={pending}
+                      onClick={() => run(() => duplicateSlot(s.id))}
+                      className="rounded p-1 text-muted-foreground hover:text-brand"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       aria-label="세션 수정"
@@ -563,8 +675,9 @@ export function SlotTable({
                 </div>
               </div>
               <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
-                세션을 추가하면 <b>코드넘버 3개</b>가 자동 발급됩니다 (필요
-                인원이 3명을 넘으면 그만큼). 비용은 여기서 입력하지 않습니다 —
+                세션을 추가하면 <b>후보 TO(코드넘버)가 필요인원의 3배수</b>로
+                자동 발급됩니다 (예: 필요 2명 → TO 6개). TO는 섭외후보 등록
+                탭에서 추가·삭제할 수 있습니다. 비용은 여기서 입력하지 않습니다 —
                 <b> 섭외후보 등록 탭에서 후보별 예정가</b>로 작성합니다.
               </p>
             </div>

@@ -195,8 +195,35 @@ export function CandidateList({
                 {ENGAGEMENT_STAGE_LABELS[stage]}
               </span>
 
-              {/* 후보별 예정가 — 추후 수정 가능. 결재·정산 금액의 근거가 된다 */}
-              {editable && canManage ? (
+              {/* 후보별 예정가 — 결재·정산 금액의 근거. 전문가를 올려야
+                  금액 칸이 활성화된다 (기획 2026-08-30 — 빈 자리에 금액부터
+                  적는 역순 입력 방지). 결재권자는 품의 결재 화면에서 수정 가능 */}
+              {editable &&
+              canManage &&
+              (p.expertName ?? p.assignedExpertName) === null ? (
+                p.expectedFee !== null ? (
+                  // 배정 해제 등으로 남은 금액 — 숨기면 보이지 않는 값이 품의
+                  // 합계에 흘러간다 (리뷰 6). 표시 + 비우기만 허용
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    예정가 {formatKrw(p.expectedFee)} (미배정 잔존)
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => run(() => setCandidateFee(p.id, ""), "예정가를 비웠습니다.")}
+                      className="underline underline-offset-2 hover:text-red-600"
+                    >
+                      비우기
+                    </button>
+                  </span>
+                ) : (
+                  <span
+                    className="text-xs text-muted-foreground/70"
+                    title="후보 전문가를 먼저 배정하면 예정가를 입력할 수 있습니다"
+                  >
+                    예정가 — 후보 배정 후 입력
+                  </span>
+                )
+              ) : editable && canManage ? (
                 <span className="inline-flex items-center gap-1 text-xs">
                   <Input
                     inputMode="numeric"

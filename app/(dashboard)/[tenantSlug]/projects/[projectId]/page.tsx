@@ -202,13 +202,15 @@ export default async function ProjectDetailPage({
         .from("project_assignments")
         .select("user_id, assignment_role")
         .eq("project_id", project.id),
-      // 세션별 정보 + 전문가 코드넘버 — 공통 기반(모듈 무관하게 항상 제공)
+      // 세션별 정보 + 전문가 코드넘버 — 공통 기반(모듈 무관하게 항상 제공).
+      // 수동 정렬(sort_order, 기획 2026-08-30)이 우선 — 없으면(null) 날짜·시간
       supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, sort_order"
         )
         .eq("project_id", project.id)
+        .order("sort_order", { ascending: true, nullsFirst: false })
         .order("slot_date", { ascending: true })
         .order("starts_time", { ascending: true }),
     ]);
@@ -454,8 +456,21 @@ export default async function ProjectDetailPage({
     .filter((m) => m.assignmentRole === "deputy_pm")
     .map((m) => m.name);
 
-  // Phase B-1: 슬롯별 넘버링코드 인원 조회
-  const slotRecords = slotsResult.data ?? [];
+  // Phase B-1: 슬롯별 넘버링코드 인원 조회.
+  // 부재 폴백 (§14-10): sort_order 컬럼 미적용 환경(42703)에서만 기존 정렬로
+  // 재시도 — 세션 목록이 통째로 비지 않게
+  let slotRecords = slotsResult.data ?? [];
+  if (slotsResult.error?.code === "42703") {
+    const { data: legacySlots } = await supabase
+      .from("engagement_slots")
+      .select(
+        "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name"
+      )
+      .eq("project_id", project.id)
+      .order("slot_date", { ascending: true })
+      .order("starts_time", { ascending: true });
+    slotRecords = (legacySlots ?? []).map((s) => ({ ...s, sort_order: null }));
+  }
   const slotIds = slotRecords.map((s) => s.id);
   const { data: positionRecords } = slotIds.length
     ? await supabase
@@ -860,10 +875,15 @@ export default async function ProjectDetailPage({
                 진행 {done}/{stepRows.length}
               </span>
             )}
-            {tab === "basic" && canViewAllProjects(grade) && (
+            {tab === "basic" &&
+              (canViewAllProjects(grade) ||
+                myAssignmentRole === "pl" ||
+                myAssignmentRole === "pl_pm" ||
+                myAssignmentRole === "pm") && (
               <BasicInfoDialog
                 tenantSlug={params.tenantSlug}
                 projectId={project.id}
+                canDelete={canViewAllProjects(grade)}
                 initial={{
                   name: project.name,
                   businessYear: String(project.business_year),
