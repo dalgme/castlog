@@ -70,6 +70,10 @@ async function requireProjectEditor(projectId: string): Promise<
   if (isUserGrade(grade) && canViewAllProjects(grade)) {
     return { ok: true, userId: user.id, tenantId, role };
   }
+  // 플랫폼 운영(넥스트랩) 세션 — 관리모드에서 고객사 지원 시 grade가 없다
+  if (role === "platform_admin") {
+    return { ok: true, userId: user.id, tenantId, role };
+  }
   const { data: mine } = await supabase
     .from("project_assignments")
     .select("assignment_role")
