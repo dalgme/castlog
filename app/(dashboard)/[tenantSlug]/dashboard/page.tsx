@@ -166,15 +166,22 @@ export default async function DashboardPage({
   const todayIso = new Date(Date.now() + 9 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10); // KST 기준 오늘
-  const rangeEnd = new Date(Date.now() + 9 * 60 * 60 * 1000 + 60 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  // 월간 그리드 내비게이션 범위 — 지난달 1일 ~ 3개월 뒤 말일
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const rangeStartDate = new Date(
+    Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() - 1, 1)
+  );
+  const rangeEndDate = new Date(
+    Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + 4, 0)
+  );
+  const rangeStart = rangeStartDate.toISOString().slice(0, 10);
+  const rangeEnd = rangeEndDate.toISOString().slice(0, 10);
   const [slotResult, myAssignResult, allAssignResult, staffResult] =
     await Promise.all([
       supabase
         .from("engagement_slots")
         .select("id, project_id, slot_date, starts_time, ends_time, session_name")
-        .gte("slot_date", todayIso)
+        .gte("slot_date", rangeStart)
         .lte("slot_date", rangeEnd)
         .order("slot_date", { ascending: true })
         .order("starts_time", { ascending: true })

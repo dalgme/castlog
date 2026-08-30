@@ -912,6 +912,118 @@ export default async function ProjectDetailPage({
             modules={{ experts: modules.experts, approvals: modules.approvals }}
           />
         )}
+        {/* 기본정보 (기획 2026-08-30 — 32번): 전 항목 상시 표시 + 수정.
+            수정은 대표·이사 + 이 프로젝트에 연결된 누구나 */}
+        {tab === "basic" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-sm">기본정보</CardTitle>
+              {(canViewAllProjects(grade) ||
+                myAssignmentRole !== null ||
+                role === "platform_admin") && (
+                <BasicInfoDialog
+                  tenantSlug={params.tenantSlug}
+                  projectId={project.id}
+                  canDelete={canViewAllProjects(grade)}
+                  initial={{
+                    name: project.name,
+                    businessYear: String(project.business_year),
+                    clientName: project.client_name ?? "",
+                    code: project.code ?? "",
+                    startsOn: project.starts_on ?? "",
+                    endsOn: project.ends_on ?? "",
+                    budgetAmount:
+                      project.budget_amount !== null
+                        ? String(project.budget_amount)
+                        : "",
+                    description: project.description ?? "",
+                    hostOrg: project.host_org ?? "",
+                    executorOrg: project.executor_org ?? "",
+                    ddayDate: project.dday_date ?? "",
+                  }}
+                />
+              )}
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">프로젝트명</dt>
+                  <dd className="font-semibold">{project.name}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">발주처</dt>
+                  <dd>{project.client_name ?? <span className="text-muted-foreground">미기입</span>}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">주관</dt>
+                  <dd>{project.host_org ?? <span className="text-muted-foreground">미기입</span>}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">수행기관</dt>
+                  <dd>{project.executor_org ?? <span className="text-muted-foreground">미기입</span>}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">사업기간</dt>
+                  <dd>
+                    {project.starts_on ?? "?"} ~ {project.ends_on ?? "?"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">D-Day 기준일</dt>
+                  <dd>
+                    {project.dday_date ? (
+                      <span className="font-bold text-[#FF6F61]">
+                        {(() => {
+                          const diff = Math.ceil(
+                            (new Date(
+                              `${project.dday_date}T00:00:00+09:00`
+                            ).getTime() -
+                              Date.now()) /
+                              (24 * 60 * 60 * 1000)
+                          );
+                          return diff > 0
+                            ? `D-${diff}`
+                            : diff === 0
+                              ? "D-Day"
+                              : `D+${-diff}`;
+                        })()}
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">
+                          ({project.dday_date})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">미기입</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">사업연도 · 관리코드</dt>
+                  <dd>
+                    {project.business_year}
+                    {project.code ? ` · ${project.code}` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">예산</dt>
+                  <dd>
+                    {project.budget_amount !== null
+                      ? `${project.budget_amount.toLocaleString("ko-KR")}원`
+                      : <span className="text-muted-foreground">미기입</span>}
+                  </dd>
+                </div>
+              </dl>
+              {project.description && (
+                <p className="mt-3 whitespace-pre-wrap border-t pt-3 text-sm text-muted-foreground">
+                  {project.description}
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                이 프로젝트에 배정된 담당자는 누구나 위 <b>기본정보 수정</b>{" "}
+                버튼으로 수정·추가 기입할 수 있습니다.
+              </p>
+            </CardContent>
+          </Card>
+        )}
         {tab === "basic" && assignableRoles.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -1049,7 +1161,7 @@ export default async function ProjectDetailPage({
             </CardContent>
         </Card>
         )}
-        {(tab === "overview" || tab === "basic") && (
+        {tab === "overview" && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 text-sm">
             <span>
@@ -1104,36 +1216,11 @@ export default async function ProjectDetailPage({
                 진행 {done}/{stepRows.length}
               </span>
             )}
-            {tab === "basic" &&
-              // 기획 개정 2026-08-30 (32번): 연결된 누구나 수정·추가 기입
-              (canViewAllProjects(grade) || myAssignmentRole !== null) && (
-              <BasicInfoDialog
-                tenantSlug={params.tenantSlug}
-                projectId={project.id}
-                canDelete={canViewAllProjects(grade)}
-                initial={{
-                  name: project.name,
-                  businessYear: String(project.business_year),
-                  clientName: project.client_name ?? "",
-                  code: project.code ?? "",
-                  startsOn: project.starts_on ?? "",
-                  endsOn: project.ends_on ?? "",
-                  budgetAmount:
-                    project.budget_amount !== null
-                      ? String(project.budget_amount)
-                      : "",
-                  description: project.description ?? "",
-                  hostOrg: project.host_org ?? "",
-                  executorOrg: project.executor_org ?? "",
-                  ddayDate: project.dday_date ?? "",
-                }}
-              />
-            )}
-          </CardContent>
+                      </CardContent>
         </Card>
         )}
 
-        {(tab === "overview" || tab === "basic") && project.description && (
+        {tab === "overview" && project.description && (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               {project.description}

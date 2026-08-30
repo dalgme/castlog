@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,11 +31,6 @@ const PALETTE = [
 ] as const;
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
-
-function dayLabel(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  return `${d.getMonth() + 1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`;
-}
 
 function timeLabel(s: WidgetSession): string {
   if (!s.startsTime) return "시간 미정";
@@ -72,6 +68,8 @@ export function ProjectCalendarWidget({
     isExecutive ? "all" : "mine"
   );
   const [staffId, setStaffId] = useState<string>("");
+  // 월간 그리드 (구글 캘린더 형태) — 표시 중인 달 (YYYY-MM)
+  const [month, setMonth] = useState<string>(todayIso.slice(0, 7));
 
   // 프로젝트 → 색 (첫 등장 순서 고정)
   const colorByProject = useMemo(() => {
@@ -105,8 +103,29 @@ export function ProjectCalendarWidget({
     for (const list of Array.from(map.values())) {
       list.sort((a, b) => (a.startsTime ?? "99").localeCompare(b.startsTime ?? "99"));
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return map;
   }, [visible]);
+
+  // 월간 그리드 셀 — 해당 월 1일이 속한 주의 일요일부터 6주(42칸)
+  const monthCells = useMemo(() => {
+    const first = new Date(`${month}-01T00:00:00`);
+    const start = new Date(first);
+    start.setDate(1 - first.getDay());
+    const cells: { iso: string; inMonth: boolean }[] = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      cells.push({ iso, inMonth: iso.slice(0, 7) === month });
+    }
+    return cells;
+  }, [month]);
+
+  function shiftMonth(delta: number) {
+    const d = new Date(`${month}-01T00:00:00`);
+    d.setMonth(d.getMonth() + delta);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
 
   const legendProjects = useMemo(() => {
     const seen = new Map<string, string>();
@@ -169,57 +188,104 @@ export function ProjectCalendarWidget({
         </div>
       </CardHeader>
       <CardContent className="space-y-2.5">
-        {byDay.length === 0 ? (
-          <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
-            {tab === "staff" && !staffId
-              ? "직원을 선택하면 그 직원이 배정된 프로젝트의 일정이 표시됩니다."
-              : "다가오는 일정이 없습니다."}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="이전 달"
+            onClick={() => shiftMonth(-1)}
+            className="rounded-md border p-1 hover:bg-secondary"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="다음 달"
+            onClick={() => shiftMonth(1)}
+            className="rounded-md border p-1 hover:bg-secondary"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+          <p className="text-sm font-bold">
+            {month.slice(0, 4)}년 {parseInt(month.slice(5, 7), 10)}월
           </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <div className="flex min-w-max gap-2 pb-1">
-              {byDay.map(([day, list]) => (
-                <div
-                  key={day}
-                  className={`w-44 shrink-0 rounded-lg border ${
-                    day === todayIso ? "border-brand/60 bg-brand/[0.03]" : ""
+          <button
+            type="button"
+            onClick={() => setMonth(todayIso.slice(0, 7))}
+            className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground hover:bg-secondary"
+          >
+            오늘
+          </button>
+          {tab === "staff" && !staffId && (
+            <span className="text-xs text-muted-foreground">
+              직원을 선택하면 그 직원의 일정이 표시됩니다.
+            </span>
+          )}
+        </div>
+
+        {/* 구글 캘린더식 월간 그리드 */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[640px]">
+            <div className="grid grid-cols-7 border-b text-center">
+              {WEEKDAYS.map((w, i) => (
+                <span
+                  key={w}
+                  className={`py-1 text-[11px] font-semibold ${
+                    i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-muted-foreground"
                   }`}
                 >
-                  <p
-                    className={`border-b px-2 py-1 text-[11px] font-bold ${
-                      day === todayIso ? "text-brand" : ""
-                    }`}
-                  >
-                    {dayLabel(day)}
-                    {day === todayIso && " · 오늘"}
-                  </p>
-                  <div className="space-y-1 p-1.5">
-                    {list.map((s) => (
-                      <Link
-                        key={s.id}
-                        href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
-                        title={`${s.projectName} · ${s.name ?? ""} · ${timeLabel(s)}`}
-                        className={`block rounded-md border-l-4 px-1.5 py-1 text-[10px] leading-tight transition-opacity hover:opacity-80 ${
-                          colorByProject.get(s.projectId) ?? PALETTE[0]
-                        }`}
-                      >
-                        <span className="block font-mono text-[9px] opacity-70">
-                          {timeLabel(s)}
-                        </span>
-                        <span className="block truncate font-semibold">
-                          {s.name ?? "(세션명 없음)"}
-                        </span>
-                        <span className="block truncate text-[9px] opacity-70">
-                          {s.projectName}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+                  {w}
+                </span>
               ))}
             </div>
+            <div className="grid grid-cols-7">
+              {monthCells.map((cell) => {
+                const list = byDay.get(cell.iso) ?? [];
+                const isToday = cell.iso === todayIso;
+                return (
+                  <div
+                    key={cell.iso}
+                    className={`min-h-[84px] border-b border-r p-1 first:border-l ${
+                      cell.inMonth ? "" : "bg-secondary/30"
+                    } ${isToday ? "bg-brand/[0.05]" : ""}`}
+                  >
+                    <p
+                      className={`mb-0.5 text-[11px] font-semibold ${
+                        isToday
+                          ? "inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand text-white"
+                          : cell.inMonth
+                            ? ""
+                            : "text-muted-foreground/60"
+                      }`}
+                    >
+                      {parseInt(cell.iso.slice(8, 10), 10)}
+                    </p>
+                    <div className="space-y-0.5">
+                      {list.slice(0, 3).map((s) => (
+                        <Link
+                          key={s.id}
+                          href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
+                          title={`${s.projectName} · ${s.name ?? ""} · ${timeLabel(s)}`}
+                          className={`block truncate rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight transition-opacity hover:opacity-80 ${
+                            colorByProject.get(s.projectId) ?? PALETTE[0]
+                          }`}
+                        >
+                          {s.startsTime ? `${s.startsTime.slice(0, 5)} ` : ""}
+                          {s.name ?? "(세션명 없음)"}
+                        </Link>
+                      ))}
+                      {list.length > 3 && (
+                        <p className="px-1 text-[10px] text-muted-foreground">
+                          +{list.length - 3}건
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
+        </div>
+
         {legendProjects.length > 0 && (
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {legendProjects.map(([id, name]) => (

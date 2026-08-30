@@ -61,6 +61,7 @@ export function CreateProjectDialog({
       name: "",
       businessYear: String(new Date().getFullYear()),
       clientName: "",
+      hostOrg: "",
       categoryId: "",
       code: "",
       startsOn: "",
@@ -156,19 +157,34 @@ export function CreateProjectDialog({
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name="clientName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>발주처 (필수)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="OO창조경제혁신센터" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="clientName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>발주처 (필수)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="OO창조경제혁신센터" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="hostOrg"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>주관기관 (선택)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="예: OO시" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="categoryId"
