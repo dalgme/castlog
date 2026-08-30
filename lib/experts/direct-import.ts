@@ -208,11 +208,13 @@ export function classifyDirectImportRows(
     const emailHit =
       input.email !== "" &&
       (similar?.emails.has(input.email.toLowerCase()) ?? false);
+    // '캐스트로그 등록플랫폼 전체' 기준 대조다 — "우리 회사 전문가"로
+    // 오독하지 않게 문구에 범위를 명시한다 (리뷰 P3-4)
     const similarMatch =
       nameHit || emailHit
-        ? `이미 등록된 전문가와 ${[nameHit ? "이름" : null, emailHit ? "이메일" : null]
+        ? `캐스트로그에 ${[nameHit ? "이름" : null, emailHit ? "이메일" : null]
             .filter(Boolean)
-            .join("·")}이 같습니다 (휴대폰은 다름) — 동일인인지 확인 후 등록하세요`
+            .join("·")}이 같은 전문가가 이미 등록되어 있습니다 (휴대폰은 다름) — 번호가 바뀐 동일인인지 확인 후 등록하세요`
         : null;
 
     return {

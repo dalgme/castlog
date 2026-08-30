@@ -82,13 +82,17 @@ export async function loadExpertExportRows(): Promise<ExpertExportRow[]> {
   const admin = createAdminClient();
   const practice = await isPracticeMode();
 
+  // limit 명시 — PostgREST 기본 max-rows에서 조용히 잘리는 '전체 내보내기'를
+  // 만들지 않는다. 화면(POOL_FETCH_LIMIT)과 같은 상한 (리뷰 P2-1)
+  const POOL_LIMIT = 2000;
   const [poolResult, { data: linkRows }] = await Promise.all([
     admin
       .from("experts")
       .select("id, name, phone, email, specialty, region, career_years")
       .eq("is_practice", practice)
       .eq("is_active", true)
-      .order("name", { ascending: true }),
+      .order("name", { ascending: true })
+      .limit(POOL_LIMIT),
     supabase
       .from("expert_tenant_links")
       .select("status, accepted_at, experts (id)"),
@@ -100,7 +104,8 @@ export async function loadExpertExportRows(): Promise<ExpertExportRow[]> {
       .from("experts")
       .select("id, name, phone, email, specialty, region, career_years")
       .eq("is_practice", practice)
-      .order("name", { ascending: true }));
+      .order("name", { ascending: true })
+      .limit(POOL_LIMIT));
   }
 
   const linkByExpert = new Map<string, { status: string; acceptedAt: string | null }>();
@@ -121,8 +126,6 @@ export async function loadExpertExportRows(): Promise<ExpertExportRow[]> {
     : (poolRows ?? []);
   if (pool.length === 0) return [];
 
-  const ids = pool.map((e) => e.id);
-
   const [
     { data: expertiseFieldRows },
     { data: expertiseAssignments },
@@ -133,12 +136,12 @@ export async function loadExpertExportRows(): Promise<ExpertExportRow[]> {
     { data: evaluationRows },
     notesResult,
   ] = await Promise.all([
-    admin.from("expertise_fields").select("id, name"),
-    admin
-      .from("expert_expertise_fields")
-      .select("expert_id, field_id")
-      .in("expert_id", ids),
-    supabase.from("tenant_recruit_fields").select("id, name"),
+    // is_active 필터 — 화면이 숨기는 비활성 분야명이 엑셀에만 나오면 안 된다
+    admin.from("expertise_fields").select("id, name").eq("is_active", true),
+    // 풀 id 목록을 쿼리스트링(.in)에 싣지 않는다(URL 한도 — 리뷰 P2-1).
+    // 화면과 같이 전체를 읽고 메모리에서 매핑한다.
+    admin.from("expert_expertise_fields").select("expert_id, field_id"),
+    supabase.from("tenant_recruit_fields").select("id, name").eq("is_active", true),
     supabase.from("expert_tenant_recruit_fields").select("expert_id, field_id"),
     supabase.from("expert_tenant_tags").select("expert_id, tag, note"),
     supabase.from("expert_tenant_profiles").select("expert_id, rating"),

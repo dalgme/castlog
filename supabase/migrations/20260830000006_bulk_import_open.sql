@@ -38,3 +38,31 @@ as $$
 $$;
 
 revoke all on function app.exec_default_min(text) from public;
+
+-- ---- 등록 요청(expert_invitations) RLS를 일괄 등록 축과 합집합으로 ----------
+-- 일괄 등록 화면의 "신규 전문가 등록 요청"은 세션 클라이언트로 insert한다.
+-- 정책이 expertInvite(기본 deputy)만 보면, bulkImport를 통과한 주임·사원이
+-- 미리보기까지 가고 확정에서 42501로 죽는다 (리뷰 P1-1 — §12-9 막다른 길).
+-- 합집합 선례: 20260829000001 expert_engagements_update.
+drop policy if exists expert_invitations_insert on public.expert_invitations;
+create policy expert_invitations_insert on public.expert_invitations
+  for insert with check (
+    tenant_id = app.tenant_id()
+    and (app.can_exec('expertInvite') or app.can_exec('bulkImport'))
+  );
+
+drop policy if exists expert_invitations_update on public.expert_invitations;
+create policy expert_invitations_update on public.expert_invitations
+  for update using (
+    tenant_id = app.tenant_id()
+    and (app.can_exec('expertInvite') or app.can_exec('bulkImport'))
+  )
+  with check (
+    tenant_id = app.tenant_id()
+    and (app.can_exec('expertInvite') or app.can_exec('bulkImport'))
+  );
+
+-- 결정 기록 (§14-9): 이번 개방은 '일괄 등록 탭 전체'(등록 요청 링크·보유자료
+-- 등록·서류 일괄 업로드)가 같은 bulkImport 축을 쓰는 현 구조 그대로 적용된다.
+-- 서류 일괄 업로드까지 전 직원 개방이 과하다고 판단되면 tenant_exec_overrides
+-- (회사 조정)로 올리거나, 별도 키 분리를 후속 개정으로 다룬다.
