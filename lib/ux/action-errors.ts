@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { describeDbError } from "@/lib/supabase/db-errors";
+import { recordActionDenial } from "@/lib/monitoring/action-denials";
 import { GRADE_LABELS } from "@/lib/auth/grades";
 import { isUserGrade } from "@/lib/auth/grades";
 
@@ -73,6 +74,10 @@ export async function explainActionError(
     // 마이그레이션 미적용·기타는 기존 번역기가 처리한다
     return describeDbError(message, fallback);
   }
+
+  // 모니터링 창이 열려 있으면 RLS 거부를 피드에 자동 기록 (규칙 거부 가시화).
+  // 문구 조립 실패와 무관하게 먼저 남긴다 — 기록 실패는 헬퍼가 삼킨다.
+  await recordActionDenial({ kind: "rls", message: fallback });
 
   // 권한 변경 반영 시차인지 판별 — 최신 권한(인증 서버) vs 토큰 클레임
   try {

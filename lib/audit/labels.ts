@@ -71,6 +71,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "monitor.error_interpret": "에러 기록 AI 해석",
   "engagement.cancel_record_failed": "섭외 취소 내역 기록 실패",
   "project.stage_auto": "섭외 단계 자동 전환",
+  "action.denied": "실행 거부 (규칙)",
   "usage.snapshot": "사용량 수동 집계",
   "rrn.lockdown.triggered": "주민번호 조회 전체 잠금 발생",
   "rrn.over_limit.request": "주민번호 초과 조회 요청",

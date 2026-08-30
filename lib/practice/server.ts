@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { practiceFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { recordActionDenial } from "@/lib/monitoring/action-denials";
 import { PRACTICE_BLOCKED, type PracticeBlockedKey } from "./mode";
 import { ensurePracticeEnvironment } from "./seed";
 
@@ -27,6 +28,11 @@ export async function blockInPractice(
   key: PracticeBlockedKey
 ): Promise<PracticeGuard> {
   if (await isPracticeMode()) {
+    // 모니터링 창이 열려 있으면 피드에 자동 기록 (규칙 거부 가시화)
+    await recordActionDenial({
+      kind: `practice:${key}`,
+      message: PRACTICE_BLOCKED[key],
+    });
     return { ok: false, error: PRACTICE_BLOCKED[key] };
   }
   return { ok: true };

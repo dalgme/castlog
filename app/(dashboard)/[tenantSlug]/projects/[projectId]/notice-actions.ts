@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage, type ExecFeature } from "@/lib/auth/exec-permissions";
+import { type ExecFeature } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { gradeFromUser } from "@/lib/auth/tenant";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -51,7 +52,7 @@ async function requireNoticeSession(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant(feature, user))) {
-    return { ok: false, error: execDeniedMessage(feature) };
+    return { ok: false, error: await deniedExec(feature) };
   }
   return { ok: true, userId: user.id, tenantId, role, grade: gradeFromUser(user) };
 }

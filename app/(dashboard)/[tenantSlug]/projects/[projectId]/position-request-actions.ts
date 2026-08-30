@@ -4,7 +4,7 @@ import { roleFromUser } from "@/lib/auth/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isPracticeMode } from "@/lib/practice/server";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { requireUser } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
@@ -43,7 +43,7 @@ export async function loadPositionRequestData(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("planInput", user))) {
-    return { ok: false, error: execDeniedMessage("planInput") };
+    return { ok: false, error: await deniedExec("planInput") };
   }
 
   const modules = await getTenantModules();
@@ -120,7 +120,7 @@ export async function loadSlotPickerData(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("planInput", user))) {
-    return { ok: false, error: execDeniedMessage("planInput") };
+    return { ok: false, error: await deniedExec("planInput") };
   }
   const modules = await getTenantModules();
   if (!modules.experts) {

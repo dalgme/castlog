@@ -23,7 +23,7 @@ const UUID =
 type FeedItem = {
   key: string;
   at: string;
-  kind: "error" | "audit" | "event" | "sms" | "email" | "feedback";
+  kind: "error" | "denial" | "audit" | "event" | "sms" | "email" | "feedback";
   title: string;
   detail: string | null;
   practice: boolean;
@@ -35,6 +35,7 @@ const KIND_META: Record<
   { label: string; className: string }
 > = {
   error: { label: "에러", className: "bg-red-100 text-red-800" },
+  denial: { label: "규칙 거부", className: "bg-orange-100 text-orange-800" },
   audit: { label: "행위", className: "bg-slate-100 text-slate-700" },
   event: { label: "섭외", className: "bg-blue-100 text-blue-800" },
   sms: { label: "문자", className: "bg-amber-100 text-amber-800" },
@@ -112,7 +113,7 @@ export default async function MonitorFeedPage({
       .limit(PER_SOURCE),
     admin
       .from("audit_logs")
-      .select("id, action, actor_role, resource_type, created_at")
+      .select("id, action, actor_role, resource_type, after_data, created_at")
       .eq("tenant_id", tenant.id)
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
@@ -161,16 +162,42 @@ export default async function MonitorFeedPage({
         errorId: r.id,
       })
     ),
-    ...(audits.data ?? []).map(
-      (r): FeedItem => ({
+    ...(audits.data ?? []).map((r): FeedItem => {
+      // 규칙 거부는 별도 칩으로 — 테스트 중 "안 돼요"의 대부분이 여기다
+      if (r.action === "action.denied") {
+        const extra =
+          r.after_data !== null &&
+          typeof r.after_data === "object" &&
+          !Array.isArray(r.after_data)
+            ? (r.after_data as { kind?: unknown; message?: unknown; path?: unknown })
+            : {};
+        return {
+          key: `aud-${r.id}`,
+          at: r.created_at,
+          kind: "denial",
+          title:
+            typeof extra.message === "string"
+              ? extra.message.slice(0, 160)
+              : "실행이 규칙에 따라 거부되었습니다",
+          detail: [
+            auditRoleLabel(r.actor_role),
+            typeof extra.kind === "string" ? extra.kind : null,
+            typeof extra.path === "string" ? extra.path : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          practice: false,
+        };
+      }
+      return {
         key: `aud-${r.id}`,
         at: r.created_at,
         kind: "audit",
         title: auditActionLabel(r.action),
         detail: `${auditRoleLabel(r.actor_role)} · ${r.resource_type}`,
         practice: false,
-      })
-    ),
+      };
+    }),
     ...(events.data ?? []).map(
       (r): FeedItem => ({
         key: `evt-${r.id}`,
@@ -217,6 +244,9 @@ export default async function MonitorFeedPage({
     .slice(0, 200);
 
   const errorCount = (errors.data ?? []).length;
+  const denialCount = (audits.data ?? []).filter(
+    (r) => r.action === "action.denied"
+  ).length;
   const failedSends =
     (sms.data ?? []).filter((r) => r.status === "failed").length +
     (emails.data ?? []).filter((r) => r.status === "failed").length;
@@ -251,7 +281,7 @@ export default async function MonitorFeedPage({
         <AutoRefresh />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-xl border bg-card p-3">
           <p className="text-2xl font-bold tabular-nums">{items.length}</p>
           <p className="text-xs text-muted-foreground">최근 24시간 활동</p>
@@ -261,6 +291,12 @@ export default async function MonitorFeedPage({
             {errorCount}
           </p>
           <p className="text-xs text-muted-foreground">런타임 에러</p>
+        </div>
+        <div className="rounded-xl border bg-card p-3">
+          <p className="text-2xl font-bold tabular-nums text-orange-600">
+            {denialCount}
+          </p>
+          <p className="text-xs text-muted-foreground">규칙 거부</p>
         </div>
         <div className="rounded-xl border bg-card p-3">
           <p className="text-2xl font-bold tabular-nums">{failedSends}</p>

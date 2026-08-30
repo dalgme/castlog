@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { normalizeKrMobileE164 } from "@/lib/auth/phone";
@@ -59,7 +59,7 @@ export async function createExpertInvitation(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   // 모듈 게이트 — 네비 숨김만으로는 불충분 (CLAUDE.md 1-2)
@@ -135,7 +135,7 @@ export async function revokeExpertInvitation(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   const { data: updated, error } = await supabase
@@ -189,7 +189,7 @@ export async function regenerateExpertInvitation(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   const token = generateLinkToken();
@@ -253,7 +253,7 @@ export async function sendExpertInvitationSms(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("expertInvite", user))) {
-    return { ok: false, error: execDeniedMessage("expertInvite") };
+    return { ok: false, error: await deniedExec("expertInvite") };
   }
 
   const { data: invitation } = await supabase

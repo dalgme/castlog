@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { explainActionError } from "@/lib/ux/action-errors";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { execDeniedMessage } from "@/lib/auth/exec-permissions";
+import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
 import {
@@ -64,7 +64,7 @@ export async function createProject(
     return { ok: false, error: "로그인이 필요합니다." };
   }
   if (!(await canExecTenant("projectCreate", user))) {
-    return { ok: false, error: execDeniedMessage("projectCreate") };
+    return { ok: false, error: await deniedExec("projectCreate") };
   }
 
   // 분류는 자사 카테고리만 — FK는 RLS를 우회하므로 소유를 직접 확인한다.
