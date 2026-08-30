@@ -604,19 +604,47 @@ export async function dispatchProjectEngagements(input: {
     rank: number | null;
     position_no: number;
   };
+  // 부분 상신 계획(기획 2026-08-30 — 22번)이면 승인 커버리지 밖 세션은 처음부터
+  // 대상에서 뺀다 — 건별 게이트에 맡기면 묶음 생성·취소가 헛돌고(리뷰 P2-3·P2-5),
+  // 매 발송이 '실패'투성이로 보인다. 뺀 세션은 규칙 사유로 명시한다 (§12-9).
+  const failed: { code: string; reason: string }[] = [];
+  const modulesForDispatch = await getTenantModules();
+  let coveredSlotIds: string[] | null = null;
+  if (modulesForDispatch.approvals) {
+    const activePlan = await getActivePlan(input.projectId);
+    if (activePlan?.status === "approved") {
+      coveredSlotIds = await getPlanCoveredSlotIds(activePlan.id);
+    }
+  }
+
   const targets: DispatchTarget[] = [];
   for (const slot of slots ?? []) {
     const slotTargets = (positions ?? [])
       .filter((p) => p.slot_id === slot.id && p.assigned_expert_id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
       .slice(0, slot.required_count);
+    if (coveredSlotIds !== null && !coveredSlotIds.includes(slot.id)) {
+      for (const p of slotTargets) {
+        failed.push({
+          code: p.code,
+          reason:
+            "승인된 섭외계획에 포함되지 않은 세션입니다 (규칙). 섭외계획 패널의 보완(추가) 품의로 승인받은 뒤 발송됩니다.",
+        });
+      }
+      continue;
+    }
     targets.push(...slotTargets);
   }
   if (targets.length === 0) {
-    return { ok: false, error: "발송할 배정 건이 없습니다." };
+    return {
+      ok: false,
+      error:
+        failed.length > 0
+          ? `발송 가능한 건이 없습니다. (${failed[0]?.reason ?? ""})`
+          : "발송할 배정 건이 없습니다.",
+    };
   }
 
-  const failed: { code: string; reason: string }[] = [];
   let sent = 0;
 
   // 묶음 섭외 (기획 확정 2026-08-30 — 20번): 같은 전문가에게 가는 여러 자리는
@@ -685,8 +713,11 @@ export async function dispatchProjectEngagements(input: {
       continue;
     }
 
-    // ② 건별 섭외 생성 — 발송만 억제 (감사로그·이력은 건별로 남는다)
+    // ② 건별 섭외 생성 — 발송만 억제 (감사로그·이력은 건별로 남는다).
+    // sent는 아직 올리지 않는다 — 묶음 연결·발송까지 끝나야 '나간' 것이다
+    // (리뷰 P2-3: 연결 실패 시 같은 자리가 sent와 failed에 동시 집계되던 결함)
     const createdIds: string[] = [];
+    const createdPositions: DispatchTarget[] = [];
     for (const position of group) {
       const result = await requestEngagementForPosition({
         positionId: position.id,
@@ -699,8 +730,8 @@ export async function dispatchProjectEngagements(input: {
         suppressSend: true,
       });
       if (result.ok) {
-        sent += 1;
         createdIds.push(result.engagementId);
+        createdPositions.push(position);
       } else {
         failed.push({ code: position.code, reason: result.error });
       }
@@ -745,15 +776,19 @@ export async function dispatchProjectEngagements(input: {
     }
 
     if (!bundleLinked) {
-      for (const position of group) {
+      // 생성에 성공한 자리만 실패로 알린다 — 생성 단계에서 이미 실패한 자리를
+      // 다시 넣으면 같은 코드가 두 번 찍힌다 (리뷰 P2-3)
+      for (const position of createdPositions) {
         failed.push({
           code: position.code,
           reason:
-            "섭외 건은 만들어졌으나 묶음 연결에 실패해 발송하지 못했습니다. 자리를 해제 후 다시 발송해 주세요.",
+            "섭외 건은 만들어졌으나 묶음 연결에 실패해 발송하지 못했습니다 (시스템 결함). 자리를 해제한 뒤 다시 발송해 주세요.",
         });
       }
       continue;
     }
+    // 묶음 연결·발송까지 확정된 시점에 집계한다
+    sent += createdIds.length;
 
     await notifyExpert({
       expertId,
@@ -790,6 +825,12 @@ export async function dispatchProjectEngagements(input: {
         body:
           `섭외를 요청드립니다. 아래 ${createdIds.length}건입니다.\n\n` +
           lines.join("\n") +
+          // 단건 발송(/e)과 같은 정보량을 유지한다 — 수락 = 계약 성립인데
+          // 행사 내용·특이사항을 못 보고 수락하게 해서는 안 된다 (리뷰 P2-2)
+          (input.eventSummary?.trim()
+            ? `\n\n· 행사 내용: ${input.eventSummary.trim()}`
+            : "") +
+          (input.memo?.trim() ? `\n· 특이사항: ${input.memo.trim()}` : "") +
           `\n\n· 회신 마감: ${deadlineLabel}까지` +
           `\n\n아래 링크에서 각 건을 확인하고 건별로 수락 또는 거절해 주세요.\n${bundleUrl}\n` +
           `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,

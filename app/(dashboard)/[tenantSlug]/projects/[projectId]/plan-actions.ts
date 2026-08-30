@@ -21,6 +21,13 @@ import {
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
+import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
+
+/**
+ * 직접 지정 결재라인 표기 — 결재자·감사로그 열람자가 규정 라인과 구분할 수
+ * 있어야 한다 (리뷰 P3-10). appliedRuleId=null만으로는 화면에서 안 보인다.
+ */
+const MANUAL_LINE_NOTE = "\n\n※ 결재라인 직접 지정 (전결규정 미적용)";
 
 export type PlanActionResult =
   | { ok: true; approvalId?: string | null }
@@ -106,30 +113,10 @@ async function resolveLine(
         "적용 가능한 전결규정이 없고 결재할 상위직급자도 없습니다. 결재자를 직접 지정하거나, 전결규정('프로젝트' 유형)을 등록하거나, 상위 직급 계정을 추가하세요.",
     };
   }
-  if (ids.includes(requesterUserId)) {
-    return { ok: false, error: "상신자 본인은 결재자로 지정할 수 없습니다." };
-  }
-
-  const supabase = createClient();
-  const { data: found } = await supabase
-    .from("users")
-    .select("id")
-    .in("id", ids)
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-  if (!found || found.length !== ids.length) {
-    return { ok: false, error: "결재자는 자사 소속 활성 직원이어야 합니다." };
-  }
-
-  return {
-    ok: true,
-    ruleId: null,
-    steps: ids.map((approverUserId, index) => ({
-      stepOrder: index + 1,
-      stepKind: "approval" as const,
-      approverUserId,
-    })),
-  };
+  // 공용 검증(중복 제거·상신자 제외·자사 활성 직원)은 한 곳만 유지한다
+  const manual = await buildManualApprovalLine(tenantId, requesterUserId, ids);
+  if (!manual.ok) return manual;
+  return { ok: true, ruleId: null, steps: manual.steps };
 }
 
 /** 계획 명세(스냅샷) 저장 — JSON 블롭이 아니라 정규화 행으로 (CLAUDE.md 8) */
@@ -291,7 +278,8 @@ export async function submitEngagementPlan(
     body:
       `섭외 인원 ${snapshot.positionCount}명 / 타임테이블 ${snapshot.slotCount}건\n` +
       `계획 섭외비 ${snapshot.plannedAmount.toLocaleString("ko-KR")}원\n\n` +
-      (note.trim() || ""),
+      (note.trim() || "") +
+      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,
     projectId,
@@ -443,7 +431,8 @@ export async function submitEngagementPlanChange(
       `계획 섭외비 ${current.plannedAmount.toLocaleString("ko-KR")}원 → ` +
       `${snapshot.plannedAmount.toLocaleString("ko-KR")}원 ` +
       `(${diff >= 0 ? "+" : ""}${diff.toLocaleString("ko-KR")}원)\n\n` +
-      `변경 사유: ${reason.trim()}`,
+      `변경 사유: ${reason.trim()}` +
+      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,
     projectId,

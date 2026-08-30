@@ -50,10 +50,23 @@ export async function GET(
     );
   }
 
-  const pdf = await renderAcceptancePdf(view);
+  let pdf: Buffer;
+  try {
+    pdf = await renderAcceptancePdf(view);
+  } catch (e) {
+    // 원인 분류 + 다음 행동 (§12-9) — 대개 폰트·이미지 로드 실패다
+    console.error("[acceptance-pdf] render failed:", e);
+    return NextResponse.json(
+      {
+        error:
+          "PDF 생성에 실패했습니다 (시스템 결함). 잠시 후 다시 시도하시고, 반복되면 화면 열람으로 확인한 뒤 챗봇으로 알려 주세요.",
+      },
+      { status: 500 }
+    );
+  }
 
   const supabase = createClient();
-  await supabase.from("audit_logs").insert({
+  const { error: auditError } = await supabase.from("audit_logs").insert({
     tenant_id: tenantIdFromUser(user),
     actor_auth_user_id: user.id,
     actor_role: roleFromUser(user),
@@ -61,6 +74,11 @@ export async function GET(
     resource_type: "engagement_acceptance",
     resource_id: view.acceptance.id,
   });
+  if (auditError) {
+    // 열람 자체는 getAcceptanceView가 이미 감사 기록했다 — 다운로드 기록
+    // 실패는 전달을 막지 않되 흔적을 남긴다 (리뷰 P3-9)
+    console.error("[acceptance-pdf] audit insert failed:", auditError);
+  }
 
   const filename = `수락서_${view.acceptance.letter_no}.pdf`;
   const encoded = encodeURIComponent(filename);

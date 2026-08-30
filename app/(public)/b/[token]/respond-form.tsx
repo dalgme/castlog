@@ -16,6 +16,8 @@ export type BundleFormItem = {
   locationName: string | null;
   feeLabel: string | null;
   conflictCount: number;
+  /** 같은 묶음의 다른 건과 날짜가 겹치는가 — 함께 수락하면 이중 일정 */
+  siblingOverlap: boolean;
 };
 
 /**
@@ -180,6 +182,12 @@ export function BundleRespondForm({
                   <p className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900">
                     ⚠ 이 일정은 이미 확정하신 다른 일정 {item.conflictCount}건과
                     겹칩니다.
+                  </p>
+                )}
+                {item.siblingOverlap && (
+                  <p className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900">
+                    ⚠ 이 목록의 다른 요청과 날짜가 겹칩니다. 함께 수락하면 같은
+                    날 두 일정이 확정되니 확인 후 응답해 주세요.
                   </p>
                 )}
               </div>

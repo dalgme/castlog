@@ -109,10 +109,19 @@ export function EngagementPlanButton({
     return Array.from(bySlot.values());
   }, [lines]);
 
-  // 기본 선택 = 완성된 세션 전부
-  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>(() =>
-    sessions.filter((s) => s.ready).map((s) => s.slotId)
-  );
+  // 기본 선택 = 완성된 세션 전부. 초기화는 마운트 시가 아니라 대화상자를
+  // 열 때마다 한다 — 배정은 대개 마운트 이후 router.refresh()로 도착하므로
+  // 마운트 시점 계산은 항상 0개 선택이 된다 (리뷰 P2-4)
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setError(null);
+      setSelectedSlotIds(
+        sessions.filter((s) => s.ready).map((s) => s.slotId)
+      );
+    }
+    setOpen(next);
+  }
   const selectedSessions = sessions.filter((s) =>
     selectedSlotIds.includes(s.slotId)
   );
@@ -153,7 +162,7 @@ export function EngagementPlanButton({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm">
           <FileSignature className="mr-1.5 h-3.5 w-3.5" />

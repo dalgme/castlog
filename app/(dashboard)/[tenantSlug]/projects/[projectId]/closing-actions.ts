@@ -356,7 +356,13 @@ export async function confirmSettlementReview(input: {
     tenantId,
     requesterUserId: user.id,
     title: `[프로젝트 종료 및 지급 품의] ${settlement.projectName} — 전문가 ${settlement.expertCount}명`,
-    body: document,
+    // 직접 지정 라인은 문서에도 표기한다 — 결재자·감사로그 열람자가 규정
+    // 라인과 구분할 수 있어야 한다 (리뷰 P3-10)
+    body:
+      document +
+      ((input.approverIds ?? []).length > 0
+        ? "\n\n※ 결재라인 직접 지정 (전결규정 미적용)"
+        : ""),
     approvalType: "payment",
     amount: settlement.totalGross,
     projectId: input.projectId,

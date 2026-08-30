@@ -185,7 +185,9 @@ export async function respondEngagementBundleByToken(
     const result = await applyEngagementResponse(
       item.id,
       decision,
-      responseNote,
+      // 폼의 사유란은 '거절 사유'다 — 수락 건에까지 찍으면 수락 이력에
+      // 거절 사유가 남는다 (리뷰 P3-7)
+      decision === "declined" ? responseNote : null,
       null // 공개 링크 응답 — 세션 없음
     );
     if (!result.ok) {

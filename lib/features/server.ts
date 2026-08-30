@@ -20,10 +20,15 @@ export async function isExtraFeatureEnabled(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!tenantIdFromUser(user)) return false;
+  const tenantId = tenantIdFromUser(user);
+  if (!tenantId) return false;
+  // 반드시 JWT 테넌트로 좁힌다 — 전문가 겸직·플랫폼 관리자 세션은 RLS로
+  // 여러 tenants 행이 보여 maybeSingle()이 에러 → 기능이 늘 꺼짐으로
+  // 오판된다 (리뷰 P2-1)
   const { data } = await supabase
     .from("tenants")
     .select("feature_flags")
+    .eq("id", tenantId)
     .maybeSingle();
   return parseExtraFeatures(data?.feature_flags)[feature];
 }

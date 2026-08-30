@@ -130,6 +130,21 @@ export default async function EngagementBundlePage({
   const pendingItems = items.filter((i) => i.status === "requested");
   const closedItems = items.filter((i) => i.status !== "requested");
 
+  // 같은 묶음 안에서 날짜가 겹치는 건 — 확정 일정 겹침 계산(아래)은 아직
+  // requested인 형제 건을 못 본다. 한 번에 같이 수락하면 이중 일정이 되므로
+  // 여기서 따로 표시한다 (리뷰 P3-8)
+  const overlapsSibling = (item: (typeof pendingItems)[number]) => {
+    if (!item.starts_on) return false;
+    const from = item.starts_on;
+    const to = item.ends_on ?? item.starts_on;
+    return pendingItems.some((other) => {
+      if (other.id === item.id || !other.starts_on) return false;
+      const oFrom = other.starts_on;
+      const oTo = other.ends_on ?? other.starts_on;
+      return oFrom <= to && oTo >= from;
+    });
+  };
+
   const formItems: BundleFormItem[] = await Promise.all(
     pendingItems.map(async (item) => ({
       engagementId: item.id,
@@ -149,8 +164,16 @@ export default async function EngagementBundlePage({
       // 형제 건은 아직 requested라 확정 일정 집계에 들어가지 않는다 —
       // 겹침 수는 '이미 확정된 다른 일정' 기준 (lib/integrations/engagements)
       conflictCount: await countExpertScheduleConflicts(item),
+      siblingOverlap: overlapsSibling(item),
     }))
   );
+
+  // 행사 내용·특이사항·메시지 — 일괄 발송에서 전 건 동일하게 저장된다.
+  // 단건(/e) 화면과 같은 정보량을 유지한다 (리뷰 P2-2: 계약 성립 전 필수 노출)
+  const firstItem = pendingItems[0] ?? items[0] ?? null;
+  const eventSummary = firstItem?.event_summary ?? null;
+  const specialNotes = firstItem?.special_notes ?? null;
+  const message = firstItem?.message ?? null;
 
   const programName = items[0]?.program_name ?? null;
   const totalFeeValues = pendingItems
@@ -205,6 +228,22 @@ export default async function EngagementBundlePage({
               까지
             </span>
           </p>
+          {eventSummary && (
+            <p className="whitespace-pre-wrap border-t pt-2">
+              <span className="text-muted-foreground">행사 내용</span>{" "}
+              {eventSummary}
+            </p>
+          )}
+          {specialNotes && (
+            <p className="whitespace-pre-wrap text-muted-foreground">
+              {specialNotes}
+            </p>
+          )}
+          {message && (
+            <p className="whitespace-pre-wrap border-t pt-2 text-muted-foreground">
+              {message}
+            </p>
+          )}
         </div>
 
         {pendingItems.length > 0 ? (

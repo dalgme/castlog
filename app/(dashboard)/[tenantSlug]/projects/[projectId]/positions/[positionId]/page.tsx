@@ -228,6 +228,39 @@ export default async function PositionPage({
               섭외 요청은 레벨 4 이상만 보낼 수 있습니다 (권한 규칙).
             </CardContent>
           </Card>
+        ) : planGate.required &&
+          planGate.allowed &&
+          planGate.coveredSlotIds &&
+          !planGate.coveredSlotIds.includes(ctx.slotId) ? (
+          // 부분 상신 계획 밖의 세션 — 요청 폼을 열어 두면 작성 후 서버에서야
+          // 거부된다. 여기서 먼저 보완 경로를 안내한다 (리뷰 P3-6)
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">
+                이 세션은 승인된 섭외계획에 없습니다
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                섭외계획 품의가 세션 일부만 승인된 상태입니다 (규칙). 이 세션을
+                섭외하려면 섭외계획 패널의 <b>보완(추가) 품의</b>로 세션을
+                추가해 승인받은 뒤 진행해 주세요.
+              </p>
+              <div className="flex justify-center">
+                <Button
+                  asChild
+                  size="sm"
+                  className="bg-[#FF6F61] text-white hover:bg-[#e85d50]"
+                >
+                  <Link
+                    href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
+                  >
+                    프로젝트에서 계획 품의 진행
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : planGate.required && !planGate.allowed ? (
           <Card>
             <CardHeader className="pb-3">
