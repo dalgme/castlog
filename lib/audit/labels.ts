@@ -77,6 +77,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "tenant.create": "테넌트 생성",
   "tenant.update_modules": "모듈 조합 변경",
   "engagement_acceptance.pdf": "수락서 PDF 다운로드",
+  "approval.relay_on": "상급자 릴레이 결재 켬",
+  "approval.relay_off": "상급자 릴레이 결재 끔",
   "tenant.extra_feature_on": "기업별 기능 켬",
   "tenant.extra_feature_off": "기업별 기능 끔",
   "tenant.monitor_on": "실시간 모니터링 켬",

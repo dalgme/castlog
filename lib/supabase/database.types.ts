@@ -290,7 +290,8 @@ export type Database = {
           acted_at: string | null
           acted_by_user_id: string | null
           approval_id: string
-          approver_user_id: string
+          approver_user_id: string | null
+          step_grade: string | null
           comment: string | null
           created_at: string
           id: string
@@ -304,7 +305,8 @@ export type Database = {
           acted_at?: string | null
           acted_by_user_id?: string | null
           approval_id: string
-          approver_user_id: string
+          approver_user_id?: string | null
+          step_grade?: string | null
           comment?: string | null
           created_at?: string
           id?: string
@@ -318,7 +320,8 @@ export type Database = {
           acted_at?: string | null
           acted_by_user_id?: string | null
           approval_id?: string
-          approver_user_id?: string
+          approver_user_id?: string | null
+          step_grade?: string | null
           comment?: string | null
           created_at?: string
           id?: string

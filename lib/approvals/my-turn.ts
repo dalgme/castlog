@@ -2,6 +2,8 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { gradeFromUser } from "@/lib/auth/tenant";
+import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 
 /**
  * 내 결재 차례 (검수 A3 — CEO에게 "결재할 것이 왔다"는 신호가 없던 문제).
@@ -27,11 +29,17 @@ export async function getMyTurnApprovals(
 ): Promise<MyTurnApproval[]> {
   if (!hasSupabaseEnv() || !userId) return [];
   const supabase = createClient();
-  const [{ data }, { data: myDelegations }] = await Promise.all([
+  const [
+    { data },
+    { data: myDelegations },
+    {
+      data: { user: sessionUser },
+    },
+  ] = await Promise.all([
     supabase
       .from("approvals")
       .select(
-        "id, title, approval_type, status, created_at, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id)"
+        "id, title, approval_type, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
       )
       .eq("status", "in_progress")
       .order("created_at", { ascending: false })
@@ -41,7 +49,11 @@ export async function getMyTurnApprovals(
       .select("delegator_user_id, starts_on, ends_on")
       .eq("delegate_user_id", userId)
       .eq("is_active", true),
+    supabase.auth.getUser(),
   ]);
+  // 직급 릴레이 단계 판정용 (27번) — 이 함수는 항상 세션 본인 기준으로 불린다
+  const myGrade =
+    sessionUser && sessionUser.id === userId ? gradeFromUser(sessionUser) : null;
 
   const today = new Date().toISOString().slice(0, 10);
   const myDelegatorIds = new Set(
@@ -60,7 +72,15 @@ export async function getMyTurnApprovals(
     const myTurn = pending.some(
       (s) =>
         s.step_order === currentOrder &&
-        (s.approver_user_id === userId || myDelegatorIds.has(s.approver_user_id))
+        (s.approver_user_id === userId ||
+          (s.approver_user_id !== null &&
+            myDelegatorIds.has(s.approver_user_id)) ||
+          // 직급 릴레이 단계 (27번) — 그 직급 이상 누구나, 상신자 본인 제외
+          (s.approver_user_id === null &&
+            isUserGrade(s.step_grade) &&
+            myGrade !== null &&
+            gradeRank(myGrade) >= gradeRank(s.step_grade) &&
+            a.requester_user_id !== userId))
     );
     if (!myTurn) continue;
     mine.push({

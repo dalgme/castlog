@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
+import { gradeFromUser } from "@/lib/auth/tenant";
+import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -23,7 +25,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { getAdminScopes } from "@/lib/auth/admin-scopes";
+import { isPlanRelayEnabled } from "@/lib/approvals/relay";
+
 import { SubmitApprovalDialog } from "./submit-dialog";
+import { PlanRelayToggle } from "./relay-toggle";
 
 export const metadata = { title: "전자결재" };
 
@@ -46,21 +52,17 @@ type ApprovalRow = {
   approval_steps: {
     step_order: number;
     status: string;
-    approver_user_id: string;
+    approver_user_id: string | null;
+    step_grade: string | null;
   }[];
 };
 
-function currentPendingApprovers(approval: ApprovalRow): Set<string> {
+/** 현재 차례 그룹 (진행중 건의 최저 pending 차수) */
+function currentPendingGroup(approval: ApprovalRow) {
   const pending = approval.approval_steps.filter((s) => s.status === "pending");
-  if (approval.status !== "in_progress" || pending.length === 0) {
-    return new Set();
-  }
+  if (approval.status !== "in_progress" || pending.length === 0) return [];
   const currentOrder = Math.min(...pending.map((s) => s.step_order));
-  return new Set(
-    pending
-      .filter((s) => s.step_order === currentOrder)
-      .map((s) => s.approver_user_id)
-  );
+  return pending.filter((s) => s.step_order === currentOrder);
 }
 
 /**
@@ -91,13 +93,17 @@ export default async function ApprovalsPage({
   const user = await getSessionUser();
   const supabase = createClient();
   const modules = await getTenantModules();
+  // 상급자 릴레이 결재 (27번) — 스위치 표시·상태
+  const adminScopes = await getAdminScopes();
+  const canManageRelay = adminScopes.approvals;
+  const relayEnabled = await isPlanRelayEnabled();
 
   const [{ data: approvals }, { data: users }, { data: myDelegations }] =
     await Promise.all([
       supabase
         .from("approvals")
         .select(
-          "id, title, approval_type, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id)"
+          "id, title, approval_type, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
         )
         .order("created_at", { ascending: false })
         .limit(100),
@@ -132,11 +138,23 @@ export default async function ApprovalsPage({
       .map((d) => d.delegator_user_id)
   );
 
+  const myGrade = user ? gradeFromUser(user) : null;
   const myTurn = rows.filter((a) => {
-    const current = currentPendingApprovers(a);
     if (!user) return false;
-    if (current.has(user.id)) return true;
-    return Array.from(current).some((approverId) => myDelegatorIds.has(approverId));
+    const group = currentPendingGroup(a);
+    return group.some((s) => {
+      if (s.approver_user_id === user.id) return true;
+      if (s.approver_user_id !== null && myDelegatorIds.has(s.approver_user_id))
+        return true;
+      // 직급 릴레이 단계 (27번) — 그 직급 이상 누구나, 상신자 본인 제외
+      return (
+        s.approver_user_id === null &&
+        isUserGrade(s.step_grade) &&
+        myGrade !== null &&
+        gradeRank(myGrade) >= gradeRank(s.step_grade) &&
+        a.requester_user_id !== user.id
+      );
+    });
   });
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 
@@ -272,6 +290,10 @@ export default async function ApprovalsPage({
             </Card>
           </>
         )}
+
+        {/* 상급자 릴레이 결재 설정 (기획 2026-08-30 — 27번) —
+            대표·'전결규정' 위임자에게만 (서버 액션이 다시 검증) */}
+        {canManageRelay && <PlanRelayToggle enabled={relayEnabled} />}
       </main>
     </div>
   );

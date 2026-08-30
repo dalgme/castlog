@@ -11,7 +11,10 @@ import { createClient } from "@/lib/supabase/server";
 export type EngineLineStep = {
   stepOrder: number;
   stepKind: "approval" | "agreement";
-  approverUserId: string;
+  /** 지정 결재자 — 직급 릴레이 단계(stepGrade)면 null (기획 2026-08-30 — 27번) */
+  approverUserId: string | null;
+  /** 직급 릴레이 단계 — 그 직급 이상 누구나 결재. named 단계면 없음 */
+  stepGrade?: string | null;
 };
 
 /** 전결규정 매칭 — priority 높은 순, 유형·금액 구간 일치 (CLAUDE.md 7) */
@@ -103,6 +106,7 @@ export async function createApprovalWithSteps(
       step_order: s.stepOrder,
       step_kind: s.stepKind,
       approver_user_id: s.approverUserId,
+      step_grade: s.stepGrade ?? null,
     }))
   );
 

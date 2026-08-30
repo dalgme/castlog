@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 import {
   buildPlanSnapshot,
   getPlanCoveredSlotIds,
@@ -62,15 +63,23 @@ async function gate(approvalId: string): Promise<Gate> {
   // (대결자가 원 결재자의 이름으로 계획을 바꾸면 책임 소재가 흐려진다)
   const { data: steps } = await supabase
     .from("approval_steps")
-    .select("step_order, status, approver_user_id")
+    .select("step_order, status, approver_user_id, step_grade")
     .eq("approval_id", approvalId);
   const pending = (steps ?? []).filter((s) => s.status === "pending");
   if (pending.length === 0) {
     return { ok: false, error: "결재할 차례가 없습니다." };
   }
   const currentOrder = Math.min(...pending.map((s) => s.step_order));
+  const myGrade = gradeFromUser(user);
   const myTurn = pending.some(
-    (s) => s.step_order === currentOrder && s.approver_user_id === user.id
+    (s) =>
+      s.step_order === currentOrder &&
+      (s.approver_user_id === user.id ||
+        // 직급 릴레이 단계 (27번) — 그 직급 이상이면 지금 결재 차례다
+        (s.approver_user_id === null &&
+          isUserGrade(s.step_grade) &&
+          myGrade !== null &&
+          gradeRank(myGrade) >= gradeRank(s.step_grade)))
   );
   if (!myTurn) {
     return {

@@ -34,6 +34,7 @@ import {
 
 import type { SlotRow } from "./slot-table";
 import { CandidateList } from "./candidate-list";
+import { RequiredCountEditor } from "./required-count-editor";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { ManualAcceptButton } from "./manual-accept-button";
 import {
@@ -400,9 +401,13 @@ export function EngagementWorkbench({
                       {slot.locationName}
                     </span>
                   )}
-                  <span className="text-xs text-muted-foreground">
-                    필요 {slot.requiredCount}명 · 후보 {slot.positions.length}명
-                  </span>
+                  {/* 필요인원 인라인 수정 + 코랄 표기 (기획 2026-08-30 — 28번) */}
+                  <RequiredCountEditor
+                    slotId={slot.id}
+                    value={slot.requiredCount}
+                    candidateCount={slot.positions.length}
+                    editable={canInput && projectState.stage === "assigning"}
+                  />
                 </div>
 
                 {/* 후보 순위 모델 — 드래그 순위·개별 예정가·후보 추가/삭제 */}
