@@ -883,6 +883,8 @@ export default async function ProjectDetailPage({
                   roleType: s.roleType,
                   requiredCount: s.requiredCount,
                   locationName: s.locationName,
+                  roleDescription: s.roleDescription,
+                  notes: s.notes,
                 }))}
                 canManage={canInput}
                 expertsEnabled={modules.experts}
