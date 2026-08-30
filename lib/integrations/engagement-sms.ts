@@ -54,6 +54,42 @@ export async function sendEngagementSms(params: {
   }
 }
 
+/**
+ * 묶음 섭외요청 문자 본문 (기획 확정 2026-08-30 — 20번).
+ * 한 프로젝트의 여러 세션 건을 문자 1건으로 — 건별 상세는 링크에서 보여 주므로
+ * 본문에는 몇 건인지·총액·마감만 싣는다.
+ */
+export function buildEngagementBundleSms(params: {
+  tenantName: string;
+  programName: string | null;
+  itemCount: number;
+  /** 건별 의뢰비용 합계(원) — null이면 표기 생략 */
+  totalFee: number | null;
+  deadline?: string | null;
+  url: string;
+}): string {
+  const fee =
+    params.totalFee !== null
+      ? `의뢰비용 합계 ${params.totalFee.toLocaleString("ko-KR")}원`
+      : null;
+  const due = params.deadline
+    ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        month: "numeric",
+        day: "numeric",
+      })}까지`
+    : null;
+  return [
+    `[${params.tenantName}] 섭외 요청 ${params.itemCount}건`,
+    params.programName,
+    fee,
+    due,
+    `각 건 확인·수락/거절: ${params.url}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 /** 섭외요청 문자 본문 — 링크가 본문에 들어가므로 군더더기를 줄인다. */
 export function buildEngagementRequestSms(params: {
   tenantName: string;

@@ -69,6 +69,19 @@ export default async function PositionPage({
     .eq("id", ctx.projectId)
     .maybeSingle();
 
+  // 전문가 정보 요약 (기획 2026-08-30 — 21번): 이 자리에 배정·진행 중인
+  // 전문가를 프로젝트 정보 옆에 나란히 보여 준다. 섭외에 필요한 공개 정보만
+  // (§4 전면 공개 범위 — 프로필·연락처·분야).
+  const { data: expertRow } = ctx.assignedExpertId
+    ? await createClient()
+        .from("experts")
+        .select(
+          "name, phone, email, organization, job_title, specialty, career_years, region"
+        )
+        .eq("id", ctx.assignedExpertId)
+        .maybeSingle()
+    : { data: null };
+
   // 후보·섭외 실행은 레벨 4(대리)부터 — 서버 게이트와 같은 기준
   const canManage = await canExecTenant("engagementRequest", user);
   const modules = await getTenantModules();
@@ -95,6 +108,7 @@ export default async function PositionPage({
         }
       />
       <main className="mx-auto max-w-2xl space-y-4 p-5">
+        <div className={expertRow ? "grid gap-4 sm:grid-cols-2" : undefined}>
         <Card>
           <CardContent className="space-y-1.5 pt-6 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -143,6 +157,53 @@ export default async function PositionPage({
             )}
           </CardContent>
         </Card>
+        {expertRow && (
+          <Card>
+            <CardHeader className="pb-2 pt-5">
+              <CardTitle className="text-sm">전문가 정보 요약</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5 text-sm">
+              <p className="text-base font-semibold">{expertRow.name}</p>
+              {(expertRow.organization || expertRow.job_title) && (
+                <p>
+                  <span className="text-muted-foreground">소속</span>{" "}
+                  {[expertRow.organization, expertRow.job_title]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+              {expertRow.specialty && (
+                <p>
+                  <span className="text-muted-foreground">분야</span>{" "}
+                  {expertRow.specialty}
+                </p>
+              )}
+              {expertRow.career_years !== null && (
+                <p>
+                  <span className="text-muted-foreground">경력</span>{" "}
+                  {expertRow.career_years}년
+                </p>
+              )}
+              {expertRow.region && (
+                <p>
+                  <span className="text-muted-foreground">지역</span>{" "}
+                  {expertRow.region}
+                </p>
+              )}
+              <p>
+                <span className="text-muted-foreground">연락처</span>{" "}
+                {expertRow.phone}
+              </p>
+              {expertRow.email && (
+                <p>
+                  <span className="text-muted-foreground">이메일</span>{" "}
+                  {expertRow.email}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        </div>
 
         {ctx.status !== "open" ? (
           <Card>
@@ -174,14 +235,21 @@ export default async function PositionPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p className="text-muted-foreground">{planGate.message}</p>
-              {/* 계획 품의는 직전 화면(전문가 섭외 탭 워크벤치)에서 진행한다 */}
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
+              {/* 계획 품의는 직전 화면(전문가 섭외 탭 워크벤치)에서 진행한다.
+                  가운데 정렬 + 코랄색 — 기획 지시 2026-08-30 (21번) */}
+              <div className="flex justify-center">
+                <Button
+                  asChild
+                  size="sm"
+                  className="bg-[#FF6F61] text-white hover:bg-[#e85d50]"
                 >
-                  프로젝트에서 계획 품의 진행
-                </Link>
-              </Button>
+                  <Link
+                    href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
+                  >
+                    프로젝트에서 계획 품의 진행
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (

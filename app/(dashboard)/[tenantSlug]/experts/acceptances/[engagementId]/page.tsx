@@ -110,6 +110,19 @@ export default async function TenantAcceptancePage({
         title="섭외 수락서"
         actions={
           <div className="flex items-center gap-1">
+            {(view.acceptance.status === "signed" ||
+              view.acceptance.status === "confirmed") && (
+              // 기획 변경 2026-08-30(19번): 전문가 승인(서명) 완료 건은 담당자가
+              // PDF로 내려받을 수 있다. 서명 전에는 화면 열람만.
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/${params.tenantSlug}/experts/acceptances/${params.engagementId}/pdf`}
+                  download
+                >
+                  PDF 다운로드
+                </a>
+              </Button>
+            )}
             {backEngagement?.project_id && (
               <Button asChild variant="outline" size="sm">
                 <Link

@@ -57,6 +57,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
  */
 export const PUBLIC_LINK_PATHS = {
   engagementConsent: "e", // 섭외 동의 (매직링크)
+  engagementBundle: "b", // 묶음 섭외 동의 — 한 전문가·여러 세션 건을 URL 1개로 (기획 2026-08-30)
   expertJoin: "j", // 전문가 등록 요청 (신규)
   documentSubmit: "d", // 서류 제출·갱신 (기존 전문가)
   unsubscribe: "u", // 수신거부 — 광고성 발송 시 법적 필수

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
+import { isExtraFeatureEnabled } from "@/lib/features/server";
 import {
   ENGAGEMENT_EVENT_LABELS,
   logEngagementEvent,
@@ -91,6 +92,15 @@ export async function createEngagement(
   const role = roleFromUser(user);
   if (!user || !tenantId || !role) {
     return { ok: false, error: "로그인이 필요합니다." };
+  }
+  // 예외 경로 게이트 — 화면 숨김만으로는 부족하다 (기획 17: 기본 꺼짐,
+  // 관리모드 '기업별 기능 추가'에서 회사별로 연다)
+  if (!(await isExtraFeatureEnabled("direct_engagement"))) {
+    return {
+      ok: false,
+      error:
+        "'코드 없이 바로 섭외'는 이 회사에 열려 있지 않습니다 (기능 스위치). 정식 경로(섭외후보 등록 → 품의 → 발송)를 사용하거나 캐스트로그에 개통을 요청하세요.",
+    };
   }
   if (!(await canExecTenant("engagementRequest", user))) {
     return { ok: false, error: await deniedExec("engagementRequest") };

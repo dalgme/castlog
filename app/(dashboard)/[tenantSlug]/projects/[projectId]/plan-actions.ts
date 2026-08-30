@@ -15,7 +15,9 @@ import {
 } from "@/lib/approvals/engine";
 import {
   buildPlanSnapshot,
+  findUnreadySlots,
   getActivePlan,
+  getPlanCoveredSlotIds,
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
@@ -68,8 +70,10 @@ type LineResult =
   | { ok: false; error: string };
 
 /**
- * 결재라인 결정 — 전결규정('프로젝트' 유형) 우선, 없으면 지정한 결재자를 순차 라인으로.
- * 전결규정이 아직 등록되지 않은 테넌트도 계획 품의를 올릴 수 있어야 한다.
+ * 결재라인 결정 (기획 개정 2026-08-30 — 18번):
+ * **직접 지정한 결재라인이 최우선**이다 — 상신자가 PL·PM 등 결재자를 골랐다면
+ * 전결규정보다 그 선택을 따른다. 지정이 없으면 전결규정('프로젝트' 유형),
+ * 그것도 없으면 직급 체계 에스컬레이션(마지막은 대표).
  */
 async function resolveLine(
   amount: number,
@@ -77,19 +81,18 @@ async function resolveLine(
   tenantId: string,
   manualApproverIds: string[]
 ): Promise<LineResult> {
-  const matched = await matchApprovalRule("project", amount);
-  if (matched) {
-    if (matched.steps.some((s) => s.approverUserId === requesterUserId)) {
-      return {
-        ok: false,
-        error: "상신자 본인이 결재자로 지정된 전결규정입니다. 전결규정을 확인하세요.",
-      };
-    }
-    return { ok: true, ruleId: matched.ruleId, steps: matched.steps };
-  }
-
   const ids = Array.from(new Set(manualApproverIds.filter(Boolean)));
   if (ids.length === 0) {
+    const matched = await matchApprovalRule("project", amount);
+    if (matched) {
+      if (matched.steps.some((s) => s.approverUserId === requesterUserId)) {
+        return {
+          ok: false,
+          error: "상신자 본인이 결재자로 지정된 전결규정입니다. 전결규정을 확인하세요.",
+        };
+      }
+      return { ok: true, ruleId: matched.ruleId, steps: matched.steps };
+    }
     // 결재자를 고르지 않았으면 직급 체계로 위로 올린다. 상신자가 대표이고
     // 상위 결재자가 없는 1인 기업이면 대표 자가결재로 진행한다 —
     // 그렇지 않으면 섭외를 시작할 방법 자체가 없다.
@@ -159,24 +162,62 @@ async function writePlanLines(
 }
 
 /**
+ * 상신 대상 세션의 완성 검사 (기획 확정 2026-08-30 — 22번).
+ * '후보 미배정' 자리가 남았거나 배정이 필요인원에 못 미치는 세션이 있으면
+ * 어느 세션이 왜 걸렸는지, 무엇을 하면 되는지를 그대로 돌려준다.
+ */
+async function assertSlotsReady(
+  projectId: string,
+  slotIds: string[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const unready = await findUnreadySlots(
+    projectId,
+    slotIds.length > 0 ? slotIds : undefined
+  );
+  if (unready.length === 0) return { ok: true };
+  const detail = unready
+    .map((s) =>
+      s.unassigned > 0
+        ? `${s.label} (후보 미배정 ${s.unassigned}자리)`
+        : `${s.label} (배정 ${s.assignedCount}/${s.requiredCount}명)`
+    )
+    .join(", ");
+  return {
+    ok: false,
+    error:
+      `상신하려는 세션에 후보 미배정 항목이 남아 있습니다 (규칙): ${detail}. ` +
+      `미배정 후보 자리를 삭제하거나 전문가를 배정한 뒤 다시 품의를 상신해 주세요. ` +
+      `미완성 세션은 선택에서 빼고 완성된 세션만 먼저 상신할 수도 있습니다.`,
+  };
+}
+
+/**
  * 섭외계획 품의 상신 (최초 또는 반려 후 재상신).
  * 현재 섭외 테이블을 그대로 계획으로 고정하고 결재라인을 붙인다.
+ * slotIds를 지정하면 그 세션들만 계획에 담는다 (부분 상신 — 22번). 빈 배열 = 전체.
  */
 export async function submitEngagementPlan(
   projectId: string,
   note: string,
-  manualApproverIds: string[] = []
+  manualApproverIds: string[] = [],
+  slotIds: string[] = []
 ): Promise<PlanActionResult> {
   const auth = await requirePlanSession();
   if (!auth.ok) return auth;
 
-  const snapshot = await buildPlanSnapshot(projectId);
+  const snapshot = await buildPlanSnapshot(
+    projectId,
+    slotIds.length > 0 ? slotIds : undefined
+  );
   if (snapshot.slotCount === 0) {
     return {
       ok: false,
       error: "섭외 테이블이 비어 있습니다. 타임테이블과 필요인원을 먼저 등록하세요.",
     };
   }
+
+  const ready = await assertSlotsReady(projectId, slotIds);
+  if (!ready.ok) return ready;
 
   const existing = await getActivePlan(projectId);
   if (existing && existing.status === "in_progress") {
@@ -298,7 +339,12 @@ export async function submitEngagementPlan(
 export async function submitEngagementPlanChange(
   projectId: string,
   reason: string,
-  manualApproverIds: string[] = []
+  manualApproverIds: string[] = [],
+  /**
+   * 새 계획이 덮을 세션 (22번 — 보완 상신): 지정하면 그 세션들이 새 커버리지가
+   * 된다(기존 + 추가 세션을 함께 넘긴다). 미지정 = 기존 계획의 커버리지 유지.
+   */
+  slotIds: string[] = []
 ): Promise<PlanActionResult> {
   const auth = await requirePlanSession();
   if (!auth.ok) return auth;
@@ -315,10 +361,20 @@ export async function submitEngagementPlanChange(
     };
   }
 
-  const snapshot = await buildPlanSnapshot(projectId);
+  const currentCovered = await getPlanCoveredSlotIds(current.id);
+  const effectiveSlotIds =
+    slotIds.length > 0 ? slotIds : (currentCovered ?? []);
+
+  const snapshot = await buildPlanSnapshot(
+    projectId,
+    effectiveSlotIds.length > 0 ? effectiveSlotIds : undefined
+  );
   if (snapshot.signature === current.planSignature) {
     return { ok: false, error: "승인된 계획과 달라진 내용이 없습니다." };
   }
+
+  const ready = await assertSlotsReady(projectId, effectiveSlotIds);
+  if (!ready.ok) return ready;
 
   const supabase = createClient();
   const { data: project } = await supabase

@@ -24,6 +24,8 @@ export type PlanPanelState = {
   currentPlannedAmount: number;
   currentPositionCount: number;
   currentSlotCount: number;
+  /** 계획이 덮는 세션 집합 — null = 전체 (기획 2026-08-30 — 22번 부분 상신) */
+  coveredSlotIds: string[] | null;
 };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -50,12 +52,26 @@ export function EngagementPlanPanel({
   approverOptions: { id: string; name: string; gradeLabel: string }[];
   hasProjectRule: boolean;
   /** 세션별 필요인원·등록 후보인원 한눈 요약 (기획 확정 2026-08-23) */
-  sessionSummary?: { label: string; required: number; candidates: number }[];
+  sessionSummary?: {
+    slotId: string;
+    label: string;
+    required: number;
+    candidates: number;
+  }[];
 }) {
   const [approverIds, setApproverIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // 보완(추가) 상신 대상 세션 (기획 2026-08-30 — 22번): 부분 상신으로 계획
+  // 밖에 남은 세션을 보완 후 변경 품의로 추가한다.
+  const [extraSlotIds, setExtraSlotIds] = useState<string[]>([]);
+
+  const covered = plan.coveredSlotIds;
+  const uncoveredSessions =
+    covered === null
+      ? []
+      : sessionSummary.filter((s) => !covered.includes(s.slotId));
 
   if (!plan.required) {
     return (
@@ -79,6 +95,9 @@ export function EngagementPlanPanel({
   }
 
   const isChange = plan.state === "changed";
+  // 보완(추가) 상신 — 승인 상태에서도 계획 밖 세션이 있으면 추가할 수 있다
+  const canAppend =
+    plan.state === "approved" && uncoveredSessions.length > 0;
 
   function submit() {
     setError(null);
@@ -86,11 +105,21 @@ export function EngagementPlanPanel({
       // 최초 상신은 이 패널에서 하지 않는다 — 위 '섭외 품의' 버튼이 유일한
       // 창구다. 같은 행위의 상신 UI가 둘이면 어느 쪽으로 승인받아도 반대쪽
       // 잠금이 안 풀리는 이중 구현이 됐었다(검수로 확인). 여기는 승인 후
-      // 테이블이 바뀐 경우의 '변경 품의'만 담당한다.
-      const res = await submitEngagementPlanChange(projectId, note, approverIds);
+      // 테이블이 바뀐 경우의 '변경 품의'와 세션 보완(추가) 품의만 담당한다.
+      const slotIds =
+        extraSlotIds.length > 0 && covered !== null
+          ? [...covered, ...extraSlotIds]
+          : []; // 빈 배열 = 기존 커버리지 유지 (서버 기본값)
+      const res = await submitEngagementPlanChange(
+        projectId,
+        note,
+        approverIds,
+        slotIds
+      );
       if (res.ok) {
         setNote("");
         setApproverIds([]);
+        setExtraSlotIds([]);
       } else {
         setError(res.error);
       }
@@ -191,14 +220,28 @@ export function EngagementPlanPanel({
               세션별 필요인원 · 등록 후보인원
             </p>
             <ul className="space-y-0.5 text-xs">
-              {sessionSummary.map((row, i) => (
-                <li key={i} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{row.label}</span>
-                  <span className="shrink-0 tabular-nums">
-                    필요 {row.required}명 · 후보 {row.candidates}명
-                  </span>
-                </li>
-              ))}
+              {sessionSummary.map((row) => {
+                const outOfPlan =
+                  covered !== null && !covered.includes(row.slotId);
+                return (
+                  <li
+                    key={row.slotId}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      {row.label}
+                      {outOfPlan && (
+                        <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold text-amber-900">
+                          계획 미포함
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      필요 {row.required}명 · 후보 {row.candidates}명
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -219,14 +262,51 @@ export function EngagementPlanPanel({
           </p>
         )}
 
-        {canSubmit && isChange && (
+        {canSubmit && (isChange || canAppend) && (
           <div className="space-y-2 rounded-md border bg-background p-3">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <label className="text-sm font-medium">변경 사유 (필수)</label>
+            {!isChange && canAppend && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                승인된 계획에 포함되지 않은 세션이 {uncoveredSessions.length}개
+                있습니다. 보완이 끝난 세션을 골라 <b>추가 품의</b>를 올리면 승인
+                후 그 세션의 섭외도 진행할 수 있습니다.
+              </p>
+            )}
+            {uncoveredSessions.length > 0 && (
+              <div className="space-y-1 rounded-md border border-dashed p-2.5">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  계획에 추가할 세션 선택
+                </p>
+                {uncoveredSessions.map((row) => (
+                  <label
+                    key={row.slotId}
+                    className="flex cursor-pointer items-center gap-2 text-xs"
+                  >
+                    <Checkbox
+                      checked={extraSlotIds.includes(row.slotId)}
+                      onCheckedChange={(v) =>
+                        setExtraSlotIds((prev) =>
+                          v === true
+                            ? [...prev, row.slotId]
+                            : prev.filter((id) => id !== row.slotId)
+                        )
+                      }
+                    />
+                    <span className="truncate">{row.label}</span>
+                    <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                      필요 {row.required}명 · 후보 {row.candidates}명
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <label className="text-sm font-medium">
+              {isChange ? "변경 사유 (필수)" : "추가 사유 (필수)"}
+            </label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -279,8 +359,18 @@ export function EngagementPlanPanel({
               </div>
             )}
 
-            <Button size="sm" onClick={submit} disabled={pending}>
-              {pending ? "상신 중..." : "계획 변경 품의 상신"}
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={
+                pending || (!isChange && canAppend && extraSlotIds.length === 0)
+              }
+            >
+              {pending
+                ? "상신 중..."
+                : isChange
+                  ? "계획 변경 품의 상신"
+                  : `선택 세션 추가 품의 상신 (${extraSlotIds.length}개)`}
             </Button>
           </div>
         )}

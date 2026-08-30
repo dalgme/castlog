@@ -132,6 +132,7 @@ export function ClosingTab({
   isClosed,
   closedAt,
   reviewTargets,
+  approverOptions = [],
   attachmentsByEngagement = {},
   expertsLite = false,
 }: {
@@ -145,6 +146,8 @@ export function ClosingTab({
   isClosed: boolean;
   closedAt: string | null;
   reviewTargets: ExpertReviewTarget[];
+  /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
+  approverOptions?: { id: string; name: string; gradeLabel: string }[];
   /** 참여 건별 증빙 첨부 (engagementId → 파일) — 기획 2026-08-30 */
   attachmentsByEngagement?: Record<string, SettlementAttachment>;
   /** 라이트 모드 — 지급 기능이 닫혀 있으므로 ③·④의 성격을 안내한다 (검수 A8) */
@@ -321,6 +324,7 @@ export function ClosingTab({
           </CardHeader>
           <CardContent>
             <SettlementPanel
+            approverOptions={approverOptions}
               projectId={projectId}
               canReview={canReviewSettlement}
               summary={{

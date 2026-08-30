@@ -21,6 +21,7 @@ import {
 import { getCanceledExpertByPositionCode } from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
+import { isExtraFeatureEnabled } from "@/lib/features/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -153,6 +154,8 @@ export default async function ProjectDetailPage({
 
   const modules = await getTenantModules();
   const expertsLite = await isExpertsLite();
+  // '코드 없이 바로 섭외(예외)'는 기본 숨김 — 관리모드에서 회사별로 연다 (기획 17)
+  const directEngagementOn = await isExtraFeatureEnabled("direct_engagement");
 
   const [
     { data: steps },
@@ -303,6 +306,8 @@ export default async function ProjectDetailPage({
       currentPlannedAmount: snapshot.plannedAmount,
       currentPositionCount: snapshot.positionCount,
       currentSlotCount: snapshot.slotCount,
+      // 부분 상신 계획의 커버리지 — 보완(추가) 품의 UI의 근거 (22번)
+      coveredSlotIds: gate.required ? gate.coveredSlotIds : null,
     };
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
@@ -979,6 +984,7 @@ export default async function ProjectDetailPage({
         )}
         {tab === "closing" && (
           <ClosingTab
+            approverOptions={planApprovers}
             attachmentsByEngagement={settlementAttachments}
             projectId={project.id}
             settlement={settlement}
@@ -996,6 +1002,7 @@ export default async function ProjectDetailPage({
         {/* 섭외 절차의 입구 — 세션(코드넘버)별로 '지금 할 일'을 펼친다 */}
         {tab === "experts" && modules.experts && (
           <EngagementWorkbench
+            planApproverOptions={planApprovers}
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
@@ -1018,6 +1025,7 @@ export default async function ProjectDetailPage({
                   approverOptions={planApprovers}
                   hasProjectRule={hasProjectRule}
                   sessionSummary={slotRows.map((s) => ({
+                    slotId: s.id,
                     label: `${s.slotDate}${
                       s.sessionName ? ` ${s.sessionName}` : ""
                     }`,
@@ -1049,6 +1057,10 @@ export default async function ProjectDetailPage({
                 sessionName: l.sessionName,
                 schedule: l.schedule,
                 fee: l.fee,
+                slotId: l.slotId,
+                assigned: l.assigned,
+                selected: l.selected,
+                requiredCount: l.requiredCount,
               })),
               amount: planDraft?.amount ?? 0,
             }}
@@ -1102,12 +1114,14 @@ export default async function ProjectDetailPage({
                   )}
                   {/* 코드넘버·계획 품의를 거치지 않는 예외 경로다 — 정식 절차
                       (①~⑤)와 같은 이름이면 어느 쪽이 진짜인지 헷갈린다 (검수 B9·G) */}
-                  <EngagementDialog
-                    experts={connectedExperts}
-                    projects={null}
-                    defaultProjectId={project.id}
-                    triggerLabel="코드 없이 바로 섭외 (예외)"
-                  />
+                  {directEngagementOn && (
+                    <EngagementDialog
+                      experts={connectedExperts}
+                      projects={null}
+                      defaultProjectId={project.id}
+                      triggerLabel="코드 없이 바로 섭외 (예외)"
+                    />
+                  )}
                 </>
               ) : null
             }

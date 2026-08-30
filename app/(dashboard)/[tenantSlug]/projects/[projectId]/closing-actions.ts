@@ -10,6 +10,7 @@ import { canManagePayments } from "@/lib/auth/admin-scopes";
 import { getTenantModules } from "@/lib/modules/server";
 import { matchApprovalRule, createApprovalWithSteps } from "@/lib/approvals/engine";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
+import { buildManualApprovalLine } from "@/lib/approvals/manual-line";
 import {
   getProjectSettlement,
   buildSettlementDocument,
@@ -262,6 +263,8 @@ export async function requestSettlementReview(
 export async function confirmSettlementReview(input: {
   projectId: string;
   note?: string;
+  /** 결재라인 직접 지정 (기획 2026-08-30 — 18번). 비우면 규정→직급 체계 */
+  approverIds?: string[];
 }): Promise<ClosingActionResult> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
@@ -323,14 +326,29 @@ export async function confirmSettlementReview(input: {
     return { ok: true };
   }
 
-  const rule = await matchApprovalRule("payment", settlement.totalGross);
-  const line =
-    rule ?? (await buildGradeEscalationLine(user.id, settlement.totalGross));
+  // 직접 지정 우선 (기획 2026-08-30 — 18번) — PL·PM 등 필요한 결재자를
+  // 상신 시점에 고를 수 있다. 지정이 없으면 규정 → 직급 체계.
+  let line:
+    | { ruleId?: string | null; steps: import("@/lib/approvals/engine").EngineLineStep[] }
+    | null = null;
+  if ((input.approverIds ?? []).length > 0) {
+    const manual = await buildManualApprovalLine(
+      tenantId,
+      user.id,
+      input.approverIds ?? []
+    );
+    if (!manual.ok) return { ok: false, error: manual.error };
+    line = { ruleId: null, steps: manual.steps };
+  } else {
+    const rule = await matchApprovalRule("payment", settlement.totalGross);
+    line =
+      rule ?? (await buildGradeEscalationLine(user.id, settlement.totalGross));
+  }
   if (!line || line.steps.length === 0) {
     return {
       ok: false,
       error:
-        "결재선을 정할 수 없습니다. 상위 결재자가 없거나 전결규정(지급 품의)이 등록되지 않았습니다.",
+        "결재선을 정할 수 없습니다. 결재자를 직접 지정하거나, 전결규정(지급 품의)을 등록하거나, 상위 직급 계정을 추가하세요.",
     };
   }
 
@@ -342,7 +360,7 @@ export async function confirmSettlementReview(input: {
     approvalType: "payment",
     amount: settlement.totalGross,
     projectId: input.projectId,
-    appliedRuleId: "ruleId" in line ? line.ruleId : null,
+    appliedRuleId: "ruleId" in line ? (line.ruleId ?? null) : null,
     steps: line.steps,
   });
   if (!created.ok) return { ok: false, error: created.error };

@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
-import { buildPlanSnapshot } from "@/lib/integrations/engagement-plans";
+import {
+  buildPlanSnapshot,
+  getPlanCoveredSlotIds,
+} from "@/lib/integrations/engagement-plans";
 import { formatKrw } from "@/lib/approvals/constants";
 
 /**
@@ -94,10 +97,11 @@ async function gate(approvalId: string): Promise<Gate> {
   };
 }
 
-/** 변경 후 계획·결재 금액 재동기화 */
+/** 변경 후 계획·결재 금액 재동기화 — 부분 상신 계획은 커버리지 세션만 (22번) */
 async function resyncPlan(approvalId: string, planId: string, projectId: string) {
   const supabase = createClient();
-  const snapshot = await buildPlanSnapshot(projectId);
+  const covered = await getPlanCoveredSlotIds(planId);
+  const snapshot = await buildPlanSnapshot(projectId, covered ?? undefined);
   await supabase
     .from("engagement_plans")
     .update({
