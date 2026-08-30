@@ -527,7 +527,8 @@ export default async function ProjectDetailPage({
     ? await getCanceledExpertByPositionCode(project.id)
     : ({} as Record<string, string>);
 
-  // 캘린더 일정표의 일자 스캐폴드 (29번) — 테이블 미적용(42P01) 환경은 빈 목록
+  // 캘린더 일정표의 일자 스캐폴드 (29번) — 테이블 미적용(42P01)만 빈 목록 폴백.
+  // 다른 에러를 삼키면 만들어 둔 빈 날짜가 조용히 사라져 보인다 (§14-10, 리뷰 P2-3)
   let calendarDays: string[] = [];
   {
     const { data: dayRows, error: dayError } = await supabase
@@ -535,6 +536,9 @@ export default async function ProjectDetailPage({
       .select("day")
       .eq("project_id", project.id)
       .order("day", { ascending: true });
+    if (dayError && dayError.code !== "42P01") {
+      console.error("calendar days query failed:", dayError.message);
+    }
     if (!dayError) calendarDays = (dayRows ?? []).map((d) => d.day);
   }
 
@@ -869,6 +873,7 @@ export default async function ProjectDetailPage({
                   locationName: s.locationName,
                 }))}
                 canManage={canInput}
+                expertsEnabled={modules.experts}
               />
             </CardContent>
           </Card>
@@ -904,6 +909,7 @@ export default async function ProjectDetailPage({
                 canManage={canInput}
                 canNotice={exec.sessionNotice}
                 expertsLite={expertsLite}
+                expertsEnabled={modules.experts}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
               />

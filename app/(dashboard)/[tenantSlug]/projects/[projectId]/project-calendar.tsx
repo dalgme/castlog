@@ -35,7 +35,10 @@ function dayLabel(iso: string): string {
 }
 
 function timeLabel(s: CalendarSession): string {
-  if (!s.startsTime) return "시간 미정";
+  if (!s.startsTime) {
+    // 종료만 있는 엣지 — 있는 정보는 버리지 않는다 (리뷰 P3)
+    return s.endsTime ? `~${s.endsTime.slice(0, 5)}` : "시간 미정";
+  }
   return `${s.startsTime.slice(0, 5)}${s.endsTime ? `~${s.endsTime.slice(0, 5)}` : ""}`;
 }
 
@@ -53,6 +56,7 @@ export function ProjectCalendar({
   days,
   sessions,
   canManage,
+  expertsEnabled,
 }: {
   tenantSlug: string;
   projectId: string;
@@ -60,6 +64,8 @@ export function ProjectCalendar({
   days: string[];
   sessions: CalendarSession[];
   canManage: boolean;
+  /** experts 모듈 활성 — 꺼진 테넌트에는 섭외 진입 버튼을 숨긴다 (연동 규칙 1-2-4) */
+  expertsEnabled: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -291,14 +297,17 @@ export function ProjectCalendar({
                             필요 {s.requiredCount}명
                             {s.locationName ? ` · ${s.locationName}` : ""}
                           </span>
-                          {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (29번) */}
-                          <Link
-                            href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
-                            className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[10px] font-semibold text-brand hover:bg-brand/10"
-                          >
-                            <UserSearch className="h-3 w-3" aria-hidden />
-                            섭외계획
-                          </Link>
+                          {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (29번).
+                              experts 모듈이 꺼진 테넌트에는 숨긴다 (1-2-4) */}
+                          {expertsEnabled && (
+                            <Link
+                              href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
+                              className="inline-flex items-center gap-0.5 rounded border border-brand/40 px-1.5 py-0.5 text-[10px] font-semibold text-brand hover:bg-brand/10"
+                            >
+                              <UserSearch className="h-3 w-3" aria-hidden />
+                              섭외계획
+                            </Link>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -321,11 +330,13 @@ export function ProjectCalendar({
                               onChange={(v) =>
                                 setDraft((p) => ({ ...p, startsTime: v }))
                               }
+                              ariaLabel="시작 시각"
                             />
                             <span className="text-[10px] text-muted-foreground">~</span>
                             <Time24Input
                               value={draft.endsTime}
                               onChange={(v) => setDraft((p) => ({ ...p, endsTime: v }))}
+                              ariaLabel="종료 시각"
                             />
                           </div>
                           <div className="flex gap-1.5">

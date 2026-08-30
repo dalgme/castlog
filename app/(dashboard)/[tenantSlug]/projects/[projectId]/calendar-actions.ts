@@ -105,11 +105,26 @@ export async function removeCalendarDay(
   if (!DATE_RE.test(day)) return { ok: false, error: "날짜 형식이 올바르지 않습니다." };
 
   const supabase = createClient();
-  const { count } = await supabase
+  // 프로젝트 가시성 확인 — 배정 밖 프로젝트의 일자를 지울 수 없다 (리뷰 P2-1)
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+
+  const { count, error: countError } = await supabase
     .from("engagement_slots")
     .select("id", { count: "exact", head: true })
     .eq("project_id", projectId)
     .eq("slot_date", day);
+  if (countError) {
+    // 검사 실패를 통과로 취급하지 않는다 (리뷰 P3 — §12-9 시스템 결함 분류)
+    return {
+      ok: false,
+      error: "세션 확인에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
   if ((count ?? 0) > 0) {
     return {
       ok: false,

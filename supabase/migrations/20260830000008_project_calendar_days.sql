@@ -27,23 +27,34 @@ create index if not exists project_calendar_days_project_idx
 
 alter table public.project_calendar_days enable row level security;
 
--- 열람: 자사 직원 (전문가 세션 제외 — 내부 계획 화면이다)
+-- 열람: 자사 직원 (전문가 세션 제외) + **프로젝트 가시성 상속** —
+-- 팀장 이하는 배정 프로젝트만 본다 (§3-1). engagement_slots_select와
+-- 같은 방식: projects RLS를 exists로 태운다 (리뷰 P2-1).
 drop policy if exists project_calendar_days_select on public.project_calendar_days;
 create policy project_calendar_days_select on public.project_calendar_days
   for select using (
-    tenant_id = app.tenant_id() and app.user_role() <> 'expert'
+    tenant_id = app.tenant_id()
+    and app.user_role() <> 'expert'
+    and exists (
+      select 1 from public.projects p where p.id = project_id
+    )
   );
 
--- 생성·삭제: 세션 입력 축 (planInput — 기본 레벨 5, 회사 조정 반영)
+-- 생성·삭제: 세션 입력 축(planInput) + 배정 프로젝트 한정 (리뷰 P2-1 —
+-- engagement_slots 쓰기 정책과 동일 원칙)
 drop policy if exists project_calendar_days_insert on public.project_calendar_days;
 create policy project_calendar_days_insert on public.project_calendar_days
   for insert with check (
-    tenant_id = app.tenant_id() and app.can_exec('planInput')
+    tenant_id = app.tenant_id()
+    and app.can_exec('planInput')
+    and app.can_view_project(project_id)
   );
 drop policy if exists project_calendar_days_delete on public.project_calendar_days;
 create policy project_calendar_days_delete on public.project_calendar_days
   for delete using (
-    tenant_id = app.tenant_id() and app.can_exec('planInput')
+    tenant_id = app.tenant_id()
+    and app.can_exec('planInput')
+    and app.can_view_project(project_id)
   );
 
 -- 연습모드 격리 — 자매 테이블들과 동일한 restrictive 정책
