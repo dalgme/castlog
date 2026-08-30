@@ -27,7 +27,10 @@ export default async function ExpertImportPage({
 }: {
   params: { tenantSlug: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager"]);
+  // 기획 개정 2026-08-30 (24번): 일괄 등록은 전 직원에게 연다 — staff를 빼면
+  // 탭을 눌러도 requireRole 리다이렉트로 대시보드에 떨어진다(신고된 증상).
+  // 실행 게이트는 exec 축(bulkImport, 기본 전 직원 — 회사 조정 가능)이 맡는다.
+  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
 
   return (

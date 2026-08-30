@@ -26,7 +26,8 @@ import {
 export const EXEC_FEATURES = {
   /* ── 레벨 3까지 (개설·대량·되돌리기 어려운 것·자유 발송·설정류) ──── */
   projectCreate: { minGrade: "team_lead", label: "프로젝트 개설" },
-  bulkImport: { minGrade: "team_lead", label: "일괄 등록 (엑셀·보유자료)" },
+  // 기획 개정 2026-08-30 (24번): 전 직원 개방 — 중복은 미리보기 대조로 거른다
+  bulkImport: { minGrade: "staff", label: "일괄 등록 (엑셀·보유자료)" },
   engagementCancel: { minGrade: "team_lead", label: "섭외 긴급 취소 (확정 후)" },
   freeMessageSend: { minGrade: "team_lead", label: "일반 문자·이메일 발송" },
   projectBudget: { minGrade: "team_lead", label: "프로젝트 예산 수정" },

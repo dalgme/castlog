@@ -84,6 +84,18 @@ export type DirectImportPreviewRow = {
   message: string | null;
   /** 쉼표 분리된 분야 (trim, 빈 값 제거) */
   expertiseFields: string[];
+  /**
+   * 재확인 대조 (기획 2026-08-30 — 24번): 휴대폰은 다르지만 이름 또는
+   * 이메일이 기존 전문가와 겹친다 — 신규 생성은 가능하되 확정 전에 한 번 더
+   * 확인받는다 (번호가 바뀐 동일인일 수 있다).
+   */
+  similarMatch: string | null;
+};
+
+/** 이름·이메일 대조용 색인 (기획 2026-08-30 — 24번) */
+export type SimilarLookup = {
+  names: ReadonlySet<string>;
+  emails: ReadonlySet<string>;
 };
 
 export function splitExpertiseFields(text: string): string[] {
@@ -105,7 +117,8 @@ export function splitExpertiseFields(text: string): string[] {
 export function classifyDirectImportRows(
   rawRows: Record<string, string>[],
   existingPhones: ReadonlySet<string>,
-  linkedPhones: ReadonlySet<string>
+  linkedPhones: ReadonlySet<string>,
+  similar?: SimilarLookup
 ): DirectImportPreviewRow[] {
   const seen = new Set<string>();
   return rawRows.map((raw, index) => {
@@ -134,6 +147,7 @@ export function classifyDirectImportRows(
         status: "error" as const,
         message: parsed.error.issues[0]?.message ?? "입력값 오류",
         expertiseFields,
+        similarMatch: null,
       };
     }
 
@@ -146,6 +160,7 @@ export function classifyDirectImportRows(
         status: "error" as const,
         message: "올바른 휴대폰 번호가 아닙니다",
         expertiseFields,
+        similarMatch: null,
       };
     }
 
@@ -157,6 +172,7 @@ export function classifyDirectImportRows(
         status: "dup_file" as const,
         message: "같은 번호가 파일에 먼저 나옵니다",
         expertiseFields,
+        similarMatch: null,
       };
     }
     seen.add(phoneE164);
@@ -169,6 +185,7 @@ export function classifyDirectImportRows(
         status: "already" as const,
         message: "이미 우리 회사와 관계가 있는 전문가입니다",
         expertiseFields,
+        similarMatch: null,
       };
     }
 
@@ -180,16 +197,34 @@ export function classifyDirectImportRows(
         status: "link" as const,
         message: "캐스트로그에 이미 있는 전문가 — 정보는 덮어쓰지 않고 관계만 추가합니다",
         expertiseFields,
+        similarMatch: null,
       };
     }
+
+    // 휴대폰은 새 번호지만 이름·이메일이 기존 전문가와 겹치는 경우 —
+    // 번호가 바뀐 동일인일 수 있다. 신규 생성은 막지 않되 재확인을 요구한다
+    // (기획 2026-08-30 — 24번).
+    const nameHit = similar?.names.has(input.name) ?? false;
+    const emailHit =
+      input.email !== "" &&
+      (similar?.emails.has(input.email.toLowerCase()) ?? false);
+    // '캐스트로그 등록플랫폼 전체' 기준 대조다 — "우리 회사 전문가"로
+    // 오독하지 않게 문구에 범위를 명시한다 (리뷰 P3-4)
+    const similarMatch =
+      nameHit || emailHit
+        ? `캐스트로그에 ${[nameHit ? "이름" : null, emailHit ? "이메일" : null]
+            .filter(Boolean)
+            .join("·")}이 같은 전문가가 이미 등록되어 있습니다 (휴대폰은 다름) — 번호가 바뀐 동일인인지 확인 후 등록하세요`
+        : null;
 
     return {
       index,
       input,
       phoneE164,
       status: "create" as const,
-      message: null,
+      message: similarMatch,
       expertiseFields,
+      similarMatch,
     };
   });
 }

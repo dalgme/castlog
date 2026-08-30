@@ -82,6 +82,21 @@ export function DirectImportClient({ tenantSlug }: { tenantSlug: string }) {
 
   function onCommit() {
     if (!preview) return;
+    // 이름·이메일이 기존 전문가와 겹치는 신규 행 — 확정 전 재확인 (기획 24번)
+    const similarRows = preview.filter(
+      (r) => r.status === "create" && r.similarMatch
+    );
+    if (similarRows.length > 0) {
+      const ok = window.confirm(
+        `이미 등록된 전문가와 이름 또는 이메일이 겹치는 행이 ${similarRows.length}건 있습니다:\n` +
+          similarRows
+            .map((r) => `· ${r.input.name} (${r.input.phone})`)
+            .join("\n") +
+          `\n\n번호가 바뀐 동일인이라면 신규 등록 대신 기존 전문가의 번호를 먼저 확인하세요.` +
+          `\n다른 사람이 맞다면 그대로 진행합니다. 등록할까요?`
+      );
+      if (!ok) return;
+    }
     setError(null);
     startTransition(async () => {
       const res = await commitDirectImport(
