@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
 import { gradeFromUser } from "@/lib/auth/tenant";
-import { gradeRank, isUserGrade } from "@/lib/auth/grades";
+import { isStepOpenFor, loadTurnContext } from "@/lib/approvals/turn";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -98,7 +98,7 @@ export default async function ApprovalsPage({
   const canManageRelay = adminScopes.approvals;
   const relayEnabled = await isPlanRelayEnabled();
 
-  const [{ data: approvals }, { data: users }, { data: myDelegations }] =
+  const [{ data: approvals }, { data: users }, turnCtx] =
     await Promise.all([
       supabase
         .from("approvals")
@@ -112,13 +112,10 @@ export default async function ApprovalsPage({
         .select("id, name")
         .eq("is_active", true)
         .order("name"),
+      // 본인·대결(위임자 직급 포함)·릴레이 판정 — 배지·처리 액션과 같은 규칙
       user
-        ? supabase
-            .from("approval_delegations")
-            .select("delegator_user_id, starts_on, ends_on")
-            .eq("delegate_user_id", user.id)
-            .eq("is_active", true)
-        : Promise.resolve({ data: [] as { delegator_user_id: string; starts_on: string; ends_on: string }[] }),
+        ? loadTurnContext(supabase, user.id, gradeFromUser(user))
+        : Promise.resolve(null),
     ]);
 
   // operations 모듈 활성 시에만 프로젝트 연결 옵션 제공 (연동 규칙)
@@ -131,30 +128,11 @@ export default async function ApprovalsPage({
     : { data: null };
 
   const rows = (approvals ?? []) as ApprovalRow[];
-  const today = new Date().toISOString().slice(0, 10);
-  const myDelegatorIds = new Set(
-    (myDelegations ?? [])
-      .filter((d) => d.starts_on <= today && today <= d.ends_on)
-      .map((d) => d.delegator_user_id)
-  );
-
-  const myGrade = user ? gradeFromUser(user) : null;
   const myTurn = rows.filter((a) => {
-    if (!user) return false;
-    const group = currentPendingGroup(a);
-    return group.some((s) => {
-      if (s.approver_user_id === user.id) return true;
-      if (s.approver_user_id !== null && myDelegatorIds.has(s.approver_user_id))
-        return true;
-      // 직급 릴레이 단계 (27번) — 그 직급 이상 누구나, 상신자 본인 제외
-      return (
-        s.approver_user_id === null &&
-        isUserGrade(s.step_grade) &&
-        myGrade !== null &&
-        gradeRank(myGrade) >= gradeRank(s.step_grade) &&
-        a.requester_user_id !== user.id
-      );
-    });
+    if (!user || !turnCtx) return false;
+    return currentPendingGroup(a).some((s) =>
+      isStepOpenFor(s, a.requester_user_id, turnCtx)
+    );
   });
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 

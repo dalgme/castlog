@@ -18,6 +18,7 @@ export function ApproverPicker({
   onChange,
   disabled = false,
   emptyHint = "비워 두면 고정 결재선만으로 상신됩니다.",
+  relayOn = false,
 }: {
   options: ApproverOption[];
   /** 선택 순서 = 결재 순서 */
@@ -26,6 +27,11 @@ export function ApproverPicker({
   disabled?: boolean;
   /** '비워 두면' 동작 안내 — 릴레이 켠 테넌트 등 흐름별로 실제 동작과 일치시킨다 */
   emptyHint?: string;
+  /**
+   * 상급자 릴레이(27번) 활성 — 무선택이면 고정 인물이 아니라 직급 단계로
+   * 올라가므로 "마지막은 상무이사 → 대표 고정" 문구를 그대로 쓰면 틀린다
+   */
+  relayOn?: boolean;
 }) {
   const toggle = (id: string) => {
     onChange(
@@ -40,9 +46,21 @@ export function ApproverPicker({
       <p className="mb-1 text-xs font-semibold">결재라인 직접 지정</p>
       <p className="mb-2 text-[11px] leading-tight text-muted-foreground">
         상신자보다 높은 직급의 결재자(PL·PM 등)를 체크한 순서대로 넣을 수
-        있습니다. 선택과 무관하게 마지막은{" "}
-        <b className="text-foreground">상무이사 → 대표 (고정)</b>로 자동
-        연결됩니다. {emptyHint}
+        있습니다.{" "}
+        {relayOn ? (
+          <>
+            결재자를 고르면 그 뒤에{" "}
+            <b className="text-foreground">상무이사 → 대표 (고정)</b>가
+            붙고, 비워 두면 직급 단계(상급자 릴레이)로 올라갑니다.
+          </>
+        ) : (
+          <>
+            선택과 무관하게 마지막은{" "}
+            <b className="text-foreground">상무이사 → 대표 (고정)</b>로 자동
+            연결됩니다.
+          </>
+        )}{" "}
+        {emptyHint}
       </p>
       {options.length === 0 ? (
         <p className="text-xs text-muted-foreground">

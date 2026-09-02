@@ -31,6 +31,12 @@ export type ProjectEngagementState = {
   fullyAssigned: boolean;
   /** 배정 명단 기준 총 의뢰비용 (참고) */
   plannedAmount: number;
+  /**
+   * 지금 일괄 발송하면 요청이 나갈 자리 수 — 세션마다 (필요인원 − 요청중·확정)
+   * 만큼 순위 상위 배정 후보. 예비 후보는 세지 않는다. 최초 발송 뒤에도 보완
+   * 품의로 추가된 세션이 있으면 0보다 크다 (감사 P2-1).
+   */
+  dispatchable: number;
 };
 
 type PositionRow = {
@@ -93,6 +99,7 @@ export async function getProjectEngagementState(
   }
   let plannedAmount = 0;
   let readySlots = 0;
+  let dispatchable = 0;
   for (const slot of slots ?? []) {
     const candidates = (liveBySlot.get(slot.id) ?? []).sort(
       (a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no)
@@ -104,6 +111,7 @@ export async function getProjectEngagementState(
       0
     );
     if (progressed.length >= slot.required_count) readySlots += 1;
+    dispatchable += pickDispatchTargets(candidates, slot.required_count).length;
   }
 
   return {
@@ -119,7 +127,32 @@ export async function getProjectEngagementState(
     fullyAssigned:
       (slots ?? []).length > 0 && readySlots === (slots ?? []).length,
     plannedAmount,
+    dispatchable,
   };
+}
+
+/** 일괄 발송을 다시 열 수 있는 단계 — 최초 발송 뒤 보완 품의로 추가된 자리용 */
+export const REDISPATCH_STAGES: readonly ProjectStage[] = [
+  "requesting",
+  "accepted_all",
+];
+
+/**
+ * 세션 하나의 일괄 발송 대상 — 순위 상위 배정 후보 중 (필요인원 − 이미
+ * 요청중·확정) 명. 순위순 정렬된 live 후보를 받는다.
+ * 화면(버튼·건수)과 서버(dispatchProjectEngagements)가 같은 함수를 쓴다.
+ */
+export function pickDispatchTargets<
+  T extends { status: string; assigned_expert_id: string | null },
+>(sortedCandidates: T[], requiredCount: number): T[] {
+  const inFlight = sortedCandidates.filter(
+    (c) => c.status === "requested" || c.status === "filled"
+  ).length;
+  const needed = Math.max(0, requiredCount - inFlight);
+  if (needed === 0) return [];
+  return sortedCandidates
+    .filter((c) => c.status === "assigned" && c.assigned_expert_id)
+    .slice(0, needed);
 }
 
 export type PlanDraftLine = {
@@ -173,7 +206,7 @@ export async function buildEngagementPlanDraft(
   const { data: slots } = await supabase
     .from("engagement_slots")
     .select(
-      "id, slot_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count"
+      "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count"
     )
     .eq("project_id", projectId)
     .order("slot_date", { ascending: true })
@@ -226,8 +259,14 @@ export async function buildEngagementPlanDraft(
       lines.push({
         sessionName:
           slot.session_name ?? roleTypeLabel(slot.role_type) ?? slot.role_type,
-        schedule: `${slot.slot_date}${time}`,
-        location: slot.location_name ?? "-",
+        // 컨설팅 세션(34번)은 수행기간으로 — 시작일만 적으면 결재권자가
+        // 하루짜리로 읽는다 (감사 P3-3)
+        schedule:
+          slot.period_end_date && slot.period_end_date !== slot.slot_date
+            ? `${slot.slot_date} ~ ${slot.period_end_date}`
+            : `${slot.slot_date}${time}`,
+        location:
+          slot.location_name ?? (slot.period_end_date ? "(컨설팅 — 장소 별도 협의)" : "-"),
         role: slot.role_description ?? roleTypeLabel(slot.role_type) ?? "-",
         code: position.code,
         expertName: expertId ? (nameById.get(expertId) ?? "-") : "(미배정)",

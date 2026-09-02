@@ -137,8 +137,12 @@ export function EngagementWorkbench({
   canCancel: boolean;
   /** 응답 전 회수 — 레벨 4부터 (권한 축 분리, 기획 확정 2026-08-29) */
   canWithdraw: boolean;
-  /** 섭외계획 품의 게이트 — 승인 전이면 요청 자체가 막힌다 */
-  planGate: { blocked: boolean; message: string };
+  /**
+   * 섭외계획 품의 게이트 — 승인 전이면 요청 자체가 막힌다.
+   * appendable: 승인됐지만 계획 밖 세션이 남아 보완(추가) 품의가 필요한 상태
+   * (감사 P1 — 패널을 blocked에서만 그리면 보완 상신 UI에 닿을 길이 없다)
+   */
+  planGate: { blocked: boolean; message: string; appendable?: boolean };
   /** 섭외계획 품의 패널 — 게이트에 걸렸을 때 그 자리에서 상신할 수 있게 */
   planPanel?: React.ReactNode;
   /** 코드넘버 id → 현재 진행 단계 (계획품의·섭외·수락서를 합쳐 판정한 값) */
@@ -154,6 +158,8 @@ export function EngagementWorkbench({
     /** 수락·확정된 자리 — 수락서 송부 대상 수 */
     filled: number;
     fullyAssigned: boolean;
+    /** 지금 일괄 발송하면 요청이 나갈 자리 수 (예비 후보 제외) */
+    dispatchable: number;
   };
   /** 품의서 미리보기 (상신 전 확인용) */
   planPreview: { lines: PlanPreviewLine[]; amount: number };
@@ -204,14 +210,19 @@ export function EngagementWorkbench({
           )}
           {canManage &&
             (projectState.stage === "plan_approved" ||
-              projectState.stage === "plan_review") && (
+              projectState.stage === "plan_review" ||
+              // 최초 발송 뒤 보완(추가) 품의로 승인된 세션의 배정 자리 —
+              // 다시 일괄 발송할 수 있다 (감사 P2-1)
+              ((projectState.stage === "requesting" ||
+                projectState.stage === "accepted_all") &&
+                projectState.dispatchable > 0)) && (
               <DispatchDialog
                 projectId={projectId}
                 projectName={projectName}
                 defaultSummary={projectDescription}
-                targetCount={projectState.assigned}
+                targetCount={projectState.dispatchable}
                 expertsLite={expertsLite}
-                disabled={projectState.stage !== "plan_approved"}
+                disabled={projectState.stage === "plan_review"}
                 disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
               />
             )}
@@ -336,7 +347,7 @@ export function EngagementWorkbench({
 
         {/* 막힌 이유를 적어 놓고 푸는 길을 다른 화면에 두면, 사용자는 그 화면을
             찾다가 포기한다. 상신·변경 상신은 여기서 바로 한다 */}
-        {planGate.blocked && planPanel}
+        {(planGate.blocked || planGate.appendable) && planPanel}
 
         {/* 결재가 끝나면 보내기 전에 첨부를 붙인다 — 보낸 뒤에는 못 붙인다 */}
         {canInput &&

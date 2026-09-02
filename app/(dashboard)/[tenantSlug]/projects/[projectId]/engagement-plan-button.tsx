@@ -177,8 +177,10 @@ export function EngagementPlanButton({
           <DialogTitle>섭외 품의서 — 상신 전 확인</DialogTitle>
           <DialogDescription>
             프로젝트 기본정보와 세션별 배정 명단으로 품의서가 자동 작성됩니다.
-            결재라인은 아래에서 직접 고를 수 있으며, 마지막은 상무이사 →
-            대표(고정)입니다.
+            결재라인은 아래에서 직접 고를 수 있습니다
+            {relayOn
+              ? " (비워 두면 상급자 릴레이 — 직급 단계로 올라갑니다)."
+              : " (마지막은 상무이사 → 대표 고정)."}
           </DialogDescription>
         </DialogHeader>
 
@@ -195,6 +197,7 @@ export function EngagementPlanButton({
           selected={approverIds}
           onChange={setApproverIds}
           disabled={pending}
+          relayOn={relayOn}
           emptyHint={
             relayOn
               ? "비워 두면 상급자 릴레이(직급 단계 — 각 직급 이상 누구나)로 상신됩니다."

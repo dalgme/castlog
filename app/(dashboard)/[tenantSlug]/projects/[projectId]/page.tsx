@@ -1309,6 +1309,16 @@ export default async function ProjectDetailPage({
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
+              // 부분 상신 승인 뒤 계획 밖 세션이 남았으면 보완(추가) 품의 패널을
+              // 승인 상태에서도 그린다 (감사 P1 — 이전엔 도달 불가)
+              appendable: Boolean(
+                planPanel &&
+                  planPanel.state === "approved" &&
+                  planPanel.coveredSlotIds !== null &&
+                  slotRows.some(
+                    (s) => !planPanel.coveredSlotIds!.includes(s.id)
+                  )
+              ),
             }}
             planPanel={
               planPanel ? (
@@ -1344,6 +1354,7 @@ export default async function ProjectDetailPage({
               open: engagementState?.open ?? 0,
               filled: engagementState?.filled ?? 0,
               fullyAssigned: engagementState?.fullyAssigned ?? false,
+              dispatchable: engagementState?.dispatchable ?? 0,
             }}
             planPreview={{
               lines: (planDraft?.lines ?? []).map((l) => ({

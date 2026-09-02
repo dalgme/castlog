@@ -55,7 +55,8 @@ export type ProjectBasicInfo = {
 };
 
 /**
- * 프로젝트 기본정보 수정(PM급 이상) + 빈 프로젝트 삭제·보관 처리(대표·이사).
+ * 프로젝트 기본정보 수정(대표·이사 + 그 프로젝트에 연결된 누구나 — 32번)
+ * + 빈 프로젝트 삭제·보관 처리(대표·이사).
  * 삭제는 실적이 없는 중복 생성 건 정리용, 보관은 기록 있는 건의 취소 이관 —
  * 서버가 최종 판정한다 (기획 2026-08-30).
  */
@@ -157,7 +158,7 @@ export function BasicInfoDialog({
           <DialogTitle>기본정보 수정</DialogTitle>
           <DialogDescription>
             프로젝트명·기간·예산 등 기초정보를 수정합니다 (대표·이사와 이
-            프로젝트의 PL·PM).
+            프로젝트에 배정된 누구나). 발주처는 비워 둔 채 저장할 수 없습니다.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

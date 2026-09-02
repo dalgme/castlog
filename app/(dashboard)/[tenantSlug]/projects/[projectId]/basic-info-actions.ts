@@ -21,9 +21,11 @@ import {
 
 /**
  * 프로젝트 기본정보 수정·삭제·보관 (기획 확정 2026-08-30, 오후 개정).
- * - 수정: 대표·이사 + **그 프로젝트의 PL·PM(겸임 포함)** — "PM급 이상에게
- *   제목·내용·수정 권한을 기본 제공" 확정. DB 컬럼 가드도 같은 축으로 확장
- *   (마이그레이션 20260830000003).
+ * - 수정: 대표·이사 + **그 프로젝트에 연결된 누구나**(배정 역할 무관 — 32번,
+ *   예산·유형 포함이 기획 확정 2026-08-30 저녁). DB 컬럼 가드·행 정책도 같은
+ *   축 (마이그레이션 20260830000009).
+ * - 발주처는 개설·수정 모두 필수 — 빈 값 저장은 DB 트리거가 거부한다
+ *   (20260830000010).
  * - 삭제(빈 프로젝트)·보관(기록 있는 중복 정리): 대표·이사 전용 — 회사 단위 결정.
  */
 
@@ -70,7 +72,8 @@ async function requireProjectEditor(projectId: string): Promise<
   if (isUserGrade(grade) && canViewAllProjects(grade)) {
     return { ok: true, userId: user.id, tenantId, role };
   }
-  // 플랫폼 운영(넥스트랩) 세션 — 관리모드에서 고객사 지원 시 grade가 없다
+  // 플랫폼 운영(넥스트랩) 세션 — grade가 없다. DB 가드(app.can_exec)도
+  // platform_admin은 통과시킨다. 자사 테넌트 프로젝트에 한한다(RLS tenant_id)
   if (role === "platform_admin") {
     return { ok: true, userId: user.id, tenantId, role };
   }
@@ -91,7 +94,7 @@ async function requireProjectEditor(projectId: string): Promise<
   return { ok: false, error: message };
 }
 
-/** 기본정보 수정 — 명·발주처·연도·코드·기간·예산·설명 (PM급 이상) */
+/** 기본정보 수정 — 명·발주처·연도·코드·기간·예산·설명·주관·수행기관·D-Day (연결된 누구나) */
 export async function updateProjectBasicInfo(
   projectId: string,
   input: ProjectCreateInput

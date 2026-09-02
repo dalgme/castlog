@@ -176,16 +176,21 @@ export default async function DashboardPage({
   );
   const rangeStart = rangeStartDate.toISOString().slice(0, 10);
   const rangeEnd = rangeEndDate.toISOString().slice(0, 10);
+  // 컨설팅 세션(34번)은 수행기간 전체를 그린다 — period_end_date 포함.
+  // 범위는 시작일 기준(기간이 범위 앞에서 시작해 걸쳐 들어오는 건 다음 개선).
+  const CALENDAR_LIMIT = 400;
   const [slotResult, myAssignResult, allAssignResult, staffResult] =
     await Promise.all([
       supabase
         .from("engagement_slots")
-        .select("id, project_id, slot_date, starts_time, ends_time, session_name")
+        .select(
+          "id, project_id, slot_date, period_end_date, starts_time, ends_time, session_name"
+        )
         .gte("slot_date", rangeStart)
         .lte("slot_date", rangeEnd)
         .order("slot_date", { ascending: true })
         .order("starts_time", { ascending: true })
-        .limit(400),
+        .limit(CALENDAR_LIMIT),
       supabase
         .from("project_assignments")
         .select("project_id")
@@ -225,10 +230,13 @@ export default async function DashboardPage({
       projectId: sl.project_id,
       projectName: calProjectById.get(sl.project_id)?.name ?? "(프로젝트)",
       date: sl.slot_date,
+      endDate: sl.period_end_date ?? null,
       startsTime: sl.starts_time,
       endsTime: sl.ends_time,
       name: sl.session_name,
     }));
+  // 400건 절단 — 조용히 빠지면 "일정이 없다"로 오독한다 (감사 P3-5)
+  const calendarTruncated = (slotResult.data ?? []).length >= CALENDAR_LIMIT;
   const myProjectIds = Array.from(
     new Set((myAssignResult.data ?? []).map((a) => a.project_id))
   );
@@ -342,6 +350,9 @@ export default async function DashboardPage({
           staff={staffResult.data ?? []}
           projectsByUser={projectsByUser}
           todayIso={todayIso}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          truncated={calendarTruncated}
         />
         <p className="text-sm text-muted-foreground">
           {year}년 사업연도 기준 현황입니다.
