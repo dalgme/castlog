@@ -593,8 +593,9 @@ export async function dispatchProjectEngagements(input: {
     .select("id, required_count")
     .eq("project_id", input.projectId);
   const slotIds = (slots ?? []).map((s) => s.id);
-  // 요청중·확정 자리도 함께 읽는다 — 세션별 '아직 필요한 수'를 그만큼 줄여야
-  // 재발송이 예비 후보에게 새지 않는다
+  // 요청중·확정·거절 흔적(open + assigned_expert_id)까지 함께 읽는다 — 재발송
+  // 모드에서는 이력이 있는 세션을 통째로 건너뛰어야 예비 후보에게 새지 않는다
+  const redispatch = state.stage !== "plan_approved";
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
@@ -602,7 +603,7 @@ export async function dispatchProjectEngagements(input: {
           "id, code, assigned_expert_id, status, slot_id, rank, position_no"
         )
         .in("slot_id", slotIds)
-        .in("status", ["assigned", "requested", "filled"])
+        .in("status", ["assigned", "requested", "filled", "open"])
     : { data: [] };
 
   // 후보 순위 모델 (개정 2026-08-22): 세션마다 순위 상위 '필요인원'명에게만
@@ -634,7 +635,11 @@ export async function dispatchProjectEngagements(input: {
     const sorted = (positions ?? [])
       .filter((p) => p.slot_id === slot.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
-    const slotTargets = pickDispatchTargets(sorted, slot.required_count);
+    const slotTargets = pickDispatchTargets(
+      sorted,
+      slot.required_count,
+      redispatch
+    );
     if (coveredSlotIds !== null && !coveredSlotIds.includes(slot.id)) {
       for (const p of slotTargets) {
         failed.push({
@@ -653,7 +658,9 @@ export async function dispatchProjectEngagements(input: {
       error:
         failed.length > 0
           ? `발송 가능한 건이 없습니다. (${failed[0]?.reason ?? ""})`
-          : "발송할 배정 건이 없습니다 — 세션마다 필요인원만큼 이미 요청·확정되었습니다.",
+          : redispatch
+            ? "일괄 발송 대상이 없습니다 — 이미 요청이 나간 세션의 빈 자리(거절·만료)는 코드넘버별 개별 요청으로 채워 주세요 (규칙)."
+            : "발송할 배정 건이 없습니다 — 세션마다 필요인원만큼 이미 요청·확정되었습니다.",
     };
   }
 

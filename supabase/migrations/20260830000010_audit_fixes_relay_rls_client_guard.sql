@@ -20,7 +20,16 @@
 -- ---- P1. 릴레이 단계 열람·갱신 -------------------------------------------
 -- 릴레이 단계가 이 사용자에게 열려 있는가 — 0007 approval_steps_update와 동일:
 -- pending 단계 · 상신자 본인 제외 · 직급 이상 또는 그런 위임자의 유효한 대결자.
-create or replace function app.can_act_grade_step(p_approval_id uuid)
+-- p_step_grade를 주면 **그 직급 단계**만 판정한다 (행 정책용 — 결재건에 내
+-- 직급 이하 단계가 하나 있다고 상위 직급 단계까지 열리면 안 된다, 리뷰 P1-1).
+-- 함수 시그니처가 바뀌므로 의존 정책을 먼저 내리고 구 오버로드를 지운다.
+drop policy if exists approvals_select on public.approvals;
+drop policy if exists approvals_update on public.approvals;
+drop policy if exists approval_steps_update on public.approval_steps;
+drop function if exists app.can_act_grade_step(uuid);
+drop function if exists app.can_act_grade_step(uuid, text);
+
+create function app.can_act_grade_step(p_approval_id uuid, p_step_grade text default null)
 returns boolean
 language sql
 stable
@@ -35,6 +44,7 @@ as $$
       and s.tenant_id = app.tenant_id()
       and s.approver_user_id is null
       and s.step_grade is not null
+      and (p_step_grade is null or s.step_grade = p_step_grade)
       and s.status = 'pending'
       and app.user_role() <> 'expert'
       and a.requester_user_id <> auth.uid()
@@ -57,12 +67,11 @@ as $$
   )
 $$;
 
-comment on function app.can_act_grade_step(uuid) is
-  '릴레이(직급) 단계가 현재 사용자에게 열려 있는가 — approvals 행 정책과 approval_steps_update가 같은 판정을 쓴다 (감사 P1-1).';
+comment on function app.can_act_grade_step(uuid, text) is
+  '릴레이(직급) 단계가 현재 사용자에게 열려 있는가 — approvals 행 정책(결재건 단위)과 approval_steps_update(단계 직급 지정)가 같은 판정을 쓴다 (감사 P1-1).';
 
 -- 처리한 릴레이 단계는 acted_by_user_id에 남는다 — 처리 후에도 그 결재건을
 -- 계속 볼 수 있어야 한다(내가 결재한 문서가 목록에서 사라지면 안 된다).
-drop policy if exists approvals_select on public.approvals;
 create policy approvals_select on public.approvals
   for select using (
     tenant_id = app.tenant_id()
@@ -82,7 +91,6 @@ create policy approvals_select on public.approvals
     )
   );
 
-drop policy if exists approvals_update on public.approvals;
 create policy approvals_update on public.approvals
   for update using (
     tenant_id = app.tenant_id()
@@ -103,8 +111,8 @@ create policy approvals_update on public.approvals
   )
   with check (tenant_id = app.tenant_id());
 
--- 릴레이 단계 처리 정책도 같은 함수로 통일한다 (0007과 판정 동일, 중복 제거)
-drop policy if exists approval_steps_update on public.approval_steps;
+-- 릴레이 단계 처리 정책도 같은 함수로 통일한다 (0007과 판정 동일, 중복 제거).
+-- 행의 step_grade를 넘겨 **그 직급 단계**에 대한 자격만 본다.
 create policy approval_steps_update on public.approval_steps
   for update using (
     tenant_id = app.tenant_id()
@@ -115,7 +123,7 @@ create policy approval_steps_update on public.approval_steps
         approver_user_id is null
         and step_grade is not null
         and status = 'pending'
-        and app.can_act_grade_step(approval_id)
+        and app.can_act_grade_step(approval_id, step_grade)
       )
     )
   )

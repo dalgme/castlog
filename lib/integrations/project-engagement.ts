@@ -52,7 +52,15 @@ type PositionRow = {
 
 /** 프로젝트의 코드넘버 상태를 한 번에 읽는다 (RLS가 가시성을 판정) */
 export async function getProjectEngagementState(
-  projectId: string
+  projectId: string,
+  options: {
+    /**
+     * 승인된 계획의 커버리지(22번) — 주면 커버 밖 세션은 dispatchable에서
+     * 뺀다. 화면 버튼이 서버 대상 계산과 어긋나 "발송 가능한 건 없음"으로
+     * 끝나지 않게 (리뷰 P2-2). null/미지정 = 전체.
+     */
+    coveredSlotIds?: string[] | null;
+  } = {}
 ): Promise<ProjectEngagementState | null> {
   if (!hasSupabaseEnv()) return null;
   const supabase = createClient();
@@ -100,6 +108,9 @@ export async function getProjectEngagementState(
   let plannedAmount = 0;
   let readySlots = 0;
   let dispatchable = 0;
+  const stage = projectStage(project.engagement_stage);
+  const redispatch = stage !== "plan_approved";
+  const covered = options.coveredSlotIds ?? null;
   for (const slot of slots ?? []) {
     const candidates = (liveBySlot.get(slot.id) ?? []).sort(
       (a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no)
@@ -111,11 +122,17 @@ export async function getProjectEngagementState(
       0
     );
     if (progressed.length >= slot.required_count) readySlots += 1;
-    dispatchable += pickDispatchTargets(candidates, slot.required_count).length;
+    if (covered === null || covered.includes(slot.id)) {
+      dispatchable += pickDispatchTargets(
+        candidates,
+        slot.required_count,
+        redispatch
+      ).length;
+    }
   }
 
   return {
-    stage: projectStage(project.engagement_stage),
+    stage,
     planApprovalId: project.engagement_plan_approval_id,
     total: live.length,
     assigned,
@@ -141,13 +158,26 @@ export const REDISPATCH_STAGES: readonly ProjectStage[] = [
  * 세션 하나의 일괄 발송 대상 — 순위 상위 배정 후보 중 (필요인원 − 이미
  * 요청중·확정) 명. 순위순 정렬된 live 후보를 받는다.
  * 화면(버튼·건수)과 서버(dispatchProjectEngagements)가 같은 함수를 쓴다.
+ *
+ * redispatch(최초 발송 이후) 모드에서는 **요청 이력이 전혀 없는 세션**만
+ * 대상이다 — 보완 품의로 새로 승인된 세션. 거절·만료로 빈 자리(open +
+ * assigned_expert_id 잔존)는 기획대로 코드넘버별 개별 요청으로 채운다
+ * (리뷰 P2-3 — 예비 후보에게 일괄로 새는 것을 막는다).
  */
 export function pickDispatchTargets<
   T extends { status: string; assigned_expert_id: string | null },
->(sortedCandidates: T[], requiredCount: number): T[] {
+>(sortedCandidates: T[], requiredCount: number, redispatch = false): T[] {
   const inFlight = sortedCandidates.filter(
     (c) => c.status === "requested" || c.status === "filled"
   ).length;
+  if (redispatch) {
+    const hasHistory =
+      inFlight > 0 ||
+      sortedCandidates.some(
+        (c) => c.status === "open" && c.assigned_expert_id !== null
+      );
+    if (hasHistory) return [];
+  }
   const needed = Math.max(0, requiredCount - inFlight);
   if (needed === 0) return [];
   return sortedCandidates

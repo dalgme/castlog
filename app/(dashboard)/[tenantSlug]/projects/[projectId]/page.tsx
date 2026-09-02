@@ -828,7 +828,10 @@ export default async function ProjectDetailPage({
   // 프로젝트 단위 진행 단계 + 품의서 미리보기 — 버튼 활성 조건의 단일 근거
   const [engagementState, planDraft] = modules.experts
     ? await Promise.all([
-        getProjectEngagementState(project.id),
+        // 커버리지를 넘겨 재발송 버튼 건수가 서버 대상과 일치하게 (리뷰 P2-2)
+        getProjectEngagementState(project.id, {
+          coveredSlotIds: planPanel?.coveredSlotIds ?? null,
+        }),
         buildEngagementPlanDraft(project.id),
       ])
     : [null, null];

@@ -71,12 +71,11 @@ export function isStepOpenFor(
     return ctx.delegators.some((d) => d.id === step.approver_user_id);
   }
   if (!isUserGrade(step.step_grade)) return false;
+  // 상신자 본인은 직급 경로 전체(본인·대결)에서 제외 — 처리 액션·DB 판정과
+  // 동일 (리뷰 P2-1: 대결 경로만 열리면 배지는 뜨는데 처리는 거부된다)
+  if (ctx.userId === requesterUserId) return false;
   const need = gradeRank(step.step_grade);
-  if (
-    ctx.myGrade !== null &&
-    ctx.userId !== requesterUserId &&
-    gradeRank(ctx.myGrade) >= need
-  ) {
+  if (ctx.myGrade !== null && gradeRank(ctx.myGrade) >= need) {
     return true;
   }
   return ctx.delegators.some(

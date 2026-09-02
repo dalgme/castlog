@@ -211,8 +211,9 @@ export function EngagementWorkbench({
           {canManage &&
             (projectState.stage === "plan_approved" ||
               projectState.stage === "plan_review" ||
-              // 최초 발송 뒤 보완(추가) 품의로 승인된 세션의 배정 자리 —
-              // 다시 일괄 발송할 수 있다 (감사 P2-1)
+              // 최초 발송 뒤 보완(추가) 품의로 승인된 세션(요청 이력 없는
+              // 세션)의 배정 자리 — 다시 일괄 발송할 수 있다 (감사 P2-1).
+              // 거절·만료로 빈 자리는 여기 안 잡힌다 — 코드넘버별 개별 요청.
               ((projectState.stage === "requesting" ||
                 projectState.stage === "accepted_all") &&
                 projectState.dispatchable > 0)) && (
@@ -222,7 +223,11 @@ export function EngagementWorkbench({
                 defaultSummary={projectDescription}
                 targetCount={projectState.dispatchable}
                 expertsLite={expertsLite}
-                disabled={projectState.stage === "plan_review"}
+                // 보완 품의 결재 중(stage는 requesting 그대로)에도 막는다 —
+                // 서버가 건마다 거부하기 전에 UI가 먼저 (리뷰 P3-1)
+                disabled={
+                  projectState.stage === "plan_review" || planGate.blocked
+                }
                 disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
               />
             )}

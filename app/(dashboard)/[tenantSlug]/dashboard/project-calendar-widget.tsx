@@ -326,7 +326,9 @@ export function ProjectCalendarWidget({
                             key={`${s.id}:${cell.iso}`}
                             href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
                             title={`${s.projectName} · ${s.name ?? ""} · ${
-                              spanning ? `${s.date} ~ ${s.endDate}` : timeLabel(s)
+                              spanning
+                                ? `${s.date} ~ ${s.endDate} (캘린더에는 ${MAX_SPAN_DAYS}일까지 표시)`
+                                : timeLabel(s)
                             }`}
                             className={`block truncate rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight transition-opacity hover:opacity-80 ${
                               colorByProject.get(s.projectId) ?? PALETTE[0]
