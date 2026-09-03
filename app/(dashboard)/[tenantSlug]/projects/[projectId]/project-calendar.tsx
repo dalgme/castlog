@@ -811,9 +811,9 @@ export function ProjectCalendar({
       </Dialog>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        여기에서 등록한 세션은 <b>세션 계획 등록</b> 탭에 일자·시작시간 순으로
+        여기에서 등록한 세션은 <b>세션 확인</b> 탭에 일자·시작시간 순으로
         그대로 올라갑니다(코드넘버 TO 자동 발급 포함). 세션을 클릭하면 바로
-        수정·삭제할 수 있고, 장소 주소·후보별 예정가는 세션 계획 등록·섭외후보
+        수정·삭제할 수 있고, 장소 주소·후보별 예정가는 세션 확인·섭외후보
         등록에서 이어서 관리합니다.
       </p>
     </div>

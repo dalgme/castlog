@@ -84,6 +84,11 @@ import {
   EngagementWorkbench,
   type UnlinkedEngagement,
 } from "./engagement-workbench";
+import {
+  EngagementProgress,
+  type ApprovedPlanRow,
+  type ProgressRow,
+} from "./engagement-progress";
 import { ClosingTab } from "./closing-tab";
 import { ProjectClosing } from "./project-closing";
 
@@ -860,6 +865,83 @@ export default async function ProjectDetailPage({
 
   const tab = resolveProjectTab(searchParams.tab, modules.experts);
 
+  // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
+  // 그 탭에서만 쓰므로 그때만 읽는다.
+  let approvedPlans: ApprovedPlanRow[] = [];
+  const progressRows: ProgressRow[] = [];
+  if (tab === "engage" && modules.experts) {
+    const slotLabelById = new Map(
+      slotRows.map((s) => [
+        s.id,
+        `${s.slotDate}${s.periodEndDate && s.periodEndDate !== s.slotDate ? `~${s.periodEndDate}` : ""}${
+          s.sessionName ? ` ${s.sessionName}` : ""
+        }`,
+      ])
+    );
+    if (modules.approvals) {
+      const { data: planRows } = await supabase
+        .from("engagement_plans")
+        .select(
+          "id, revision, status, approval_id, slot_count, position_count, planned_amount, note, last_rejection_note, submitted_at, approved_at"
+        )
+        .eq("project_id", project.id)
+        // 반려된 계획은 draft로 되돌아간다(재상신용) — 반려 사유가 있으면
+        // 이력으로 보여 준다. 한 번도 안 올린 순수 draft만 뺀다
+        .or("status.neq.draft,last_rejection_note.not.is.null")
+        .order("revision", { ascending: false })
+        .limit(30);
+      const planIds = (planRows ?? []).map((p) => p.id);
+      const { data: lineRows } = planIds.length
+        ? await supabase
+            .from("engagement_plan_lines")
+            .select("plan_id, slot_id")
+            .in("plan_id", planIds)
+        : { data: [] as { plan_id: string; slot_id: string | null }[] };
+      const slotIdsByPlan = new Map<string, Set<string>>();
+      for (const l of lineRows ?? []) {
+        if (!l.slot_id) continue;
+        const set = slotIdsByPlan.get(l.plan_id) ?? new Set<string>();
+        set.add(l.slot_id);
+        slotIdsByPlan.set(l.plan_id, set);
+      }
+      approvedPlans = (planRows ?? []).map((p) => ({
+        id: p.id,
+        revision: p.revision,
+        status:
+          p.status === "draft" && p.last_rejection_note ? "rejected" : p.status,
+        approvalId: p.approval_id,
+        slotCount: p.slot_count,
+        positionCount: p.position_count,
+        plannedAmount: p.planned_amount,
+        submittedAt: p.submitted_at,
+        approvedAt: p.approved_at,
+        note:
+          p.status === "draft" && p.last_rejection_note
+            ? `반려 사유: ${p.last_rejection_note}`
+            : p.note,
+        sessionLabels: Array.from(slotIdsByPlan.get(p.id) ?? []).map(
+          (id) => slotLabelById.get(id) ?? "(삭제된 세션)"
+        ),
+      }));
+    }
+    for (const slot of slotRows) {
+      for (const position of slot.positions) {
+        // 전문가가 붙은 자리만 — 빈 TO는 진행 현황이 아니다
+        const name = position.expertName ?? position.assignedExpertName;
+        if (!name || position.status === "canceled") continue;
+        progressRows.push({
+          positionId: position.id,
+          slotLabel: slotLabelById.get(slot.id) ?? slot.slotDate,
+          code: position.code,
+          expertName: name,
+          // 미배정 TO는 위에서 걸렀다 — 이름은 늘 있다
+          stage: stageByPosition[position.id] ?? "assigned",
+          engagementId: position.engagementId,
+        });
+      }
+    }
+  }
+
   // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
   // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
   const settlementAttachments: Record<string, { id: string; fileName: string }> = {};
@@ -1373,8 +1455,52 @@ export default async function ProjectDetailPage({
               })),
               amount: planDraft?.amount ?? 0,
             }}
+            headerActions={
+              canExecute ? (
+                <>
+                  {(unlinkedCount ?? 0) > 0 && (
+                    <AttachEngagementsDialog projectId={project.id} />
+                  )}
+                  {/* 코드넘버·계획 품의를 거치지 않는 예외 경로다 — 정식 절차
+                      (①~⑤)와 같은 이름이면 어느 쪽이 진짜인지 헷갈린다 (검수 B9·G) */}
+                  {directEngagementOn && (
+                    <EngagementDialog
+                      experts={connectedExperts}
+                      projects={null}
+                      defaultProjectId={project.id}
+                      triggerLabel="코드 없이 바로 섭외 (예외)"
+                    />
+                  )}
+                </>
+              ) : null
+            }
+          />
+        )}
+
+        {/* 승인 목록 및 섭외 진행 (37번) — 결재가 난 뒤의 실행 자리:
+            섭외 문자 발송 · 수락서 송부/확인 · 코드별 진행 현황 */}
+        {tab === "engage" && modules.experts && (
+          <EngagementProgress
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
             projectName={project.name}
             projectDescription={project.description}
+            canManage={canExecute}
+            canInput={canInput}
+            expertsLite={expertsLite}
+            approvalsEnabled={modules.approvals}
+            projectState={{
+              stage: engagementState?.stage ?? "assigning",
+              dispatchable: engagementState?.dispatchable ?? 0,
+              filled: engagementState?.filled ?? 0,
+              requested: engagementState?.requested ?? 0,
+            }}
+            planGate={{
+              blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
+              message: planPanel?.message ?? "",
+            }}
+            plans={approvedPlans}
+            rows={progressRows}
             attachmentPanel={
               <AttachmentPanel
                 projectId={project.id}
@@ -1415,29 +1541,8 @@ export default async function ProjectDetailPage({
                   }))}
               />
             }
-            headerActions={
-              canExecute ? (
-                <>
-                  {(unlinkedCount ?? 0) > 0 && (
-                    <AttachEngagementsDialog projectId={project.id} />
-                  )}
-                  {/* 코드넘버·계획 품의를 거치지 않는 예외 경로다 — 정식 절차
-                      (①~⑤)와 같은 이름이면 어느 쪽이 진짜인지 헷갈린다 (검수 B9·G) */}
-                  {directEngagementOn && (
-                    <EngagementDialog
-                      experts={connectedExperts}
-                      projects={null}
-                      defaultProjectId={project.id}
-                      triggerLabel="코드 없이 바로 섭외 (예외)"
-                    />
-                  )}
-                </>
-              ) : null
-            }
           />
         )}
-
-
 
         {/* operations를 나중에 켠 회사의 기존 프로젝트 — 스텝을 잇는 경로(§1-2-8) */}
         {tab === "overview" &&

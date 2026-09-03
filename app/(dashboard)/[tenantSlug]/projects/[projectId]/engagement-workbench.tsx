@@ -41,8 +41,6 @@ import {
   EngagementPlanButton,
   type PlanPreviewLine,
 } from "./engagement-plan-button";
-import { DispatchDialog } from "./dispatch-dialog";
-import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -76,12 +74,12 @@ const STEPS = [
   {
     icon: Send,
     title: "④ 결재 후 섭외 진행",
-    body: "결재가 끝나면 순위 상위 필요인원에게 한 번에 요청을 보냅니다. 거절 시 예비 후보로 개별 요청합니다.",
+    body: "결재가 끝나면 '승인 목록 및 섭외 진행' 탭에서 순위 상위 필요인원에게 한 번에 섭외 문자를 보냅니다. 거절 시 예비 후보로 개별 요청합니다.",
   },
   {
     icon: FileCheck2,
     title: "⑤ 수락서 송부 → 확정",
-    body: "전원이 수락하면 수락서를 한 번에 보냅니다. 수락서는 캐스트로그 화면에서 확인·승인(서명)하며, 전원이 승인하면 확정됩니다.",
+    body: "전원이 수락하면 같은 탭에서 수락서를 한 번에 보냅니다. 수락서는 캐스트로그 화면에서 확인·승인(서명)하며, 전원이 승인하면 확정됩니다.",
   },
 ] as const;
 
@@ -119,10 +117,6 @@ export function EngagementWorkbench({
   planPreview,
   planApproverOptions = [],
   planRelayOn = false,
-  projectName,
-  projectDescription = null,
-  attachmentPanel,
-  acceptanceAttachmentPanel,
   headerActions,
   expertsLite = false,
 }: {
@@ -167,13 +161,6 @@ export function EngagementWorkbench({
   planApproverOptions?: { id: string; name: string; gradeLabel: string }[];
   /** 상급자 릴레이 결재(27번) 활성 — 픽커 안내 문구 분기 */
   planRelayOn?: boolean;
-  projectName: string;
-  /** 프로젝트 설명 — 섭외요청의 '주제/행사 내용' 자동 채움용 */
-  projectDescription?: string | null;
-  /** 섭외요청 첨부 패널 — 서버 컴포넌트에서 내려받는다 */
-  attachmentPanel?: React.ReactNode;
-  /** 수락서 첨부 패널 — 수락서 송부 전에만 붙일 수 있다 */
-  acceptanceAttachmentPanel?: React.ReactNode;
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
   /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송부 없이 기록만 */
@@ -208,46 +195,21 @@ export function EngagementWorkbench({
               relayOn={planRelayOn}
             />
           )}
-          {canManage &&
-            (projectState.stage === "plan_approved" ||
-              projectState.stage === "plan_review" ||
-              // 최초 발송 뒤 보완(추가) 품의로 승인된 세션(요청 이력 없는
-              // 세션)의 배정 자리 — 다시 일괄 발송할 수 있다 (감사 P2-1).
-              // 거절·만료로 빈 자리는 여기 안 잡힌다 — 코드넘버별 개별 요청.
-              ((projectState.stage === "requesting" ||
-                projectState.stage === "accepted_all") &&
-                projectState.dispatchable > 0)) && (
-              <DispatchDialog
-                projectId={projectId}
-                projectName={projectName}
-                defaultSummary={projectDescription}
-                targetCount={projectState.dispatchable}
-                expertsLite={expertsLite}
-                // 보완 품의 결재 중(stage는 requesting 그대로)에도 막는다 —
-                // 서버가 건마다 거부하기 전에 UI가 먼저 (리뷰 P3-1)
-                disabled={
-                  projectState.stage === "plan_review" || planGate.blocked
-                }
-                disabledReason="섭외 품의가 결재 진행 중입니다. 승인되면 열립니다."
-              />
-            )}
-          {canManage &&
-            !expertsLite &&
-            (projectState.stage === "requesting" ||
-              projectState.stage === "accepted_all" ||
-              projectState.stage === "letters_sent") && (
-              <AcceptanceSendDialog
-                projectId={projectId}
-                targetCount={projectState.filled}
-                alreadySent={projectState.stage === "letters_sent"}
-                disabled={projectState.stage === "requesting"}
-                disabledReason="아직 전원이 수락하지 않았습니다. 전원 수락 후 열립니다."
-              />
-            )}
+          {/* 섭외 문자 발송·수락서 송부는 '승인 목록 및 섭외 진행' 탭으로
+              옮겼다 (기획 확정 2026-08-30 — 37번). 결재가 난 뒤에는 그 탭이
+              실행 자리다 */}
+          {canManage && projectState.stage !== "assigning" && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/${tenantSlug}/projects/${projectId}?tab=engage`}>
+                <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                승인 목록 및 섭외 진행 →
+              </Link>
+            </Button>
+          )}
           {headerActions}
           <Button asChild variant="ghost" size="sm">
             <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
-              세션 계획 등록
+              세션 확인
             </Link>
           </Button>
         </div>
@@ -354,31 +316,29 @@ export function EngagementWorkbench({
             찾다가 포기한다. 상신·변경 상신은 여기서 바로 한다 */}
         {(planGate.blocked || planGate.appendable) && planPanel}
 
-        {/* 결재가 끝나면 보내기 전에 첨부를 붙인다 — 보낸 뒤에는 못 붙인다 */}
-        {canInput &&
-          projectState.stage === "plan_approved" &&
-          attachmentPanel}
-
-        {/* 수락서에 동봉할 자료 — 송신 순간 각 수락서로 복사된다. 보낸 뒤에
-            프로젝트 첨부를 지워도 이미 나간 수락서의 자료는 남는다 */}
-        {canInput &&
-          !expertsLite &&
-          projectState.stage === "accepted_all" &&
-          acceptanceAttachmentPanel}
-
-        {/* 전원 수락 — 이 화면에서 지금 할 일은 수락서 송부 하나뿐이다 */}
-        {canManage && !expertsLite && projectState.stage === "accepted_all" && (
-          <div className="rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
-            <p className="text-sm font-bold text-brand-navy">
-              전원 수락 완료 — 수락서를 보낼 차례입니다
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-brand-navy">
-              수락서는 각 전문가별로 자동 생성됩니다. 동봉할 자료를 먼저 붙인 뒤
-              위쪽 <strong>수락서 송부</strong> 버튼을 누르세요. 수락서는
-              캐스트로그 화면에서만 열리며, 문자·이메일은 도착 안내입니다.
-            </p>
-          </div>
-        )}
+        {/* 결재가 난 뒤의 실행(첨부·발송·수락서)은 전용 탭에 있다 — 여기서
+            "다음 행동"을 잃지 않게 한 줄로 가리킨다 */}
+        {canManage &&
+          (projectState.stage === "plan_approved" ||
+            projectState.stage === "accepted_all") && (
+            <div className="rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
+              <p className="text-sm font-bold text-brand-navy">
+                {projectState.stage === "plan_approved"
+                  ? "결재 완료 — 섭외 문자를 보낼 차례입니다"
+                  : "전원 수락 완료 — 수락서를 보낼 차례입니다"}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-brand-navy">
+                첨부를 붙이고 발송하는 자리는{" "}
+                <Link
+                  href={`/${tenantSlug}/projects/${projectId}?tab=engage`}
+                  className="font-semibold underline underline-offset-4"
+                >
+                  승인 목록 및 섭외 진행
+                </Link>{" "}
+                탭입니다.
+              </p>
+            </div>
+          )}
 
         {reengageCount > 0 && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3">
@@ -400,8 +360,8 @@ export function EngagementWorkbench({
               단위로 진행되므로, 먼저 세션(날짜·역할·필요인원)을 등록해야 합니다.
             </p>
             <Button asChild size="sm" className="mt-3">
-              <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
-                세션 계획 등록으로 이동
+              <Link href={`/${tenantSlug}/projects/${projectId}?tab=basic`}>
+                기본설정 탭에서 세션 등록
               </Link>
             </Button>
           </div>

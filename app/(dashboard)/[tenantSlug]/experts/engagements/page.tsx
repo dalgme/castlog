@@ -247,7 +247,12 @@ export default async function EngagementStatusPage({
                     className="flex flex-wrap items-center gap-2 py-2 text-sm"
                   >
                     <Link
-                      href={`/${params.tenantSlug}/projects/${p.id}?tab=experts`}
+                      // 결재 전은 후보 등록 탭, 결재 뒤는 섭외 진행 탭이 실행 자리 (37번)
+                      href={`/${params.tenantSlug}/projects/${p.id}?tab=${
+                        p.stage === "assigning" || p.stage === "plan_review"
+                          ? "experts"
+                          : "engage"
+                      }`}
                       className="font-medium text-brand underline-offset-4 hover:underline"
                     >
                       {p.name}

@@ -48,6 +48,7 @@ export function DispatchDialog({
   disabled,
   disabledReason,
   expertsLite = false,
+  triggerLabel = "섭외 진행",
 }: {
   projectId: string;
   projectName: string;
@@ -58,6 +59,8 @@ export function DispatchDialog({
   disabledReason: string;
   /** 라이트 모드 — 발송 없이 요청만 기록되므로 문구를 그에 맞게 바꾼다 */
   expertsLite?: boolean;
+  /** 트리거 버튼 문구 — 섭외 진행 탭(37번)에서는 "섭외 문자 발송" */
+  triggerLabel?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -101,7 +104,7 @@ export function DispatchDialog({
       <span className="inline-flex max-w-[240px] flex-col items-start gap-0.5">
         <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
           <Send className="h-3.5 w-3.5" aria-hidden />
-          섭외 진행
+          {triggerLabel}
         </span>
         <span className="text-[11px] leading-tight text-muted-foreground">
           {disabledReason}
@@ -124,7 +127,7 @@ export function DispatchDialog({
       <DialogTrigger asChild>
         <Button size="sm">
           <Send className="mr-1.5 h-3.5 w-3.5" />
-          섭외 진행
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">

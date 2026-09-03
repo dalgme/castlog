@@ -41,7 +41,7 @@ export const PROJECT_STAGE_DESCRIPTIONS: Record<ProjectStage, string> = {
   plan_review:
     "배정 명단으로 섭외 품의를 올렸습니다. 결재가 끝나야 요청을 보낼 수 있습니다.",
   plan_approved:
-    "결재가 끝났습니다. 첨부를 준비한 뒤 ‘섭외 진행’으로 전원에게 요청을 보내세요.",
+    "결재가 끝났습니다. ‘승인 목록 및 섭외 진행’ 탭에서 첨부를 준비한 뒤 ‘섭외 문자 발송’으로 전원에게 요청을 보내세요.",
   requesting: "전문가들의 회신을 기다립니다. 수락 여부가 자동으로 반영됩니다.",
   accepted_all:
     "전원이 수락했습니다. 수락서가 자동 생성되었으니 첨부를 붙여 송부하세요.",

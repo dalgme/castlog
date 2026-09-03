@@ -80,7 +80,7 @@ export default async function TenantAcceptancePage({
               {engagement.project_id && (
                 <Button asChild variant="outline" size="sm">
                   <Link
-                    href={`/${params.tenantSlug}/projects/${engagement.project_id}?tab=experts`}
+                    href={`/${params.tenantSlug}/projects/${engagement.project_id}?tab=engage`}
                   >
                     프로젝트 섭외 현황으로
                   </Link>
@@ -126,7 +126,7 @@ export default async function TenantAcceptancePage({
             {backEngagement?.project_id && (
               <Button asChild variant="outline" size="sm">
                 <Link
-                  href={`/${params.tenantSlug}/projects/${backEngagement.project_id}?tab=experts`}
+                  href={`/${params.tenantSlug}/projects/${backEngagement.project_id}?tab=engage`}
                 >
                   프로젝트 섭외로
                 </Link>
