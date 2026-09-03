@@ -35,6 +35,8 @@ export type SessionNoticeContext = {
   slotId: string;
   sessionName: string | null;
   slotDate: string;
+  /** 컨설팅 세션(34번) 수행 종료일 — {일정}에 기간으로 실린다 */
+  periodEndDate: string | null;
   startsTime: string | null;
   endsTime: string | null;
   roleType: string;
@@ -52,7 +54,7 @@ export async function getSessionNoticeContext(
   const { data: slot } = await admin
     .from("engagement_slots")
     .select(
-      "id, tenant_id, project_id, slot_date, starts_time, ends_time, role_type, session_name, location_name, location_address"
+      "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address"
     )
     .eq("id", slotId)
     .maybeSingle();
@@ -104,6 +106,7 @@ export async function getSessionNoticeContext(
     slotId: slot.id,
     sessionName: slot.session_name,
     slotDate: slot.slot_date,
+    periodEndDate: slot.period_end_date ?? null,
     startsTime: slot.starts_time,
     endsTime: slot.ends_time,
     roleType: slot.role_type,
@@ -127,12 +130,17 @@ export function renderNoticeBody(
   context: SessionNoticeContext,
   recipient: Pick<NoticeRecipient, "name" | "code">
 ): string {
+  const isConsulting = context.periodEndDate !== null;
   const location = context.locationName
     ? context.locationAddress
       ? `${context.locationName} (${context.locationAddress})`
       : context.locationName
-    : "장소 미정";
+    : isConsulting
+      ? "별도 협의"
+      : "장소 미정";
 
+  // 컨설팅 세션은 기간으로 — 시작일만 보내면 하루 일정으로 읽힌다 (감사 P3-3)
+  const endsOn = context.periodEndDate ?? context.slotDate;
   const replacements: Record<string, string> = {
     "{전문가명}": recipient.name,
     "{기업명}": context.tenantName,
@@ -141,11 +149,14 @@ export function renderNoticeBody(
     "{일정}":
       formatEventSchedule(
         context.slotDate,
-        context.slotDate,
+        endsOn,
         context.startsTime,
         context.endsTime
       ) || context.slotDate,
-    "{일자}": context.slotDate,
+    "{일자}":
+      endsOn !== context.slotDate
+        ? `${context.slotDate} ~ ${endsOn}`
+        : context.slotDate,
     "{시간}": timeRange(context.startsTime, context.endsTime),
     "{장소}": location,
     "{역할}": roleTypeLabel(context.roleType) ?? context.roleType,

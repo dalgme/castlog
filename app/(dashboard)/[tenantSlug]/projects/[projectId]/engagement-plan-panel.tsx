@@ -318,12 +318,18 @@ export function EngagementPlanPanel({
                 마지막은 상무이사 → 대표 고정 */}
             <div className="space-y-2 rounded-md border border-dashed p-2.5">
                 <p className="text-xs text-muted-foreground">
-                  결재자를 직접 지정할 수 있습니다 (선택 순서대로 결재 단계).
-                  선택과 무관하게 마지막은 <b>상무이사 → 대표 (고정)</b>로 자동
-                  연결됩니다.{" "}
-                  {relayOn
-                    ? "비워 두면 상급자 릴레이(직급 단계)로 상신됩니다."
-                    : "비워 두면 고정 결재선만으로 상신됩니다."}
+                  결재자를 직접 지정할 수 있습니다 (선택 순서대로 결재 단계).{" "}
+                  {relayOn ? (
+                    <>
+                      결재자를 고르면 그 뒤에 <b>상무이사 → 대표 (고정)</b>가
+                      붙고, 비워 두면 상급자 릴레이(직급 단계)로 상신됩니다.
+                    </>
+                  ) : (
+                    <>
+                      선택과 무관하게 마지막은 <b>상무이사 → 대표 (고정)</b>로
+                      자동 연결됩니다. 비워 두면 고정 결재선만으로 상신됩니다.
+                    </>
+                  )}
                 </p>
                 {approverOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground">

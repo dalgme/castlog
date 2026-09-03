@@ -88,9 +88,10 @@ export default async function PositionPage({
   const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
   const candidates = canManage && ctx.status === "open" ? await getSlotCandidates(ctx) : [];
 
+  // 컨설팅 세션(34번)은 수행기간으로 표기 (감사 P3-3)
   const schedule = formatEventSchedule(
     ctx.slotDate,
-    ctx.slotDate,
+    ctx.periodEndDate ?? ctx.slotDate,
     ctx.startsTime,
     ctx.endsTime
   );

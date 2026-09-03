@@ -3,7 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { gradeFromUser } from "@/lib/auth/tenant";
-import { gradeRank, isUserGrade } from "@/lib/auth/grades";
+import { isStepOpenFor, loadTurnContext } from "@/lib/approvals/turn";
 
 /**
  * 내 결재 차례 (검수 A3 — CEO에게 "결재할 것이 왔다"는 신호가 없던 문제).
@@ -31,7 +31,6 @@ export async function getMyTurnApprovals(
   const supabase = createClient();
   const [
     { data },
-    { data: myDelegations },
     {
       data: { user: sessionUser },
     },
@@ -44,23 +43,13 @@ export async function getMyTurnApprovals(
       .eq("status", "in_progress")
       .order("created_at", { ascending: false })
       .limit(100),
-    supabase
-      .from("approval_delegations")
-      .select("delegator_user_id, starts_on, ends_on")
-      .eq("delegate_user_id", userId)
-      .eq("is_active", true),
     supabase.auth.getUser(),
   ]);
-  // 직급 릴레이 단계 판정용 (27번) — 이 함수는 항상 세션 본인 기준으로 불린다
+  // 직급 릴레이 단계 판정용 (27번) — 이 함수는 항상 세션 본인 기준으로 불린다.
+  // 본인·대결(위임자 직급 포함) 판정은 목록·처리 액션과 같은 규칙 (감사 P3-1)
   const myGrade =
     sessionUser && sessionUser.id === userId ? gradeFromUser(sessionUser) : null;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const myDelegatorIds = new Set(
-    (myDelegations ?? [])
-      .filter((d) => d.starts_on <= today && today <= d.ends_on)
-      .map((d) => d.delegator_user_id)
-  );
+  const ctx = await loadTurnContext(supabase, userId, myGrade);
 
   const mine: MyTurnApproval[] = [];
   for (const a of data ?? []) {
@@ -72,15 +61,7 @@ export async function getMyTurnApprovals(
     const myTurn = pending.some(
       (s) =>
         s.step_order === currentOrder &&
-        (s.approver_user_id === userId ||
-          (s.approver_user_id !== null &&
-            myDelegatorIds.has(s.approver_user_id)) ||
-          // 직급 릴레이 단계 (27번) — 그 직급 이상 누구나, 상신자 본인 제외
-          (s.approver_user_id === null &&
-            isUserGrade(s.step_grade) &&
-            myGrade !== null &&
-            gradeRank(myGrade) >= gradeRank(s.step_grade) &&
-            a.requester_user_id !== userId))
+        isStepOpenFor(s, a.requester_user_id, ctx)
     );
     if (!myTurn) continue;
     mine.push({

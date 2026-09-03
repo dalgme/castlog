@@ -87,7 +87,7 @@ export async function remindEngagement(
   const { data: engagement } = await supabase
     .from("expert_engagements")
     .select(
-      "id, expert_id, project_id, status, program_name, starts_on, starts_time, ends_time, location_name, token_expires_at"
+      "id, expert_id, project_id, status, program_name, starts_on, ends_on, starts_time, ends_time, location_name, token_expires_at"
     )
     .eq("id", engagementId)
     .maybeSingle();
@@ -139,9 +139,10 @@ export async function remindEngagement(
     .eq("id", tenantId)
     .maybeSingle();
 
+  // 기간 섭외(컨설팅 34번)는 종료일까지 — 재안내가 하루짜리로 읽히면 안 된다
   const schedule = formatEventSchedule(
     engagement.starts_on,
-    null,
+    engagement.ends_on,
     engagement.starts_time,
     engagement.ends_time
   );

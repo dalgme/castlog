@@ -13,7 +13,11 @@ import {
   staffActorLabel,
 } from "@/lib/integrations/engagement-events";
 import { isPracticeMode } from "@/lib/practice/server";
-import { getProjectEngagementState } from "@/lib/integrations/project-engagement";
+import {
+  getProjectEngagementState,
+  pickDispatchTargets,
+  REDISPATCH_STAGES,
+} from "@/lib/integrations/project-engagement";
 import {
   getActivePlan,
   buildPlanSnapshot,
@@ -564,15 +568,21 @@ export async function dispatchProjectEngagements(input: {
 
   const state = await getProjectEngagementState(input.projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
-  if (state.stage !== "plan_approved") {
+  // 최초 발송 뒤에도 보완(추가) 품의로 승인된 세션의 배정 자리는 다시 일괄
+  // 발송할 수 있다 (감사 P2-1 — 이전에는 plan_approved에서만 열려 추가 세션은
+  // 코드별 단건 요청만 가능했다). 수락서 송부 이후에는 닫는다.
+  if (
+    state.stage !== "plan_approved" &&
+    !REDISPATCH_STAGES.includes(state.stage)
+  ) {
     return {
       ok: false,
       error:
         state.stage === "assigning"
-          ? "섭외 품의를 먼저 상신·승인받아야 합니다."
+          ? "섭외 품의를 먼저 상신·승인받아야 합니다 (규칙)."
           : state.stage === "plan_review"
             ? "섭외 품의가 결재 진행 중입니다. 승인 후 발송할 수 있습니다."
-            : "이미 섭외 요청이 발송되었습니다.",
+            : "수락서 송부 이후에는 일괄 발송을 쓸 수 없습니다 (규칙). 추가 섭외는 코드넘버별 개별 요청으로 진행해 주세요.",
     };
   }
 
@@ -583,6 +593,9 @@ export async function dispatchProjectEngagements(input: {
     .select("id, required_count")
     .eq("project_id", input.projectId);
   const slotIds = (slots ?? []).map((s) => s.id);
+  // 요청중·확정·거절 흔적(open + assigned_expert_id)까지 함께 읽는다 — 재발송
+  // 모드에서는 이력이 있는 세션을 통째로 건너뛰어야 예비 후보에게 새지 않는다
+  const redispatch = state.stage !== "plan_approved";
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
@@ -590,7 +603,7 @@ export async function dispatchProjectEngagements(input: {
           "id, code, assigned_expert_id, status, slot_id, rank, position_no"
         )
         .in("slot_id", slotIds)
-        .eq("status", "assigned")
+        .in("status", ["assigned", "requested", "filled", "open"])
     : { data: [] };
 
   // 후보 순위 모델 (개정 2026-08-22): 세션마다 순위 상위 '필요인원'명에게만
@@ -619,16 +632,20 @@ export async function dispatchProjectEngagements(input: {
 
   const targets: DispatchTarget[] = [];
   for (const slot of slots ?? []) {
-    const slotTargets = (positions ?? [])
-      .filter((p) => p.slot_id === slot.id && p.assigned_expert_id)
-      .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
-      .slice(0, slot.required_count);
+    const sorted = (positions ?? [])
+      .filter((p) => p.slot_id === slot.id)
+      .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
+    const slotTargets = pickDispatchTargets(
+      sorted,
+      slot.required_count,
+      redispatch
+    );
     if (coveredSlotIds !== null && !coveredSlotIds.includes(slot.id)) {
       for (const p of slotTargets) {
         failed.push({
           code: p.code,
           reason:
-            "승인된 섭외계획에 포함되지 않은 세션입니다 (규칙). 섭외계획 패널의 보완(추가) 품의로 승인받은 뒤 발송됩니다.",
+            "승인된 섭외계획에 포함되지 않은 세션입니다 (규칙). 섭외계획 패널의 보완(추가) 품의로 승인받으면 이 버튼으로 다시 발송할 수 있습니다.",
         });
       }
       continue;
@@ -641,7 +658,9 @@ export async function dispatchProjectEngagements(input: {
       error:
         failed.length > 0
           ? `발송 가능한 건이 없습니다. (${failed[0]?.reason ?? ""})`
-          : "발송할 배정 건이 없습니다.",
+          : redispatch
+            ? "일괄 발송 대상이 없습니다 — 이미 요청이 나간 세션의 빈 자리(거절·만료)는 코드넘버별 개별 요청으로 채워 주세요 (규칙)."
+            : "발송할 배정 건이 없습니다 — 세션마다 필요인원만큼 이미 요청·확정되었습니다.",
     };
   }
 

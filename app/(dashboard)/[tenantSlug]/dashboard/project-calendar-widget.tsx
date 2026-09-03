@@ -11,10 +11,21 @@ export type WidgetSession = {
   projectId: string;
   projectName: string;
   date: string; // YYYY-MM-DD
+  /** 컨설팅 세션(34번) 수행 종료일 — 있으면 기간 전체 날짜에 그린다 */
+  endDate?: string | null;
   startsTime: string | null;
   endsTime: string | null;
   name: string | null;
 };
+
+/** 기간 세션이 그려질 최대 일수 — 무한 기간 입력 실수의 방어선 */
+const MAX_SPAN_DAYS = 120;
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /** 프로젝트별 고정 팔레트 — 같은 프로젝트는 늘 같은 색 (33번) */
 const PALETTE = [
@@ -51,6 +62,9 @@ export function ProjectCalendarWidget({
   staff,
   projectsByUser,
   todayIso,
+  rangeStart,
+  rangeEnd,
+  truncated = false,
 }: {
   tenantSlug: string;
   sessions: WidgetSession[];
@@ -63,6 +77,11 @@ export function ProjectCalendarWidget({
   projectsByUser: Record<string, string[]>;
   /** 서버 기준 오늘 (KST) — 클라이언트 TZ 흔들림 방지 */
   todayIso: string;
+  /** 서버가 실어 준 일정 범위 — 이 밖의 달은 비어 있는 게 아니라 안 실은 것 */
+  rangeStart: string;
+  rangeEnd: string;
+  /** 조회 상한에 걸려 일부가 빠졌는가 */
+  truncated?: boolean;
 }) {
   const [tab, setTab] = useState<"mine" | "all" | "staff">(
     isExecutive ? "all" : "mine"
@@ -95,10 +114,22 @@ export function ProjectCalendarWidget({
 
   const byDay = useMemo(() => {
     const map = new Map<string, WidgetSession[]>();
-    for (const s of visible) {
-      const list = map.get(s.date) ?? [];
+    const put = (day: string, s: WidgetSession) => {
+      const list = map.get(day) ?? [];
       list.push(s);
-      map.set(s.date, list);
+      map.set(day, list);
+    };
+    for (const s of visible) {
+      // 기간 세션(컨설팅)은 시작~종료 매일에 그린다 (감사 P3-5b)
+      if (s.endDate && s.endDate > s.date) {
+        let day = s.date;
+        for (let i = 0; i < MAX_SPAN_DAYS && day <= s.endDate; i++) {
+          put(day, s);
+          day = addDays(day, 1);
+        }
+      } else {
+        put(s.date, s);
+      }
     }
     for (const list of Array.from(map.values())) {
       list.sort((a, b) => (a.startsTime ?? "99").localeCompare(b.startsTime ?? "99"));
@@ -126,6 +157,15 @@ export function ProjectCalendarWidget({
     d.setMonth(d.getMonth() + delta);
     setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
+  // 서버가 실어 준 범위 밖 달은 이동을 막는다 — 빈 그리드가 "일정 없음"으로
+  // 읽히면 안 된다 (감사 P3-5)
+  const rangeStartMonth = rangeStart.slice(0, 7);
+  const rangeEndMonth = rangeEnd.slice(0, 7);
+  const canPrev = month > rangeStartMonth;
+  const canNext = month < rangeEndMonth;
+  const monthHasEvents = monthCells.some(
+    (c) => c.inMonth && (byDay.get(c.iso)?.length ?? 0) > 0
+  );
 
   const legendProjects = useMemo(() => {
     const seen = new Map<string, string>();
@@ -192,16 +232,20 @@ export function ProjectCalendarWidget({
           <button
             type="button"
             aria-label="이전 달"
+            disabled={!canPrev}
+            title={canPrev ? undefined : "지난달까지만 표시합니다"}
             onClick={() => shiftMonth(-1)}
-            className="rounded-md border p-1 hover:bg-secondary"
+            className="rounded-md border p-1 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden />
           </button>
           <button
             type="button"
             aria-label="다음 달"
+            disabled={!canNext}
+            title={canNext ? undefined : "3개월 뒤까지만 표시합니다"}
             onClick={() => shiftMonth(1)}
-            className="rounded-md border p-1 hover:bg-secondary"
+            className="rounded-md border p-1 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronRight className="h-4 w-4" aria-hidden />
           </button>
@@ -220,7 +264,22 @@ export function ProjectCalendarWidget({
               직원을 선택하면 그 직원의 일정이 표시됩니다.
             </span>
           )}
+          <span className="ml-auto text-[11px] text-muted-foreground">
+            지난달 ~ 3개월 뒤까지 표시
+          </span>
         </div>
+        {truncated && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+            일정이 많아 일부만 실렸습니다 — 빠진 일정은 각 프로젝트의 기본설정
+            탭 캘린더에서 확인하세요.
+          </p>
+        )}
+        {!monthHasEvents && !(tab === "staff" && !staffId) && (
+          <p className="rounded-md bg-secondary/50 px-2 py-1 text-[11px] text-muted-foreground">
+            이 달에는 표시할 일정이 없습니다. 세션은 프로젝트 &gt; 기본설정 탭
+            캘린더에서 등록합니다.
+          </p>
+        )}
 
         {/* 구글 캘린더식 월간 그리드 */}
         <div className="overflow-x-auto">
@@ -260,19 +319,30 @@ export function ProjectCalendarWidget({
                       {parseInt(cell.iso.slice(8, 10), 10)}
                     </p>
                     <div className="space-y-0.5">
-                      {list.slice(0, 3).map((s) => (
-                        <Link
-                          key={s.id}
-                          href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
-                          title={`${s.projectName} · ${s.name ?? ""} · ${timeLabel(s)}`}
-                          className={`block truncate rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight transition-opacity hover:opacity-80 ${
-                            colorByProject.get(s.projectId) ?? PALETTE[0]
-                          }`}
-                        >
-                          {s.startsTime ? `${s.startsTime.slice(0, 5)} ` : ""}
-                          {s.name ?? "(세션명 없음)"}
-                        </Link>
-                      ))}
+                      {list.slice(0, 3).map((s) => {
+                        const spanning = Boolean(s.endDate && s.endDate > s.date);
+                        return (
+                          <Link
+                            key={`${s.id}:${cell.iso}`}
+                            href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
+                            title={`${s.projectName} · ${s.name ?? ""} · ${
+                              spanning
+                                ? `${s.date} ~ ${s.endDate} (캘린더에는 ${MAX_SPAN_DAYS}일까지 표시)`
+                                : timeLabel(s)
+                            }`}
+                            className={`block truncate rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight transition-opacity hover:opacity-80 ${
+                              colorByProject.get(s.projectId) ?? PALETTE[0]
+                            }`}
+                          >
+                            {spanning
+                              ? "기간 "
+                              : s.startsTime
+                                ? `${s.startsTime.slice(0, 5)} `
+                                : ""}
+                            {s.name ?? "(세션명 없음)"}
+                          </Link>
+                        );
+                      })}
                       {list.length > 3 && (
                         <p className="px-1 text-[10px] text-muted-foreground">
                           +{list.length - 3}건

@@ -366,12 +366,22 @@ export function SlotTable({
                   </button>
                 </span>
               )}
-              <span className="text-sm font-semibold">{s.slotDate}</span>
-              <span className="text-sm text-muted-foreground">
-                {timeLabel(s)}
-                {durationLabel(s.startsTime, s.endsTime)
-                  ? ` (${durationLabel(s.startsTime, s.endsTime)})`
+              <span className="text-sm font-semibold">
+                {s.slotDate}
+                {/* 컨설팅 세션(34번)은 수행기간 — 시작일만 보이면 하루짜리로
+                    읽힌다 (감사 P2-2d) */}
+                {s.periodEndDate && s.periodEndDate !== s.slotDate
+                  ? ` ~ ${s.periodEndDate}`
                   : ""}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {s.periodEndDate
+                  ? "컨설팅 수행기간"
+                  : `${timeLabel(s)}${
+                      durationLabel(s.startsTime, s.endsTime)
+                        ? ` (${durationLabel(s.startsTime, s.endsTime)})`
+                        : ""
+                    }`}
               </span>
               {s.sessionName && (
                 <span className="text-sm font-medium text-brand-navy">
@@ -711,7 +721,8 @@ export function SlotTable({
               </div>
               <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
                 세션을 추가하면 <b>후보 TO(코드넘버)가 필요인원의 3배수</b>로
-                자동 발급됩니다 (예: 필요 2명 → TO 6개). TO는 섭외후보 등록
+                자동 발급됩니다 (예: 필요 2명 → TO 6개). 컨설팅 세션은 예외로,
+                기본설정 탭에서 입력한 후보인원만큼 발급됩니다. TO는 섭외후보 등록
                 탭에서 추가·삭제할 수 있습니다. 비용은 여기서 입력하지 않습니다 —
                 <b> 섭외후보 등록 탭에서 후보별 예정가</b>로 작성합니다.
               </p>

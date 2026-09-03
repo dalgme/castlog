@@ -828,7 +828,10 @@ export default async function ProjectDetailPage({
   // 프로젝트 단위 진행 단계 + 품의서 미리보기 — 버튼 활성 조건의 단일 근거
   const [engagementState, planDraft] = modules.experts
     ? await Promise.all([
-        getProjectEngagementState(project.id),
+        // 커버리지를 넘겨 재발송 버튼 건수가 서버 대상과 일치하게 (리뷰 P2-2)
+        getProjectEngagementState(project.id, {
+          coveredSlotIds: planPanel?.coveredSlotIds ?? null,
+        }),
         buildEngagementPlanDraft(project.id),
       ])
     : [null, null];
@@ -1309,6 +1312,16 @@ export default async function ProjectDetailPage({
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
+              // 부분 상신 승인 뒤 계획 밖 세션이 남았으면 보완(추가) 품의 패널을
+              // 승인 상태에서도 그린다 (감사 P1 — 이전엔 도달 불가)
+              appendable: Boolean(
+                planPanel &&
+                  planPanel.state === "approved" &&
+                  planPanel.coveredSlotIds !== null &&
+                  slotRows.some(
+                    (s) => !planPanel.coveredSlotIds!.includes(s.id)
+                  )
+              ),
             }}
             planPanel={
               planPanel ? (
@@ -1344,6 +1357,7 @@ export default async function ProjectDetailPage({
               open: engagementState?.open ?? 0,
               filled: engagementState?.filled ?? 0,
               fullyAssigned: engagementState?.fullyAssigned ?? false,
+              dispatchable: engagementState?.dispatchable ?? 0,
             }}
             planPreview={{
               lines: (planDraft?.lines ?? []).map((l) => ({

@@ -51,6 +51,20 @@ const slotSchema = z
   );
 
 /**
+ * 컨설팅 세션(34번)의 세션 계획 탭 수정용 — 장소는 구조적으로 없다(멘토·멘티가
+ * 별도 협의). 행사 스키마의 장소 필수를 그대로 적용하면 수정 자체가 거부된다
+ * (감사 P2-2a).
+ */
+const consultingEditSchema = slotSchema.innerType()
+  .extend({
+    locationName: z.string().trim().max(150).optional().or(z.literal("")),
+  })
+  .refine(
+    (v) => !v.startsTime || !v.endsTime || v.startsTime < v.endsTime,
+    { message: "종료 시각은 시작 시각 이후여야 합니다.", path: ["endsTime"] }
+  );
+
+/**
  * 타임테이블 슬롯 생성 + 필요인원만큼 코드넘버 자동 부여.
  * 코드는 테넌트 내 유일해야 하므로 충돌 시 접미사를 붙여 재시도한다.
  */
@@ -90,7 +104,14 @@ export async function createSlot(
     })
     .select("id")
     .single();
-  if (error || !slot) return { ok: false, error: "슬롯 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error || !slot) {
+    return {
+      ok: false,
+      error: error
+        ? await explainActionError(error.message, "세션 등록에 실패했습니다.")
+        : "세션 등록에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
 
   // 후보 순위 모델 (개정 2026-08-30): 후보 TO를 **필요인원의 3배수**로
   // 발급한다 — 거절·미회신을 감안한 예비 폭 (기획 확정). 이후 추가·삭제 가능.
@@ -162,21 +183,32 @@ export async function updateSlot(
   const auth = await requireExecGrade("planInput");
   if (!auth.ok) return auth;
 
-  const parsed = slotSchema.safeParse({ ...input, requiredCount: 1 });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
-  }
-  const d = parsed.data;
-
   const supabase = createClient();
   const { data: before } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, location_name, notes"
+      "id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, role_description, location_name, notes"
     )
     .eq("id", slotId)
     .maybeSingle();
   if (!before) return { ok: false, error: "세션을 찾을 수 없습니다." };
+
+  // 컨설팅 세션(수행기간 있음)은 장소 없이 저장할 수 있다 (감사 P2-2a)
+  const isConsulting = before.period_end_date !== null;
+  const parsed = (isConsulting ? consultingEditSchema : slotSchema).safeParse({
+    ...input,
+    requiredCount: 1,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+  const d = parsed.data;
+  if (isConsulting && before.period_end_date && d.slotDate > before.period_end_date) {
+    return {
+      ok: false,
+      error: `수행 시작일이 종료일(${before.period_end_date}) 뒤일 수 없습니다 (규칙). 기간은 기본설정 탭의 컨설팅 세션에서 함께 수정해 주세요.`,
+    };
+  }
 
   const { error } = await supabase
     .from("engagement_slots")
@@ -193,7 +225,12 @@ export async function updateSlot(
       field_id: d.fieldId || null,
     })
     .eq("id", slotId);
-  if (error) return { ok: false, error: "세션 수정에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return {
+      ok: false,
+      error: await explainActionError(error.message, "세션 수정에 실패했습니다."),
+    };
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -358,13 +395,23 @@ export async function updateConsultingSlot(
     return { ok: false, error: "선택한 분야를 찾을 수 없습니다." };
   }
 
+  // 사용자가 직접 지은 세션명은 지키고, 자동 생성명("컨설팅 · 분야")만 새
+  // 분야로 따라 바꾼다 (감사 P3-4 — 이전에는 무조건 덮어써 이름이 사라졌다)
+  const { data: before } = await supabase
+    .from("engagement_slots")
+    .select("session_name")
+    .eq("id", slotId)
+    .maybeSingle();
+  const autoNamed =
+    !before?.session_name || before.session_name.startsWith("컨설팅 · ");
+
   const { data: updated, error } = await supabase
     .from("engagement_slots")
     .update({
       slot_date: d.startsOn,
       period_end_date: d.endsOn,
       field_id: field.id,
-      session_name: `컨설팅 · ${field.name}`,
+      ...(autoNamed ? { session_name: `컨설팅 · ${field.name}` } : {}),
     })
     .eq("id", slotId)
     .select("id")
@@ -424,21 +471,26 @@ export async function adjustSlotCount(
   const supabase = createClient();
   const { data: slot } = await supabase
     .from("engagement_slots")
-    .select("id, slot_date, role_type, required_count")
+    .select("id, slot_date, period_end_date, role_type, required_count")
     .eq("id", slotId)
     .maybeSingle();
-  if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
+  if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
 
   // 후보 순위 모델: 필요인원은 '실제 섭외 인원 수'일 뿐, 후보 수와 분리다.
   // 늘릴 때 후보 TO가 3배수에 못 미치면 그만큼 추가 발급하고(기획 2026-08-30),
   // 줄일 때는 후보를 지우지 않는다(초과 후보는 예비 후보로 남는다).
+  // 컨설팅 세션(34번)은 후보인원을 직접 입력하므로 3배수 보충을 하지 않는다
+  // (감사 P2-2c) — 필요하면 후보 TO 추가 버튼으로 늘린다.
   const { count: candidateCount } = await supabase
     .from("engagement_slot_positions")
     .select("id", { count: "exact", head: true })
     .eq("slot_id", slotId)
     .neq("status", "canceled");
   const existing = candidateCount ?? 0;
-  const targetCandidates = Math.min(100, nextCount * 3);
+  const isConsulting = slot.period_end_date !== null;
+  const targetCandidates = isConsulting
+    ? Math.min(100, Math.max(existing, nextCount))
+    : Math.min(100, nextCount * 3);
   if (targetCandidates > existing) {
     const { data: maxRow } = await supabase
       .from("engagement_slot_positions")
@@ -552,19 +604,33 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   const { data: source } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order"
+      "id, project_id, slot_date, period_end_date, field_id, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order"
     )
     .eq("id", slotId)
     .maybeSingle();
   if (!source) return { ok: false, error: "복사할 세션을 찾을 수 없습니다." };
+  // 컨설팅 세션(34번)은 장소가 구조적으로 없다 — 세션명만 확인하고, 기간·분야를
+  // 함께 복제하며 후보 TO는 원본과 같은 수로 발급한다 (감사 P2-2b)
+  const isConsulting = source.period_end_date !== null;
   // 세션명·장소 필수화 이후의 우회 방지 — 필수값 없는 구세션은 복사 대신
   // 원본을 먼저 채우게 한다 (리뷰 A-2)
-  if (!source.session_name || !source.location_name) {
+  if (!source.session_name || (!isConsulting && !source.location_name)) {
     return {
       ok: false,
-      error:
-        "원본 세션에 세션명·장소가 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
+      error: isConsulting
+        ? "원본 세션에 세션명이 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요."
+        : "원본 세션에 세션명·장소가 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
     };
+  }
+
+  let copyCandidates = Math.min(100, source.required_count * 3);
+  if (isConsulting) {
+    const { count } = await supabase
+      .from("engagement_slot_positions")
+      .select("id", { count: "exact", head: true })
+      .eq("slot_id", slotId)
+      .neq("status", "canceled");
+    copyCandidates = Math.min(100, Math.max(1, count ?? source.required_count));
   }
 
   const copyName = source.session_name
@@ -576,6 +642,8 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
       tenant_id: auth.tenantId,
       project_id: source.project_id,
       slot_date: source.slot_date,
+      period_end_date: source.period_end_date,
+      field_id: source.field_id,
       starts_time: source.starts_time,
       ends_time: source.ends_time,
       role_type: source.role_type,
@@ -591,7 +659,12 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
     .select("id")
     .single();
   if (error || !created) {
-    return { ok: false, error: "세션 복사에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      error: error
+        ? await explainActionError(error.message, "세션 복사에 실패했습니다.")
+        : "세션 복사에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
   }
 
   const positionError = await createPositions(
@@ -601,7 +674,7 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
     source.slot_date,
     source.role_type,
     1,
-    Math.min(100, source.required_count * 3)
+    copyCandidates
   );
   if (positionError) {
     await supabase.from("engagement_slots").delete().eq("id", created.id);
