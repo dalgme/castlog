@@ -17,6 +17,7 @@ export const PROJECT_TAB_KEYS = [
   "basic",
   "sessions",
   "experts",
+  "engage",
   "contrib",
   "closing",
 ] as const;
@@ -48,7 +49,8 @@ const TAB_DEFS: readonly {
   },
   {
     key: "sessions",
-    label: "세션 계획 등록",
+    // 명칭 개정 2026-08-30 (37번): 등록은 기본설정 캘린더에서, 여기는 확인·수정
+    label: "세션 확인",
     activeClass: "border-violet-600 bg-violet-600 text-white shadow-sm",
     idleClass:
       "border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100",
@@ -60,6 +62,16 @@ const TAB_DEFS: readonly {
     activeClass: "border-orange-600 bg-orange-600 text-white shadow-sm",
     idleClass:
       "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100",
+  },
+  {
+    // 승인 목록 및 섭외 진행 (기획 확정 2026-08-30 — 37번): 품의가 승인된 뒤
+    // 실제 섭외(문자 발송·수락서)를 하는 자리. 후보 등록과 실행을 탭으로 나눈다
+    key: "engage",
+    label: "승인 목록 및 섭외 진행",
+    needsExperts: true,
+    activeClass: "border-fuchsia-600 bg-fuchsia-600 text-white shadow-sm",
+    idleClass:
+      "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100",
   },
   {
     // 참여율 배분 — 종료 탭에서 분리 (기획 확정 2026-08-30). 공통 기반이라
