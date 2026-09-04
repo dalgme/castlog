@@ -168,11 +168,11 @@ export function EngagementProgress({
   return (
     <div className="space-y-4">
       {feedbackPlan && (
-        <div className="rounded-lg border-2 border-[#FF6F61] bg-[#FF6F61]/10 p-3">
-          <p className="text-sm font-bold text-[#b3483d]">
+        <div className="rounded-lg border-2 border-brand-coral bg-brand-coral/10 p-3">
+          <p className="text-sm font-bold text-brand-coral-ink">
             상급자 피드백 — 사후보고 v{feedbackPlan.revision}
           </p>
-          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[#b3483d]">
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-brand-coral-ink">
             {feedbackPlan.feedbackNote}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -335,7 +335,7 @@ export function EngagementProgress({
                         </span>
                         {p.postReport && (
                           <span
-                            className="mt-1 block w-fit rounded-full bg-[#FF6F61]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#b3483d]"
+                            className="mt-1 block w-fit rounded-full bg-brand-coral/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-coral-ink"
                             title="사후보고 모드로 즉시 확정된 계획"
                           >
                             사후보고
@@ -355,7 +355,7 @@ export function EngagementProgress({
                           </p>
                         )}
                         {p.feedbackNote && (
-                          <p className="mt-0.5 text-[11px] font-medium text-[#b3483d]">
+                          <p className="mt-0.5 text-[11px] font-medium text-brand-coral-ink">
                             피드백: {p.feedbackNote}
                           </p>
                         )}

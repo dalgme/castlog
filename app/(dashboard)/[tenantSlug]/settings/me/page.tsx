@@ -174,7 +174,7 @@ export default async function MySettingsPage({
           {/* 세션 분야 — 누구나 추가, 회사 공용 (기획 2026-08-30 — 35번) */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">분야 (세션 분야 — 회사 공용)</CardTitle>
+              <CardTitle className="text-sm">세션분야 (회사 공용)</CardTitle>
             </CardHeader>
             <CardContent>
               <SessionFieldsPanel

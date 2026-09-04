@@ -251,7 +251,7 @@ export default async function PositionPage({
                 <Button
                   asChild
                   size="sm"
-                  className="bg-[#FF6F61] text-white hover:bg-[#e85d50]"
+                  className="bg-brand-coral-dark text-white hover:bg-brand-coral-ink"
                 >
                   <Link
                     href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
@@ -275,7 +275,7 @@ export default async function PositionPage({
                 <Button
                   asChild
                   size="sm"
-                  className="bg-[#FF6F61] text-white hover:bg-[#e85d50]"
+                  className="bg-brand-coral-dark text-white hover:bg-brand-coral-ink"
                 >
                   <Link
                     href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}

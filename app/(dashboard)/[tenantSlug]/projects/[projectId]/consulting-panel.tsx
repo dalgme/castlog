@@ -169,7 +169,7 @@ export function ConsultingPanel({
             />
           </div>
           <div>
-            <label className="text-[11px] text-muted-foreground">분야 (컨설팅 분야)</label>
+            <label className="text-[11px] text-muted-foreground">세션분야</label>
             <select
               value={draft.fieldId}
               onChange={(e) => setDraft((p) => ({ ...p, fieldId: e.target.value }))}
@@ -241,7 +241,7 @@ export function ConsultingPanel({
                 <span className="text-xs text-muted-foreground">
                   {s.startsOn} ~ {s.endsOn ?? "?"}
                 </span>
-                <span className="text-xs font-semibold text-[#FF6F61]">
+                <span className="text-xs font-semibold text-brand-coral">
                   필요 {s.requiredCount}명
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -331,7 +331,7 @@ export function ConsultingPanel({
                       setEditDraft((p) => ({ ...p, fieldId: e.target.value }))
                     }
                     className="h-7 w-36 rounded-md border bg-background px-1.5 text-xs"
-                    aria-label="분야"
+                    aria-label="세션분야"
                   >
                     <option value="">분야 선택</option>
                     {fieldOptions.map((f) => (

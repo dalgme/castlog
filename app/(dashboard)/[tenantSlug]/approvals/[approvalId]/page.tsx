@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
 import { gradeFromUser } from "@/lib/auth/tenant";
-import { gradeLabel, gradeRank, isUserGrade } from "@/lib/auth/grades";
+import { gradeLabel } from "@/lib/auth/grades";
+import { isStepOpenFor, loadTurnContext } from "@/lib/approvals/turn";
 import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -95,82 +96,21 @@ export default async function ApprovalDetailPage({
       ? []
       : pendingSteps.filter((s) => s.step_order === currentOrder);
 
+  // 내 차례 판정 — 목록·배지·처리 액션과 같은 공용 규칙 (lib/approvals/turn.ts).
+  // 표시용이며 서버 액션이 다시 검증한다. 본인 자격(지정 결재자·직급)으로 열리지
+  // 않고 대결(위임) 자격으로만 열리면 '대결 처리'로 표시한다.
   let canAct = false;
   let actingAsDelegate = false;
   if (user && currentGroup.length > 0) {
-    if (currentGroup.some((s) => s.approver_user_id === user.id)) {
-      canAct = true;
-    } else {
-      const { data: delegations } = await supabase
-        .from("approval_delegations")
-        .select("delegator_user_id, starts_on, ends_on")
-        .eq("delegate_user_id", user.id)
-        .eq("is_active", true);
-      const today = new Date().toISOString().slice(0, 10);
-      const delegators = new Set(
-        (delegations ?? [])
-          .filter((d) => d.starts_on <= today && today <= d.ends_on)
-          .map((d) => d.delegator_user_id)
-      );
-      if (
-        currentGroup.some(
-          (s) => s.approver_user_id !== null && delegators.has(s.approver_user_id)
-        )
-      ) {
-        canAct = true;
-        actingAsDelegate = true;
-      }
-    }
-    // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 그 직급 이상 누구나.
-    // 상신자 본인은 제외 (표시용 — 서버 액션이 다시 검증한다)
-    const gradeSteps = currentGroup.filter(
-      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+    const ctx = await loadTurnContext(supabase, user.id, gradeFromUser(user));
+    canAct = currentGroup.some((s) =>
+      isStepOpenFor(s, approval.requester_user_id, ctx)
     );
-    if (!canAct && user.id !== approval.requester_user_id && gradeSteps.length > 0) {
-      const myGrade = gradeFromUser(user);
-      if (
-        myGrade &&
-        gradeSteps.some(
-          (s) =>
-            isUserGrade(s.step_grade) &&
-            gradeRank(myGrade) >= gradeRank(s.step_grade)
-        )
-      ) {
-        canAct = true;
-      }
-      // 직급 단계 대결 (리뷰 P2-3): 그 직급 이상 위임자의 유효한 대결자
-      if (!canAct) {
-        const { data: delegations } = await supabase
-          .from("approval_delegations")
-          .select("delegator_user_id, starts_on, ends_on")
-          .eq("delegate_user_id", user.id)
-          .eq("is_active", true);
-        const today = new Date().toISOString().slice(0, 10);
-        const delegatorIds = (delegations ?? [])
-          .filter((d) => d.starts_on <= today && today <= d.ends_on)
-          .map((d) => d.delegator_user_id)
-          .filter((id) => id !== approval.requester_user_id);
-        if (delegatorIds.length > 0) {
-          const { data: delegatorRows } = await supabase
-            .from("users")
-            .select("id, grade")
-            .in("id", delegatorIds)
-            .eq("is_active", true);
-          const maxRank = Math.max(
-            0,
-            ...(delegatorRows ?? [])
-              .map((u) => (isUserGrade(u.grade) ? gradeRank(u.grade) : 0))
-          );
-          if (
-            gradeSteps.some(
-              (s) => isUserGrade(s.step_grade) && maxRank >= gradeRank(s.step_grade)
-            )
-          ) {
-            canAct = true;
-            actingAsDelegate = true;
-          }
-        }
-      }
+    if (canAct) {
+      const selfOnly = { ...ctx, delegators: [] };
+      actingAsDelegate = !currentGroup.some((s) =>
+        isStepOpenFor(s, approval.requester_user_id, selfOnly)
+      );
     }
   }
 
@@ -310,7 +250,7 @@ export default async function ApprovalDetailPage({
                   approval.approval_type}
               </Badge>
               {isReport && (
-                <span className="rounded-full bg-[#FF6F61]/15 px-2 py-0.5 text-[11px] font-semibold text-[#b3483d]">
+                <span className="rounded-full bg-brand-coral/15 px-2 py-0.5 text-[11px] font-semibold text-brand-coral-ink">
                   사후보고
                 </span>
               )}
@@ -338,7 +278,7 @@ export default async function ApprovalDetailPage({
             </div>
             <h2 className="text-lg font-bold">{approval.title}</h2>
             {isReport && (
-              <p className="rounded-md border border-[#FF6F61]/40 bg-[#FF6F61]/10 p-2.5 text-xs leading-relaxed text-[#b3483d]">
+              <p className="rounded-md border border-brand-coral/40 bg-brand-coral/10 p-2.5 text-xs leading-relaxed text-brand-coral-ink">
                 이 문서는 <b>승인이 아니라 확인</b>입니다 — 섭외는 회사 설정(사후보고
                 모드)에 따라 이미 확정·진행 중입니다. 확인하거나 피드백을 남겨
                 주세요. 피드백은 담당자 화면에 표시되고 문서는 다음 상급자에게

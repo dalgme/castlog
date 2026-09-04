@@ -269,7 +269,7 @@ export default async function ExecutivePage({
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">분야 카테고리별 현황</CardTitle>
+            <CardTitle className="text-sm">프로젝트 카테고리별 현황</CardTitle>
           </CardHeader>
           <CardContent>
             {categoryRowsAgg.length === 0 ? (

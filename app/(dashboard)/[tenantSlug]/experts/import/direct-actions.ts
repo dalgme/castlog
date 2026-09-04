@@ -315,7 +315,7 @@ export async function commitDirectImport(
         );
       }
 
-      // 강의(멘토링) 분야 연결
+      // 강의분야 연결
       const junctions = row.expertiseFields
         .map((name) => fieldIdByName.get(name))
         .filter((id): id is string => Boolean(id))

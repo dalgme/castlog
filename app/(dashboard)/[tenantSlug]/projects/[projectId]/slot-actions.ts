@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { explainActionError } from "@/lib/ux/action-errors";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
@@ -160,7 +161,9 @@ async function createPositions(
         code,
       });
       if (!error) inserted = true;
-      else if (error.code !== "23505") return "코드넘버 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.";
+      else if (error.code !== "23505") {
+        return await explainActionError(error.message, "코드넘버 생성에 실패했습니다.");
+      }
     }
     if (!inserted) return "코드넘버가 중복되어 생성하지 못했습니다.";
   }
@@ -310,7 +313,7 @@ export async function createConsultingSlot(
     .eq("id", d.fieldId)
     .maybeSingle();
   if (!field) {
-    return { ok: false, error: "선택한 분야를 찾을 수 없습니다. 설정 > 내 설정 > 분야에서 추가하세요." };
+    return { ok: false, error: "선택한 분야를 찾을 수 없습니다. 설정 > 내 설정 > 세션분야에서 추가하세요." };
   }
 
   const { data: slot, error } = await supabase
@@ -450,7 +453,9 @@ export async function deleteSlot(slotId: string): Promise<SlotResult> {
   }
 
   const { error } = await supabase.from("engagement_slots").delete().eq("id", slotId);
-  if (error) return { ok: false, error: "삭제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return { ok: false, error: await explainActionError(error.message, "세션 삭제에 실패했습니다.") };
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -516,7 +521,9 @@ export async function adjustSlotCount(
     .from("engagement_slots")
     .update({ required_count: nextCount })
     .eq("id", slotId);
-  if (error) return { ok: false, error: "인원 변경에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return { ok: false, error: await explainActionError(error.message, "필요인원 변경에 실패했습니다.") };
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -542,7 +549,9 @@ export async function updateProjectBudget(
       budget_amount: budgetAmount ? parseInt(budgetAmount, 10) : null,
     })
     .eq("id", projectId);
-  if (error) return { ok: false, error: "예산 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return { ok: false, error: await explainActionError(error.message, "예산 저장에 실패했습니다.") };
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -755,10 +764,9 @@ export async function reorderSlots(
     if (error) {
       return {
         ok: false,
-        error:
-          error.code === "42703"
-            ? "세션 순서 저장 기능이 아직 준비되지 않았습니다 (마이그레이션 미적용) — 캐스트로그에 알려 주세요."
-            : "순서 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+        error: isMissingColumnError(error)
+          ? "세션 순서 저장 기능이 아직 준비되지 않았습니다 (마이그레이션 미적용) — 캐스트로그에 알려 주세요."
+          : await explainActionError(error.message, "세션 순서 저장에 실패했습니다."),
       };
     }
   }
@@ -835,7 +843,9 @@ export async function reorderCandidates(
       .from("engagement_slot_positions")
       .update({ rank: i + 1 })
       .eq("id", id);
-    if (error) return { ok: false, error: "순위 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    if (error) {
+      return { ok: false, error: await explainActionError(error.message, "후보 순위 저장에 실패했습니다.") };
+    }
   }
 
   // 순위는 발송 대상(상위 N)과 품의 금액에 영향을 준다 — 누가 언제 바꿨는지
@@ -871,7 +881,9 @@ export async function setCandidateFee(
     .from("engagement_slot_positions")
     .update({ expected_fee: fee ? parseInt(fee, 10) : null })
     .eq("id", positionId);
-  if (error) return { ok: false, error: "예정가 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return { ok: false, error: await explainActionError(error.message, "예정가 저장에 실패했습니다.") };
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

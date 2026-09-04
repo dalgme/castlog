@@ -82,7 +82,7 @@ export default async function ProjectsPage({
 
   const rows = projects ?? [];
 
-  // 분야 카테고리 — 대표가 설정한 활성 항목만 개설 폼에 노출한다.
+  // 프로젝트 카테고리 — 대표가 설정한 활성 항목만 개설 폼에 노출한다.
   const { data: categoryRows } = await supabase
     .from("project_categories")
     .select("id, name")

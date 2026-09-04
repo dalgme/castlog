@@ -115,7 +115,7 @@ export default async function PlatformExpertDetailPage({
     ["경력", expert.career_years !== null ? `${expert.career_years}년` : "-"],
     ["최종학위", [expert.degree_level, expert.degree_major].filter(Boolean).join(" · ") || "-"],
     ["학위·자격증", expert.degree_certifications ?? "-"],
-    ["강의(멘토링) 분야", fieldNames.join(", ") || "-"],
+    ["강의분야", fieldNames.join(", ") || "-"],
     ["등록일", fmtDate(expert.created_at)],
   ];
 

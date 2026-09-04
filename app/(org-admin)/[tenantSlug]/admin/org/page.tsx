@@ -175,7 +175,7 @@ export default async function OrgAdminPage({
   const lastModuleDecision =
     moduleRequests.find((r) => r.status !== "pending") ?? null;
 
-  // 프로젝트 분야 카테고리 + 카테고리별 프로젝트 수(비활성화 판단 근거)
+  // 프로젝트 카테고리 + 카테고리별 프로젝트 수(비활성화 판단 근거)
   const [{ data: categoryRecords }, { data: categorizedProjects }] =
     await Promise.all([
       supabase
@@ -313,7 +313,7 @@ export default async function OrgAdminPage({
         {canEditCompany && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">프로젝트 분야 카테고리</CardTitle>
+            <CardTitle className="text-sm">프로젝트 카테고리</CardTitle>
           </CardHeader>
           <CardContent>
             <CategoriesPanel categories={categoryRows} />

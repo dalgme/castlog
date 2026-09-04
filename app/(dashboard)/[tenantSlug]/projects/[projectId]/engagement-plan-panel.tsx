@@ -292,7 +292,7 @@ export function EngagementPlanPanel({
               </p>
             )}
             {postReportOn && (
-              <p className="rounded-md bg-[#FF6F61]/10 p-2 text-xs leading-relaxed text-[#b3483d]">
+              <p className="rounded-md bg-brand-coral/10 p-2 text-xs leading-relaxed text-brand-coral-ink">
                 사후보고 모드 — 이 상신은 즉시 확정되고 상급자에게는 보고
                 문서만 갑니다(확인·피드백). 금액이 상한·전결규정 구간에 걸리면
                 서버가 사전 품의로 돌립니다.

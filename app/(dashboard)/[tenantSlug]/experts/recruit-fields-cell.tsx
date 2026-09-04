@@ -19,7 +19,7 @@ import { toggleExpertRecruitField } from "./manage/manage-actions";
 export type RecruitFieldOption = { id: string; name: string };
 
 /**
- * 섭외 분야 셀 (기획 확정 2026-08-23) — 회사의 주관적 분류.
+ * 섭외분야 셀 (기획 확정 2026-08-23) — 회사의 주관적 분류.
  * 선택지는 설정 > 기업관리 > 섭외분야에서 관리하고, 여기서 전문가별로
  * 중복 선택해 붙인다. 전문가 본인·타사에는 보이지 않는다 (테넌트 격리).
  */
@@ -89,7 +89,7 @@ export function ExpertRecruitFieldsCell({
         type="button"
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-secondary"
-        title="섭외 분야 지정 (회사 내부 분류)"
+        title="섭외분야 지정 (회사 내부 분류)"
       >
         {chips}
         <Pencil className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
@@ -104,7 +104,7 @@ export function ExpertRecruitFieldsCell({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>섭외 분야 — {expertName}</DialogTitle>
+            <DialogTitle>섭외분야 — {expertName}</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
             우리 회사 내부 분류입니다 — 전문가 본인·다른 회사에는 보이지

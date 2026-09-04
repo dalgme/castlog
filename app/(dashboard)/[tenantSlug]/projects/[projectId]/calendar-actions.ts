@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { isPracticeMode } from "@/lib/practice/server";
+import { explainActionError } from "@/lib/ux/action-errors";
 
 /**
  * 프로젝트 캘린더 일정표 — 일자 스캐폴드 관리 (기획 확정 2026-08-30 — 29번).
@@ -86,7 +87,7 @@ export async function addCalendarDays(
   if (error) {
     return {
       ok: false,
-      error: "일자 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+      error: await explainActionError(error.message, "일자 생성에 실패했습니다."),
     };
   }
 
@@ -122,7 +123,7 @@ export async function removeCalendarDay(
     // 검사 실패를 통과로 취급하지 않는다 (리뷰 P3 — §12-9 시스템 결함 분류)
     return {
       ok: false,
-      error: "세션 확인에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+      error: await explainActionError(countError.message, "세션 확인에 실패했습니다."),
     };
   }
   if ((count ?? 0) > 0) {
@@ -139,7 +140,7 @@ export async function removeCalendarDay(
     .eq("project_id", projectId)
     .eq("day", day);
   if (error) {
-    return { ok: false, error: "일자 삭제에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+    return { ok: false, error: await explainActionError(error.message, "일자 삭제에 실패했습니다.") };
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

@@ -10,10 +10,10 @@ import {
   type ExpertiseFieldAdminRow,
 } from "./fields-panel";
 
-export const metadata = { title: "강의(멘토링) 분야 관리" };
+export const metadata = { title: "강의분야 관리" };
 
 /**
- * 강의(멘토링) 분야 전역 마스터 (기획 확정 2026-08-22).
+ * 강의분야 전역 마스터 (기획 확정 2026-08-22).
  * 전문가 프로필의 중복 선택지 — 보유자료 일괄등록의 엑셀 값도 여기로
  * 자동 승격되므로, 운영자는 이 화면에서 오타·중복을 정리한다.
  */
@@ -29,7 +29,7 @@ export default async function ExpertiseFieldsPage() {
   if (!hasSupabaseEnv()) {
     return (
       <div className="min-h-screen bg-secondary/50">
-        <PageHeader title="강의(멘토링) 분야" actions={headerActions} />
+        <PageHeader title="강의분야" actions={headerActions} />
         <main className="p-5">
           <EmptyState
             title="서버 설정 대기 중"
@@ -63,7 +63,7 @@ export default async function ExpertiseFieldsPage() {
 
   return (
     <div className="min-h-screen bg-secondary/50">
-      <PageHeader title="강의(멘토링) 분야" actions={headerActions} />
+      <PageHeader title="강의분야" actions={headerActions} />
       <main className="mx-auto max-w-3xl p-4 sm:p-6">
         {rows.length === 0 ? (
           <div className="space-y-4">

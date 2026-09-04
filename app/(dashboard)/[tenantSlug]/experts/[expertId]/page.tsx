@@ -102,7 +102,7 @@ export default async function ExpertDetailPage({
   }
   if (!expert) notFound();
 
-  // 강의(멘토링) 분야 — 공개 디렉터리 정보라 admin으로 (미연결도 표시).
+  // 강의분야 — 공개 디렉터리 정보라 admin으로 (미연결도 표시).
   // 계좌는 **끝 4자리만** — 전체 계좌번호는 지급 단계 경로에서만 (§5).
   const [{ data: expertiseRows }, bankMasked] = await Promise.all([
     admin
@@ -275,7 +275,7 @@ export default async function ExpertDetailPage({
                 {expertiseNames.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1">
                     <span className="mr-0.5 text-muted-foreground">
-                      강의(멘토링) 분야
+                      강의분야
                     </span>
                     {expertiseNames.map((n) => (
                       <Badge key={n} variant="secondary" className="text-[10px]">

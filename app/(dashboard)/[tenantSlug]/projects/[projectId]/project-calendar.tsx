@@ -137,7 +137,7 @@ export function ProjectCalendar({
   canManage: boolean;
   /** experts 모듈 활성 — 꺼진 테넌트에는 섭외 진입 버튼을 숨긴다 (연동 규칙 1-2-4) */
   expertsEnabled: boolean;
-  /** 세션 분야 선택지 (35번 — 설정 > 내 설정 > 분야에서 누구나 추가) */
+  /** 세션 분야 선택지 (35번 — 설정 > 내 설정 > 세션분야에서 누구나 추가) */
   fieldOptions?: { id: string; name: string }[];
 }) {
   const router = useRouter();
@@ -462,8 +462,9 @@ export function ProjectCalendar({
                       className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                     >
                       <span className="text-xs font-bold">{dayLabel(day)}</span>
+                      {/* 겹침은 경고 — amber. 코랄은 강조·CTA 전용 (색 의미 분리) */}
                       {hasOverlap && (
-                        <span className="rounded bg-[#FF6F61] px-1 py-0.5 text-[9px] font-bold text-white">
+                        <span className="rounded bg-amber-500 px-1 py-0.5 text-[9px] font-bold text-white">
                           시간 겹침
                         </span>
                       )}
@@ -548,7 +549,7 @@ export function ProjectCalendar({
                       }${b.overlapped ? " · ⚠ 같은 시간대 세션 있음" : ""}`;
                       const blockClass = `absolute overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm transition-colors ${
                         b.overlapped
-                          ? "border-[#FF6F61] bg-[#FF6F61]/15 hover:bg-[#FF6F61]/25"
+                          ? "border-amber-500 bg-amber-100 hover:bg-amber-200"
                           : "border-brand bg-brand/10 hover:bg-brand/20"
                       }`;
                       const blockStyle = {
@@ -733,9 +734,9 @@ export function ProjectCalendar({
                   setDraft((p) => ({ ...p, fieldId: e.target.value }))
                 }
                 className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                aria-label="분야"
+                aria-label="세션분야"
               >
-                <option value="">분야 선택 (선택)</option>
+                <option value="">세션분야 선택 (선택)</option>
                 {fieldOptions.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name}

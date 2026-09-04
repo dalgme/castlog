@@ -144,7 +144,7 @@
   **데이터를 덮어쓰지 않고 관계만 추가**한다. 관계기업은 expert_tenant_links
   (relation_source: self_join/bulk_registered, engaged_at=첫 섭외 수락)로
   판정하며, 기업에는 자사 관계만 보인다.
-- 강의(멘토링) 분야는 전역 마스터 expertise_fields(캐스트로그 관리모드 CRUD)
+- 강의분야(화면 용어 — 구 '강의(멘토링) 분야')는 전역 마스터 expertise_fields(캐스트로그 관리모드 CRUD)
   + expert_expertise_fields(전문가 중복 선택) + experts.expertise_other(기타).
   테넌트별 섭외분야는 tenant_recruit_fields(CEO 설정 CRUD) +
   expert_tenant_recruit_fields, 테넌트별 평점·메모는 expert_tenant_profiles —

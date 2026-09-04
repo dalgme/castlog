@@ -30,7 +30,7 @@ export type ManagedExpertRow = {
   phone: string;
   relationSource: string; // self_join | bulk_registered
   engagedAt: string | null;
-  expertiseFields: string[]; // 전문가의 강의(멘토링) 분야 (전역)
+  expertiseFields: string[]; // 전문가의 강의분야 (전역)
   rating: number | null;
   memo: string | null;
   recruitFieldIds: string[]; // 자사 섭외분야 배정
@@ -111,7 +111,7 @@ export function ManageClient({
             <TableRow>
               <TableHead>전문가</TableHead>
               <TableHead>관계</TableHead>
-              <TableHead>강의(멘토링) 분야</TableHead>
+              <TableHead>강의분야</TableHead>
               <TableHead>평점</TableHead>
               <TableHead className="min-w-[200px]">메모</TableHead>
               <TableHead className="min-w-[220px]">섭외분야</TableHead>

@@ -133,7 +133,7 @@ export async function toggleExpertRecruitField(
   }
 
   revalidatePath("/[tenantSlug]/experts/manage", "page");
-  // 전문가 목록의 섭외 분야 셀에서도 쓴다 (기획 확정 2026-08-23)
+  // 전문가 목록의 섭외분야 셀에서도 쓴다 (기획 확정 2026-08-23)
   revalidatePath("/[tenantSlug]/experts", "page");
   return { ok: true };
 }

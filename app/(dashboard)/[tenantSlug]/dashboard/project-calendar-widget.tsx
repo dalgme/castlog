@@ -89,6 +89,8 @@ export function ProjectCalendarWidget({
   const [staffId, setStaffId] = useState<string>("");
   // 월간 그리드 (구글 캘린더 형태) — 표시 중인 달 (YYYY-MM)
   const [month, setMonth] = useState<string>(todayIso.slice(0, 7));
+  // 모바일 아젠다에서 이번 달 지난 일정도 펼칠지
+  const [showPast, setShowPast] = useState(false);
 
   // 프로젝트 → 색 (첫 등장 순서 고정)
   const colorByProject = useMemo(() => {
@@ -166,6 +168,23 @@ export function ProjectCalendarWidget({
   const monthHasEvents = monthCells.some(
     (c) => c.inMonth && (byDay.get(c.iso)?.length ?? 0) > 0
   );
+  // 좁은 화면용 아젠다 — 데스크톱 7열 격자를 가로 스크롤로 축소하지 않는다
+  // (§14-6). 표시 중인 달의 일정 있는 날짜만, 이번 달이면 오늘부터.
+  const agendaDays = monthCells
+    .filter((c) => c.inMonth && (byDay.get(c.iso)?.length ?? 0) > 0)
+    .filter(
+      (c) => showPast || month !== todayIso.slice(0, 7) || c.iso >= todayIso
+    );
+  const pastCountThisMonth =
+    month === todayIso.slice(0, 7)
+      ? monthCells.filter(
+          (c) => c.inMonth && c.iso < todayIso && (byDay.get(c.iso)?.length ?? 0) > 0
+        ).length
+      : 0;
+  const dayTitle = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00`);
+    return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
+  };
 
   const legendProjects = useMemo(() => {
     const seen = new Map<string, string>();
@@ -281,8 +300,74 @@ export function ProjectCalendarWidget({
           </p>
         )}
 
-        {/* 구글 캘린더식 월간 그리드 */}
-        <div className="overflow-x-auto">
+        {/* 좁은 화면: 일자별 아젠다 (감사 UX H3) */}
+        <div className="sm:hidden">
+          {agendaDays.length === 0 ? null : (
+            <ul className="divide-y rounded-md border">
+              {agendaDays.map((c) => (
+                <li key={c.iso} className="p-2">
+                  <p
+                    className={`text-xs font-bold ${
+                      c.iso === todayIso ? "text-brand" : ""
+                    }`}
+                  >
+                    {dayTitle(c.iso)}
+                    {c.iso === todayIso ? " · 오늘" : ""}
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {(byDay.get(c.iso) ?? []).map((s) => {
+                      const spanning = Boolean(s.endDate && s.endDate > s.date);
+                      return (
+                        <li key={`${s.id}:${c.iso}`}>
+                          <Link
+                            href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
+                            className={`flex min-h-11 items-center gap-2 rounded border-l-4 px-2 py-1.5 text-sm ${
+                              colorByProject.get(s.projectId) ?? PALETTE[0]
+                            }`}
+                          >
+                            <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {spanning
+                                ? "기간"
+                                : s.startsTime
+                                  ? s.startsTime.slice(0, 5)
+                                  : "미정"}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {s.name ?? "(세션명 없음)"}
+                            </span>
+                            <span className="max-w-[40%] truncate text-[11px] text-muted-foreground">
+                              {s.projectName}
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+          {agendaDays.length === 0 && pastCountThisMonth > 0 && (
+            <p className="rounded-md bg-secondary/50 px-2 py-1 text-[11px] text-muted-foreground">
+              이번 달 남은 일정이 없습니다.
+            </p>
+          )}
+          {pastCountThisMonth > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowPast((v) => !v)}
+              aria-pressed={showPast}
+              className="mt-1 min-h-9 text-[11px] text-brand underline underline-offset-4"
+            >
+              {showPast
+                ? "지난 일정 접기"
+                : `지난 일정 ${pastCountThisMonth}일분 보기`}
+            </button>
+          )}
+        </div>
+
+        {/* 구글 캘린더식 월간 그리드 (sm 이상) */}
+        <div className="hidden overflow-x-auto sm:block">
           <div className="min-w-[640px]">
             <div className="grid grid-cols-7 border-b text-center">
               {WEEKDAYS.map((w, i) => (

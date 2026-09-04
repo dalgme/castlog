@@ -224,7 +224,7 @@ export function EngagementPlanButton({
             size="sm"
             className={
               flow.mode === "post_report"
-                ? "bg-[#e0503f] text-white hover:bg-[#c9463a]"
+                ? "bg-brand-coral-dark text-white hover:bg-brand-coral-ink"
                 : undefined
             }
           >
@@ -350,7 +350,7 @@ export function EngagementPlanButton({
           </p>
         )}
         {isReport && flow.mode === "pre_approval" && (
-          <p className="rounded-md border border-[#e0503f]/40 bg-[#FF6F61]/10 p-2.5 text-xs leading-relaxed text-[#b3483d]">
+          <p className="rounded-md border border-brand-coral-dark/40 bg-brand-coral/10 p-2.5 text-xs leading-relaxed text-brand-coral-ink">
             선택한 세션 기준으로는 <b>사후보고 특례</b>에 해당합니다 — 확정
             즉시 섭외를 진행할 수 있고 상급자에게는 보고 문서가 갑니다.
           </p>

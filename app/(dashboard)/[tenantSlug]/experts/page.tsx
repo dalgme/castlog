@@ -80,8 +80,8 @@ const PERIOD_FILTERS = [
 const SORT_OPTIONS = [
   { key: "name", label: "성명순" },
   { key: "region", label: "지역순" },
-  { key: "rfield", label: "분야(내부용)순" },
-  { key: "efield", label: "분야(전문가용)순" },
+  { key: "rfield", label: "섭외분야순" },
+  { key: "efield", label: "강의분야순" },
 ] as const;
 
 type SearchParams = {
@@ -241,7 +241,7 @@ export default async function TenantExpertsPage({
     recruitByExpert.set(a.expert_id, list);
   }
 
-  // 강의(멘토링) 분야(전문가용) — 전역
+  // 강의분야(전문가용) — 전역
   const expertiseNameById = new Map(
     (expertiseFieldRows ?? []).map((f) => [f.id, f.name])
   );
@@ -582,13 +582,13 @@ export default async function TenantExpertsPage({
               PERIOD_FILTERS.map((p) => ({ value: p.key, label: p.label }))
             )}
             {filterGroup(
-              "분야(내부용)",
+              "섭외분야",
               "rfield",
               rfieldFilter,
               (recruitFields ?? []).map((f) => ({ value: f.name, label: f.name }))
             )}
             {filterGroup(
-              "분야(전문가용)",
+              "강의분야",
               "efield",
               efieldFilter,
               (expertiseFieldRows ?? []).map((f) => ({
@@ -700,13 +700,13 @@ export default async function TenantExpertsPage({
                         className="cursor-help"
                         title="전문가 본인이 선택한 강의·멘토링 가능 분야 (전 기업 공통 표시)"
                       >
-                        강의(멘토링) 분야
+                        강의분야
                       </TableHead>
                       <TableHead
                         className="cursor-help"
-                        title="우리 회사가 내부 기준으로 붙인 섭외 분야 — 전문가·타사에 보이지 않습니다. 선택지는 설정 > 기업관리 > 섭외분야에서 관리합니다"
+                        title="우리 회사가 내부 기준으로 붙인 섭외분야 — 전문가·타사에 보이지 않습니다. 선택지는 설정 > 기업관리 > 섭외분야에서 관리합니다"
                       >
-                        섭외 분야
+                        섭외분야
                       </TableHead>
                       <TableHead
                         className="cursor-help"

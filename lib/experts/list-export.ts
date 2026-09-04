@@ -8,8 +8,8 @@ import { isPracticeMode } from "@/lib/practice/server";
 /**
  * 전문가 목록 엑셀 내보내기 데이터 (기획 확정 2026-08-30 — 25번).
  *
- * **화면(전문가 목록 테이블)과 같은 정보량**을 내보낸다 — 강의(멘토링) 분야,
- * 섭외 분야, 자사 평가, 메모, VIP·즐겨찾기·주의까지.
+ * **화면(전문가 목록 테이블)과 같은 정보량**을 내보낸다 — 강의분야,
+ * 섭외분야, 자사 평가, 메모, VIP·즐겨찾기·주의까지.
  *
  * ⚠ 전문가 목록 테이블(app/(dashboard)/[tenantSlug]/experts/page.tsx)에
  * 컬럼을 추가·변경하면 **이 파일의 EXPERT_EXPORT_COLUMNS에도 한 줄**을
@@ -58,8 +58,8 @@ export const EXPERT_EXPORT_COLUMNS: {
   { header: "휴대폰", value: (r) => formatKrMobile(r.phone) },
   { header: "이메일", value: (r) => r.email ?? "" },
   { header: "전문분야", value: (r) => r.specialty ?? "" },
-  { header: "강의(멘토링) 분야", value: (r) => r.expertiseFields.join(", ") },
-  { header: "섭외 분야", value: (r) => r.recruitFields.join(", ") },
+  { header: "강의분야", value: (r) => r.expertiseFields.join(", ") },
+  { header: "섭외분야", value: (r) => r.recruitFields.join(", ") },
   { header: "지역", value: (r) => r.region ?? "" },
   { header: "경력(년)", value: (r) => r.careerYears ?? "" },
   { header: "자사 평점", value: (r) => r.myRating ?? "" },

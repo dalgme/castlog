@@ -424,7 +424,7 @@ export default async function DashboardPage({
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">분야(카테고리) 구성</CardTitle>
+              <CardTitle className="text-sm">프로젝트 카테고리 구성</CardTitle>
             </CardHeader>
             <CardContent>
               <BarList

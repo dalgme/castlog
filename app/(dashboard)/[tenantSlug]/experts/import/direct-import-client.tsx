@@ -185,7 +185,7 @@ export function DirectImportClient({ tenantSlug }: { tenantSlug: string }) {
                     <TableHead>판정</TableHead>
                     <TableHead>이름</TableHead>
                     <TableHead>핸드폰</TableHead>
-                    <TableHead>강의(멘토링) 분야</TableHead>
+                    <TableHead>강의분야</TableHead>
                     <TableHead>비고</TableHead>
                   </TableRow>
                 </TableHeader>

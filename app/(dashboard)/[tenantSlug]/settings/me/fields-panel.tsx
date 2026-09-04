@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { addSessionField, deactivateSessionField } from "./field-actions";
 
 /**
- * 세션 분야 관리 (기획 확정 2026-08-30 — 35번, 설정 > 내 설정 > 분야).
+ * 세션 분야 관리 (기획 확정 2026-08-30 — 35번, 설정 > 내 설정 > 세션분야).
  * 누구나 추가 → 회사 전체가 공통 사용 (행사·컨설팅 세션의 분야 선택지).
  */
 export function SessionFieldsPanel({

@@ -23,7 +23,7 @@ export type ExpertiseFieldAdminRow = {
   expertCount: number;
 };
 
-/** 강의(멘토링) 분야 마스터 — 삭제 없이 비활성화만 (전문가 선택 보존) */
+/** 강의분야 마스터 — 삭제 없이 비활성화만 (전문가 선택 보존) */
 export function ExpertiseFieldsPanel({
   fields,
 }: {

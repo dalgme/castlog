@@ -27,7 +27,7 @@ export type CategoryRow = {
 const EXAMPLES = ["창업", "교육행사", "엑셀러레이터", "농업교육", "로컬창업"];
 
 /**
- * 프로젝트 분야 카테고리 관리 (대표 또는 settings 위임자).
+ * 프로젝트 카테고리 관리 (대표 또는 settings 위임자).
  * 삭제 버튼을 두지 않는다 — 비활성화만 한다(과거 프로젝트의 분류 보존).
  */
 export function CategoriesPanel({ categories }: { categories: CategoryRow[] }) {

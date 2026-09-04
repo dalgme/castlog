@@ -118,11 +118,14 @@ export function SlotTable({
   expertsEnabled = true,
   noticeTemplates,
   defaultNoticeBody,
+  fieldOptions = [],
 }: {
   projectId: string;
   tenantSlug: string;
   slots: SlotRow[];
   canManage: boolean;
+  /** 세션분야 선택지 (35번 — tenant_session_fields). 캘린더 팝업과 같은 목록 */
+  fieldOptions?: { id: string; name: string }[];
   /** 세션 안내문자 발송 — 레벨 4부터 (입력 권한과 별개 축) */
   canNotice: boolean;
   /** 라이트 모드 — 안내문자 버튼을 숨긴다 (검수 A6: 눌러야 거부되는 막다른 버튼 금지) */
@@ -743,6 +746,27 @@ export function SlotTable({
                   onChange={(e) => set("roleDescription", e.target.value)}
                   placeholder="세부 역할 (예: IR 멘토링)"
                 />
+                {/* 세션분야 — 캘린더 팝업에만 있던 선택지를 여기에도 (감사 UX M1) */}
+                {fieldOptions.length > 0 ? (
+                  <select
+                    value={d.fieldId}
+                    onChange={(e) => set("fieldId", e.target.value)}
+                    aria-label="세션분야"
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="">세션분야 선택 (선택)</option>
+                    {fieldOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    세션분야 목록이 없습니다 — 설정 &gt; 내 설정 &gt; 세션분야에서
+                    추가하면 여기서 고를 수 있습니다.
+                  </p>
+                )}
                 <Input
                   value={d.locationName}
                   onChange={(e) => set("locationName", e.target.value)}
