@@ -551,12 +551,23 @@ export async function submitEngagementPlanChange(
       .eq("id", current.id);
   };
 
+  // 반려된 변경 계획(rejected)도 revision을 하나 썼다 — 부모+1로 만들면
+  // 이력에 같은 번호가 두 번 나온다. 프로젝트 최대값 기준으로 잇는다
+  const { data: latestRev } = await supabase
+    .from("engagement_plans")
+    .select("revision")
+    .eq("project_id", projectId)
+    .order("revision", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextRevision = Math.max(current.revision, latestRev?.revision ?? 0) + 1;
+
   const { data: created, error: createError } = await supabase
     .from("engagement_plans")
     .insert({
       tenant_id: auth.tenantId,
       project_id: projectId,
-      revision: current.revision + 1,
+      revision: nextRevision,
       status: "draft",
       parent_plan_id: current.id,
       slot_count: snapshot.slotCount,

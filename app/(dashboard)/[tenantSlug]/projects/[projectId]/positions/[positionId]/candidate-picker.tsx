@@ -34,9 +34,12 @@ export function CandidatePicker({
   tenantSlug,
   projectId,
   expertsLite = false,
+  defaultExpertId = null,
 }: {
   positionId: string;
   candidates: SlotCandidate[];
+  /** 이 자리에 배정된 전문가 — 있으면 기본 선택 (예비 후보 개별 요청 경로) */
+  defaultExpertId?: string | null;
   defaultProgramName: string;
   /** 프로젝트 설명에서 자동 채움 — 발송 전 수정 가능 (기획 확정 2026-08-23) */
   defaultSummary?: string | null;
@@ -51,7 +54,11 @@ export function CandidatePicker({
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    defaultExpertId && candidates.some((c) => c.expertId === defaultExpertId)
+      ? defaultExpertId
+      : null
+  );
   const [search, setSearch] = useState("");
   const [programName, setProgramName] = useState(defaultProgramName);
   const [eventSummary, setEventSummary] = useState(defaultSummary ?? "");

@@ -493,6 +493,23 @@ export async function onEngagementPlanApprovalResolved(
         .update({ status: "superseded" })
         .eq("id", plan.parent_plan_id);
     }
+  } else if (plan.parent_plan_id) {
+    // 변경·보완 품의의 반려 — 이미 승인된 부모 계획을 되살린다. 부모를 죽인
+    // 채 자식만 draft로 두면 승인됐던 세션의 발송까지 막히고 재상신 창구도
+    // 없어진다 (E2E 검수 P1-1). 자식은 이력으로만 남긴다(rejected — 부분
+    // 유니크 인덱스 밖이라 부모 복원과 충돌하지 않는다).
+    await admin
+      .from("engagement_plans")
+      .update({
+        status: "rejected",
+        last_rejection_note: rejectionNote ?? "반려됨 (사유 미기재)",
+      })
+      .eq("id", plan.id);
+    await admin
+      .from("engagement_plans")
+      .update({ status: "approved" })
+      .eq("id", plan.parent_plan_id)
+      .eq("status", "superseded");
   } else {
     await admin
       .from("engagement_plans")

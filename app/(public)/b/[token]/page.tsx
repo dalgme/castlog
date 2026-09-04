@@ -22,6 +22,8 @@ import {
   roleTypeLabel,
 } from "@/lib/integrations/engagement-roles";
 
+import { getExpertPortalGuide } from "@/lib/integrations/expert-portal-guide";
+
 import { BundleRespondForm, type BundleFormItem } from "./respond-form";
 
 export const metadata = {
@@ -111,7 +113,10 @@ export default async function EngagementBundlePage({
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
               자세한 내역과 수락서는{" "}
-              <a href="/expert" className="text-brand underline underline-offset-4">
+              <a
+                href="/login?tab=expert&next=%2Fexpert%2Fengagements"
+                className="text-brand underline underline-offset-4"
+              >
                 전문가 포털
               </a>
               에서 휴대폰 인증으로 로그인해 확인할 수 있습니다.
@@ -125,6 +130,8 @@ export default async function EngagementBundlePage({
 
   const { bundle, tenantName, projectName, expertName, items } = lookup;
   const brand = await getPublicTenantBrand(bundle.tenant_id);
+  // 수락 후 포털 안내 — 등록 상태(미가입/기업 사전등록/가입)별 문구
+  const portalGuide = await getExpertPortalGuide(bundle.expert_id);
 
   // 응답 대기 건만 폼에 올린다 — 이미 회수·처리된 건은 아래에 상태로만 보인다.
   const pendingItems = items.filter((i) => i.status === "requested");
@@ -247,7 +254,12 @@ export default async function EngagementBundlePage({
         </div>
 
         {pendingItems.length > 0 ? (
-          <BundleRespondForm token={params.token} items={formItems} />
+          <BundleRespondForm
+            token={params.token}
+            items={formItems}
+            guide={portalGuide}
+            tenantName={tenantName}
+          />
         ) : (
           <p className="rounded-md border p-3 text-sm text-muted-foreground">
             응답할 수 있는 섭외 건이 없습니다. 문의는 기업 담당자에게 연락해

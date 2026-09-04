@@ -27,6 +27,11 @@ export type PlanPanelState = {
   currentSlotCount: number;
   /** 계획이 덮는 세션 집합 — null = 전체 (기획 2026-08-30 — 22번 부분 상신) */
   coveredSlotIds: string[] | null;
+  /**
+   * 가장 최근 변경·보완 품의의 반려 사유 — 반려되면 승인 계획은 그대로 살아
+   * 있고(E2E 검수 P1-1) 이 사유만 남는다. 조정 후 다시 상신하라는 근거.
+   */
+  lastChangeRejection?: string | null;
 };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -274,6 +279,16 @@ export function EngagementPlanPanel({
             상신은 화면 위 <b>‘섭외 품의서 자동 작성 및 송신’</b> 버튼으로
             합니다. 자리 배정을 모두
             마치면 버튼이 활성화됩니다.
+          </p>
+        )}
+
+        {/* 변경·보완 품의 반려 사유 — 상신 권한이나 변경분이 없어도 보여야
+            "왜 반려됐나"를 알 수 있다 (E2E 검수 P1-1) */}
+        {plan.lastChangeRejection && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-900">
+            최근 변경·추가 품의가 <b>반려</b>되었습니다 — 사유: {plan.lastChangeRejection}
+            <br />
+            기존 승인 계획은 그대로 유효합니다. 내용을 조정한 뒤 다시 상신하세요.
           </p>
         )}
 

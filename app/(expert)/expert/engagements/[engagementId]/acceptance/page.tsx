@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { AcceptanceLetter } from "@/components/integrations/acceptance-letter";
 
 import { AcceptanceSignButton } from "./sign-button";
+import { getPortalRewrapContext } from "./rewrap-actions";
+import { PortalRewrapSection } from "./rewrap-section";
 
 export const metadata = { title: "섭외 수락서" };
 
@@ -21,6 +23,9 @@ export default async function ExpertAcceptancePage({
 
   const view = await getAcceptanceView(params.engagementId);
   if (!view) notFound();
+
+  // 지급용 주민번호 키 전달(선택) — 공개 링크에서 놓친 전문가의 정식 경로
+  const rewrap = await getPortalRewrapContext(params.engagementId);
 
   return (
     <div className="min-h-screen bg-muted">
@@ -40,6 +45,7 @@ export default async function ExpertAcceptancePage({
           hasSignature={view.acceptance.has_signature}
           signaturePreviewUrl={view.signatureUrl}
         />
+        <PortalRewrapSection engagementId={params.engagementId} ctx={rewrap} />
         <AcceptanceLetter {...view} />
       </main>
     </div>
