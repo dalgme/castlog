@@ -44,6 +44,8 @@ export type EngagementLookupSummary = {
   feeAmount: number | null;
   /** 이미 응답한 경우 — 무엇으로 응답했는지 */
   respondedAs: "accepted" | "declined" | null;
+  /** 수락 후 포털 안내(등록 상태별 문구) 계산용 — 화면에 노출하지 않는다 */
+  expertId: string | null;
 };
 
 export type EngagementLookup =
@@ -96,6 +98,7 @@ export async function lookupEngagementByToken(
     endsTime: engagement.ends_time,
     locationName: engagement.location_name,
     feeAmount: engagement.fee_amount,
+    expertId: engagement.expert_id ?? null,
     respondedAs:
       engagement.status === "accepted" || engagement.status === "declined"
         ? engagement.status

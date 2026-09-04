@@ -86,7 +86,11 @@ export default async function PositionPage({
   const canManage = await canExecTenant("engagementRequest", user);
   const modules = await getTenantModules();
   const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
-  const candidates = canManage && ctx.status === "open" ? await getSlotCandidates(ctx) : [];
+  // 요청을 보낼 수 있는 자리 = open(빈 자리) 또는 assigned(배정만 된 자리).
+  // 거절·만료 뒤 예비 후보에게 개별 요청하는 정식 경로가 여기다 — 서버
+  // (requestEngagementForPosition)도 같은 두 상태를 허용한다 (E2E 검수 P1-3)
+  const requestable = ctx.status === "open" || ctx.status === "assigned";
+  const candidates = canManage && requestable ? await getSlotCandidates(ctx) : [];
 
   // 컨설팅 세션(34번)은 수행기간으로 표기 (감사 P3-3)
   const schedule = formatEventSchedule(
@@ -206,10 +210,12 @@ export default async function PositionPage({
         )}
         </div>
 
-        {ctx.status !== "open" ? (
+        {!requestable ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              이 인원은 이미 섭외가 진행되었습니다.
+              {ctx.status === "requested"
+                ? "이 자리는 섭외 요청이 나가 회신을 기다리는 중입니다. 무응답 대응(재안내·회수)은 섭외 현황에서 합니다."
+                : "이 자리는 섭외가 확정된 인원입니다."}
               {ctx.engagementId && (
                 <>
                   {" "}
@@ -307,6 +313,7 @@ export default async function PositionPage({
               <CandidatePicker
                 positionId={ctx.positionId}
                 candidates={candidates}
+                defaultExpertId={ctx.assignedExpertId}
                 defaultProgramName={ctx.projectName}
                 defaultSummary={projectRow?.description ?? null}
                 tenantSlug={params.tenantSlug}

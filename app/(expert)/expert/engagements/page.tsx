@@ -320,7 +320,9 @@ export default async function ExpertEngagementsPage() {
                                 />
                                 {needsApproval
                                   ? "수락서 확인 및 승인"
-                                  : "섭외수락서 보기"}
+                                  : letter === "issued"
+                                    ? "수락서 미리 보기 (기업 작성 중)"
+                                    : "섭외수락서 보기"}
                               </Link>
                             </Button>
                             {confirmed && (

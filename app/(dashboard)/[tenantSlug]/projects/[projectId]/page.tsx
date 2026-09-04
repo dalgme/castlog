@@ -348,7 +348,23 @@ export default async function ProjectDetailPage({
       currentSlotCount: snapshot.slotCount,
       // 부분 상신 계획의 커버리지 — 보완(추가) 품의 UI의 근거 (22번)
       coveredSlotIds: gate.required ? gate.coveredSlotIds : null,
+      lastChangeRejection: null,
     };
+    // 변경·보완 품의 반려 사유 — 부모 계획이 살아 있어 게이트는 approved지만
+    // 담당자는 왜 반려됐는지 알아야 다시 올린다 (E2E 검수 P1-1)
+    if (gate.required && gate.plan?.status === "approved") {
+      const { data: rejectedChild } = await supabase
+        .from("engagement_plans")
+        .select("last_rejection_note, updated_at")
+        .eq("project_id", project.id)
+        .eq("status", "rejected")
+        .eq("parent_plan_id", gate.plan.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      // 반려 뒤 다시 승인된 변경이 있으면 부모가 바뀌므로 자동으로 사라진다
+      planPanel.lastChangeRejection = rejectedChild?.last_rejection_note ?? null;
+    }
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
     // 결재라인 후보 (기획 개정 2026-08-30 — 30번): 상신자보다 **높은 직급**만.
@@ -945,8 +961,8 @@ export default async function ProjectDetailPage({
         submittedAt: p.submitted_at,
         approvedAt: p.approved_at,
         note:
-          p.status === "draft" && p.last_rejection_note
-            ? `반려 사유: ${p.last_rejection_note}`
+          (p.status === "draft" || p.status === "rejected") && p.last_rejection_note
+            ? `반려 사유: ${p.last_rejection_note}${p.note ? ` — ${p.note}` : ""}`
             : p.note,
         sessionLabels: Array.from(slotIdsByPlan.get(p.id) ?? []).map(
           (id) => slotLabelById.get(id) ?? "(삭제된 세션)"

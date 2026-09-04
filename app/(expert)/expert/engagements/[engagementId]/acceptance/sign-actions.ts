@@ -57,6 +57,16 @@ export async function signAcceptance(
   if (acceptance.status === "confirmed") {
     return { ok: false, error: "이미 승인이 완료된 수락서입니다." };
   }
+  // 기업이 아직 송부하지 않은 수락서(issued — 작성 중)는 승인할 수 없다.
+  // 먼저 서명해 버리면 기업이 나중에 붙인 동봉 자료·안내문이 영영 전달되지
+  // 않는다 (E2E 검수 전문가 P1-1)
+  if (acceptance.status !== "sent" && acceptance.status !== "signed") {
+    return {
+      ok: false,
+      error:
+        "아직 기업이 송부하지 않은 수락서입니다 (상태). 기업이 동봉 자료를 붙여 송부하면 문자로 안내되며, 그때 확인·승인할 수 있습니다.",
+    };
+  }
 
   // 섭외 건이 살아 있어야 승인할 수 있다 — 회수·긴급취소된 계약의 수락서가
   // 남아 '확정'으로 바뀌는 경로 차단 (시뮬레이션 P8)

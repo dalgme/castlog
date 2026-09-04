@@ -24,6 +24,9 @@ import {
   roleTypeLabel,
 } from "@/lib/integrations/engagement-roles";
 
+import { getExpertPortalGuide } from "@/lib/integrations/expert-portal-guide";
+import { PortalGuide } from "@/components/expert/portal-guide";
+
 import { EngagementRespondForm } from "./respond-form";
 
 export const metadata = {
@@ -93,6 +96,11 @@ export default async function EngagementConsentPage({
           summary.endsTime
         )
       : null;
+    // 이미 수락한 링크를 다시 연 전문가 — 다음 단계(포털)를 등록 상태별로 안내
+    const failGuide =
+      summary?.respondedAs === "accepted" && summary.expertId
+        ? await getExpertPortalGuide(summary.expertId)
+        : null;
     return shell(
       <Card className="w-full max-w-md">
         <CardHeader>
@@ -143,13 +151,21 @@ export default async function EngagementConsentPage({
                   </p>
                 )}
             </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              자세한 내역과 수락서는{" "}
-              <a href="/expert" className="text-brand underline underline-offset-4">
-                전문가 포털
-              </a>
-              에서 휴대폰 인증으로 로그인해 확인할 수 있습니다.
-            </p>
+            {failGuide ? (
+              <PortalGuide
+                guide={failGuide}
+                tenantName={summary.tenantName || null}
+                mentionRewrap
+              />
+            ) : (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                자세한 내역과 수락서는{" "}
+                <a href="/expert" className="text-brand underline underline-offset-4">
+                  전문가 포털
+                </a>
+                에서 휴대폰 인증으로 로그인해 확인할 수 있습니다.
+              </p>
+            )}
           </CardContent>
         )}
       </Card>,
@@ -160,6 +176,8 @@ export default async function EngagementConsentPage({
   const { engagement, tenantName, projectName, expertName } = lookup;
   // 전문가가 이 화면에서 만나는 상대는 캐스트로그가 아니라 그 회사다 (§16)
   const brand = await getPublicTenantBrand(engagement.tenant_id);
+  // 수락 후 포털 안내 — 등록 상태(미가입/기업 사전등록/가입)별 문구
+  const portalGuide = await getExpertPortalGuide(engagement.expert_id);
   const schedule = formatEventSchedule(
     engagement.starts_on,
     engagement.ends_on,
@@ -272,7 +290,11 @@ export default async function EngagementConsentPage({
             성립합니다.
           </p>
         )}
-        <EngagementRespondForm token={params.token} />
+        <EngagementRespondForm
+          token={params.token}
+          guide={portalGuide}
+          tenantName={tenantName}
+        />
       </CardContent>
     </Card>,
     brand

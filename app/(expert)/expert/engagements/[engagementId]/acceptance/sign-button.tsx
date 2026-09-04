@@ -38,6 +38,20 @@ export function AcceptanceSignButton({
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
+  // 기업이 송부하기 전(작성 중)에는 승인 UI를 열지 않는다 — 여기서 서명하면
+  // 나중에 붙는 동봉 자료를 못 받는다 (E2E 검수 전문가 P1-1)
+  if (status === "issued") {
+    return (
+      <Alert>
+        <AlertDescription className="text-sm">
+          <span className="font-semibold">기업이 수락서를 작성 중입니다.</span>{" "}
+          동봉 자료·안내를 붙여 송부하면 문자로 안내되며, 그때 이 화면에서
+          확인·승인(서명)할 수 있습니다. 지금은 내용만 미리 볼 수 있습니다.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   if (status === "confirmed" || status === "signed") {
     return (
       <Alert>

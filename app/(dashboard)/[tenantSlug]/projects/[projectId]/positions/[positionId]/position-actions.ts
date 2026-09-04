@@ -70,7 +70,7 @@ export async function requestEngagementForPosition(input: {
 
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, slot_id, status, code")
+    .select("id, slot_id, status, code, expected_fee")
     .eq("id", input.positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
@@ -174,7 +174,9 @@ export async function requestEngagementForPosition(input: {
       position_code: position.code,
       program_name: input.programName?.trim() || null,
       message: input.message?.trim() || null,
-      fee_amount: slot.fee_amount,
+      // 결재받은 후보별 예정가가 곧 의뢰비용이다 — 세션 1인 비용은 레거시 폴백.
+      // 여기서 끊기면 문자·/e·수락서·지급 품의까지 금액이 비어 나간다 (E2E 검수 P1-2)
+      fee_amount: position.expected_fee ?? slot.fee_amount,
       starts_on: slot.slot_date,
       ends_on: slotEndsOn,
       starts_time: slot.starts_time,

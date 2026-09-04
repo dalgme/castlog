@@ -5,6 +5,8 @@ import { useMemo, useState, useTransition } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { PortalGuide } from "@/components/expert/portal-guide";
+import type { ExpertPortalGuide } from "@/lib/integrations/expert-portal-guide";
 
 import { respondToEngagementBundle } from "./actions";
 
@@ -29,9 +31,14 @@ export type BundleFormItem = {
 export function BundleRespondForm({
   token,
   items,
+  guide,
+  tenantName,
 }: {
   token: string;
   items: BundleFormItem[];
+  /** 수락 후 포털 안내 — 등록 상태별 문구 (없으면 생략) */
+  guide: ExpertPortalGuide | null;
+  tenantName: string | null;
 }) {
   const [choices, setChoices] = useState<
     Record<string, "accepted" | "declined" | undefined>
@@ -91,10 +98,15 @@ export function BundleRespondForm({
               ` ${done.failedCount}건은 그 사이 상태가 바뀌어 처리되지 않았습니다 — 기업 담당자에게 확인해 주세요.`}
           </AlertDescription>
         </Alert>
-        {done.accepted > 0 && (
+        {/* 묶음 수락은 주민번호 키 전달을 이 화면에서 하지 않는다 — 포털 수락서
+            화면에 정식 경로가 있다 (E2E 검수 전문가 P1-2). 등록 상태별 안내 */}
+        {done.accepted > 0 && guide && (
+          <PortalGuide guide={guide} tenantName={tenantName} mentionRewrap />
+        )}
+        {done.accepted > 0 && !guide && (
           <p className="text-xs leading-relaxed text-muted-foreground">
-            수락서와 상세 내역, 지급을 위한 주민번호 키 전달(선택)은{" "}
-            <a href="/expert" className="text-brand underline underline-offset-4">
+            수락서 확인·승인과 지급 정보는{" "}
+            <a href="/login?tab=expert&next=%2Fexpert%2Fengagements" className="text-brand underline underline-offset-4">
               전문가 포털
             </a>
             에서 휴대폰 인증으로 로그인해 진행할 수 있습니다.
