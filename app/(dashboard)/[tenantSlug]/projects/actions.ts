@@ -85,7 +85,7 @@ export async function createProject(
       .eq("id", data.categoryId)
       .maybeSingle();
     if (!category) {
-      return { ok: false, error: "선택한 분야 카테고리를 찾을 수 없습니다." };
+      return { ok: false, error: "선택한 프로젝트 카테고리를 찾을 수 없습니다." };
     }
   }
 

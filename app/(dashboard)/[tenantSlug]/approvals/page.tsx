@@ -174,7 +174,7 @@ export default async function ApprovalsPage({
                 {APPROVAL_TYPE_LABELS[approval.approval_type] ??
                   approval.approval_type}
                 {approval.approval_kind === "report" && (
-                  <span className="ml-1 rounded-full bg-[#FF6F61]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#b3483d]">
+                  <span className="ml-1 rounded-full bg-brand-coral/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-coral-ink">
                     사후보고
                   </span>
                 )}

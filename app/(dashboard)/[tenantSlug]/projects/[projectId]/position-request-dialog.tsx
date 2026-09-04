@@ -351,8 +351,8 @@ export function PositionRequestDialog({
                   <TableHead>이름</TableHead>
                   <TableHead>휴대폰</TableHead>
                   <TableHead>전문분야</TableHead>
-                  <TableHead>강의(멘토링) 분야</TableHead>
-                  <TableHead>섭외 분야</TableHead>
+                  <TableHead>강의분야</TableHead>
+                  <TableHead>섭외분야</TableHead>
                   <TableHead>지역</TableHead>
                   <TableHead>경력</TableHead>
                   <TableHead>자사 평가</TableHead>

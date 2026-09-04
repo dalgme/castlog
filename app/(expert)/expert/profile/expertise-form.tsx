@@ -13,7 +13,7 @@ import { saveExpertExpertise } from "./expertise-actions";
 export type ExpertiseOption = { id: string; name: string };
 
 /**
- * 강의(멘토링) 분야 — 선택형 중복 선택 + 기타 텍스트 (기획 확정 2026-08-22).
+ * 강의분야 — 선택형 중복 선택 + 기타 텍스트 (기획 확정 2026-08-22).
  * 선택지는 캐스트로그가 관리하는 전역 목록이다.
  */
 export function ExpertiseForm({

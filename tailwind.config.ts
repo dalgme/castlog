@@ -69,6 +69,10 @@ const config = {
           navy: "hsl(var(--brand-navy))",
           sky: "hsl(var(--brand-sky))",
           amber: "hsl(var(--brand-amber))",
+          /* 코랄 — 수치 강조·실행 CTA 전용 (경고 아님) */
+          coral: "hsl(var(--brand-coral))",
+          "coral-dark": "hsl(var(--brand-coral-dark))",
+          "coral-ink": "hsl(var(--brand-coral-ink))",
         },
         /* 도움 창구(챗봇) 전용 — 브랜드색과 섞지 않는다 */
         coral: {

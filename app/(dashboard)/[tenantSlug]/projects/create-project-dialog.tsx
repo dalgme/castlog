@@ -190,7 +190,7 @@ export function CreateProjectDialog({
               name="categoryId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>분야 카테고리 (선택)</FormLabel>
+                  <FormLabel>프로젝트 카테고리 (선택)</FormLabel>
                   {categories.length === 0 ? (
                     <p className="rounded-md bg-secondary/50 p-2.5 text-xs text-muted-foreground">
                       아직 등록된 카테고리가 없습니다. 대표 계정의 기업 관리

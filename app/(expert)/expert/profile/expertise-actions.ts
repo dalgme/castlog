@@ -14,7 +14,7 @@ const inputSchema = z.object({
 });
 
 /**
- * 강의(멘토링) 분야 저장 — 전문가 본인 (기획 확정 2026-08-22).
+ * 강의분야 저장 — 전문가 본인 (기획 확정 2026-08-22).
  * 마스터(expertise_fields)에서 중복 선택 + '기타'는 자유 텍스트.
  * RLS(expert_expertise_fields_insert/delete)가 본인 행만 허용한다.
  */

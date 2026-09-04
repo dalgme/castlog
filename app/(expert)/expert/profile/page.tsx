@@ -53,7 +53,7 @@ export default async function ExpertProfilePage() {
     redirect("/expert");
   }
 
-  // 강의(멘토링) 분야 — 전역 마스터(활성만) + 내 선택
+  // 강의분야 — 전역 마스터(활성만) + 내 선택
   const [{ data: expertiseOptions }, { data: myExpertise }] = await Promise.all([
     supabase
       .from("expertise_fields")

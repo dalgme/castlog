@@ -1092,7 +1092,7 @@ export default async function ProjectDetailPage({
                   <dt className="text-xs text-muted-foreground">D-Day 기준일</dt>
                   <dd>
                     {project.dday_date ? (
-                      <span className="font-bold text-[#FF6F61]">
+                      <span className="font-bold text-brand-coral">
                         {(() => {
                           const diff = Math.ceil(
                             (new Date(
@@ -1277,6 +1277,7 @@ export default async function ProjectDetailPage({
                 expertsEnabled={modules.experts}
                 noticeTemplates={noticeTemplates}
                 defaultNoticeBody={DEFAULT_NOTICE_BODY}
+                fieldOptions={sessionFieldOptions}
               />
             </CardContent>
         </Card>
@@ -1316,7 +1317,7 @@ export default async function ProjectDetailPage({
               </span>
             )}
             {project.dday_date && (
-              <span className="font-bold text-[#FF6F61]">
+              <span className="font-bold text-brand-coral">
                 {(() => {
                   const diff = Math.ceil(
                     (new Date(`${project.dday_date}T00:00:00+09:00`).getTime() -

@@ -135,7 +135,7 @@ export function BundleRespondForm({
           <Button
             type="button"
             variant="outline"
-            className="flex-1"
+            className="h-12 flex-1"
             disabled={pending}
             onClick={() => setConfirming(false)}
           >
@@ -143,7 +143,7 @@ export function BundleRespondForm({
           </Button>
           <Button
             type="button"
-            className="flex-1"
+            className="h-12 flex-1 text-base font-bold"
             disabled={pending}
             onClick={submit}
           >
@@ -179,24 +179,40 @@ export function BundleRespondForm({
                     .join(" · ")}
                 </p>
                 {item.conflictCount > 0 && (
-                  <p className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900">
-                    ⚠ 이 일정은 이미 확정하신 다른 일정 {item.conflictCount}건과
+                  <p
+                    role="note"
+                    className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900"
+                  >
+                    <span aria-hidden>⚠ </span>
+                    <span className="sr-only">주의: </span>
+                    이 일정은 이미 확정하신 다른 일정 {item.conflictCount}건과
                     겹칩니다.
                   </p>
                 )}
                 {item.siblingOverlap && (
-                  <p className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900">
-                    ⚠ 이 목록의 다른 요청과 날짜가 겹칩니다. 함께 수락하면 같은
+                  <p
+                    role="note"
+                    className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900"
+                  >
+                    <span aria-hidden>⚠ </span>
+                    <span className="sr-only">주의: </span>
+                    이 목록의 다른 요청과 날짜가 겹칩니다. 함께 수락하면 같은
                     날 두 일정이 확정되니 확인 후 응답해 주세요.
                   </p>
                 )}
               </div>
-              <div className="flex gap-2">
+              {/* 전문가는 휴대폰으로 응답한다 — 터치 타깃 44px 이상, 선택 상태를
+                  접근성 트리에도 싣는다 (감사 UX H2) */}
+              <div
+                className="flex gap-2"
+                role="group"
+                aria-label={`${index + 1}번 요청 응답 선택`}
+              >
                 <Button
                   type="button"
-                  size="sm"
-                  className="flex-1"
+                  className="h-11 flex-1 text-base"
                   variant={choice === "accepted" ? "default" : "outline"}
+                  aria-pressed={choice === "accepted"}
                   disabled={pending}
                   onClick={() =>
                     setChoices((prev) => ({
@@ -209,9 +225,9 @@ export function BundleRespondForm({
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
-                  className="flex-1"
+                  className="h-11 flex-1 text-base"
                   variant={choice === "declined" ? "destructive" : "outline"}
+                  aria-pressed={choice === "declined"}
                   disabled={pending}
                   onClick={() =>
                     setChoices((prev) => ({
@@ -227,20 +243,27 @@ export function BundleRespondForm({
           );
         })}
       </ul>
-      <Button
-        type="button"
-        className="w-full"
-        disabled={pending || !allDecided}
-        onClick={() => setConfirming(true)}
-      >
-        {allDecided
-          ? `한 번에 회신하기 (수락 ${acceptCount} · 거절 ${declineCount})`
-          : `모든 건을 선택해 주세요 (${decided.length}/${items.length})`}
-      </Button>
       <p className="text-xs text-muted-foreground">
         건별로 수락/거절을 선택한 뒤 한 번에 회신됩니다. 수락 시 해당 건의
         계약이 성립하며, 응답 내역은 기업과 전문가 포털에 기록됩니다.
       </p>
+      {/* 하단 고정 요약·회신 바 — 건수가 많아도 진행 상황과 회신 버튼이 늘 보인다 */}
+      <div className="sticky bottom-0 -mx-6 border-t bg-background/95 px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+        {/* aria-live는 두지 않는다 — 버튼의 aria-pressed·라벨 변화가 이미 낭독된다 */}
+        <p className="mb-1.5 text-center text-xs tabular-nums text-muted-foreground">
+          선택 {decided.length}/{items.length} · 수락 {acceptCount} · 거절 {declineCount}
+        </p>
+        <Button
+          type="button"
+          className="h-12 w-full text-base font-bold"
+          disabled={pending || !allDecided}
+          onClick={() => setConfirming(true)}
+        >
+          {allDecided
+            ? `한 번에 회신하기 (수락 ${acceptCount} · 거절 ${declineCount})`
+            : `모든 건을 선택해 주세요 (${decided.length}/${items.length})`}
+        </Button>
+      </div>
     </div>
   );
 }

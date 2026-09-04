@@ -277,10 +277,34 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     (s) => s.step_order === currentOrder && s.status === "pending"
   );
 
-  // 내 차례 판정 — 본인 결재 단계 또는 유효한 대결 대상 단계
+  // 내 차례 판정 — 순서는 **본인 자격 우선**: ① 지정 결재자 본인 → ② 직급
+  // 릴레이 본인 → ③ 지정 결재자의 대결 → ④ 직급 단계의 대결. 화면 판정
+  // (lib/approvals/turn.ts: 본인 자격이 있으면 대결이 아님)과 같은 순서라야
+  // "본인 처리"로 보인 결재가 delegated_for로 기록되지 않는다 (B 리뷰 P2-1).
   let myStep = currentGroup.find((s) => s.approver_user_id === session.userId);
   let delegatorId: string | null = null;
   let activeDelegatorIds: string[] = [];
+
+  // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 지정 결재자 없이 직급으로
+  // 열린 단계는 그 직급 이상의 자사 직원 누구나 처리할 수 있다.
+  // 상신자 본인은 제외한다 (릴레이 단계는 늘 상신자보다 높은 직급이지만,
+  // 직급이 그 사이 바뀌었을 수 있으므로 명시적으로 막는다).
+  const gradeSteps =
+    session.userId !== approval.requester_user_id
+      ? currentGroup.filter(
+          (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
+        )
+      : [];
+  if (!myStep && gradeSteps.length > 0) {
+    const myGrade = isUserGrade(session.grade) ? session.grade : null;
+    if (myGrade) {
+      myStep = gradeSteps.find(
+        (s) =>
+          isUserGrade(s.step_grade) &&
+          gradeRank(myGrade) >= gradeRank(s.step_grade)
+      );
+    }
+  }
 
   if (!myStep) {
     const { data: delegations } = await supabase
@@ -303,22 +327,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     if (myStep) delegatorId = myStep.approver_user_id;
   }
 
-  // 직급 릴레이 단계 (기획 2026-08-30 — 27번): 지정 결재자 없이 직급으로
-  // 열린 단계는 그 직급 이상의 자사 직원 누구나 처리할 수 있다.
-  // 상신자 본인은 제외한다 (릴레이 단계는 늘 상신자보다 높은 직급이지만,
-  // 직급이 그 사이 바뀌었을 수 있으므로 명시적으로 막는다).
-  if (!myStep && session.userId !== approval.requester_user_id) {
-    const myGrade = isUserGrade(session.grade) ? session.grade : null;
-    const gradeSteps = currentGroup.filter(
-      (s) => s.approver_user_id === null && isUserGrade(s.step_grade)
-    );
-    if (myGrade) {
-      myStep = gradeSteps.find(
-        (s) =>
-          isUserGrade(s.step_grade) &&
-          gradeRank(myGrade) >= gradeRank(s.step_grade)
-      );
-    }
+  {
     // 대결(위임)도 직급 단계에 적용한다 — 마지막 단계는 늘 최상위 직급이라
     // 대결이 안 먹히면 대표 부재 시 완전 교착이 된다 (리뷰 P2-3).
     // 위임자가 상신자 본인이면 제외 (대리 자기결재 방지).

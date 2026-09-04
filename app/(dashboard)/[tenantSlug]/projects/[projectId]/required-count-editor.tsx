@@ -49,7 +49,7 @@ export function RequiredCountEditor({
 
   const label = (
     // 코랄색 표기 (기획 지시 — 28번)
-    <span className="text-xs font-semibold text-[#FF6F61]">
+    <span className="text-xs font-semibold text-brand-coral">
       필요 {shown}명
     </span>
   );
@@ -69,7 +69,7 @@ export function RequiredCountEditor({
         aria-label="필요인원 줄이기"
         disabled={pending || shown <= 1}
         onClick={() => change(-1)}
-        className="inline-flex h-5 w-5 items-center justify-center rounded border text-[#FF6F61] transition-colors hover:bg-[#FF6F61]/10 disabled:opacity-40"
+        className="inline-flex h-5 w-5 items-center justify-center rounded border text-brand-coral transition-colors hover:bg-brand-coral/10 disabled:opacity-40"
       >
         <Minus className="h-3 w-3" aria-hidden />
       </button>
@@ -79,7 +79,7 @@ export function RequiredCountEditor({
         aria-label="필요인원 늘리기"
         disabled={pending || shown >= 100}
         onClick={() => change(1)}
-        className="inline-flex h-5 w-5 items-center justify-center rounded border text-[#FF6F61] transition-colors hover:bg-[#FF6F61]/10 disabled:opacity-40"
+        className="inline-flex h-5 w-5 items-center justify-center rounded border text-brand-coral transition-colors hover:bg-brand-coral/10 disabled:opacity-40"
       >
         <Plus className="h-3 w-3" aria-hidden />
       </button>
