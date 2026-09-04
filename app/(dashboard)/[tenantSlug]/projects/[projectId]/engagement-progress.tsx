@@ -157,8 +157,13 @@ export function EngagementProgress({
       stage === "accepted_all" ||
       stage === "letters_sent");
   const beforeApproval = stage === "assigning" || stage === "plan_review";
-  // 사후보고 피드백(38번) — 가장 최근 리비전의 피드백을 코랄로 먼저 보인다
-  const feedbackPlan = plans.find((p) => p.postReport && p.feedbackNote);
+  // 사후보고 피드백(38번) — **현재 유효한(최신 승인) 리비전**의 피드백만 코랄로
+  // 먼저 보인다. 조정 후 다시 보고한 뒤에도 옛 피드백이 떠 있으면 안 된다 (리뷰 P2-4)
+  const latest = plans[0];
+  const feedbackPlan =
+    latest && latest.postReport && latest.status === "approved" && latest.feedbackNote
+      ? latest
+      : null;
 
   return (
     <div className="space-y-4">

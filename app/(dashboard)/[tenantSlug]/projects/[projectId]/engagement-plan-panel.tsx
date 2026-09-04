@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -63,6 +64,7 @@ export function EngagementPlanPanel({
     candidates: number;
   }[];
 }) {
+  const { toast } = useToast();
   const [approverIds, setApproverIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +126,15 @@ export function EngagementPlanPanel({
         setNote("");
         setApproverIds([]);
         setExtraSlotIds([]);
+        // 사후보고 모드에서도 금액·규정에 따라 사전 품의로 갈 수 있다 — 결과를 말한다
+        toast({
+          description:
+            res.flow === "post_report"
+              ? "변경 내용이 즉시 확정되었습니다 (사후보고). 상급자에게 보고 문서가 갑니다."
+              : postReportOn
+                ? "금액·전결규정 조건에 따라 사전 품의로 상신되었습니다 (규칙). 결재가 끝나야 반영됩니다."
+                : "변경 품의를 상신했습니다. 결재가 끝나야 반영됩니다.",
+        });
       } else {
         setError(res.error);
       }

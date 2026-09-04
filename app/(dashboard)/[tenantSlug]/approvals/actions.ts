@@ -352,6 +352,10 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const nowIso = new Date().toISOString();
   const newStepStatus = decision === "approve" ? "approved" : "rejected";
+  // 사후보고(38번)의 피드백은 문서를 종결하지 않는다 — 단계는 '피드백'으로
+  // 처리되고 다음 상급자(고정 임원 tail 포함)에게 계속 전달된다 (리뷰 P2-2:
+  // 팀장 피드백 한 번으로 임원이 섭외를 영영 모르면 안 된다)
+  const advances = decision === "approve" || isReport;
 
   // 행수 확인(CAS) — 릴레이 단계는 같은 차례가 여러 상급자에게 동시에 열려
   // 경합이 실제로 난다. 0행이면 이미 다른 결재권자가 처리한 것 (리뷰 P2-2)
@@ -382,19 +386,27 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
   // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리).
   // 사후보고(report, 38번)는 훅을 태우지 않는다 — 확인/피드백은 이미 진행된
   // 섭외를 되돌리지 않고, 피드백 문구만 계획에 남긴다.
-  if (decision === "reject") {
+  if (isReport && decision === "reject") {
+    const { data: actor } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", session.userId)
+      .maybeSingle();
+    await onEngagementReportFeedback(
+      approvalId,
+      comment?.trim() ?? "",
+      actor?.name ?? null
+    );
+  }
+  if (!advances) {
     await supabase
       .from("approvals")
       .update({ status: "rejected", completed_at: nowIso })
       .eq("id", approvalId);
-    if (isReport) {
-      await onEngagementReportFeedback(approvalId, comment?.trim() ?? "");
-    } else {
-      await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
-      await onProjectClosingApprovalResolved(approvalId, "rejected");
-      await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
-      await onProjectEngagementApprovalResolved(approvalId, "rejected");
-    }
+    await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
+    await onProjectClosingApprovalResolved(approvalId, "rejected");
+    await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
+    await onProjectEngagementApprovalResolved(approvalId, "rejected");
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -456,6 +468,22 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
   }
   if (approval.status !== "in_progress") {
     return { ok: false, error: "진행중인 결재건만 취소할 수 있습니다." };
+  }
+  // 사후보고(38번)는 회수할 수 없다 — 이 모드의 유일한 통제 장치가 상신자
+  // 손에서 지워지면 승인도 보고도 없는 확정 섭외가 된다 (리뷰 P2-3)
+  {
+    const { data: kindRow } = await supabase
+      .from("approvals")
+      .select("approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (kindRow?.approval_kind === "report") {
+      return {
+        ok: false,
+        error:
+          "사후보고는 회수할 수 없습니다 (규칙). 내용이 바뀌었으면 변경 확정(사후보고)으로 다시 보고하세요.",
+      };
+    }
   }
 
   const { data: actedSteps } = await supabase

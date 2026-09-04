@@ -139,9 +139,11 @@ export default async function ApprovalsPage({
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 
   // 현황 요약 — 목록만으로는 "지금 회사 결재가 어떤 상태인가"가 안 보인다.
+  // 사후보고(38번)는 승인/반려 집계에서 뺀다 — 확인 문서지 결재가 아니다
+  const decisions = rows.filter((a) => a.approval_kind !== "report");
   const inProgress = rows.filter((a) => a.status === "in_progress");
-  const approved = rows.filter((a) => a.status === "approved");
-  const rejected = rows.filter((a) => a.status === "rejected");
+  const approved = decisions.filter((a) => a.status === "approved");
+  const rejected = decisions.filter((a) => a.status === "rejected");
   const inProgressAmount = inProgress.reduce((sum, a) => sum + (a.amount ?? 0), 0);
 
   const renderTable = (list: ApprovalRow[]) => (
@@ -183,7 +185,13 @@ export default async function ApprovalsPage({
                 {new Date(approval.created_at).toLocaleDateString("ko-KR")}
               </TableCell>
               <TableCell>
-                <Badge variant={STATUS_VARIANT[approval.status] ?? "secondary"}>
+                <Badge
+                  variant={
+                    approval.approval_kind === "report" && approval.status === "rejected"
+                      ? "outline"
+                      : (STATUS_VARIANT[approval.status] ?? "secondary")
+                  }
+                >
                   {approvalStatusLabel(approval.status, approval.approval_kind)}
                 </Badge>
               </TableCell>

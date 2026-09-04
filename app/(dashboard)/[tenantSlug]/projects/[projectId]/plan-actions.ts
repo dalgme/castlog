@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -61,8 +62,9 @@ const POST_REPORT_NOTE =
   "\n\n※ 사후보고 — 섭외는 이미 확정·진행 중입니다. 확인 또는 피드백만 남겨 주세요 (진행을 되돌리지 않습니다).";
 
 /**
- * 계획을 사후보고로 즉시 확정 (38번): 계획 status='approved' + flow 기록.
- * flow 컬럼 미적용(42703)이면 컬럼 없이 재시도 — 확정 자체가 막히면 안 된다.
+ * 계획과 결재 문서를 연결 (38번): 사후보고면 status='approved'로 즉시 확정.
+ * 신규 컬럼(flow·feedback_note) 미적용 환경이면 그 컬럼 없이 재시도(§14-10).
+ * 연결에 실패하면 방금 만든 결재 문서를 취소해 고아를 남기지 않는다 (리뷰 P2-1).
  */
 async function finalizePlanRecord(
   supabase: ReturnType<typeof createClient>,
@@ -72,37 +74,51 @@ async function finalizePlanRecord(
   flow: PlanFlow["mode"]
 ): Promise<string | null> {
   const nowIso = new Date().toISOString();
-  const base =
-    flow === "post_report"
-      ? {
-          status: "approved",
-          approval_id: approvalId,
-          submitted_by: userId,
-          submitted_at: nowIso,
-          approved_at: nowIso,
-          last_rejection_note: null,
-          feedback_note: null,
-        }
-      : {
-          status: "in_progress",
-          approval_id: approvalId,
-          submitted_by: userId,
-          submitted_at: nowIso,
-          last_rejection_note: null,
-        };
+  const base = {
+    status: flow === "post_report" ? "approved" : "in_progress",
+    approval_id: approvalId,
+    submitted_by: userId,
+    submitted_at: nowIso,
+    approved_at: flow === "post_report" ? nowIso : null,
+    last_rejection_note: null,
+  };
+  const extra = { flow, feedback_note: null };
   let { error } = await supabase
     .from("engagement_plans")
-    .update({ ...base, flow })
+    .update({ ...base, ...extra })
     .eq("id", planId);
-  if (error?.code === "42703") {
-    const { feedback_note: _omit, ...legacy } = { ...base, feedback_note: undefined };
-    void _omit;
+  if (isMissingColumnError(error)) {
     ({ error } = await supabase
       .from("engagement_plans")
-      .update(legacy)
+      .update(base)
       .eq("id", planId));
   }
-  return error ? "결재 연결에 실패했습니다." : null;
+  if (!error) return null;
+  await supabase
+    .from("approvals")
+    .update({ status: "canceled", completed_at: nowIso })
+    .eq("id", approvalId);
+  return "결재 연결에 실패했습니다 (시스템 오류). 문서는 취소 처리했으니 다시 시도해 주세요.";
+}
+
+/**
+ * 선택 세션 기준 사전 품의/사후보고 미리 판정 (38번, 리뷰 P1-1) — 대화상자가
+ * 세션을 고를 때마다 호출해 버튼 라벨·문구를 실제 서버 판정과 맞춘다.
+ */
+export async function previewPlanFlow(
+  projectId: string,
+  slotIds: string[] = []
+): Promise<PlanFlow> {
+  const auth = await requirePlanSession();
+  if (!auth.ok) return { mode: "pre_approval", reason: null };
+  const snapshot = await buildPlanSnapshot(
+    projectId,
+    slotIds.length > 0 ? slotIds : undefined
+  );
+  return decidePlanFlow({
+    amount: snapshot.plannedAmount,
+    requesterGrade: auth.grade,
+  });
 }
 
 async function requirePlanSession(): Promise<PlanSession> {
@@ -341,7 +357,8 @@ export async function submitEngagementPlan(
   if (existing && existing.status === "approved") {
     return {
       ok: false,
-      error: "승인된 계획이 있습니다. 내용이 바뀌었다면 계획 변경 품의를 이용하세요.",
+      error:
+        "확정된 계획이 있습니다. 내용이 바뀌었다면 섭외계획 패널의 변경(보완) 상신을 이용하세요.",
     };
   }
 
@@ -602,7 +619,13 @@ export async function submitEngagementPlanChange(
     auth.userId,
     flow.mode
   );
-  if (linkError) return { ok: false, error: linkError };
+  if (linkError) {
+    // 연결 실패 — 새 계획을 지우고 부모를 되살린다 (리뷰 P3-4: 승인 계획이
+    // 사라진 채 남으면 발송이 통째로 막힌다)
+    await supabase.from("engagement_plans").delete().eq("id", created.id);
+    await revertParent();
+    return { ok: false, error: linkError };
+  }
   // 사후보고면 이전 계획은 그대로 superseded(위에서 이미 비움) — 새 계획이 즉시 유효
 
   await supabase.from("audit_logs").insert({

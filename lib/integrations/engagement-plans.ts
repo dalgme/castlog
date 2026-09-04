@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 
 /**
  * 섭외계획 품의 (operations ↔ approvals — CLAUDE.md 1-2-6)
@@ -426,21 +427,25 @@ export async function assertEngagementAllowed(
  */
 export async function onEngagementReportFeedback(
   approvalId: string,
-  feedback: string
+  feedback: string,
+  /** 남긴 사람 — 여러 단계(팀장·임원)의 피드백이 누적되므로 누가 썼는지 붙인다 */
+  actorName: string | null
 ): Promise<void> {
   const admin = createAdminClient();
   const { data: plan } = await admin
     .from("engagement_plans")
-    .select("id, tenant_id, project_id")
+    .select("id, tenant_id, project_id, feedback_note")
     .eq("approval_id", approvalId)
     .maybeSingle();
   if (!plan) return;
 
+  const line = `${actorName ? `[${actorName}] ` : ""}${feedback || "(내용 미기재)"}`;
+  const merged = plan.feedback_note ? `${plan.feedback_note}\n${line}` : line;
   const { error } = await admin
     .from("engagement_plans")
-    .update({ feedback_note: feedback || "피드백 (내용 미기재)" })
+    .update({ feedback_note: merged })
     .eq("id", plan.id);
-  if (error && error.code !== "42703") {
+  if (error && !isMissingColumnError(error)) {
     console.error("engagement report feedback update failed:", error.message);
   }
 

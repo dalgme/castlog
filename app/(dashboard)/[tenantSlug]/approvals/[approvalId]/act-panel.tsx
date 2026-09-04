@@ -107,8 +107,9 @@ export function ActPanel({
           {isReport && (
             <p className="rounded-md bg-secondary/50 p-2 text-xs leading-relaxed text-muted-foreground">
               이 문서는 <b>사후보고</b>입니다 — 섭외는 이미 확정·진행 중이며,
-              여기서의 확인·피드백은 진행을 되돌리지 않습니다. 고쳐야 할 점이
-              있으면 피드백으로 남기면 담당자 화면에 표시됩니다.
+              여기서의 확인·피드백은 진행을 되돌리지 않습니다. 피드백을 남겨도
+              문서는 다음 상급자에게 계속 전달되고, 내용은 담당자 화면에
+              표시됩니다.
             </p>
           )}
           <Textarea

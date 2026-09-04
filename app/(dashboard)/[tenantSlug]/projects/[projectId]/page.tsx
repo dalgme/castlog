@@ -844,10 +844,13 @@ export default async function ProjectDetailPage({
         buildEngagementPlanDraft(project.id),
       ])
     : [null, null];
-  // 사후보고 모드(38번) — 버튼 라벨은 전체 계획 금액 기준으로 미리 판정한다
-  // (세션 부분 선택 시 최종 판정은 서버 상신에서 다시 한다)
+  // 사후보고 모드(38번) — 버튼 초기 라벨은 전체 계획 금액 기준. 대화상자에서
+  // 세션을 고르면 previewPlanFlow가 선택 금액으로 다시 판정한다 (리뷰 P1-1).
+  // 섭외후보 탭에서만 필요하므로 그때만 조회 (리뷰 P3-7)
   const planFlow: PlanFlow =
-    modules.experts && modules.approvals
+    modules.experts &&
+    modules.approvals &&
+    resolveProjectTab(searchParams.tab, modules.experts) === "experts"
       ? await decidePlanFlow({
           amount: planDraft?.amount ?? 0,
           requesterGrade: grade,

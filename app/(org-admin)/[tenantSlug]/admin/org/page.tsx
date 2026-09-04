@@ -291,13 +291,14 @@ export default async function OrgAdminPage({
         )}
 
         {/* 라이트 모드 — 기능 축소라 승인 없이 기업이 스스로 설정 (기획 확정 2026-08-25) */}
-        {canRequestModules && modules.experts && (
+        {modules.experts &&
+          (canRequestModules || scopeSet.approvals) && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">전문가 섭외 운영 방식</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <LiteModePanel enabled={expertsLite} />
+            {canRequestModules && <LiteModePanel enabled={expertsLite} />}
             {modules.approvals && (isCeo || scopeSet.approvals) && (
               <PostReportPanel
                 enabled={postReport.enabled}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileSignature } from "lucide-react";
 
@@ -15,9 +15,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import { formatKrw } from "@/lib/approvals/constants";
 
 import { submitEngagementPlan } from "./position-assign-actions";
+import { previewPlanFlow } from "./plan-actions";
 import {
   ApproverPicker,
   type ApproverOption,
@@ -70,15 +72,20 @@ export function EngagementPlanButton({
    */
   flow?: { mode: "post_report" } | { mode: "pre_approval"; reason: string | null };
 }) {
-  const isReport = flow.mode === "post_report";
-  const triggerLabel = isReport
-    ? "섭외 확정 (사후보고)"
-    : "섭외 품의서 자동 작성 및 송신";
   const router = useRouter();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [approverIds, setApproverIds] = useState<string[]>([]);
+  // 선택 세션 기준 실시간 판정 (리뷰 P1-1): 초기값은 전체 금액 기준 prop,
+  // 대화상자에서 세션을 고를 때마다 서버가 같은 함수로 다시 판정한다
+  const [liveFlow, setLiveFlow] = useState(flow);
+  const isReport = liveFlow.mode === "post_report";
+  const triggerLabel =
+    flow.mode === "post_report"
+      ? "섭외 확정 (사후보고)"
+      : "섭외 품의서 자동 작성 및 송신";
 
   // 세션별 선택 상신 (기획 확정 2026-08-30 — 22번): 완성된 세션만 골라 먼저
   // 상신하고, 미완성 세션은 보완 후 변경 품의로 추가한다.
@@ -142,8 +149,34 @@ export function EngagementPlanButton({
   const selectedAmount = selectedSessions.reduce((sum, s) => sum + s.amount, 0);
   const selectedUnready = selectedSessions.filter((s) => !s.ready);
 
+  // 선택이 바뀌면 서버 판정을 다시 받는다 — 화면 라벨과 실제 흐름이 어긋나
+  // "결재 대기인 줄 알았는데 즉시 확정"이 되는 사고를 막는다 (리뷰 P1-1)
+  const selectedKey = selectedSlotIds.slice().sort().join(",");
+  useEffect(() => {
+    if (!open || flow.mode === "pre_approval" && flow.reason === null) return;
+    let alive = true;
+    previewPlanFlow(projectId, selectedKey ? selectedKey.split(",") : []).then(
+      (next) => {
+        if (alive) setLiveFlow(next);
+      }
+    );
+    return () => {
+      alive = false;
+    };
+    // flow(prop)는 마운트 시 기준값 — 모드가 꺼진 회사(사유 null)는 재판정 불필요
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedKey, projectId]);
+
   function submit() {
     setError(null);
+    if (
+      isReport &&
+      !window.confirm(
+        `선택한 ${selectedSlotIds.length}개 세션의 섭외를 지금 확정합니다.\n\n결재 없이 즉시 확정되며, 상급자에게는 사후보고 문서가 갑니다. 확정 후 '승인 목록 및 섭외 진행' 탭에서 섭외 문자를 보낼 수 있습니다.`
+      )
+    ) {
+      return;
+    }
     startTransition(async () => {
       const res = await submitEngagementPlan(
         projectId,
@@ -155,6 +188,14 @@ export function EngagementPlanButton({
         setError(res.error);
         return;
       }
+      // 결과를 말한다 — 화면 판정과 서버 판정이 달랐다면 여기서 드러난다
+      toast({
+        description: res.autoApproved
+          ? "섭외가 확정되었습니다 (사후보고). '승인 목록 및 섭외 진행' 탭에서 섭외 문자를 보낼 수 있습니다."
+          : isReport
+            ? "금액·직급·전결규정 조건에 따라 사전 품의로 상신되었습니다 (규칙). 결재가 끝나면 섭외를 진행할 수 있습니다."
+            : "섭외 품의를 상신했습니다. 결재가 끝나면 섭외를 진행할 수 있습니다.",
+      });
       setOpen(false);
       router.refresh();
     });
@@ -177,19 +218,26 @@ export function EngagementPlanButton({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <span className="inline-flex max-w-[280px] flex-col items-start gap-0.5">
-          <Button size="sm" className={isReport ? "bg-[#FF6F61] text-white hover:bg-[#e85d50]" : undefined}>
+      <span className="inline-flex max-w-[280px] flex-col items-start gap-0.5">
+        <DialogTrigger asChild>
+          <Button
+            size="sm"
+            className={
+              flow.mode === "post_report"
+                ? "bg-[#e0503f] text-white hover:bg-[#c9463a]"
+                : undefined
+            }
+          >
             <FileSignature className="mr-1.5 h-3.5 w-3.5" />
             {triggerLabel}
           </Button>
-          {flow.mode === "pre_approval" && flow.reason && (
-            <span className="text-[11px] leading-tight text-muted-foreground">
-              {flow.reason}
-            </span>
-          )}
-        </span>
-      </DialogTrigger>
+        </DialogTrigger>
+        {flow.mode === "pre_approval" && flow.reason && (
+          <span className="text-[11px] leading-tight text-muted-foreground">
+            {flow.reason}
+          </span>
+        )}
+      </span>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
@@ -294,6 +342,19 @@ export function EngagementPlanButton({
             })}
           </ul>
         </div>
+
+        {/* 선택 금액 기준 판정이 버튼 초기 라벨과 다를 때 — 무엇이 될지 먼저 말한다 */}
+        {liveFlow.mode === "pre_approval" && liveFlow.reason && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-900">
+            선택한 세션 기준: {liveFlow.reason}
+          </p>
+        )}
+        {isReport && flow.mode === "pre_approval" && (
+          <p className="rounded-md border border-[#e0503f]/40 bg-[#FF6F61]/10 p-2.5 text-xs leading-relaxed text-[#b3483d]">
+            선택한 세션 기준으로는 <b>사후보고 특례</b>에 해당합니다 — 확정
+            즉시 섭외를 진행할 수 있고 상급자에게는 보고 문서가 갑니다.
+          </p>
+        )}
 
         {selectedUnready.length > 0 && (
           <Alert variant="destructive">

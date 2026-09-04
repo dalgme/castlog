@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 
 /**
  * 결재 생성 공용 엔진 (approvals 모듈)
@@ -101,9 +102,9 @@ export async function createApprovalWithSteps(
     .insert({ ...base, approval_kind: kind })
     .select("id")
     .single();
-  // approval_kind 컬럼 미적용 환경(42703)은 기본 문서로 폴백 — 단, 사후보고는
+  // approval_kind 컬럼 미적용 환경은 기본 문서로 폴백 — 단, 사후보고는
   // 컬럼 없이 만들면 '결재'로 오인되므로 폴백하지 않는다 (§14-10)
-  if (approvalError?.code === "42703" && kind === "decision") {
+  if (isMissingColumnError(approvalError) && kind === "decision") {
     ({ data: approval, error: approvalError } = await supabase
       .from("approvals")
       .insert(base)
@@ -114,10 +115,9 @@ export async function createApprovalWithSteps(
   if (approvalError || !approval) {
     return {
       ok: false,
-      error:
-        approvalError?.code === "42703"
-          ? "사후보고 문서 컬럼이 아직 적용되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션 적용을 요청하세요."
-          : "상신에 실패했습니다. 다시 시도해 주세요.",
+      error: isMissingColumnError(approvalError)
+        ? "사후보고 문서 컬럼이 아직 적용되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션 적용을 요청하세요."
+        : "상신에 실패했습니다. 다시 시도해 주세요.",
     };
   }
 

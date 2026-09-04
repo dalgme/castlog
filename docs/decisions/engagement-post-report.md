@@ -38,9 +38,9 @@ lib/integrations/engagement-post-report.ts + 기업관리 설정 카드.**
   "enabled": true,
   "min_grade": "deputy",      // 이 직급 이상만 사후보고로 진행 (기본: 대리)
   "max_amount": 3000000,      // 계획 섭외비 상한 (null = 무제한). 초과 시 사전 품의
-  "rule_priority": true       // 전결규정('프로젝트')이 잡는 금액 구간은 사전 품의 (권장 고정)
 }
 ```
+전결규정('프로젝트' 유형)이 잡는 금액 구간은 **항상 사전 품의**다 (설정 불가, 코드 고정).
 
 - 켜고 끄기·상한 변경은 **개정 이력**(audit_logs `tenant.post_report_mode`)에 남긴다(§14-5).
 - 실행 권한(`planSubmit`)은 별개다. 사후보고 `min_grade`는 그 위에 얹는 **특례 문턱**:
@@ -59,7 +59,9 @@ lib/integrations/engagement-post-report.ts + 기업관리 설정 카드.**
 ```
 
 화면 버튼과 서버 액션이 같은 함수를 본다(라벨: "섭외 품의 상신" ↔ "섭외 확정 (사후보고)").
-왜 사전 품의로 떨어지는지 사유를 버튼 아래에 적는다(§12-9).
+왜 사전 품의로 떨어지는지 사유를 버튼 아래에 적는다(§12-9). 세션을 부분 선택하면 금액이
+달라지므로 대화상자가 선택할 때마다 `previewPlanFlow`로 다시 판정해 문구를 맞추고,
+사후보고 확정은 2단계 확인(§14-3)을 거친다. 상신 결과(즉시 확정 / 사전 품의)는 토스트로 알린다.
 
 ### 3-3. 사후보고 흐름
 
@@ -79,7 +81,8 @@ lib/integrations/engagement-post-report.ts + 기업관리 설정 카드.**
 | 행위 | 사전 품의(decision) | 사후보고(report) |
 |---|---|---|
 | 승인 | 계획 approved·단계 전이 | **확인** — 문서만 종결, 계획·단계 변화 없음 |
-| 반려 | 계획 draft 복귀·단계 assigning | **피드백** — 사유 필수, `engagement_plans.feedback_note` 기록 + 상신자 알림. **되돌리지 않는다** (이미 문자가 나갔을 수 있다) |
+| 반려 | 계획 draft 복귀·단계 assigning | **피드백** — 사유 필수, `engagement_plans.feedback_note`에 (작성자 표기로) 누적 기록. **문서를 종결하지 않고 다음 단계(고정 임원 tail 포함)로 계속 전달**된다 — 팀장 피드백 한 번으로 임원이 섭외를 모르게 되지 않는다. **되돌리지 않는다** (이미 문자가 나갔을 수 있다). 상신자 알림은 화면 표시(프로젝트 배너·섭외 진행 탭·결재 목록)로 대신하며 별도 푸시는 없다 |
+| 회수(상신 취소) | 아무도 처리 전이면 가능 | **불가** — 보고가 사라지면 승인도 보고도 없는 확정 섭외가 된다 |
 | 결재 훅(`onEngagementPlanApprovalResolved`, `onProjectEngagementApprovalResolved`) | 동작 | `approval_kind='report'`면 **건너뜀** |
 
 보완(추가) 품의·변경 품의도 같은 판정을 탄다 — 추가 세션 금액을 합산해 상한을 다시 본다.

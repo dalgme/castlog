@@ -177,8 +177,9 @@ export default async function ApprovalDetailPage({
   const isRequester = user?.id === approval.requester_user_id;
   const nothingActed = stepRows.every((s) => s.status === "pending");
   const isReport = approval.approval_kind === "report";
+  // 사후보고는 회수 불가 (38번, 리뷰 P2-3)
   const canCancel =
-    isRequester && approval.status === "in_progress" && nothingActed;
+    isRequester && approval.status === "in_progress" && nothingActed && !isReport;
   // 사후보고의 '피드백'은 반려가 아니다 — 재상신 대상이 아니다 (38번)
   const canResubmit = isRequester && approval.status === "rejected" && !isReport;
 
@@ -340,7 +341,8 @@ export default async function ApprovalDetailPage({
               <p className="rounded-md border border-[#FF6F61]/40 bg-[#FF6F61]/10 p-2.5 text-xs leading-relaxed text-[#b3483d]">
                 이 문서는 <b>승인이 아니라 확인</b>입니다 — 섭외는 회사 설정(사후보고
                 모드)에 따라 이미 확정·진행 중입니다. 확인하거나 피드백을 남겨
-                주세요. 피드백은 담당자 화면에 표시되며 진행을 되돌리지 않습니다.
+                주세요. 피드백은 담당자 화면에 표시되고 문서는 다음 상급자에게
+                계속 전달되며, 진행을 되돌리지 않습니다.
               </p>
             )}
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
@@ -422,11 +424,19 @@ export default async function ApprovalDetailPage({
                           step.status === "approved"
                             ? "secondary"
                             : step.status === "rejected"
-                              ? "destructive"
+                              ? isReport
+                                ? "outline"
+                                : "destructive"
                               : "outline"
                         }
                       >
-                        {STEP_STATUS_LABELS[step.status] ?? step.status}
+                        {isReport
+                          ? step.status === "approved"
+                            ? "확인"
+                            : step.status === "rejected"
+                              ? "피드백"
+                              : (STEP_STATUS_LABELS[step.status] ?? step.status)
+                          : (STEP_STATUS_LABELS[step.status] ?? step.status)}
                       </Badge>
                     </div>
                     {(step.comment || step.acted_at) && (

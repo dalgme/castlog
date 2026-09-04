@@ -533,7 +533,11 @@ export async function submitEngagementPlan(
     action: postReport ? "engagement_plan.post_report" : "engagement_plan.submit",
     resource_type: "project",
     resource_id: projectId,
-    after_data: { approval_id: approvalId, amount: snapshot.plannedAmount },
+    after_data: {
+      approval_id: approvalId,
+      amount: snapshot.plannedAmount,
+      flow: submitted.flow ?? "pre_approval",
+    },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
