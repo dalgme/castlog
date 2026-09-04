@@ -420,6 +420,42 @@ export async function assertEngagementAllowed(
 }
 
 /**
+ * 사후보고 피드백 훅 (38번) — 상급자가 보고 문서에 '피드백'을 남기면 계획에
+ * 문구만 기록한다. 계획·프로젝트 단계는 **되돌리지 않는다** (이미 문자가
+ * 나갔을 수 있다). 담당자 화면(섭외 진행 탭·프로젝트 배너)이 이 문구를 보여 준다.
+ */
+export async function onEngagementReportFeedback(
+  approvalId: string,
+  feedback: string
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: plan } = await admin
+    .from("engagement_plans")
+    .select("id, tenant_id, project_id")
+    .eq("approval_id", approvalId)
+    .maybeSingle();
+  if (!plan) return;
+
+  const { error } = await admin
+    .from("engagement_plans")
+    .update({ feedback_note: feedback || "피드백 (내용 미기재)" })
+    .eq("id", plan.id);
+  if (error && error.code !== "42703") {
+    console.error("engagement report feedback update failed:", error.message);
+  }
+
+  await admin.from("audit_logs").insert({
+    tenant_id: plan.tenant_id,
+    actor_auth_user_id: null,
+    actor_role: "system",
+    action: "engagement_plan.feedback",
+    resource_type: "engagement_plan",
+    resource_id: plan.id,
+    after_data: { approval_id: approvalId, project_id: plan.project_id },
+  });
+}
+
+/**
  * 섭외계획 품의 ↔ 결재 연동 훅.
  * 결재 도메인은 계획 도메인을 알지 않는다 — 결재 종결 시 여기서 상태를 맞춘다.
  *  - 승인 → status='approved' + 승인 시점 지문 확정

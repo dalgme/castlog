@@ -25,7 +25,10 @@ import {
 } from "@/lib/approvals/engine";
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
-import { onEngagementPlanApprovalResolved } from "@/lib/integrations/engagement-plans";
+import {
+  onEngagementPlanApprovalResolved,
+  onEngagementReportFeedback,
+} from "@/lib/integrations/engagement-plans";
 import { PLAN_RELAY_FLAG } from "@/lib/approvals/relay";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { onProjectEngagementApprovalResolved } from "@/lib/integrations/project-engagement";
@@ -218,16 +221,42 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const supabase = createClient();
 
-  const { data: approval } = await supabase
-    .from("approvals")
-    .select("id, status, requester_user_id")
-    .eq("id", approvalId)
-    .maybeSingle();
+  // approval_kind(38번) — 컬럼 미적용(42703)만 기본 문서로 폴백 (§14-10)
+  let approval: {
+    id: string;
+    status: string;
+    requester_user_id: string;
+    approval_kind: string;
+  } | null = null;
+  {
+    const { data, error } = await supabase
+      .from("approvals")
+      .select("id, status, requester_user_id, approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (error?.code === "42703") {
+      const { data: legacy } = await supabase
+        .from("approvals")
+        .select("id, status, requester_user_id")
+        .eq("id", approvalId)
+        .maybeSingle();
+      approval = legacy ? { ...legacy, approval_kind: "decision" } : null;
+    } else {
+      approval = data;
+    }
+  }
   if (!approval) {
     return { ok: false, error: "결재건을 찾을 수 없습니다." };
   }
   if (approval.status !== "in_progress") {
     return { ok: false, error: "이미 종결된 결재건입니다." };
+  }
+  const isReport = approval.approval_kind === "report";
+  if (isReport && decision === "reject" && !comment?.trim()) {
+    return {
+      ok: false,
+      error: "사후보고에 피드백을 남기려면 내용을 적어야 합니다 (규칙).",
+    };
   }
 
   const { data: steps } = await supabase
@@ -350,16 +379,22 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     };
   }
 
-  // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리)
+  // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리).
+  // 사후보고(report, 38번)는 훅을 태우지 않는다 — 확인/피드백은 이미 진행된
+  // 섭외를 되돌리지 않고, 피드백 문구만 계획에 남긴다.
   if (decision === "reject") {
     await supabase
       .from("approvals")
       .update({ status: "rejected", completed_at: nowIso })
       .eq("id", approvalId);
-    await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
-    await onProjectClosingApprovalResolved(approvalId, "rejected");
-    await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
-    await onProjectEngagementApprovalResolved(approvalId, "rejected");
+    if (isReport) {
+      await onEngagementReportFeedback(approvalId, comment?.trim() ?? "");
+    } else {
+      await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
+      await onProjectClosingApprovalResolved(approvalId, "rejected");
+      await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
+      await onProjectEngagementApprovalResolved(approvalId, "rejected");
+    }
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -370,10 +405,12 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
         .from("approvals")
         .update({ status: "approved", completed_at: nowIso })
         .eq("id", approvalId);
-      await onPaymentApprovalResolved(approvalId, "approved", null);
-      await onProjectClosingApprovalResolved(approvalId, "approved");
-      await onEngagementPlanApprovalResolved(approvalId, "approved", null);
-      await onProjectEngagementApprovalResolved(approvalId, "approved");
+      if (!isReport) {
+        await onPaymentApprovalResolved(approvalId, "approved", null);
+        await onProjectClosingApprovalResolved(approvalId, "approved");
+        await onEngagementPlanApprovalResolved(approvalId, "approved", null);
+        await onProjectEngagementApprovalResolved(approvalId, "approved");
+      }
     }
   }
 
@@ -381,7 +418,13 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     tenant_id: session.tenantId,
     actor_auth_user_id: session.userId,
     actor_role: session.role,
-    action: decision === "approve" ? "approval.approve" : "approval.reject",
+    action: isReport
+      ? decision === "approve"
+        ? "approval.acknowledge"
+        : "approval.feedback"
+      : decision === "approve"
+        ? "approval.approve"
+        : "approval.reject",
     resource_type: "approval",
     resource_id: approvalId,
     after_data: {
@@ -470,6 +513,20 @@ export async function resubmitApproval(
   }
   if (original.status !== "rejected") {
     return { ok: false, error: "반려된 결재건만 재상신할 수 있습니다." };
+  }
+  // 사후보고(38번)의 '피드백'은 반려가 아니다 — 재상신 대상이 아니다
+  {
+    const { data: kindRow } = await supabase
+      .from("approvals")
+      .select("approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (kindRow?.approval_kind === "report") {
+      return {
+        ok: false,
+        error: "사후보고의 피드백은 재상신 대상이 아닙니다 (규칙). 피드백 내용을 반영해 섭외를 조정하면 됩니다.",
+      };
+    }
   }
 
   // step_grade 포함 — 릴레이 단계(approver null)를 빼고 복사하면

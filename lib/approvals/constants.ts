@@ -22,6 +22,19 @@ export const APPROVAL_STATUS_LABELS: Record<string, string> = {
   canceled: "취소",
 };
 
+/** 사후보고 문서(approval_kind='report', 38번)의 상태 표기 — 승인/반려가 아니라 확인/피드백 */
+export const REPORT_STATUS_LABELS: Record<string, string> = {
+  in_progress: "확인 대기",
+  approved: "확인 완료",
+  rejected: "피드백",
+  canceled: "취소",
+};
+
+export function approvalStatusLabel(status: string, kind: string | null | undefined): string {
+  const table = kind === "report" ? REPORT_STATUS_LABELS : APPROVAL_STATUS_LABELS;
+  return table[status] ?? status;
+}
+
 export const STEP_KIND_LABELS: Record<string, string> = {
   approval: "결재",
   agreement: "합의",

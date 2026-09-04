@@ -367,6 +367,7 @@ export type Database = {
           is_practice: boolean
           amount: number | null
           applied_rule_id: string | null
+          approval_kind: string
           approval_type: string
           body: string | null
           completed_at: string | null
@@ -384,6 +385,7 @@ export type Database = {
           is_practice?: boolean
           amount?: number | null
           applied_rule_id?: string | null
+          approval_kind?: string
           approval_type?: string
           body?: string | null
           completed_at?: string | null
@@ -401,6 +403,7 @@ export type Database = {
           is_practice?: boolean
           amount?: number | null
           applied_rule_id?: string | null
+          approval_kind?: string
           approval_type?: string
           body?: string | null
           completed_at?: string | null
@@ -826,6 +829,8 @@ export type Database = {
           submitted_by: string | null
           submitted_at: string | null
           approved_at: string | null
+          flow: string
+          feedback_note: string | null
           created_at: string
           updated_at: string
         }
@@ -846,6 +851,8 @@ export type Database = {
           submitted_by?: string | null
           submitted_at?: string | null
           approved_at?: string | null
+          flow?: string
+          feedback_note?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -866,6 +873,8 @@ export type Database = {
           submitted_by?: string | null
           submitted_at?: string | null
           approved_at?: string | null
+          flow?: string
+          feedback_note?: string | null
           created_at?: string
           updated_at?: string
         }

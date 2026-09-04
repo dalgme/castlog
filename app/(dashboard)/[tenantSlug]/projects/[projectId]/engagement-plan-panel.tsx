@@ -42,6 +42,7 @@ export function EngagementPlanPanel({
   canSubmit,
   approverOptions,
   relayOn = false,
+  postReportOn = false,
   sessionSummary = [],
 }: {
   tenantSlug: string;
@@ -52,6 +53,8 @@ export function EngagementPlanPanel({
   approverOptions: { id: string; name: string; gradeLabel: string }[];
   /** 상급자 릴레이 결재(27번) 활성 — 무선택 시 동작 안내 분기 */
   relayOn?: boolean;
+  /** 사후보고 모드(38번) — 변경·보완 상신이 즉시 확정되고 보고 문서만 간다 */
+  postReportOn?: boolean;
   /** 세션별 필요인원·등록 후보인원 한눈 요약 (기획 확정 2026-08-23) */
   sessionSummary?: {
     slotId: string;
@@ -275,6 +278,13 @@ export function EngagementPlanPanel({
                 승인된 계획에 포함되지 않은 세션이 {uncoveredSessions.length}개
                 있습니다. 보완이 끝난 세션을 골라 <b>추가 품의</b>를 올리면 승인
                 후 그 세션의 섭외도 진행할 수 있습니다.
+              </p>
+            )}
+            {postReportOn && (
+              <p className="rounded-md bg-[#FF6F61]/10 p-2 text-xs leading-relaxed text-[#b3483d]">
+                사후보고 모드 — 이 상신은 즉시 확정되고 상급자에게는 보고
+                문서만 갑니다(확인·피드백). 금액이 상한·전결규정 구간에 걸리면
+                서버가 사전 품의로 돌립니다.
               </p>
             )}
             {uncoveredSessions.length > 0 && (

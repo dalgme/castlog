@@ -52,6 +52,7 @@ export function EngagementPlanButton({
   lines,
   approverOptions = [],
   relayOn = false,
+  flow = { mode: "pre_approval", reason: null },
 }: {
   projectId: string;
   disabled: boolean;
@@ -62,7 +63,17 @@ export function EngagementPlanButton({
   approverOptions?: ApproverOption[];
   /** 상급자 릴레이 결재(27번) 활성 — 무선택 시 동작 안내를 실제와 일치시킨다 */
   relayOn?: boolean;
+  /**
+   * 사후보고 모드(38번) 판정 — post_report면 상신 즉시 확정되고 상급자에게는
+   * 보고 문서가 간다. pre_approval의 reason은 "왜 사후보고가 아닌지"(회사가
+   * 켰는데 특례에서 벗어난 경우)를 버튼 아래에 적는다.
+   */
+  flow?: { mode: "post_report" } | { mode: "pre_approval"; reason: string | null };
 }) {
+  const isReport = flow.mode === "post_report";
+  const triggerLabel = isReport
+    ? "섭외 확정 (사후보고)"
+    : "섭외 품의서 자동 작성 및 송신";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -155,7 +166,7 @@ export function EngagementPlanButton({
       <span className="inline-flex max-w-[240px] flex-col items-start gap-0.5">
         <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
           <FileSignature className="h-3.5 w-3.5" aria-hidden />
-          섭외 품의서 자동 작성 및 송신
+          {triggerLabel}
         </span>
         <span className="text-[11px] leading-tight text-muted-foreground">
           {disabledReason}
@@ -167,20 +178,43 @@ export function EngagementPlanButton({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          <FileSignature className="mr-1.5 h-3.5 w-3.5" />
-          섭외 품의서 자동 작성 및 송신
-        </Button>
+        <span className="inline-flex max-w-[280px] flex-col items-start gap-0.5">
+          <Button size="sm" className={isReport ? "bg-[#FF6F61] text-white hover:bg-[#e85d50]" : undefined}>
+            <FileSignature className="mr-1.5 h-3.5 w-3.5" />
+            {triggerLabel}
+          </Button>
+          {flow.mode === "pre_approval" && flow.reason && (
+            <span className="text-[11px] leading-tight text-muted-foreground">
+              {flow.reason}
+            </span>
+          )}
+        </span>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>섭외 품의서 — 상신 전 확인</DialogTitle>
+          <DialogTitle>
+            {isReport ? "섭외 확정 (사후보고) — 확정 전 확인" : "섭외 품의서 — 상신 전 확인"}
+          </DialogTitle>
           <DialogDescription>
-            프로젝트 기본정보와 세션별 배정 명단으로 품의서가 자동 작성됩니다.
-            결재라인은 아래에서 직접 고를 수 있습니다
-            {relayOn
-              ? " (비워 두면 상급자 릴레이 — 직급 단계로 올라갑니다)."
-              : " (마지막은 상무이사 → 대표 고정)."}
+            {isReport ? (
+              <>
+                사후보고 모드입니다. 확정 즉시 선택한 세션의 섭외 문자를 보낼 수
+                있고, 상급자에게는 <b>사후보고</b> 문서가 갑니다(확인·피드백만,
+                진행을 되돌리지 않음). 보고를 받을 상급자는 아래에서 고를 수
+                있습니다
+                {relayOn
+                  ? " (비워 두면 직급 단계로 올라갑니다)."
+                  : " (마지막은 상무이사 → 대표 고정)."}
+              </>
+            ) : (
+              <>
+                프로젝트 기본정보와 세션별 배정 명단으로 품의서가 자동 작성됩니다.
+                결재라인은 아래에서 직접 고를 수 있습니다
+                {relayOn
+                  ? " (비워 두면 상급자 릴레이 — 직급 단계로 올라갑니다)."
+                  : " (마지막은 상무이사 → 대표 고정)."}
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -273,10 +307,21 @@ export function EngagementPlanButton({
         )}
 
         <p className="rounded-md bg-secondary/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
-          선택한 세션만 계획 품의에 담깁니다. 미완성 세션은 나중에 보완해
-          <b> 계획 변경 품의</b>로 추가 상신하면 됩니다. 상신 후에는 결재가
-          끝나야 선택 세션의 섭외 진행이 열리며, 이 시점까지 전문가에게는
-          아무것도 나가지 않습니다.
+          {isReport ? (
+            <>
+              선택한 세션만 확정됩니다. 미완성 세션은 나중에 보완해{" "}
+              <b>추가 확정(사후보고)</b>으로 더하면 됩니다. 확정 즉시{" "}
+              <b>승인 목록 및 섭외 진행</b> 탭에서 섭외 문자를 보낼 수 있으며,
+              이 시점까지 전문가에게는 아무것도 나가지 않습니다.
+            </>
+          ) : (
+            <>
+              선택한 세션만 계획 품의에 담깁니다. 미완성 세션은 나중에 보완해
+              <b> 계획 변경 품의</b>로 추가 상신하면 됩니다. 상신 후에는 결재가
+              끝나야 선택 세션의 섭외 진행이 열리며, 이 시점까지 전문가에게는
+              아무것도 나가지 않습니다.
+            </>
+          )}
         </p>
 
         <div className="flex gap-2">
@@ -291,8 +336,12 @@ export function EngagementPlanButton({
             }
           >
             {pending
-              ? "상신 중…"
-              : `선택한 품의 상신하기 (${selectedSlotIds.length}개 세션)`}
+              ? isReport
+                ? "확정 중…"
+                : "상신 중…"
+              : isReport
+                ? `선택한 세션 섭외 확정 (${selectedSlotIds.length}개 세션)`
+                : `선택한 품의 상신하기 (${selectedSlotIds.length}개 세션)`}
           </Button>
         </div>
       </DialogContent>

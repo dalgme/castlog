@@ -8,10 +8,10 @@ import { requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
-  APPROVAL_STATUS_LABELS,
   APPROVAL_TYPE_LABELS,
   STEP_KIND_LABELS,
   STEP_STATUS_LABELS,
+  approvalStatusLabel,
   formatKrw,
 } from "@/lib/approvals/constants";
 import { PageHeader } from "@/components/layout/header";
@@ -57,7 +57,7 @@ export default async function ApprovalDetailPage({
   const { data: approval, error: approvalError } = await supabase
     .from("approvals")
     .select(
-      `id, title, body, approval_type, amount, status, created_at, completed_at,
+      `id, title, body, approval_type, approval_kind, amount, status, created_at, completed_at,
        requester_user_id, resubmitted_from_id, project_id,
        requester:users!approvals_requester_user_id_fkey (name),
        projects!approvals_project_id_fkey (name)`
@@ -176,9 +176,11 @@ export default async function ApprovalDetailPage({
 
   const isRequester = user?.id === approval.requester_user_id;
   const nothingActed = stepRows.every((s) => s.status === "pending");
+  const isReport = approval.approval_kind === "report";
   const canCancel =
     isRequester && approval.status === "in_progress" && nothingActed;
-  const canResubmit = isRequester && approval.status === "rejected";
+  // 사후보고의 '피드백'은 반려가 아니다 — 재상신 대상이 아니다 (38번)
+  const canResubmit = isRequester && approval.status === "rejected" && !isReport;
 
   // 섭외계획 품의라면 후보 검토(결재권자 수정) + 변경 내역을 붙인다
   // (기획 확정 2026-08-22 — 후보 순위 모델)
@@ -306,16 +308,23 @@ export default async function ApprovalDetailPage({
                 {APPROVAL_TYPE_LABELS[approval.approval_type] ??
                   approval.approval_type}
               </Badge>
+              {isReport && (
+                <span className="rounded-full bg-[#FF6F61]/15 px-2 py-0.5 text-[11px] font-semibold text-[#b3483d]">
+                  사후보고
+                </span>
+              )}
               <Badge
                 variant={
                   approval.status === "rejected"
-                    ? "destructive"
+                    ? isReport
+                      ? "outline"
+                      : "destructive"
                     : approval.status === "in_progress"
                       ? "default"
                       : "secondary"
                 }
               >
-                {APPROVAL_STATUS_LABELS[approval.status] ?? approval.status}
+                {approvalStatusLabel(approval.status, approval.approval_kind)}
               </Badge>
               {approval.resubmitted_from_id && (
                 <Link
@@ -327,6 +336,13 @@ export default async function ApprovalDetailPage({
               )}
             </div>
             <h2 className="text-lg font-bold">{approval.title}</h2>
+            {isReport && (
+              <p className="rounded-md border border-[#FF6F61]/40 bg-[#FF6F61]/10 p-2.5 text-xs leading-relaxed text-[#b3483d]">
+                이 문서는 <b>승인이 아니라 확인</b>입니다 — 섭외는 회사 설정(사후보고
+                모드)에 따라 이미 확정·진행 중입니다. 확인하거나 피드백을 남겨
+                주세요. 피드백은 담당자 화면에 표시되며 진행을 되돌리지 않습니다.
+              </p>
+            )}
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
               <span>상신 {approval.requester?.name ?? "-"}</span>
               <span>
@@ -513,6 +529,7 @@ export default async function ApprovalDetailPage({
           actingAsDelegate={actingAsDelegate}
           canCancel={canCancel}
           canResubmit={canResubmit}
+          kind={isReport ? "report" : "decision"}
         />
       </main>
     </div>

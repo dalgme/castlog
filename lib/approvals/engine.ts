@@ -71,6 +71,11 @@ export type CreateApprovalParams = {
   appliedRuleId: string | null;
   steps: EngineLineStep[];
   resubmittedFromId?: string | null;
+  /**
+   * 문서 성격 (38번): decision(기본, 승인/반려가 상태를 움직임) |
+   * report(사후보고 — 확인/피드백만, 되돌리지 않음)
+   */
+  approvalKind?: "decision" | "report";
 };
 
 /** 결재건 + 결재라인 생성 — 라인 생성 실패 시 결재건은 취소 처리 */
@@ -79,24 +84,41 @@ export async function createApprovalWithSteps(
 ): Promise<{ ok: true; approvalId: string } | { ok: false; error: string }> {
   const supabase = createClient();
 
-  const { data: approval, error: approvalError } = await supabase
+  const base = {
+    tenant_id: params.tenantId,
+    title: params.title,
+    body: params.body,
+    approval_type: params.approvalType,
+    amount: params.amount,
+    project_id: params.projectId,
+    requester_user_id: params.requesterUserId,
+    applied_rule_id: params.appliedRuleId,
+    resubmitted_from_id: params.resubmittedFromId ?? null,
+  };
+  const kind = params.approvalKind ?? "decision";
+  let { data: approval, error: approvalError } = await supabase
     .from("approvals")
-    .insert({
-      tenant_id: params.tenantId,
-      title: params.title,
-      body: params.body,
-      approval_type: params.approvalType,
-      amount: params.amount,
-      project_id: params.projectId,
-      requester_user_id: params.requesterUserId,
-      applied_rule_id: params.appliedRuleId,
-      resubmitted_from_id: params.resubmittedFromId ?? null,
-    })
+    .insert({ ...base, approval_kind: kind })
     .select("id")
     .single();
+  // approval_kind 컬럼 미적용 환경(42703)은 기본 문서로 폴백 — 단, 사후보고는
+  // 컬럼 없이 만들면 '결재'로 오인되므로 폴백하지 않는다 (§14-10)
+  if (approvalError?.code === "42703" && kind === "decision") {
+    ({ data: approval, error: approvalError } = await supabase
+      .from("approvals")
+      .insert(base)
+      .select("id")
+      .single());
+  }
 
   if (approvalError || !approval) {
-    return { ok: false, error: "상신에 실패했습니다. 다시 시도해 주세요." };
+    return {
+      ok: false,
+      error:
+        approvalError?.code === "42703"
+          ? "사후보고 문서 컬럼이 아직 적용되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션 적용을 요청하세요."
+          : "상신에 실패했습니다. 다시 시도해 주세요.",
+    };
   }
 
   const { error: stepsError } = await supabase.from("approval_steps").insert(

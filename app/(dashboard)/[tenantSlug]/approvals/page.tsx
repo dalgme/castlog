@@ -7,8 +7,8 @@ import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
-  APPROVAL_STATUS_LABELS,
   APPROVAL_TYPE_LABELS,
+  approvalStatusLabel,
   formatKrw,
 } from "@/lib/approvals/constants";
 import { PageHeader } from "@/components/layout/header";
@@ -44,6 +44,8 @@ type ApprovalRow = {
   id: string;
   title: string;
   approval_type: string;
+  /** 38번: report = 사후보고(확인·피드백만) */
+  approval_kind: string;
   amount: number | null;
   status: string;
   created_at: string;
@@ -103,7 +105,7 @@ export default async function ApprovalsPage({
       supabase
         .from("approvals")
         .select(
-          "id, title, approval_type, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
+          "id, title, approval_type, approval_kind, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
         )
         .order("created_at", { ascending: false })
         .limit(100),
@@ -169,6 +171,11 @@ export default async function ApprovalsPage({
               <TableCell>
                 {APPROVAL_TYPE_LABELS[approval.approval_type] ??
                   approval.approval_type}
+                {approval.approval_kind === "report" && (
+                  <span className="ml-1 rounded-full bg-[#FF6F61]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#b3483d]">
+                    사후보고
+                  </span>
+                )}
               </TableCell>
               <TableCell>{formatKrw(approval.amount)}</TableCell>
               <TableCell>{approval.users?.name ?? "-"}</TableCell>
@@ -177,7 +184,7 @@ export default async function ApprovalsPage({
               </TableCell>
               <TableCell>
                 <Badge variant={STATUS_VARIANT[approval.status] ?? "secondary"}>
-                  {APPROVAL_STATUS_LABELS[approval.status] ?? approval.status}
+                  {approvalStatusLabel(approval.status, approval.approval_kind)}
                 </Badge>
               </TableCell>
             </TableRow>
