@@ -25,7 +25,10 @@ import {
 } from "@/lib/approvals/engine";
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
-import { onEngagementPlanApprovalResolved } from "@/lib/integrations/engagement-plans";
+import {
+  onEngagementPlanApprovalResolved,
+  onEngagementReportFeedback,
+} from "@/lib/integrations/engagement-plans";
 import { PLAN_RELAY_FLAG } from "@/lib/approvals/relay";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { onProjectEngagementApprovalResolved } from "@/lib/integrations/project-engagement";
@@ -218,16 +221,42 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const supabase = createClient();
 
-  const { data: approval } = await supabase
-    .from("approvals")
-    .select("id, status, requester_user_id")
-    .eq("id", approvalId)
-    .maybeSingle();
+  // approval_kind(38번) — 컬럼 미적용(42703)만 기본 문서로 폴백 (§14-10)
+  let approval: {
+    id: string;
+    status: string;
+    requester_user_id: string;
+    approval_kind: string;
+  } | null = null;
+  {
+    const { data, error } = await supabase
+      .from("approvals")
+      .select("id, status, requester_user_id, approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (error?.code === "42703") {
+      const { data: legacy } = await supabase
+        .from("approvals")
+        .select("id, status, requester_user_id")
+        .eq("id", approvalId)
+        .maybeSingle();
+      approval = legacy ? { ...legacy, approval_kind: "decision" } : null;
+    } else {
+      approval = data;
+    }
+  }
   if (!approval) {
     return { ok: false, error: "결재건을 찾을 수 없습니다." };
   }
   if (approval.status !== "in_progress") {
     return { ok: false, error: "이미 종결된 결재건입니다." };
+  }
+  const isReport = approval.approval_kind === "report";
+  if (isReport && decision === "reject" && !comment?.trim()) {
+    return {
+      ok: false,
+      error: "사후보고에 피드백을 남기려면 내용을 적어야 합니다 (규칙).",
+    };
   }
 
   const { data: steps } = await supabase
@@ -323,6 +352,10 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
 
   const nowIso = new Date().toISOString();
   const newStepStatus = decision === "approve" ? "approved" : "rejected";
+  // 사후보고(38번)의 피드백은 문서를 종결하지 않는다 — 단계는 '피드백'으로
+  // 처리되고 다음 상급자(고정 임원 tail 포함)에게 계속 전달된다 (리뷰 P2-2:
+  // 팀장 피드백 한 번으로 임원이 섭외를 영영 모르면 안 된다)
+  const advances = decision === "approve" || isReport;
 
   // 행수 확인(CAS) — 릴레이 단계는 같은 차례가 여러 상급자에게 동시에 열려
   // 경합이 실제로 난다. 0행이면 이미 다른 결재권자가 처리한 것 (리뷰 P2-2)
@@ -350,8 +383,22 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     };
   }
 
-  // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리)
-  if (decision === "reject") {
+  // 결재건 상태 전이 + 연동 훅 (지급 배치 등 — lib/integrations에 격리).
+  // 사후보고(report, 38번)는 훅을 태우지 않는다 — 확인/피드백은 이미 진행된
+  // 섭외를 되돌리지 않고, 피드백 문구만 계획에 남긴다.
+  if (isReport && decision === "reject") {
+    const { data: actor } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", session.userId)
+      .maybeSingle();
+    await onEngagementReportFeedback(
+      approvalId,
+      comment?.trim() ?? "",
+      actor?.name ?? null
+    );
+  }
+  if (!advances) {
     await supabase
       .from("approvals")
       .update({ status: "rejected", completed_at: nowIso })
@@ -370,10 +417,12 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
         .from("approvals")
         .update({ status: "approved", completed_at: nowIso })
         .eq("id", approvalId);
-      await onPaymentApprovalResolved(approvalId, "approved", null);
-      await onProjectClosingApprovalResolved(approvalId, "approved");
-      await onEngagementPlanApprovalResolved(approvalId, "approved", null);
-      await onProjectEngagementApprovalResolved(approvalId, "approved");
+      if (!isReport) {
+        await onPaymentApprovalResolved(approvalId, "approved", null);
+        await onProjectClosingApprovalResolved(approvalId, "approved");
+        await onEngagementPlanApprovalResolved(approvalId, "approved", null);
+        await onProjectEngagementApprovalResolved(approvalId, "approved");
+      }
     }
   }
 
@@ -381,7 +430,13 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     tenant_id: session.tenantId,
     actor_auth_user_id: session.userId,
     actor_role: session.role,
-    action: decision === "approve" ? "approval.approve" : "approval.reject",
+    action: isReport
+      ? decision === "approve"
+        ? "approval.acknowledge"
+        : "approval.feedback"
+      : decision === "approve"
+        ? "approval.approve"
+        : "approval.reject",
     resource_type: "approval",
     resource_id: approvalId,
     after_data: {
@@ -413,6 +468,22 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
   }
   if (approval.status !== "in_progress") {
     return { ok: false, error: "진행중인 결재건만 취소할 수 있습니다." };
+  }
+  // 사후보고(38번)는 회수할 수 없다 — 이 모드의 유일한 통제 장치가 상신자
+  // 손에서 지워지면 승인도 보고도 없는 확정 섭외가 된다 (리뷰 P2-3)
+  {
+    const { data: kindRow } = await supabase
+      .from("approvals")
+      .select("approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (kindRow?.approval_kind === "report") {
+      return {
+        ok: false,
+        error:
+          "사후보고는 회수할 수 없습니다 (규칙). 내용이 바뀌었으면 변경 확정(사후보고)으로 다시 보고하세요.",
+      };
+    }
   }
 
   const { data: actedSteps } = await supabase
@@ -470,6 +541,20 @@ export async function resubmitApproval(
   }
   if (original.status !== "rejected") {
     return { ok: false, error: "반려된 결재건만 재상신할 수 있습니다." };
+  }
+  // 사후보고(38번)의 '피드백'은 반려가 아니다 — 재상신 대상이 아니다
+  {
+    const { data: kindRow } = await supabase
+      .from("approvals")
+      .select("approval_kind")
+      .eq("id", approvalId)
+      .maybeSingle();
+    if (kindRow?.approval_kind === "report") {
+      return {
+        ok: false,
+        error: "사후보고의 피드백은 재상신 대상이 아닙니다 (규칙). 피드백 내용을 반영해 섭외를 조정하면 됩니다.",
+      };
+    }
   }
 
   // step_grade 포함 — 릴레이 단계(approver null)를 빼고 복사하면

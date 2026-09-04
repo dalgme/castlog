@@ -89,6 +89,10 @@ import {
   type ApprovedPlanRow,
   type ProgressRow,
 } from "./engagement-progress";
+import {
+  decidePlanFlow,
+  type PlanFlow,
+} from "@/lib/integrations/engagement-post-report";
 import { ClosingTab } from "./closing-tab";
 import { ProjectClosing } from "./project-closing";
 
@@ -840,6 +844,18 @@ export default async function ProjectDetailPage({
         buildEngagementPlanDraft(project.id),
       ])
     : [null, null];
+  // 사후보고 모드(38번) — 버튼 초기 라벨은 전체 계획 금액 기준. 대화상자에서
+  // 세션을 고르면 previewPlanFlow가 선택 금액으로 다시 판정한다 (리뷰 P1-1).
+  // 섭외후보 탭에서만 필요하므로 그때만 조회 (리뷰 P3-7)
+  const planFlow: PlanFlow =
+    modules.experts &&
+    modules.approvals &&
+    resolveProjectTab(searchParams.tab, modules.experts) === "experts"
+      ? await decidePlanFlow({
+          amount: planDraft?.amount ?? 0,
+          requesterGrade: grade,
+        })
+      : { mode: "pre_approval", reason: null };
 
   // 21스텝 자동 판정 컨텍스트 — 섭외 단계·예산·종료 여부 (표시 전용)
   const autoCtx = {
@@ -882,7 +898,7 @@ export default async function ProjectDetailPage({
       const { data: planRows } = await supabase
         .from("engagement_plans")
         .select(
-          "id, revision, status, approval_id, slot_count, position_count, planned_amount, note, last_rejection_note, submitted_at, approved_at"
+          "id, revision, status, approval_id, slot_count, position_count, planned_amount, note, last_rejection_note, submitted_at, approved_at, flow, feedback_note"
         )
         .eq("project_id", project.id)
         // 반려된 계획은 draft로 되돌아간다(재상신용) — 반려 사유가 있으면
@@ -904,6 +920,19 @@ export default async function ProjectDetailPage({
         set.add(l.slot_id);
         slotIdsByPlan.set(l.plan_id, set);
       }
+      // 사후보고 문서(38번)의 확인 상태 — 계획이 아니라 문서에 있다
+      const reportApprovalIds = (planRows ?? [])
+        .filter((p) => p.flow === "post_report" && p.approval_id)
+        .map((p) => p.approval_id as string);
+      const { data: reportRows } = reportApprovalIds.length
+        ? await supabase
+            .from("approvals")
+            .select("id, status")
+            .in("id", reportApprovalIds)
+        : { data: [] as { id: string; status: string }[] };
+      const reportStatusById = new Map(
+        (reportRows ?? []).map((r) => [r.id, r.status])
+      );
       approvedPlans = (planRows ?? []).map((p) => ({
         id: p.id,
         revision: p.revision,
@@ -922,6 +951,12 @@ export default async function ProjectDetailPage({
         sessionLabels: Array.from(slotIdsByPlan.get(p.id) ?? []).map(
           (id) => slotLabelById.get(id) ?? "(삭제된 세션)"
         ),
+        postReport: p.flow === "post_report",
+        reportStatus:
+          p.flow === "post_report" && p.approval_id
+            ? (reportStatusById.get(p.approval_id) ?? null)
+            : null,
+        feedbackNote: p.feedback_note,
       }));
     }
     for (const slot of slotRows) {
@@ -1383,6 +1418,7 @@ export default async function ProjectDetailPage({
           <EngagementWorkbench
             planApproverOptions={planApprovers}
             planRelayOn={planRelayOn}
+            planFlow={planFlow}
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
@@ -1414,6 +1450,7 @@ export default async function ProjectDetailPage({
                   canSubmit={canExecute}
                   approverOptions={planApprovers}
                   relayOn={planRelayOn}
+                  postReportOn={planFlow.mode === "post_report"}
                   sessionSummary={slotRows.map((s) => ({
                     slotId: s.id,
                     label: `${s.slotDate}${

@@ -514,11 +514,14 @@ export async function submitEngagementPlan(
   const submitted = await submitPlanRecord(projectId, "", approverIds, slotIds);
   if (!submitted.ok) return submitted;
   const approvalId = submitted.approvalId ?? null;
+  // 사후보고 모드(38번): 계획이 즉시 확정됐으므로 단계도 바로 연다 —
+  // 보고 문서는 결재가 아니라 확인용이라 plan_review에 머물지 않는다
+  const postReport = submitted.flow === "post_report";
 
   await supabase
     .from("projects")
     .update({
-      engagement_stage: "plan_review",
+      engagement_stage: postReport ? "plan_approved" : "plan_review",
       engagement_plan_approval_id: approvalId,
     })
     .eq("id", projectId);
@@ -527,15 +530,19 @@ export async function submitEngagementPlan(
     tenant_id: auth.session.tenantId,
     actor_auth_user_id: auth.session.userId,
     actor_role: auth.session.role,
-    action: "engagement_plan.submit",
+    action: postReport ? "engagement_plan.post_report" : "engagement_plan.submit",
     resource_type: "project",
     resource_id: projectId,
-    after_data: { approval_id: approvalId, amount: snapshot.plannedAmount },
+    after_data: {
+      approval_id: approvalId,
+      amount: snapshot.plannedAmount,
+      flow: submitted.flow ?? "pre_approval",
+    },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/approvals", "page");
-  return { ok: true, approvalId, autoApproved: false };
+  return { ok: true, approvalId, autoApproved: postReport };
 }
 
 export type DispatchChannel = "sms" | "email" | "both";

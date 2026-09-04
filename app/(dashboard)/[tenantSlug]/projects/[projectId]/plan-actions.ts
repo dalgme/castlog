@@ -4,10 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
-import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
+import {
+  decidePlanFlow,
+  type PlanFlow,
+} from "@/lib/integrations/engagement-post-report";
 import {
   createApprovalWithSteps,
   matchApprovalRule,
@@ -34,7 +39,12 @@ import {
 const MANUAL_LINE_NOTE = "\n\n※ 결재라인 직접 지정 (전결규정 미적용)";
 
 export type PlanActionResult =
-  | { ok: true; approvalId?: string | null }
+  | {
+      ok: true;
+      approvalId?: string | null;
+      /** 38번: 사후보고로 즉시 확정됐으면 'post_report' — 호출자가 단계를 바로 연다 */
+      flow?: "pre_approval" | "post_report";
+    }
   | { ok: false; error: string };
 
 
@@ -43,7 +53,73 @@ type PlanSession = {
   userId: string;
   tenantId: string;
   role: string;
+  /** 사후보고 특례 문턱 판정용 (38번) */
+  grade: string | null;
 } | { ok: false; error: string };
+
+/** 사후보고 문서임을 본문에도 남긴다 — 결재자·감사로그 열람자가 결재와 구분하도록 */
+const POST_REPORT_NOTE =
+  "\n\n※ 사후보고 — 섭외는 이미 확정·진행 중입니다. 확인 또는 피드백만 남겨 주세요 (진행을 되돌리지 않습니다).";
+
+/**
+ * 계획과 결재 문서를 연결 (38번): 사후보고면 status='approved'로 즉시 확정.
+ * 신규 컬럼(flow·feedback_note) 미적용 환경이면 그 컬럼 없이 재시도(§14-10).
+ * 연결에 실패하면 방금 만든 결재 문서를 취소해 고아를 남기지 않는다 (리뷰 P2-1).
+ */
+async function finalizePlanRecord(
+  supabase: ReturnType<typeof createClient>,
+  planId: string,
+  approvalId: string,
+  userId: string,
+  flow: PlanFlow["mode"]
+): Promise<string | null> {
+  const nowIso = new Date().toISOString();
+  const base = {
+    status: flow === "post_report" ? "approved" : "in_progress",
+    approval_id: approvalId,
+    submitted_by: userId,
+    submitted_at: nowIso,
+    approved_at: flow === "post_report" ? nowIso : null,
+    last_rejection_note: null,
+  };
+  const extra = { flow, feedback_note: null };
+  let { error } = await supabase
+    .from("engagement_plans")
+    .update({ ...base, ...extra })
+    .eq("id", planId);
+  if (isMissingColumnError(error)) {
+    ({ error } = await supabase
+      .from("engagement_plans")
+      .update(base)
+      .eq("id", planId));
+  }
+  if (!error) return null;
+  await supabase
+    .from("approvals")
+    .update({ status: "canceled", completed_at: nowIso })
+    .eq("id", approvalId);
+  return "결재 연결에 실패했습니다 (시스템 오류). 문서는 취소 처리했으니 다시 시도해 주세요.";
+}
+
+/**
+ * 선택 세션 기준 사전 품의/사후보고 미리 판정 (38번, 리뷰 P1-1) — 대화상자가
+ * 세션을 고를 때마다 호출해 버튼 라벨·문구를 실제 서버 판정과 맞춘다.
+ */
+export async function previewPlanFlow(
+  projectId: string,
+  slotIds: string[] = []
+): Promise<PlanFlow> {
+  const auth = await requirePlanSession();
+  if (!auth.ok) return { mode: "pre_approval", reason: null };
+  const snapshot = await buildPlanSnapshot(
+    projectId,
+    slotIds.length > 0 ? slotIds : undefined
+  );
+  return decidePlanFlow({
+    amount: snapshot.plannedAmount,
+    requesterGrade: auth.grade,
+  });
+}
 
 async function requirePlanSession(): Promise<PlanSession> {
   if (!hasSupabaseEnv()) {
@@ -73,7 +149,7 @@ async function requirePlanSession(): Promise<PlanSession> {
   if (!(await canExecTenant("planSubmit", user))) {
     return { ok: false, error: await deniedExec("planSubmit") };
   }
-  return { ok: true, userId: user.id, tenantId, role };
+  return { ok: true, userId: user.id, tenantId, role, grade: gradeFromUser(user) };
 }
 
 type LineResult =
@@ -281,7 +357,8 @@ export async function submitEngagementPlan(
   if (existing && existing.status === "approved") {
     return {
       ok: false,
-      error: "승인된 계획이 있습니다. 내용이 바뀌었다면 계획 변경 품의를 이용하세요.",
+      error:
+        "확정된 계획이 있습니다. 내용이 바뀌었다면 섭외계획 패널의 변경(보완) 상신을 이용하세요.",
     };
   }
 
@@ -339,6 +416,13 @@ export async function submitEngagementPlan(
     return { ok: false, error: "계획 명세 저장에 실패했습니다." };
   }
 
+  // 사전 품의 vs 사후보고 (38번) — 화면 버튼과 같은 판정 함수
+  const flow = await decidePlanFlow({
+    amount: snapshot.plannedAmount,
+    requesterGrade: auth.grade,
+  });
+  const isReport = flow.mode === "post_report";
+
   // 멘티 정보 동봉 (34번) — 계획에 담긴 세션 기준
   const menteeSection = await buildMenteeSection(
     snapshot.lines.map((l) => l.slotId)
@@ -346,38 +430,37 @@ export async function submitEngagementPlan(
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
-    title: `[섭외계획] ${project.name}`,
+    title: `${isReport ? "[섭외 사후보고]" : "[섭외계획]"} ${project.name}`,
     body:
       `섭외 인원 ${snapshot.positionCount}명 / 타임테이블 ${snapshot.slotCount}건\n` +
       `계획 섭외비 ${snapshot.plannedAmount.toLocaleString("ko-KR")}원\n\n` +
       (note.trim() || "") +
       menteeSection +
-      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
+      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : "") +
+      (isReport ? POST_REPORT_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,
     projectId,
     appliedRuleId: line.ruleId,
     steps: line.steps,
+    approvalKind: isReport ? "report" : "decision",
   });
   if (!approval.ok) return approval;
 
-  const { error: linkError } = await supabase
-    .from("engagement_plans")
-    .update({
-      status: "in_progress",
-      approval_id: approval.approvalId,
-      submitted_by: auth.userId,
-      submitted_at: new Date().toISOString(),
-      last_rejection_note: null,
-    })
-    .eq("id", planId);
-  if (linkError) return { ok: false, error: "결재 연결에 실패했습니다." };
+  const linkError = await finalizePlanRecord(
+    supabase,
+    planId,
+    approval.approvalId,
+    auth.userId,
+    flow.mode
+  );
+  if (linkError) return { ok: false, error: linkError };
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
     actor_auth_user_id: auth.userId,
     actor_role: auth.role,
-    action: "engagement_plan.submit",
+    action: isReport ? "engagement_plan.post_report" : "engagement_plan.submit",
     resource_type: "engagement_plan",
     resource_id: planId,
     after_data: {
@@ -385,11 +468,12 @@ export async function submitEngagementPlan(
       approval_id: approval.approvalId,
       planned_amount: snapshot.plannedAmount,
       position_count: snapshot.positionCount,
+      flow: flow.mode,
     },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  return { ok: true, approvalId: approval.approvalId };
+  return { ok: true, approvalId: approval.approvalId, flow: flow.mode };
 }
 
 /**
@@ -494,11 +578,18 @@ export async function submitEngagementPlanChange(
     return { ok: false, error: "계획 명세 저장에 실패했습니다." };
   }
 
+  // 변경·보완도 같은 판정 (38번) — 추가 세션을 합산한 금액으로 상한을 다시 본다
+  const flow = await decidePlanFlow({
+    amount: snapshot.plannedAmount,
+    requesterGrade: auth.grade,
+  });
+  const isReport = flow.mode === "post_report";
+
   const diff = snapshot.plannedAmount - current.plannedAmount;
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
-    title: `[섭외계획 변경 R${current.revision + 1}] ${project.name}`,
+    title: `${isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${current.revision + 1}] ${project.name}`,
     body:
       `인원 ${current.positionCount}명 → ${snapshot.positionCount}명\n` +
       `계획 섭외비 ${current.plannedAmount.toLocaleString("ko-KR")}원 → ` +
@@ -506,12 +597,14 @@ export async function submitEngagementPlanChange(
       `(${diff >= 0 ? "+" : ""}${diff.toLocaleString("ko-KR")}원)\n\n` +
       `변경 사유: ${reason.trim()}` +
       (await buildMenteeSection(snapshot.lines.map((l) => l.slotId))) +
-      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : ""),
+      (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : "") +
+      (isReport ? POST_REPORT_NOTE : ""),
     approvalType: "project",
     amount: snapshot.plannedAmount,
     projectId,
     appliedRuleId: line.ruleId,
     steps: line.steps,
+    approvalKind: isReport ? "report" : "decision",
   });
   if (!approval.ok) {
     await supabase.from("engagement_plans").delete().eq("id", created.id);
@@ -519,22 +612,27 @@ export async function submitEngagementPlanChange(
     return approval;
   }
 
-  const { error: linkError } = await supabase
-    .from("engagement_plans")
-    .update({
-      status: "in_progress",
-      approval_id: approval.approvalId,
-      submitted_by: auth.userId,
-      submitted_at: new Date().toISOString(),
-    })
-    .eq("id", created.id);
-  if (linkError) return { ok: false, error: "결재 연결에 실패했습니다." };
+  const linkError = await finalizePlanRecord(
+    supabase,
+    created.id,
+    approval.approvalId,
+    auth.userId,
+    flow.mode
+  );
+  if (linkError) {
+    // 연결 실패 — 새 계획을 지우고 부모를 되살린다 (리뷰 P3-4: 승인 계획이
+    // 사라진 채 남으면 발송이 통째로 막힌다)
+    await supabase.from("engagement_plans").delete().eq("id", created.id);
+    await revertParent();
+    return { ok: false, error: linkError };
+  }
+  // 사후보고면 이전 계획은 그대로 superseded(위에서 이미 비움) — 새 계획이 즉시 유효
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
     actor_auth_user_id: auth.userId,
     actor_role: auth.role,
-    action: "engagement_plan.change_submit",
+    action: isReport ? "engagement_plan.post_report" : "engagement_plan.change_submit",
     resource_type: "engagement_plan",
     resource_id: created.id,
     before_data: {
@@ -547,9 +645,10 @@ export async function submitEngagementPlanChange(
       planned_amount: snapshot.plannedAmount,
       position_count: snapshot.positionCount,
       approval_id: approval.approvalId,
+      flow: flow.mode,
     },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  return { ok: true };
+  return { ok: true, approvalId: approval.approvalId, flow: flow.mode };
 }

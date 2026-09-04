@@ -23,6 +23,8 @@ import {
   type OpenRequest,
 } from "@/app/(dashboard)/[tenantSlug]/settings/module-request-panel";
 import { LiteModePanel } from "@/app/(dashboard)/[tenantSlug]/settings/lite-mode-panel";
+import { getPostReportSettings } from "@/lib/integrations/engagement-post-report";
+import { PostReportPanel } from "./post-report-panel";
 
 import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
@@ -65,6 +67,8 @@ export default async function OrgAdminPage({
   }
   const modules = await getTenantModules();
   const expertsLite = await isExpertsLite();
+  // 섭외 사후보고 모드 (38번) — approvals 스코프, experts+approvals 모듈일 때만 의미
+  const postReport = await getPostReportSettings();
 
   if (!hasSupabaseEnv()) {
     return (
@@ -287,13 +291,21 @@ export default async function OrgAdminPage({
         )}
 
         {/* 라이트 모드 — 기능 축소라 승인 없이 기업이 스스로 설정 (기획 확정 2026-08-25) */}
-        {canRequestModules && modules.experts && (
+        {modules.experts &&
+          (canRequestModules || scopeSet.approvals) && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">전문가 섭외 운영 방식</CardTitle>
           </CardHeader>
-          <CardContent>
-            <LiteModePanel enabled={expertsLite} />
+          <CardContent className="space-y-3">
+            {canRequestModules && <LiteModePanel enabled={expertsLite} />}
+            {modules.approvals && (isCeo || scopeSet.approvals) && (
+              <PostReportPanel
+                enabled={postReport.enabled}
+                minGrade={postReport.minGrade}
+                maxAmount={postReport.maxAmount}
+              />
+            )}
           </CardContent>
         </Card>
         )}

@@ -7,8 +7,8 @@ import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
-  APPROVAL_STATUS_LABELS,
   APPROVAL_TYPE_LABELS,
+  approvalStatusLabel,
   formatKrw,
 } from "@/lib/approvals/constants";
 import { PageHeader } from "@/components/layout/header";
@@ -44,6 +44,8 @@ type ApprovalRow = {
   id: string;
   title: string;
   approval_type: string;
+  /** 38번: report = 사후보고(확인·피드백만) */
+  approval_kind: string;
   amount: number | null;
   status: string;
   created_at: string;
@@ -103,7 +105,7 @@ export default async function ApprovalsPage({
       supabase
         .from("approvals")
         .select(
-          "id, title, approval_type, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
+          "id, title, approval_type, approval_kind, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
         )
         .order("created_at", { ascending: false })
         .limit(100),
@@ -137,9 +139,11 @@ export default async function ApprovalsPage({
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 
   // 현황 요약 — 목록만으로는 "지금 회사 결재가 어떤 상태인가"가 안 보인다.
+  // 사후보고(38번)는 승인/반려 집계에서 뺀다 — 확인 문서지 결재가 아니다
+  const decisions = rows.filter((a) => a.approval_kind !== "report");
   const inProgress = rows.filter((a) => a.status === "in_progress");
-  const approved = rows.filter((a) => a.status === "approved");
-  const rejected = rows.filter((a) => a.status === "rejected");
+  const approved = decisions.filter((a) => a.status === "approved");
+  const rejected = decisions.filter((a) => a.status === "rejected");
   const inProgressAmount = inProgress.reduce((sum, a) => sum + (a.amount ?? 0), 0);
 
   const renderTable = (list: ApprovalRow[]) => (
@@ -169,6 +173,11 @@ export default async function ApprovalsPage({
               <TableCell>
                 {APPROVAL_TYPE_LABELS[approval.approval_type] ??
                   approval.approval_type}
+                {approval.approval_kind === "report" && (
+                  <span className="ml-1 rounded-full bg-[#FF6F61]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#b3483d]">
+                    사후보고
+                  </span>
+                )}
               </TableCell>
               <TableCell>{formatKrw(approval.amount)}</TableCell>
               <TableCell>{approval.users?.name ?? "-"}</TableCell>
@@ -176,8 +185,14 @@ export default async function ApprovalsPage({
                 {new Date(approval.created_at).toLocaleDateString("ko-KR")}
               </TableCell>
               <TableCell>
-                <Badge variant={STATUS_VARIANT[approval.status] ?? "secondary"}>
-                  {APPROVAL_STATUS_LABELS[approval.status] ?? approval.status}
+                <Badge
+                  variant={
+                    approval.approval_kind === "report" && approval.status === "rejected"
+                      ? "outline"
+                      : (STATUS_VARIANT[approval.status] ?? "secondary")
+                  }
+                >
+                  {approvalStatusLabel(approval.status, approval.approval_kind)}
                 </Badge>
               </TableCell>
             </TableRow>

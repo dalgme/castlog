@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 
 /**
  * 섭외계획 품의 (operations ↔ approvals — CLAUDE.md 1-2-6)
@@ -417,6 +418,46 @@ export async function assertEngagementAllowed(
     };
   }
   return { ok: true };
+}
+
+/**
+ * 사후보고 피드백 훅 (38번) — 상급자가 보고 문서에 '피드백'을 남기면 계획에
+ * 문구만 기록한다. 계획·프로젝트 단계는 **되돌리지 않는다** (이미 문자가
+ * 나갔을 수 있다). 담당자 화면(섭외 진행 탭·프로젝트 배너)이 이 문구를 보여 준다.
+ */
+export async function onEngagementReportFeedback(
+  approvalId: string,
+  feedback: string,
+  /** 남긴 사람 — 여러 단계(팀장·임원)의 피드백이 누적되므로 누가 썼는지 붙인다 */
+  actorName: string | null
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: plan } = await admin
+    .from("engagement_plans")
+    .select("id, tenant_id, project_id, feedback_note")
+    .eq("approval_id", approvalId)
+    .maybeSingle();
+  if (!plan) return;
+
+  const line = `${actorName ? `[${actorName}] ` : ""}${feedback || "(내용 미기재)"}`;
+  const merged = plan.feedback_note ? `${plan.feedback_note}\n${line}` : line;
+  const { error } = await admin
+    .from("engagement_plans")
+    .update({ feedback_note: merged })
+    .eq("id", plan.id);
+  if (error && !isMissingColumnError(error)) {
+    console.error("engagement report feedback update failed:", error.message);
+  }
+
+  await admin.from("audit_logs").insert({
+    tenant_id: plan.tenant_id,
+    actor_auth_user_id: null,
+    actor_role: "system",
+    action: "engagement_plan.feedback",
+    resource_type: "engagement_plan",
+    resource_id: plan.id,
+    after_data: { approval_id: approvalId, project_id: plan.project_id },
+  });
 }
 
 /**

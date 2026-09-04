@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ClipboardCheck, FileCheck2, Send } from "lucide-react";
 
-import { formatKrw } from "@/lib/approvals/constants";
+import { REPORT_STATUS_LABELS, formatKrw } from "@/lib/approvals/constants";
 import { cn } from "@/lib/utils";
 import {
   ENGAGEMENT_STAGE_DESCRIPTIONS,
@@ -54,6 +54,12 @@ export type ApprovedPlanRow = {
   note: string | null;
   /** 계획에 담긴 세션 라벨 (부분 상신·보완 상신 확인용) */
   sessionLabels: string[];
+  /** 38번: 사후보고로 확정된 계획인가 */
+  postReport: boolean;
+  /** 사후보고 문서의 상태 (in_progress=확인 대기 / approved=확인 완료 / rejected=피드백) */
+  reportStatus: string | null;
+  /** 상급자 피드백 — 진행을 되돌리지 않고 문구만 표시 */
+  feedbackNote: string | null;
 };
 
 export type ProgressRow = {
@@ -151,9 +157,31 @@ export function EngagementProgress({
       stage === "accepted_all" ||
       stage === "letters_sent");
   const beforeApproval = stage === "assigning" || stage === "plan_review";
+  // 사후보고 피드백(38번) — **현재 유효한(최신 승인) 리비전**의 피드백만 코랄로
+  // 먼저 보인다. 조정 후 다시 보고한 뒤에도 옛 피드백이 떠 있으면 안 된다 (리뷰 P2-4)
+  const latest = plans[0];
+  const feedbackPlan =
+    latest && latest.postReport && latest.status === "approved" && latest.feedbackNote
+      ? latest
+      : null;
 
   return (
     <div className="space-y-4">
+      {feedbackPlan && (
+        <div className="rounded-lg border-2 border-[#FF6F61] bg-[#FF6F61]/10 p-3">
+          <p className="text-sm font-bold text-[#b3483d]">
+            상급자 피드백 — 사후보고 v{feedbackPlan.revision}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[#b3483d]">
+            {feedbackPlan.feedbackNote}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            피드백은 진행을 되돌리지 않습니다. 후보·금액을 조정했다면 변경
+            확정(사후보고)으로 다시 보고하세요.
+          </p>
+        </div>
+      )}
+
       {/* ── 지금 단계 + 실행 버튼 ─────────────────────────────── */}
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
@@ -305,6 +333,17 @@ export function EngagementProgress({
                         >
                           {PLAN_STATUS_LABELS[p.status] ?? p.status}
                         </span>
+                        {p.postReport && (
+                          <span
+                            className="mt-1 block w-fit rounded-full bg-[#FF6F61]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#b3483d]"
+                            title="사후보고 모드로 즉시 확정된 계획"
+                          >
+                            사후보고
+                            {p.reportStatus
+                              ? ` · ${REPORT_STATUS_LABELS[p.reportStatus] ?? p.reportStatus}`
+                              : ""}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs">
                         {p.sessionLabels.length === 0
@@ -313,6 +352,11 @@ export function EngagementProgress({
                         {p.note && (
                           <p className="mt-0.5 text-[11px] text-muted-foreground">
                             {p.note}
+                          </p>
+                        )}
+                        {p.feedbackNote && (
+                          <p className="mt-0.5 text-[11px] font-medium text-[#b3483d]">
+                            피드백: {p.feedbackNote}
                           </p>
                         )}
                       </TableCell>

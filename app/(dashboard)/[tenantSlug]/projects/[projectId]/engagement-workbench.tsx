@@ -117,6 +117,7 @@ export function EngagementWorkbench({
   planPreview,
   planApproverOptions = [],
   planRelayOn = false,
+  planFlow = { mode: "pre_approval", reason: null },
   headerActions,
   expertsLite = false,
 }: {
@@ -161,6 +162,8 @@ export function EngagementWorkbench({
   planApproverOptions?: { id: string; name: string; gradeLabel: string }[];
   /** 상급자 릴레이 결재(27번) 활성 — 픽커 안내 문구 분기 */
   planRelayOn?: boolean;
+  /** 사후보고 모드(38번) 판정 — 버튼 라벨·다이얼로그 문구 분기 */
+  planFlow?: { mode: "post_report" } | { mode: "pre_approval"; reason: string | null };
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
   /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송부 없이 기록만 */
@@ -193,6 +196,7 @@ export function EngagementWorkbench({
               lines={planPreview.lines}
               approverOptions={planApproverOptions}
               relayOn={planRelayOn}
+              flow={planFlow}
             />
           )}
           {/* 섭외 문자 발송·수락서 송부는 '승인 목록 및 섭외 진행' 탭으로
