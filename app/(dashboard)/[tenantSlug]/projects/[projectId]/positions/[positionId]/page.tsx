@@ -215,7 +215,9 @@ export default async function PositionPage({
             <CardContent className="pt-6 text-sm text-muted-foreground">
               {ctx.status === "requested"
                 ? "이 자리는 섭외 요청이 나가 회신을 기다리는 중입니다. 무응답 대응(재안내·회수)은 섭외 현황에서 합니다."
-                : "이 자리는 섭외가 확정된 인원입니다."}
+                : ctx.status === "canceled"
+                  ? "취소된 자리입니다. 다시 섭외하려면 세션 확인 탭에서 자리를 복구한 뒤 요청하세요."
+                  : "이 자리는 섭외가 확정된 인원입니다."}
               {ctx.engagementId && (
                 <>
                   {" "}

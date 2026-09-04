@@ -14,8 +14,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *  · claim_minimal   — 이름·번호 정도만 있음 → "1분이면 가입됩니다. 지급을 위해 계좌 등 필요"
  *  · no_phone        — 휴대폰 번호가 없음 → 인증 로그인이 불가하니 기업에 등록 요청
  *
- * 전부 공개 정보(§4 전면 공개 범위)와 존재 여부만 쓴다 — 서류 내용·평가·메모는
- * 절대 싣지 않는다.
+ * 노출 범위는 호출 문맥(audience)으로 가른다:
+ *  · public — 토큰만 있으면 누구나 보는 화면(/e·/b). §4 전면 공개 항목(프로필
+ *    라벨)과 서류 '건수', 마스킹 번호까지만. 주민번호·계좌·소득 유형의 존재
+ *    여부는 §5 비밀 항목이라 **조회조차 하지 않는다** (missing = null).
+ *  · portal — 로그인한 전문가 본인 화면. 누락 항목까지 계산한다.
+ * 서류 내용·평가·메모는 어느 문맥에서도 싣지 않는다.
  */
 
 export type PortalGuideKind =
@@ -24,16 +28,21 @@ export type PortalGuideKind =
   | "claim_minimal"
   | "no_phone";
 
+export type PortalGuideAudience = "public" | "portal";
+
 export type ExpertPortalGuide = {
   kind: PortalGuideKind;
   /** 인증에 쓸 번호 — 마스킹 (010-****-1234) */
   phoneMasked: string | null;
   /** 기업이 올려 둔 활성 서류 수 (내용 미노출) */
   documentCount: number;
-  /** 이미 채워진 프로필 항목 라벨 (기업 등록분 안내용) */
+  /** 이미 채워진 프로필 항목 라벨 (기업 등록분 안내용 — 공개 범위 항목만) */
   prefilled: string[];
-  /** 지급·계약에 필요한데 아직 없는 항목 라벨 */
-  missing: string[];
+  /**
+   * 지급·계약에 필요한데 아직 없는 항목 라벨.
+   * null = 판정하지 않음(공개 화면) — 화면은 일반 문구로 대신한다.
+   */
+  missing: string[] | null;
   /** 포털 진입 경로 (로그인 후 돌아올 곳 포함) */
   loginHref: string;
 };
@@ -47,16 +56,12 @@ function maskPhone(phone: string | null): string | null {
 
 export async function getExpertPortalGuide(
   expertId: string,
-  nextPath = "/expert/engagements"
+  options: { audience?: PortalGuideAudience; nextPath?: string } = {}
 ): Promise<ExpertPortalGuide | null> {
+  const audience = options.audience ?? "public";
+  const nextPath = options.nextPath ?? "/expert/engagements";
   const admin = createAdminClient();
-  const [
-    { data: expert },
-    { count: docCount },
-    { count: bankCount },
-    { count: rrnCount },
-    { data: tax },
-  ] = await Promise.all([
+  const [{ data: expert }, { count: docCount }] = await Promise.all([
     admin
       .from("experts")
       .select(
@@ -69,20 +74,6 @@ export async function getExpertPortalGuide(
       .select("id", { count: "exact", head: true })
       .eq("expert_id", expertId)
       .eq("status", "active"),
-    admin
-      .from("expert_bank_accounts")
-      .select("expert_id", { count: "exact", head: true })
-      .eq("expert_id", expertId),
-    admin
-      .from("rrn_fragments_front")
-      .select("id", { count: "exact", head: true })
-      .eq("expert_id", expertId)
-      .is("purged_at", null),
-    admin
-      .from("expert_tax_profiles")
-      .select("payment_type")
-      .eq("expert_id", expertId)
-      .maybeSingle(),
   ]);
   if (!expert) return null;
 
@@ -94,11 +85,35 @@ export async function getExpertPortalGuide(
   if (expert.region) prefilled.push("지역");
   if (expert.bio) prefilled.push("소개");
 
-  const missing: string[] = [];
-  if (!expert.email) missing.push("이메일");
-  if ((bankCount ?? 0) === 0) missing.push("지급 계좌");
-  if (!tax?.payment_type) missing.push("소득 유형(사업/기타소득)");
-  if ((rrnCount ?? 0) === 0) missing.push("주민등록번호(지급명세서용)");
+  // 비밀 항목 존재 여부는 본인 로그인 화면에서만 조회한다 (§5)
+  let missing: string[] | null = null;
+  if (audience === "portal") {
+    const [{ count: bankCount }, { count: rrnCount }, { data: tax }] =
+      await Promise.all([
+        admin
+          .from("expert_bank_accounts")
+          .select("expert_id", { count: "exact", head: true })
+          .eq("expert_id", expertId),
+        admin
+          .from("rrn_fragments_front")
+          .select("id", { count: "exact", head: true })
+          .eq("expert_id", expertId)
+          .is("purged_at", null),
+        admin
+          .from("expert_tax_profiles")
+          .select("payment_type")
+          .eq("expert_id", expertId)
+          .maybeSingle(),
+      ]);
+    missing = [];
+    if (!expert.email) missing.push("이메일");
+    if ((bankCount ?? 0) === 0) missing.push("지급 계좌");
+    if (!tax?.payment_type) missing.push("소득 유형(사업/기타소득)");
+    // 사업자 청구 전문가는 주민번호를 수집하지 않는다 (§5)
+    if (tax?.payment_type !== "business" && (rrnCount ?? 0) === 0) {
+      missing.push("주민등록번호(지급명세서용)");
+    }
+  }
 
   const loginHref = `/login?tab=expert&next=${encodeURIComponent(nextPath)}`;
   const documentCount = docCount ?? 0;

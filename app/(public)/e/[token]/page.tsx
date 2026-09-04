@@ -25,6 +25,7 @@ import {
 } from "@/lib/integrations/engagement-roles";
 
 import { getExpertPortalGuide } from "@/lib/integrations/expert-portal-guide";
+import { withinRewrapWindow } from "@/lib/integrations/rrn-rewrap";
 import { PortalGuide } from "@/components/expert/portal-guide";
 
 import { EngagementRespondForm } from "./respond-form";
@@ -96,9 +97,12 @@ export default async function EngagementConsentPage({
           summary.endsTime
         )
       : null;
-    // 이미 수락한 링크를 다시 연 전문가 — 다음 단계(포털)를 등록 상태별로 안내
+    // 이미 수락한 링크를 다시 연 전문가 — 다음 단계(포털)를 등록 상태별로 안내.
+    // 토큰이 영구 열쇠가 되지 않도록 재래핑과 같은 창(72h) 안에서만 (리뷰 H1)
     const failGuide =
-      summary?.respondedAs === "accepted" && summary.expertId
+      summary?.respondedAs === "accepted" &&
+      summary.expertId &&
+      withinRewrapWindow(summary.respondedAt)
         ? await getExpertPortalGuide(summary.expertId)
         : null;
     return shell(

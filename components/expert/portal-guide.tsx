@@ -18,10 +18,13 @@ export function PortalGuide({
   mentionRewrap?: boolean;
 }) {
   const company = tenantName ?? "요청 기업";
+  // missing === null → 공개 화면(누락 항목을 판정하지 않음) — 일반 문구
   const missingLine =
-    guide.missing.length > 0
-      ? `지급·계약을 위해 ${guide.missing.join(" · ")} 등록이 필요합니다.`
-      : "지급·계약에 필요한 정보가 모두 등록되어 있습니다.";
+    guide.missing === null
+      ? "지급에 필요한 정보(계좌·소득 유형 등)는 포털에서 확인·등록합니다."
+      : guide.missing.length > 0
+        ? `지급·계약을 위해 ${guide.missing.join(" · ")} 등록이 필요합니다.`
+        : "지급·계약에 필요한 정보가 모두 등록되어 있습니다.";
 
   const body = (() => {
     switch (guide.kind) {

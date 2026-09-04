@@ -282,20 +282,22 @@ export function EngagementPlanPanel({
           </p>
         )}
 
+        {/* 변경·보완 품의 반려 사유 — 상신 권한이나 변경분이 없어도 보여야
+            "왜 반려됐나"를 알 수 있다 (E2E 검수 P1-1) */}
+        {plan.lastChangeRejection && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-900">
+            최근 변경·추가 품의가 <b>반려</b>되었습니다 — 사유: {plan.lastChangeRejection}
+            <br />
+            기존 승인 계획은 그대로 유효합니다. 내용을 조정한 뒤 다시 상신하세요.
+          </p>
+        )}
+
         {canSubmit && (isChange || canAppend) && (
           <div className="space-y-2 rounded-md border bg-background p-3">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
-            )}
-            {plan.lastChangeRejection && (
-              <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-900">
-                최근 변경·추가 품의가 <b>반려</b>되었습니다 — 사유: {plan.lastChangeRejection}
-                <br />
-                기존 승인 계획은 그대로 유효합니다. 내용을 조정한 뒤 아래에서
-                다시 상신하세요.
-              </p>
             )}
             {!isChange && canAppend && (
               <p className="text-xs leading-relaxed text-muted-foreground">

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { parseModuleFlags } from "@/lib/modules/modules";
 
 /**
  * 주민번호 키 재래핑 — 공용 로직 (E2E 검수 전문가 P1-2·P2-1).
@@ -34,7 +35,13 @@ export type RewrapContext =
     }
   | {
       applicable: false;
-      reason?: "already_done" | "no_rrn" | "tenant_no_key" | "window_closed" | "not_accepted";
+      reason?:
+        | "already_done"
+        | "no_rrn"
+        | "tenant_no_key"
+        | "window_closed"
+        | "not_accepted"
+        | "module_off";
     };
 
 export type RewrapEngagement = {
@@ -45,10 +52,27 @@ export type RewrapEngagement = {
   status: string;
 };
 
+/**
+ * experts 모듈 게이트 — 모듈이 꺼진 테넌트에는 연결 테이블(tax_project_grants)
+ * 접근도 막는다 (1-2 규칙 6). 토큰·세션 경로 모두 여기를 지난다.
+ */
+async function expertsModuleActive(tenantId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("feature_flags")
+    .eq("id", tenantId)
+    .maybeSingle();
+  return parseModuleFlags(tenant?.feature_flags).experts;
+}
+
 export async function buildRewrapContext(
   eng: RewrapEngagement
 ): Promise<RewrapContext> {
   if (eng.status !== "accepted") return { applicable: false, reason: "not_accepted" };
+  if (!(await expertsModuleActive(eng.tenant_id))) {
+    return { applicable: false, reason: "module_off" };
+  }
 
   const admin = createAdminClient();
   const [{ data: keyRow }, { data: front }, { data: tenantKey }, { data: grant }] =
@@ -110,6 +134,13 @@ export async function saveRewrapResult(
   if (eng.status !== "accepted") {
     return { ok: false, error: "유효한 승인 건이 아닙니다." };
   }
+  if (!(await expertsModuleActive(eng.tenant_id))) {
+    return {
+      ok: false,
+      error:
+        "이 기업은 전문가 섭외 기능을 사용하지 않아 키를 전달할 수 없습니다 (규칙 거부). 기업 담당자에게 확인해 주세요.",
+    };
+  }
   const value = input.newWrappedDek?.trim() ?? "";
   // 2048비트 RSA-OAEP 결과 = 256바이트 → base64 344자. 4096비트면 684자.
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length < 300 || value.length > 1200) {
@@ -145,7 +176,15 @@ export async function saveRewrapResult(
     wrap_alg: "RSA-OAEP-256",
     status: "active",
   });
-  if (error) return { ok: false, error: "저장에 실패했습니다." };
+  // 동시 제출(두 번 탭)로 먼저 들어간 행이 있으면 성공으로 본다 — 결과는 같다
+  if (error?.code === "23505") return { ok: true };
+  if (error) {
+    return {
+      ok: false,
+      error:
+        "키 전달 저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도하고, 반복되면 기업 담당자에게 알려 주세요.",
+    };
+  }
   return { ok: true };
 }
 
