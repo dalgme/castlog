@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
 import { gradeFromUser } from "@/lib/auth/tenant";
+import { GRADE_LABELS, isUserGrade } from "@/lib/auth/grades";
 import { isStepOpenFor, loadTurnContext } from "@/lib/approvals/turn";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
 import { createClient } from "@/lib/supabase/server";
@@ -138,6 +139,24 @@ export default async function ApprovalsPage({
   });
   const mySubmitted = rows.filter((a) => a.requester_user_id === user?.id);
 
+  // "누구 차례인가" — 지정 결재라인은 앞 사람이 처리해야 다음이 열린다.
+  // 이걸 안 보여 주면 뒤 순서 임원은 '대기'만 보고 자기가 막힌 줄 안다
+  // (렛츠 보고 2026-09-05). 릴레이 단계는 직급으로 표시한다.
+  const userNameById = new Map((users ?? []).map((u) => [u.id, u.name]));
+  const currentTurnLabel = (a: ApprovalRow): string | null => {
+    const group = currentPendingGroup(a);
+    if (group.length === 0) return null;
+    return group
+      .map((s) =>
+        s.approver_user_id
+          ? (userNameById.get(s.approver_user_id) ?? "지정 결재자")
+          : isUserGrade(s.step_grade)
+            ? `${GRADE_LABELS[s.step_grade]} 이상`
+            : "-"
+      )
+      .join(" · ");
+  };
+
   // 현황 요약 — 목록만으로는 "지금 회사 결재가 어떤 상태인가"가 안 보인다.
   // 사후보고(38번)는 승인/반려 집계에서 뺀다 — 확인 문서지 결재가 아니다
   const decisions = rows.filter((a) => a.approval_kind !== "report");
@@ -157,6 +176,7 @@ export default async function ApprovalsPage({
             <TableHead>상신자</TableHead>
             <TableHead>상신일</TableHead>
             <TableHead>상태</TableHead>
+            <TableHead>현재 차례</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -194,6 +214,9 @@ export default async function ApprovalsPage({
                 >
                   {approvalStatusLabel(approval.status, approval.approval_kind)}
                 </Badge>
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {currentTurnLabel(approval) ?? "-"}
               </TableCell>
             </TableRow>
           ))}

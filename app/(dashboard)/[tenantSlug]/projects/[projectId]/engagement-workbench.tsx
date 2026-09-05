@@ -215,7 +215,7 @@ export function EngagementWorkbench({
                 projectId={projectId}
                 disabled
                 disabledReason={`결재 중인 품의가 끝나면 나머지 세션 ${outOfPlanSlotIds.length}개를 추가 품의로 올릴 수 있습니다 (계획 품의는 한 번에 한 건씩 결재됩니다).`}
-                lines={planPreview.lines}
+                lines={[]}
                 approverOptions={planApproverOptions}
                 relayOn={planRelayOn}
                 flow={planFlow}

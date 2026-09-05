@@ -47,6 +47,8 @@ import {
   buildPlanSnapshot,
   evaluatePlanGate,
   parsePlanSignatureCandidates,
+  planLineKey,
+  type PlanSignatureLine,
 } from "@/lib/integrations/engagement-plans";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { isPlanRelayEnabled } from "@/lib/approvals/relay";
@@ -1004,6 +1006,7 @@ export default async function ProjectDetailPage({
         slot_date: string;
         starts_time: string | null;
         ends_time: string | null;
+        role_type: string;
         role_description: string | null;
         required_count: number;
         location_name: string | null;
@@ -1013,7 +1016,7 @@ export default async function ProjectDetailPage({
         ? await supabase
             .from("engagement_plan_lines")
             .select(
-              "plan_id, slot_id, slot_date, starts_time, ends_time, role_description, required_count, location_name, subtotal"
+              "plan_id, slot_id, slot_date, starts_time, ends_time, role_type, role_description, required_count, location_name, subtotal"
             )
             .in("plan_id", planIds)
             .order("slot_date", { ascending: true })
@@ -1030,24 +1033,25 @@ export default async function ProjectDetailPage({
         slotIdsByPlan.set(l.plan_id, set);
       }
       // 상신·승인 시점의 섭외 대상(코드·전문가·예정가)은 지문에 있다 —
-      // 현재 배정이 아니라 결재된 금액을 보여 준다 (핫픽스 2026-09-05)
-      const candidatesByPlan = new Map(
+      // 현재 배정이 아니라 결재된 금액을 보여 준다 (핫픽스 2026-09-05).
+      // 명세 행과는 지문 line 열쇠(일자·시간·역할·인원·소계)로 잇는다 —
+      // 현재 자리(코드)로 되짚으면 그 뒤 지운 자리의 전문가가 사라져 소계와
+      // 어긋난다 (리뷰 M2)
+      const signatureLinesByPlan = new Map(
         (planRows ?? []).map((p) => [
           p.id,
           parsePlanSignatureCandidates(p.plan_signature),
         ])
       );
-      const positionSlotByCode = new Map(
-        (positionRecords ?? []).map((p) => [p.code, p.slot_id])
-      );
       const signatureExpertIds = Array.from(
         new Set(
-          Array.from(candidatesByPlan.values())
+          Array.from(signatureLinesByPlan.values())
             .flat()
-            .map((c) => c.expertId)
+            .flatMap((line) => line.candidates.map((c) => c.expertId))
             .filter((id): id is string => id !== null && !expertNameById.has(id))
         )
       );
+      // 승인 뒤 연결이 끊긴 전문가는 RLS로 안 보일 수 있다 → "전문가" 폴백
       const { data: signatureExperts } = signatureExpertIds.length
         ? await supabase
             .from("experts")
@@ -1061,34 +1065,44 @@ export default async function ProjectDetailPage({
         id
           ? (expertNameById.get(id) ?? signatureNameById.get(id) ?? "전문가")
           : "미배정";
+      const periodEndBySlot = new Map(
+        slotRows.map((s) => [s.id, s.periodEndDate])
+      );
       const sessionsOf = (planId: string): ApprovedPlanSession[] => {
-        const cands = candidatesByPlan.get(planId) ?? [];
-        return (linesByPlan.get(planId) ?? []).map((l) => ({
-          slotId: l.slot_id,
-          label:
-            (l.slot_id ? slotLabelById.get(l.slot_id) : null) ??
-            `${l.slot_date} (삭제된 세션)`,
-          schedule: formatEventSchedule(
-            l.slot_date,
-            null,
-            l.starts_time,
-            l.ends_time
-          ),
-          roleDescription: l.role_description,
-          locationName: l.location_name,
-          requiredCount: l.required_count,
-          subtotal: l.subtotal,
-          experts: cands
-            .filter(
-              (c) => l.slot_id !== null && positionSlotByCode.get(c.code) === l.slot_id
-            )
-            .sort((a, b) => a.rank - b.rank)
-            .map((c) => ({
-              code: c.code,
-              name: expertLabel(c.expertId),
-              fee: c.fee,
-            })),
-        }));
+        // 같은 열쇠의 line이 둘이면(같은 날·시간·역할·인원·소계) 순서대로 소비
+        const pool = new Map<string, PlanSignatureLine[]>();
+        for (const line of signatureLinesByPlan.get(planId) ?? []) {
+          const list = pool.get(line.key) ?? [];
+          list.push(line);
+          pool.set(line.key, list);
+        }
+        return (linesByPlan.get(planId) ?? []).map((l) => {
+          const matched = pool.get(planLineKey(l))?.shift();
+          return {
+            slotId: l.slot_id,
+            label:
+              (l.slot_id ? slotLabelById.get(l.slot_id) : null) ??
+              `${l.slot_date} (삭제된 세션)`,
+            schedule: formatEventSchedule(
+              l.slot_date,
+              l.slot_id ? (periodEndBySlot.get(l.slot_id) ?? null) : null,
+              l.starts_time,
+              l.ends_time
+            ),
+            roleDescription: l.role_description,
+            locationName: l.location_name,
+            requiredCount: l.required_count,
+            subtotal: l.subtotal,
+            experts: (matched?.candidates ?? [])
+              .slice()
+              .sort((a, b) => a.rank - b.rank)
+              .map((c) => ({
+                code: c.code,
+                name: expertLabel(c.expertId),
+                fee: c.fee,
+              })),
+          };
+        });
       };
       // 사후보고 문서(38번)의 확인 상태 — 계획이 아니라 문서에 있다
       const reportApprovalIds = (planRows ?? [])
@@ -1608,7 +1622,15 @@ export default async function ProjectDetailPage({
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
-            outOfPlanSlotIds={outOfPlanSlotIds}
+            // 편집 개방은 섭외가 아직 진행 중인 단계까지만 — 수락서 송부 뒤·
+            // 종료·정산 단계에 새 세션을 열어 두면 갈 곳이 없다 (리뷰 M1)
+            outOfPlanSlotIds={
+              ["plan_review", "plan_approved", "requesting", "accepted_all"].includes(
+                engagementState?.stage ?? "assigning"
+              )
+                ? outOfPlanSlotIds
+                : []
+            }
             canManage={canExecute}
             canInput={canInput}
             canCancel={exec.engagementCancel}

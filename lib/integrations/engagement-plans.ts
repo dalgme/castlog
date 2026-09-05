@@ -185,25 +185,53 @@ export type PlanSignatureCandidate = {
  *   cands := code:expertId:fee:rank[,…]   lines는 ';'로 이어진다.
  * 결재된 금액을 화면에 보여 주는 근거 — 현재 예정가는 그 뒤 바뀌었을 수 있다.
  */
+export type PlanSignatureLine = {
+  /** 세션 명세와 맞추는 열쇠 — date|starts|ends|roleType|required|subtotal */
+  key: string;
+  candidates: PlanSignatureCandidate[];
+};
+
+/** engagement_plan_lines 한 행의 열쇠 — 지문 line의 앞 6필드와 같은 형식 */
+export function planLineKey(line: {
+  slot_date: string;
+  starts_time: string | null;
+  ends_time: string | null;
+  role_type: string;
+  required_count: number;
+  subtotal: number;
+}): string {
+  return [
+    line.slot_date,
+    line.starts_time ?? "",
+    line.ends_time ?? "",
+    line.role_type,
+    line.required_count,
+    line.subtotal,
+  ].join("|");
+}
+
 export function parsePlanSignatureCandidates(
   signature: string | null | undefined
-): PlanSignatureCandidate[] {
-  const out: PlanSignatureCandidate[] = [];
+): PlanSignatureLine[] {
+  const out: PlanSignatureLine[] = [];
   if (!signature) return out;
   for (const line of signature.split(";")) {
     if (!line) continue;
-    const cands = line.split("|")[6] ?? "";
-    for (const c of cands.split(",")) {
+    const fields = line.split("|");
+    const key = fields.slice(0, 6).join("|");
+    const candidates: PlanSignatureCandidate[] = [];
+    for (const c of (fields[6] ?? "").split(",")) {
       if (!c) continue;
       const [code, expertId, fee, rank] = c.split(":");
       if (!code) continue;
-      out.push({
+      candidates.push({
         code,
         expertId: expertId || null,
         fee: Number(fee) || 0,
         rank: Number(rank) || 0,
       });
     }
+    out.push({ key, candidates });
   }
   return out;
 }
