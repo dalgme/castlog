@@ -220,7 +220,7 @@ export default async function ProjectDetailPage({
         ? supabase
             .from("expert_engagements")
             .select(
-              "id, expert_id, role_description, fee_amount, status, created_at, experts (name)"
+              "id, expert_id, role_description, fee_amount, status, created_at, position_code, experts (name)"
             )
             .eq("project_id", project.id)
             .order("created_at", { ascending: false })
@@ -660,6 +660,22 @@ export default async function ProjectDetailPage({
     if (!dayError) calendarDays = (dayRows ?? []).map((d) => d.day);
   }
 
+  // 거절·만료로 다시 비게 된 자리 — 자리는 open으로 돌아가고 포인터가 지워져
+  // "누가 거절했는지"가 자리에 남지 않는다(긴급 취소와 같은 구조). 섭외 건의
+  // position_code로 되짚어 자리 행에 표시한다 (E2E 검수 P2-8)
+  const priorOutcomeByCode: Record<
+    string,
+    { expertName: string; outcome: "declined" | "expired" }
+  > = {};
+  for (const e of engagements) {
+    if (e.status !== "declined" && e.status !== "expired") continue;
+    if (!e.position_code || priorOutcomeByCode[e.position_code]) continue; // 최신순 — 가장 최근만
+    priorOutcomeByCode[e.position_code] = {
+      expertName: e.experts?.name ?? "전문가",
+      outcome: e.status,
+    };
+  }
+
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
     slotDate: s.slot_date,
@@ -688,6 +704,10 @@ export default async function ProjectDetailPage({
         engagementId: p.engagement_id,
         canceledExpertName:
           p.status === "open" ? (canceledByCode[p.code] ?? null) : null,
+        priorOutcome:
+          !p.engagement_id && (p.status === "open" || p.status === "assigned")
+            ? (priorOutcomeByCode[p.code] ?? null)
+            : null,
         assignedExpertName: p.assigned_expert_id
           ? (expertNameById.get(p.assigned_expert_id) ?? null)
           : null,
@@ -824,8 +844,21 @@ export default async function ProjectDetailPage({
         .filter((id): id is string => id !== null)
     )
   );
+  // 거절·만료된 건은 코드넘버 자리 행에 '이전 후보'로 표시된다 — 여기 다시
+  // 실으면 같은 건이 두 곳에 보인다 (E2E 검수 P2-8)
+  const knownPositionCodes = new Set(
+    slotRows.flatMap((slot) => slot.positions.map((p) => p.code))
+  );
   const unlinkedEngagements: UnlinkedEngagement[] = engagements
     .filter((e) => !linkedEngagementIds.has(e.id))
+    .filter(
+      (e) =>
+        !(
+          (e.status === "declined" || e.status === "expired") &&
+          e.position_code &&
+          knownPositionCodes.has(e.position_code)
+        )
+    )
     .map((e) => ({
       id: e.id,
       expertName: e.experts?.name ?? "-",

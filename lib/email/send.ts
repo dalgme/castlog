@@ -35,6 +35,11 @@ export type EmailSendParams = {
   subject: string;
   body: string;
   recipients: EmailRecipient[];
+  /**
+   * 답장 주소 — 발신은 인증 도메인(no-reply)이라 답장이 버려진다. 담당자
+   * 주소를 넣어야 "이 메일에 회신"이 실제로 닿는다 (E2E 검수 전문가 P2-5)
+   */
+  replyTo?: string;
 };
 
 export type EmailSendSummary = {
@@ -149,6 +154,7 @@ export async function sendTenantEmail(
         to: recipient.email,
         subject,
         text: body,
+        ...(params.replyTo ? { replyTo: params.replyTo } : {}),
       });
       if (!result.ok) {
         ok = false;

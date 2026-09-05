@@ -124,8 +124,9 @@ export function EngagementPlanButton({
       if (line.selected) s.amount += line.fee;
     }
     for (const s of Array.from(bySlot.values())) {
-      s.ready =
-        s.unassignedCount === 0 && s.assignedCount >= s.requiredCount;
+      // 빈 후보 TO는 상신을 막지 않는다 — 서버 findUnreadySlots와 같은 기준
+      // (E2E 검수 P2-4: 자동 발급된 TO 때문에 첫 품의가 늘 '미완성'이었다)
+      s.ready = s.assignedCount >= s.requiredCount;
     }
     return Array.from(bySlot.values());
   }, [lines]);
@@ -330,9 +331,10 @@ export function EngagementPlanButton({
                       </span>
                       {!s.ready && (
                         <span className="mt-1 block rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] leading-relaxed text-amber-900">
-                          {s.unassignedCount > 0
-                            ? `후보 미배정 ${s.unassignedCount}자리 — 미배정 항목을 삭제하거나 전문가를 배정한 뒤 상신할 수 있습니다.`
-                            : `배정 ${s.assignedCount}/${s.requiredCount}명 — 필요인원만큼 배정한 뒤 상신할 수 있습니다.`}
+                          배정 {s.assignedCount}/{s.requiredCount}명 — 필요인원만큼
+                          전문가를 배정한 뒤 상신할 수 있습니다.
+                          {s.unassignedCount > 0 &&
+                            ` (빈 후보 자리 ${s.unassignedCount}개는 상신을 막지 않습니다)`}
                         </span>
                       )}
                     </span>
@@ -359,9 +361,9 @@ export function EngagementPlanButton({
         {selectedUnready.length > 0 && (
           <Alert variant="destructive">
             <AlertDescription>
-              선택한 세션 중 {selectedUnready.length}개에 후보 미배정 항목이
-              남아 있습니다. 해당 세션의 미배정 항목을 삭제하거나 배정한 뒤
-              다시 상신하거나, 선택에서 빼고 완성된 세션만 먼저 상신하세요.
+              선택한 세션 중 {selectedUnready.length}개는 필요인원만큼 전문가가
+              배정되지 않았습니다. 해당 세션에 전문가를 더 배정한 뒤 다시
+              상신하거나, 선택에서 빼고 완성된 세션만 먼저 상신하세요.
               (미완성 세션은 추후 보완해서 계획 변경 품의로 추가할 수 있습니다)
             </AlertDescription>
           </Alert>

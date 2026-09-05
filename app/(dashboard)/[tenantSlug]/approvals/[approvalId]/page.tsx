@@ -137,6 +137,7 @@ export default async function ApprovalDetailPage({
   };
   let reviewChanges: ReviewChange[] = [];
   let isPlanApproval = false;
+  let planProjectId: string | null = null;
   {
     const { data: plan } = await supabase
       .from("engagement_plans")
@@ -145,6 +146,7 @@ export default async function ApprovalDetailPage({
       .maybeSingle();
     if (plan) {
       isPlanApproval = true;
+      planProjectId = plan.project_id;
       const { data: planSlots } = await supabase
         .from("engagement_slots")
         .select("id, slot_date, starts_time, session_name, role_type, required_count")
@@ -478,7 +480,14 @@ export default async function ApprovalDetailPage({
           canAct={canAct}
           actingAsDelegate={actingAsDelegate}
           canCancel={canCancel}
-          canResubmit={canResubmit}
+          // 섭외계획 품의는 결재건만 복제하면 계획과 끊긴 고아 결재가 된다 —
+          // 프로젝트 화면의 계획 재상신 경로로 보낸다 (E2E 검수 P2-5)
+          canResubmit={canResubmit && !isPlanApproval}
+          planResubmitHref={
+            canResubmit && isPlanApproval && planProjectId
+              ? `/${params.tenantSlug}/projects/${planProjectId}`
+              : null
+          }
           kind={isReport ? "report" : "decision"}
         />
       </main>

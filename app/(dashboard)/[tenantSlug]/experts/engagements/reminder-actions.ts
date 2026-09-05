@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
@@ -87,7 +88,7 @@ export async function remindEngagement(
   const { data: engagement } = await supabase
     .from("expert_engagements")
     .select(
-      "id, expert_id, project_id, status, program_name, starts_on, ends_on, starts_time, ends_time, location_name, token_expires_at"
+      "id, expert_id, project_id, status, program_name, starts_on, ends_on, starts_time, ends_time, location_name, token_expires_at, bundle_id"
     )
     .eq("id", engagementId)
     .maybeSingle();
@@ -133,6 +134,17 @@ export async function remindEngagement(
     return { ok: false, error: "그 사이 상태가 바뀌었습니다. 새로고침 후 확인해 주세요." };
   }
 
+  // 묶음 발송 건이면 묶음 링크(/b) 마감도 같이 늘린다 — 건 마감만 늘리면
+  // "어제 받은 묶음 링크는 만료, 오늘 링크는 유효"가 된다. 묶음 상태 전환은
+  // service_role 전용이라 admin 클라이언트로 (E2E 검수 전문가 P2-7)
+  if (engagement.bundle_id) {
+    await createAdminClient()
+      .from("engagement_bundles")
+      .update({ token_expires_at: expiresAt })
+      .eq("id", engagement.bundle_id)
+      .lt("token_expires_at", expiresAt);
+  }
+
   const { data: tenant } = await supabase
     .from("tenants")
     .select("name")
@@ -172,7 +184,9 @@ export async function remindEngagement(
     expertId: engagement.expert_id,
     body:
       `[재안내] ${tenant?.name ?? "기업"} 섭외 요청에 아직 회신이 없어 다시 안내드립니다.\n` +
-      `아래 새 링크로 회신해 주세요(이전 링크는 사용할 수 없습니다).\n` +
+      (engagement.bundle_id
+        ? `아래 링크로 회신해 주세요(앞서 받은 묶음 링크도 같은 마감까지 쓸 수 있습니다).\n`
+        : `아래 새 링크로 회신해 주세요(이전 링크는 사용할 수 없습니다).\n`) +
       `${engagement.program_name ?? ""}${schedule ? `\n일정: ${schedule}` : ""}` +
       `${engagement.location_name ? `\n장소: ${engagement.location_name}` : ""}\n` +
       `회신 마감: ${deadline}\n` +

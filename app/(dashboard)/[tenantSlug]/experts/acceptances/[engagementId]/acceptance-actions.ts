@@ -299,7 +299,8 @@ export async function sendAcceptance(
     body: [
       `[${acceptance.tenant_name}] 수락서 도착`,
       title,
-      "※ 수락서는 캐스트로그에서 확인·승인하셔야 합니다.",
+      // 회사 명의 문자에 플랫폼 이름이 나오면 스미싱으로 오해된다 (§16)
+      "※ 아래 링크(전문가 포털)에서 수락서를 확인·승인해 주세요.",
       portalUrl(letterPath),
     ]
       .filter(Boolean)

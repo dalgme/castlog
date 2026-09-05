@@ -307,18 +307,14 @@ async function assertSlotsReady(
   );
   if (unready.length === 0) return { ok: true };
   const detail = unready
-    .map((s) =>
-      s.unassigned > 0
-        ? `${s.label} (후보 미배정 ${s.unassigned}자리)`
-        : `${s.label} (배정 ${s.assignedCount}/${s.requiredCount}명)`
-    )
+    .map((s) => `${s.label} (배정 ${s.assignedCount}/${s.requiredCount}명)`)
     .join(", ");
   return {
     ok: false,
     error:
-      `상신하려는 세션에 후보 미배정 항목이 남아 있습니다 (규칙): ${detail}. ` +
-      `미배정 후보 자리를 삭제하거나 전문가를 배정한 뒤 다시 품의를 상신해 주세요. ` +
-      `미완성 세션은 선택에서 빼고 완성된 세션만 먼저 상신할 수도 있습니다.`,
+      `상신하려는 세션에 필요인원만큼 전문가가 배정되지 않았습니다 (규칙): ${detail}. ` +
+      `후보 자리에 전문가를 배정하거나 필요인원을 조정한 뒤 다시 품의를 상신해 주세요. ` +
+      `미완성 세션은 선택에서 빼고 완성된 세션만 먼저 상신할 수도 있습니다. (빈 후보 자리는 상신을 막지 않습니다)`,
   };
 }
 

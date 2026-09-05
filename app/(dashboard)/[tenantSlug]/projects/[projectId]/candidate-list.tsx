@@ -176,6 +176,17 @@ export function CandidateList({
                   긴급취소 · {p.canceledExpertName}
                 </span>
               )}
+              {/* 거절·만료로 비게 된 자리 — '결재 완료' 배지만 남기면 거절이
+                  없었던 것처럼 보인다 (E2E 검수 P2-8) */}
+              {p.priorOutcome && (
+                <span
+                  title="이 자리에 요청했던 전문가의 최근 회신 결과 — 예비 후보에게 개별 요청하세요"
+                  className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900"
+                >
+                  {p.priorOutcome.outcome === "declined" ? "거절" : "요청 만료"} ·{" "}
+                  {p.priorOutcome.expertName}
+                </span>
+              )}
               <span
                 className={
                   p.expertName ?? p.assignedExpertName

@@ -203,9 +203,12 @@ export type UnreadySlot = {
 
 /**
  * 상신하려는 세션의 완성 여부 검사 (기획 확정 2026-08-30 — 22번).
- * '후보 미배정' 자리가 남아 있거나 배정 인원이 필요인원에 못 미치는 세션을
- * 돌려준다 — 사용자에게 "미배정 항목을 삭제하거나 배정한 뒤 다시 상신"을
- * 안내하기 위한 근거.
+ * 배정 인원이 필요인원에 못 미치는 세션을 돌려준다.
+ *
+ * 빈 후보 TO(전문가가 붙지 않은 자리)는 상신을 막지 않는다 (E2E 검수 P2-4):
+ * 세션을 만들면 TO가 필요인원의 3배수로 자동 발급되므로, 빈 TO를 지워야만
+ * 품의가 올라간다면 첫 상신마다 청소부터 해야 한다. 빈 TO는 계획에 실리지
+ * 않고(buildPlanSnapshot이 배정 후보만 담는다) 예비 후보 자리로 남는다.
  */
 export async function findUnreadySlots(
   projectId: string,
@@ -237,7 +240,7 @@ export async function findUnreadySlots(
     const rows = (positions ?? []).filter((p) => p.slot_id === slot.id);
     const assignedCount = rows.filter((p) => p.assigned_expert_id).length;
     const unassigned = rows.length - assignedCount;
-    if (unassigned > 0 || assignedCount < slot.required_count) {
+    if (assignedCount < slot.required_count) {
       result.push({
         slotId: slot.id,
         label: `${slot.slot_date} ${slot.session_name ?? slot.role_type}`,

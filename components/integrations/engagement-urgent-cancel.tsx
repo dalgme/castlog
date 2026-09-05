@@ -88,6 +88,12 @@ export function EngagementUrgentCancel({
             {expertName} 전문가의 계약 성립된 섭외를 취소합니다. 취소 시 전사에
             긴급 알림이 발생하며 취소 내역에 기록됩니다. 사유는 필수입니다.
           </DialogDescription>
+          {/* 사유가 어디까지 가는지 모르고 내부 메모를 적는 사고를 막는다
+              (E2E 검수 전문가 P2-8) */}
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-900">
+            입력한 사유는 <b>전문가에게 문자와 포털 알림으로 그대로 전달</b>
+            됩니다. 전문가가 읽는 문장으로 적고, 내부 검토 메모는 적지 마세요.
+          </p>
         </DialogHeader>
         {serverError && (
           <Alert variant="destructive">
@@ -106,7 +112,7 @@ export function EngagementUrgentCancel({
           onChange={(e) => setReason(e.target.value)}
           rows={3}
           maxLength={1000}
-          placeholder="취소 사유 (예: 행사 취소, 일정 변경 등)"
+          placeholder="전문가에게 전달될 취소 사유 (예: 행사가 취소되어 부득이 섭외를 취소합니다)"
           disabled={pending}
         />
         <DialogFooter>

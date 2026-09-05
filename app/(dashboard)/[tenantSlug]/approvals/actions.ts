@@ -565,6 +565,22 @@ export async function resubmitApproval(
       };
     }
   }
+  // 섭외계획 품의는 결재건만 복제하면 계획(engagement_plans)과 끊긴 고아
+  // 결재가 된다 — 프로젝트 화면의 계획 재상신 경로만 허용 (E2E 검수 P2-5)
+  {
+    const { data: planRow } = await supabase
+      .from("engagement_plans")
+      .select("id")
+      .eq("approval_id", approvalId)
+      .maybeSingle();
+    if (planRow) {
+      return {
+        ok: false,
+        error:
+          "섭외계획 품의는 결재 화면에서 재상신할 수 없습니다 (규칙). 프로젝트 > 섭외후보 등록 탭에서 후보·예정가를 조정한 뒤 다시 상신하세요.",
+      };
+    }
+  }
 
   // step_grade 포함 — 릴레이 단계(approver null)를 빼고 복사하면
   // actor_present 제약에 걸려 재상신이 반드시 실패한다 (리뷰 P2-1)

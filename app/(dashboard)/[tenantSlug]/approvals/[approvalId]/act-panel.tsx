@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ export function ActPanel({
   actingAsDelegate,
   canCancel,
   canResubmit,
+  planResubmitHref = null,
   kind = "decision",
 }: {
   tenantSlug: string;
@@ -28,6 +30,11 @@ export function ActPanel({
   actingAsDelegate: boolean;
   canCancel: boolean;
   canResubmit: boolean;
+  /**
+   * 반려된 섭외계획 품의 — 여기서 재상신하지 않고 프로젝트 화면으로 보낸다
+   * (결재건만 복제하면 계획과 끊긴다, E2E 검수 P2-5)
+   */
+  planResubmitHref?: string | null;
   /** 38번: 사후보고 문서는 승인/반려가 아니라 확인/피드백 */
   kind?: "decision" | "report";
 }) {
@@ -161,6 +168,19 @@ export function ActPanel({
         >
           재상신 (동일 결재라인)
         </Button>
+      )}
+      {planResubmitHref && (
+        <div className="rounded-md border bg-secondary/40 p-3 text-xs leading-relaxed text-muted-foreground">
+          섭외계획 품의는 이 화면에서 재상신하지 않습니다 — 결재건만 다시
+          만들면 프로젝트의 섭외 계획과 이어지지 않습니다. 프로젝트 화면에서
+          후보·예정가를 조정한 뒤 다시 상신하세요.
+          <Link
+            href={planResubmitHref}
+            className="mt-2 block font-semibold text-brand underline underline-offset-4"
+          >
+            프로젝트에서 수정 후 재상신
+          </Link>
+        </div>
       )}
     </div>
   );

@@ -60,6 +60,8 @@ export type SlotPositionRow = {
   engagementId: string | null;
   /** 긴급 취소로 다시 비게 된 자리라면 취소한 전문가 이름 */
   canceledExpertName: string | null;
+  /** 거절·만료로 다시 비게 된 자리라면 그 전문가와 결과 (E2E 검수 P2-8) */
+  priorOutcome: { expertName: string; outcome: "declined" | "expired" } | null;
   /** 임의 배정된 전문가 이름 (요청 전 내부 결정) */
   assignedExpertName: string | null;
 };
