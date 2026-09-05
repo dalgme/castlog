@@ -1,7 +1,10 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { EXPERT_DOCUMENT_BUCKET } from "@/lib/experts/documents";
+import {
+  ALLOWED_DOCUMENT_EXTENSIONS,
+  EXPERT_DOCUMENT_BUCKET,
+} from "@/lib/experts/documents";
 
 /**
  * 단계 28-B: 섭외수락서 자동 생성 (대표 피드백 ②)
@@ -272,12 +275,19 @@ export async function copyProjectAttachmentsToAcceptance(params: {
       .download(source.storage_path);
     if (!file) continue;
 
-    const extension = source.storage_path.split(".").pop() ?? "bin";
+    const extension = (source.storage_path.split(".").pop() ?? "bin").toLowerCase();
     const destPath = `acceptances/${params.tenantId}/${params.acceptanceId}-att-${crypto.randomUUID()}.${extension}`;
+    // 예전 행은 브라우저 MIME(빈 값·octet-stream)이 저장돼 있다 — 버킷 허용 목록에
+    // 없어 한글·엑셀 첨부가 조용히 빠지던 문제 (리뷰 3). 확장자로 정규 MIME을 정한다
+    const canonical = ALLOWED_DOCUMENT_EXTENSIONS[extension]?.canonical;
+    const contentType =
+      source.mime_type && source.mime_type !== "application/octet-stream"
+        ? source.mime_type
+        : (canonical ?? "application/octet-stream");
     const { error: uploadError } = await admin.storage
       .from(EXPERT_DOCUMENT_BUCKET)
       .upload(destPath, Buffer.from(await file.arrayBuffer()), {
-        contentType: source.mime_type ?? "application/octet-stream",
+        contentType,
         upsert: false,
       });
     if (uploadError) continue;
@@ -289,7 +299,7 @@ export async function copyProjectAttachmentsToAcceptance(params: {
         acceptance_id: params.acceptanceId,
         file_name: source.file_name,
         storage_path: destPath,
-        mime_type: source.mime_type,
+        mime_type: contentType,
         file_size_bytes: source.file_size_bytes,
         uploaded_by: params.uploadedBy,
       });

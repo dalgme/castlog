@@ -30,7 +30,7 @@ export type AcceptanceView = {
   logoSrc: string | null;
   signatureUrl: string | null;
   sealUrl: string | null;
-  /** 찾아오는 길(약도) 이미지 — 서명 만료 URL */
+  /** 찾아오시는 길(약도) 이미지 — 서명 만료 URL */
   mapUrl: string | null;
   /** 동봉 첨부파일 — 서명 만료 URL */
   attachments: AcceptanceAttachmentView[];

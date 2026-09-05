@@ -9,25 +9,10 @@ import { releasePositionsForEngagement } from "@/lib/integrations/engagement-lif
 import { logEngagementEvent } from "@/lib/integrations/engagement-events";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { buildUrgentCancelAlertTitle } from "@/lib/integrations/urgent-cancellations";
+// 취소 사유 목록은 lib/integrations/expert-cancel-reasons — "use server" 파일은
+// async 함수만 내보낸다 (상수를 여기서 내보내면 클라이언트에서 배열이 아니게 된다)
 
 export type ExpertCancelResult = { ok: true } | { ok: false; error: string };
-
-/**
- * 전문가가 고를 수 있는 취소 사유.
- *
- * 자유 입력만 두면 대부분 비워 두거나 '개인 사정'만 적힌다. 기업은 대체 인력을
- * 구해야 하는 쪽이므로, 최소한 어떤 종류의 사유인지는 알아야 한다.
- */
-export const EXPERT_CANCEL_REASONS = [
-  "건강·질병",
-  "일정 중복(다른 일정 확정)",
-  "가족·경조사",
-  "교통·이동 문제",
-  "개인 사정",
-  "기타",
-] as const;
-
-export type ExpertCancelReason = (typeof EXPERT_CANCEL_REASONS)[number];
 
 /**
  * 전문가 본인의 긴급 취소 (확정 후).

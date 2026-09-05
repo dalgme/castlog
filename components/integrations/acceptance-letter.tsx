@@ -10,6 +10,7 @@ import type { Tables } from "@/lib/supabase/database.types";
 import { TenantBrand } from "@/components/brand/tenant-brand";
 
 import { AcceptanceAttachments } from "./acceptance-attachments";
+import { MapLinkButton } from "./map-link-button";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -157,17 +158,45 @@ export function AcceptanceLetter({
         </div>
       )}
 
-      {mapUrl && (
-        <div className="mt-4">
+      {(mapUrl || a.map_url) && (
+        <div className="mt-4 space-y-2">
           <p className="mb-1 text-xs font-semibold text-muted-foreground">
-            찾아오는 길
+            찾아오시는 길
           </p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={mapUrl}
-            alt="찾아오는 길 약도"
-            className="w-full rounded-md border object-contain"
-          />
+          {/* 지도 URL — 팝업으로 연다 (기획 지시 2026-09-05) */}
+          {a.map_url && <MapLinkButton url={a.map_url} />}
+          {mapUrl &&
+            (a.map_image_path?.toLowerCase().endsWith(".pdf") ? (
+              <div className="space-y-1">
+                <object
+                  data={`${mapUrl}#toolbar=0&navpanes=0`}
+                  type="application/pdf"
+                  className="h-[60vh] w-full rounded-md border"
+                  aria-label="찾아오시는 길 약도(PDF)"
+                >
+                  <p className="p-3 text-sm text-muted-foreground">
+                    이 브라우저에서는 약도 PDF를 표시할 수 없습니다.
+                  </p>
+                </object>
+                {/* 모바일 사파리는 PDF를 '지원'한다고 하면서 첫 장만 그리거나
+                    비워 두므로 새 창 링크를 항상 둔다 (§10 모바일 최우선) */}
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-brand underline underline-offset-4"
+                >
+                  약도 PDF 새 창에서 열기
+                </a>
+              </div>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={mapUrl}
+                alt="찾아오시는 길 약도"
+                className="w-full rounded-md border object-contain"
+              />
+            ))}
         </div>
       )}
 
