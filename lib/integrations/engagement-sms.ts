@@ -40,7 +40,7 @@ export async function sendEngagementSms(params: {
       .maybeSingle();
     if (!expert?.phone) return;
 
-    await sendTenantSms({
+    const result = await sendTenantSms({
       tenantId: params.tenantId,
       senderUserId: params.senderUserId,
       messageType: "transactional",
@@ -49,8 +49,14 @@ export async function sendEngagementSms(params: {
         { phone: expert.phone, expertId: params.expertId, name: expert.name },
       ],
     });
-  } catch {
+    if (!result.ok) {
+      // 섭외 처리는 막지 않되 흔적은 남긴다 — sms_logs에는 sendTenantSms가
+      // 실패 행을 기록했고, 서버 로그로도 원인을 볼 수 있어야 한다
+      console.warn("[engagement-sms] send failed:", result.error);
+    }
+  } catch (error) {
     // 문자 실패가 섭외 처리를 막지 않는다 (이메일·포털 알림이 함께 나간다).
+    console.warn("[engagement-sms] send threw:", error);
   }
 }
 
