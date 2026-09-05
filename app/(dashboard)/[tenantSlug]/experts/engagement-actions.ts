@@ -244,6 +244,7 @@ export async function createEngagement(
     tenantId,
     senderUserId: user.id,
     expertId: data.expertId,
+    engagementIds: [engagement.id],
     body: buildEngagementRequestSms({
       // 폴백은 중립 표기 — 캐스트로그 브랜드가 회사 자리에 나오면 §16 위반
       tenantName: tenantRow?.name ?? "기업",
@@ -488,6 +489,7 @@ export async function cancelEngagement(
       tenantId,
       senderUserId: user.id,
       expertId: engagement.expert_id,
+      engagementIds: [engagementId],
       body: [
         `[${cancelTenant?.name ?? "기업"}] ${
           urgent ? "확정 섭외 취소 안내" : "섭외 요청 회수 안내"

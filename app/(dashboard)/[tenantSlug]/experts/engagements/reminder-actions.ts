@@ -141,12 +141,24 @@ export async function remindEngagement(
   // 늘리면 링크는 여전히 죽어 있으므로 상태도 되살린다. admin은 RLS를 우회하니
   // tenant_id를 직접 건다.
   if (engagement.bundle_id) {
-    await createAdminClient()
+    const admin = createAdminClient();
+    await admin
       .from("engagement_bundles")
       .update({ token_expires_at: expiresAt, status: "requested" })
       .eq("id", engagement.bundle_id)
       .eq("tenant_id", tenantId)
       .in("status", ["requested", "expired"])
+      .lt("token_expires_at", expiresAt);
+    // 같은 묶음의 다른 세션 건도 마감을 같이 늘린다 — 건별 마감은 만료 크론이
+    // 따로 보므로, 이 건만 늘리면 문자가 "묶음 링크도 같은 마감까지"라고
+    // 말해 놓고 나머지 세션은 그 사이 만료·자리 해제된다 (리뷰 H1)
+    await admin
+      .from("expert_engagements")
+      .update({ token_expires_at: expiresAt })
+      .eq("bundle_id", engagement.bundle_id)
+      .eq("tenant_id", tenantId)
+      .eq("status", "requested")
+      .neq("id", engagementId)
       .lt("token_expires_at", expiresAt);
   }
 
@@ -187,6 +199,7 @@ export async function remindEngagement(
     tenantId,
     senderUserId: user.id,
     expertId: engagement.expert_id,
+    engagementIds: [engagementId],
     body:
       `[재안내] ${tenant?.name ?? "기업"} 섭외 요청에 아직 회신이 없어 다시 안내드립니다.\n` +
       (engagement.bundle_id

@@ -943,6 +943,7 @@ export async function dispatchProjectEngagements(input: {
         tenantId: auth.session.tenantId,
         senderUserId: auth.session.userId,
         expertId,
+        engagementIds: createdIds,
         body: buildEngagementBundleSms({
           tenantName: tenantRow?.name ?? "기업",
           programName: input.programName?.trim() || null,
@@ -1178,6 +1179,7 @@ export async function sendAcceptanceLetters(input: {
         tenantId: auth.session.tenantId,
         senderUserId: auth.session.userId,
         expertId: target.expertId,
+        engagementIds: [target.engagementId],
         body: [
           `[${tenantName}] 수락서 도착`,
           project.name,

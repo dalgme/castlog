@@ -337,6 +337,7 @@ export async function requestEngagementForPositionCore(
     tenantId,
     senderUserId: user.id,
     expertId: input.expertId,
+    engagementIds: [engagement.id],
     body: buildEngagementRequestSms({
       // 폴백은 중립 표기 — 캐스트로그 브랜드가 회사 자리에 나오면 §16 위반
       tenantName: tenant?.name ?? "기업",

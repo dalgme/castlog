@@ -4067,6 +4067,7 @@ export type Database = {
           batch_id: string | null
           body: string
           created_at: string
+          engagement_ids: string[] | null
           error_message: string | null
           id: string
           message_type: string
@@ -4081,6 +4082,7 @@ export type Database = {
           batch_id?: string | null
           body: string
           created_at?: string
+          engagement_ids?: string[] | null
           error_message?: string | null
           id?: string
           message_type: string
@@ -4095,6 +4097,7 @@ export type Database = {
           batch_id?: string | null
           body?: string
           created_at?: string
+          engagement_ids?: string[] | null
           error_message?: string | null
           id?: string
           message_type?: string
