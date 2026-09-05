@@ -254,10 +254,11 @@ export async function getPlanCoveredSlotIds(
   const ids = (data ?? [])
     .map((l) => l.slot_id)
     .filter((id): id is string => id !== null);
-  if (ids.length === 0) return null;
-  // 세션이 지워져 slot_id가 비면(on delete set null) 그 행은 '전체'가 아니라
-  // '없어진 세션'이다 — 남은 행만 커버리지로 본다. 살아 있는 계획의 세션 삭제는
-  // deleteSlot이 막지만, 반려·대체 계획은 막지 않는다 (E2E 검수 P2-7)
+  // 명세 행이 없는 계획만 '전체'(옛 계획 호환)다. 행은 있는데 slot_id가 전부
+  // 비었으면 세션이 지워진 것(on delete set null) — 아무 세션도 덮지 않는다.
+  // 살아 있는 계획의 세션 삭제는 deleteSlot이 막지만 반려·대체 계획은 막지
+  // 않으므로 여기서 '전체'로 승격되면 안 된다 (E2E 검수 P2-7, 리뷰 M3)
+  if ((data ?? []).length === 0) return null;
   return Array.from(new Set(ids));
 }
 
@@ -409,42 +410,35 @@ export async function getLivePlans(projectId: string): Promise<ActivePlan[]> {
 
   // 자가 치유: 결재건이 취소·반려됐는데 계획만 in_progress로 남은 행은 살아
   // 있는 계획이 아니다 (배포 경계에서 훅이 안 돈 경우 — 렛츠 보고 2026-09-05).
-  // 화면이 이런 행을 '결재 중'으로 잠그면 사용자는 풀 방법이 없다.
+  // 화면이 이런 행을 '결재 중'으로 잠그면 사용자는 풀 방법이 없다. 처리는
+  // 결재 훅과 같은 함수로 — 변경 품의였다면 부모 승인 계획 복원까지 같아야 한다
+  // (리뷰 H1). 결재건 상태는 admin으로 읽는다 — 계획 행은 이미 RLS를 지났고,
+  // 부PM은 남의 결재건을 못 봐 치유가 안 되던 비대칭을 없앤다 (리뷰 L5)
   const inProgressApprovalIds = rows
     .filter((r) => r.status === "in_progress" && r.approval_id)
     .map((r) => r.approval_id as string);
   if (inProgressApprovalIds.length > 0) {
-    const { data: approvalRows } = await supabase
+    const { data: approvalRows } = await createAdminClient()
       .from("approvals")
       .select("id, status")
       .in("id", inProgressApprovalIds);
-    const dead = new Set(
+    const deadStatus = new Map(
       (approvalRows ?? [])
-        .filter((a) => a.status === "canceled")
-        .map((a) => a.id)
+        .filter((a) => a.status === "canceled" || a.status === "rejected")
+        .map((a) => [a.id, a.status])
     );
-    if (dead.size > 0) {
-      const admin = createAdminClient();
+    if (deadStatus.size > 0) {
       for (const r of rows) {
-        if (r.status !== "in_progress" || !r.approval_id || !dead.has(r.approval_id)) continue;
-        await admin
-          .from("engagement_plans")
-          .update({ status: "superseded" })
-          .eq("id", r.id)
-          .eq("status", "in_progress");
-        await admin.from("audit_logs").insert({
-          tenant_id: r.tenant_id,
-          actor_auth_user_id: null,
-          actor_role: "system",
-          action: "engagement_plan.withdrawn",
-          resource_type: "engagement_plan",
-          resource_id: r.id,
-          after_data: { approval_id: r.approval_id, reason: "self-heal: approval canceled" },
-        });
+        if (r.status !== "in_progress" || !r.approval_id) continue;
+        const st = deadStatus.get(r.approval_id);
+        if (st === "canceled") {
+          await onEngagementPlanApprovalCanceled(r.approval_id);
+        } else if (st === "rejected") {
+          await onEngagementPlanApprovalResolved(r.approval_id, "rejected", null);
+        }
       }
-      rows = rows.filter(
-        (r) => !(r.status === "in_progress" && r.approval_id && dead.has(r.approval_id))
-      );
+      // 치유된 행은 상태가 바뀌었으므로 다시 읽는다 — 반려는 draft로 남아 목록에 있어야 한다
+      return getLivePlans(projectId);
     }
   }
   return rows.map(toActivePlan);

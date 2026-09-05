@@ -594,22 +594,6 @@ export async function dispatchProjectEngagements(input: {
     };
   }
 
-  // 부PM 실행 게이트 — 일괄 발송은 **프로젝트 단위 승인 1건**을 소진한다
-  // (target 없음). 자리마다 승인을 요구하면 부PM은 이 버튼을 사실상 못 쓴다
-  // (E2E 검수 P2-6). 건별 코어 호출에서는 게이트를 건너뛴다.
-  const bulkGate = await gateDeputyAction({
-    projectId: input.projectId,
-    actionType: "engagement.request",
-    targetId: null,
-  });
-  if (!bulkGate.ok) {
-    return {
-      ok: false,
-      error: bulkGate.error,
-      ...(bulkGate.needsPmApproval ? { needsPmApproval: true as const } : {}),
-    };
-  }
-
   const supabase = createClient();
 
   const { data: slots } = await supabase
@@ -682,6 +666,25 @@ export async function dispatchProjectEngagements(input: {
           : redispatch
             ? "일괄 발송 대상이 없습니다 — 이미 요청이 나간 세션의 빈 자리(거절·만료)는 코드넘버별 개별 요청으로 채워 주세요 (규칙)."
             : "발송할 배정 건이 없습니다 — 세션마다 필요인원만큼 이미 요청·확정되었습니다.",
+    };
+  }
+
+  // 부PM 실행 게이트 — 일괄 발송은 **프로젝트 단위 승인 1건**을 소진한다
+  // (target 없음). 자리마다 승인을 요구하면 부PM은 이 버튼을 사실상 못 쓴다
+  // (E2E 검수 P2-6). 규칙 검사(계획·대상 유무)를 다 통과한 뒤, 실제 발송 직전에
+  // 소진한다 — 검사에 걸려 돌아가는 길에 승인만 잃으면 안 된다 (리뷰 M2).
+  // 자리별 승인(target 지정)과는 호환되지 않는다 — 건별 재발송은 코드넘버 화면에서
+  // 그 자리의 승인을 따로 받는다.
+  const bulkGate = await gateDeputyAction({
+    projectId: input.projectId,
+    actionType: "engagement.request",
+    targetId: null,
+  });
+  if (!bulkGate.ok) {
+    return {
+      ok: false,
+      error: bulkGate.error,
+      ...(bulkGate.needsPmApproval ? { needsPmApproval: true as const } : {}),
     };
   }
 

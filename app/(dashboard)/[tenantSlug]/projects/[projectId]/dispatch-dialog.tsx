@@ -83,6 +83,7 @@ export function DispatchDialog({
 
   function send() {
     setError(null);
+    setNeedsPmApproval(false);
     startTransition(async () => {
       const res = await dispatchProjectEngagements({
         projectId,

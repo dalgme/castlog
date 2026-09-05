@@ -178,7 +178,11 @@ export async function createDeputyActionRequest(input: {
     tenant_id: ctx.tenantId,
     project_id: input.projectId,
     action_type: input.actionType,
-    target_type: DEPUTY_GATED_ACTIONS[input.actionType].targetType,
+    // 대상 없는 요청(일괄 발송 등)은 프로젝트 단위 승인이다 — 자리별 승인과
+    // 호환되지 않는다 (리뷰 L6)
+    target_type: input.targetId
+      ? DEPUTY_GATED_ACTIONS[input.actionType].targetType
+      : "project",
     target_id: input.targetId,
     request_note: input.note.trim() || null,
     requested_by: ctx.userId,
