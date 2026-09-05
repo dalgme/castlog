@@ -50,9 +50,17 @@ export function DispatchDialog({
   disabledReason,
   expertsLite = false,
   triggerLabel = "섭외 진행",
+  slotIds,
+  sessionLabel = null,
+  size = "sm",
 }: {
   projectId: string;
   projectName: string;
+  /** 세션 단위 발송 — 지정하면 그 세션만 (2026-09-05) */
+  slotIds?: string[];
+  /** 세션 라벨 — 대화상자 제목에 표기 */
+  sessionLabel?: string | null;
+  size?: "sm" | "xs";
   /** 프로젝트 설명에서 자동으로 채운다 — 발송 전 자유롭게 수정 가능 */
   defaultSummary?: string | null;
   targetCount: number;
@@ -92,6 +100,7 @@ export function DispatchDialog({
         programName,
         eventSummary,
         memo,
+        slotIds,
       });
       if (!res.ok) {
         setError(res.error);
@@ -131,7 +140,7 @@ export function DispatchDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm">
+        <Button size="sm" className={size === "xs" ? "h-8 px-2.5 text-xs" : undefined}>
           <Send className="mr-1.5 h-3.5 w-3.5" />
           {triggerLabel}
         </Button>
@@ -139,9 +148,13 @@ export function DispatchDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {expertsLite
-              ? "배정된 전원의 섭외 요청을 기록할까요?"
-              : "이 프로젝트의 모든 전문가에게 섭외 요청을 보낼까요?"}
+            {sessionLabel
+              ? expertsLite
+                ? `${sessionLabel} — 섭외 요청을 기록할까요?`
+                : `${sessionLabel} — 이 세션의 전문가에게 섭외 요청을 보낼까요?`
+              : expertsLite
+                ? "배정된 전원의 섭외 요청을 기록할까요?"
+                : "이 프로젝트의 모든 전문가에게 섭외 요청을 보낼까요?"}
           </DialogTitle>
           <DialogDescription>
             {expertsLite ? (

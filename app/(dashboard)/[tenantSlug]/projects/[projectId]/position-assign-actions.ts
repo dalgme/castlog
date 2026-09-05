@@ -570,6 +570,8 @@ export async function dispatchProjectEngagements(input: {
   programName?: string;
   eventSummary?: string;
   memo?: string;
+  /** 세션 단위 발송 (2026-09-05) — 지정하면 그 세션들만. 비우면 프로젝트 전체 */
+  slotIds?: string[];
 }): Promise<DispatchResult> {
   const auth = await requireManager("engagementRequest");
   if (!auth.ok) return auth;
@@ -596,11 +598,15 @@ export async function dispatchProjectEngagements(input: {
 
   const supabase = createClient();
 
-  const { data: slots } = await supabase
+  const { data: allSlots } = await supabase
     .from("engagement_slots")
     .select("id, required_count")
     .eq("project_id", input.projectId);
-  const slotIds = (slots ?? []).map((s) => s.id);
+  const slots =
+    input.slotIds && input.slotIds.length > 0
+      ? (allSlots ?? []).filter((s) => input.slotIds!.includes(s.id))
+      : (allSlots ?? []);
+  const slotIds = slots.map((s) => s.id);
   // 요청중·확정·거절 흔적(open + assigned_expert_id)까지 함께 읽는다 — 재발송
   // 모드에서는 이력이 있는 세션을 통째로 건너뛰어야 예비 후보에게 새지 않는다
   const redispatch = state.stage !== "plan_approved";
@@ -639,7 +645,7 @@ export async function dispatchProjectEngagements(input: {
   const slotStates = dispatchGate.required ? dispatchGate.slotStates : null;
 
   const targets: DispatchTarget[] = [];
-  for (const slot of slots ?? []) {
+  for (const slot of slots) {
     const sorted = (positions ?? [])
       .filter((p) => p.slot_id === slot.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
@@ -930,6 +936,24 @@ export async function dispatchProjectEngagements(input: {
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  // 실패 사유를 자리 단위로 남긴다 — 세션별 송신 현황(승인 목록 및 섭외 진행 탭)이
+  // "왜 안 나갔나"를 다음 방문에도 보여 줘야 한다 (기획 지시 2026-09-05)
+  if (failed.length > 0) {
+    const codeToId = new Map((positions ?? []).map((p) => [p.code, p.id]));
+    await supabase.from("audit_logs").insert(
+      failed
+        .filter((f) => codeToId.has(f.code))
+        .map((f) => ({
+          tenant_id: auth.session.tenantId,
+          actor_auth_user_id: auth.session.userId,
+          actor_role: auth.session.role,
+          action: "engagement.dispatch_failed",
+          resource_type: "engagement_slot_position",
+          resource_id: codeToId.get(f.code) ?? null,
+          after_data: { code: f.code, reason: f.reason, project_id: input.projectId },
+        }))
+    );
+  }
   return { ok: true, sent, failed };
 }
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ClipboardCheck, FileCheck2, Send } from "lucide-react";
 
-import { REPORT_STATUS_LABELS, formatKrw } from "@/lib/approvals/constants";
+import { formatKrw } from "@/lib/approvals/constants";
 import { cn } from "@/lib/utils";
 import {
   ENGAGEMENT_STAGE_DESCRIPTIONS,
@@ -30,6 +30,7 @@ import {
 import { DispatchDialog } from "./dispatch-dialog";
 import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
+import { PlanHistoryTable } from "./plan-history-table";
 
 /**
  * 승인 목록 및 섭외 진행 탭 (기획 확정 2026-08-30 — 37번).
@@ -93,22 +94,23 @@ export type ProgressRow = {
   fee: number | null;
 };
 
-const PLAN_STATUS_LABELS: Record<string, string> = {
-  draft: "작성 중",
-  in_progress: "결재 중",
-  approved: "승인",
-  rejected: "반려",
-  superseded: "대체됨",
-  withdrawn: "상신 취소",
-};
-
-const PLAN_STATUS_CLASS: Record<string, string> = {
-  approved: "bg-emerald-100 text-emerald-900 border-emerald-200",
-  in_progress: "bg-amber-100 text-amber-900 border-amber-200",
-  rejected: "bg-red-100 text-red-900 border-red-200",
-  superseded: "bg-secondary text-muted-foreground",
-  withdrawn: "bg-secondary text-muted-foreground",
-  draft: "bg-secondary text-muted-foreground",
+/**
+ * 승인된 세션별 섭외 문자 송신 현황 (기획 지시 2026-09-05).
+ * 세션 단위로 보내고, 세션 단위로 "몇 명 나갔고 누가 왜 안 나갔나"를 본다.
+ */
+export type SessionDispatchRow = {
+  slotId: string;
+  label: string;
+  detail: string | null;
+  requiredCount: number;
+  /** 지금 보내면 요청이 나갈 자리 수 (순위 상위 필요인원 중 미요청) */
+  dispatchable: number;
+  /** 요청이 나간 자리(회신 대기 + 수락) */
+  sent: number;
+  /** 수락(확정)된 자리 */
+  accepted: number;
+  /** 아직 나가지 않은 자리별 최근 실패 사유 */
+  failures: { code: string; expertName: string | null; reason: string }[];
 };
 
 /** 수락서가 존재하는 단계 — 이때만 '수락서 확인' 버튼이 의미 있다 */
@@ -118,17 +120,6 @@ const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
   "letter_sent",
   "confirmed",
 ];
-
-function when(iso: string | null): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export function EngagementProgress({
   tenantSlug,
@@ -143,6 +134,7 @@ export function EngagementProgress({
   planGate,
   plans,
   rows,
+  sessionDispatch = [],
   attachmentPanel,
   acceptanceAttachmentPanel,
 }: {
@@ -166,6 +158,8 @@ export function EngagementProgress({
   planGate: { blocked: boolean; message: string };
   plans: ApprovedPlanRow[];
   rows: ProgressRow[];
+  /** 승인된 세션별 송신 버튼·현황 — 승인된 세션이 없으면 빈 배열 */
+  sessionDispatch?: SessionDispatchRow[];
   attachmentPanel?: React.ReactNode;
   acceptanceAttachmentPanel?: React.ReactNode;
 }) {
@@ -219,7 +213,9 @@ export function EngagementProgress({
                 expertsLite={expertsLite}
                 disabled={planGate.blocked}
                 disabledReason={planGate.message}
-                triggerLabel={expertsLite ? "섭외 요청 기록" : "섭외 문자 발송"}
+                triggerLabel={
+                  expertsLite ? "섭외 요청 기록 (전체)" : "섭외 문자 발송 (전체 세션)"
+                }
               />
             )}
             {canManage && showAcceptance && (
@@ -310,6 +306,89 @@ export function EngagementProgress({
         </CardContent>
       </Card>
 
+      {/* ── 세션별 섭외 문자 송신 (기획 지시 2026-09-05) ─────────────── */}
+      {sessionDispatch.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Send className="h-4 w-4" aria-hidden />
+              세션별 섭외 문자 송신 · 현황
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {sessionDispatch.map((r) => {
+                const waiting = r.sent - r.accepted;
+                const remaining = Math.max(0, r.requiredCount - r.sent);
+                return (
+                  <li
+                    key={r.slotId}
+                    className="flex flex-wrap items-start justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="text-sm font-semibold">{r.label}</p>
+                      {r.detail && (
+                        <p className="text-xs text-muted-foreground">{r.detail}</p>
+                      )}
+                      <p className="text-xs tabular-nums">
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            r.sent > 0 ? "text-emerald-700" : "text-muted-foreground"
+                          )}
+                        >
+                          {r.sent}명 송신 완료
+                        </span>
+                        {" · "}필요 {r.requiredCount}명
+                        {waiting > 0 && ` · 회신 대기 ${waiting}명`}
+                        {r.accepted > 0 && ` · 수락 ${r.accepted}명`}
+                        {remaining > 0 && r.dispatchable === 0 && r.sent === 0 && (
+                          <span className="text-amber-800"> · 보낼 배정 후보 없음</span>
+                        )}
+                      </p>
+                      {r.failures.length > 0 && (
+                        <ul className="space-y-0.5 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                          {r.failures.map((f) => (
+                            <li key={f.code}>
+                              <span className="font-mono">{f.code}</span>
+                              {f.expertName ? ` ${f.expertName}` : ""} — 송신 실패:{" "}
+                              {f.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {canManage && (
+                      <DispatchDialog
+                        projectId={projectId}
+                        projectName={projectName}
+                        defaultSummary={projectDescription}
+                        targetCount={r.dispatchable}
+                        expertsLite={expertsLite}
+                        disabled={r.dispatchable === 0}
+                        disabledReason={
+                          r.sent >= r.requiredCount
+                            ? "필요인원만큼 이미 요청·확정되었습니다."
+                            : "보낼 배정 후보가 없습니다 — 거절·만료로 빈 자리는 코드넘버별 개별 요청으로 채웁니다."
+                        }
+                        triggerLabel={
+                          expertsLite
+                            ? "섭외 요청 기록"
+                            : `섭외 문자 송신 (${r.dispatchable}명)`
+                        }
+                        slotIds={[r.slotId]}
+                        sessionLabel={r.label}
+                        size="xs"
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── 승인 목록 ─────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
@@ -323,147 +402,8 @@ export function EngagementProgress({
             <p className="text-sm text-muted-foreground">
               전자결재 모듈이 비활성 상태입니다 — 품의 없이 바로 섭외를 진행합니다.
             </p>
-          ) : plans.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              아직 상신된 섭외 품의가 없습니다. 섭외후보 등록 탭에서 세션별
-              후보를 배정한 뒤 품의를 올리면 여기에 쌓입니다.
-            </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">리비전</TableHead>
-                    <TableHead className="w-20">상태</TableHead>
-                    <TableHead>담긴 세션</TableHead>
-                    <TableHead className="w-24 text-right">인원</TableHead>
-                    <TableHead className="w-28 text-right">계획 섭외비</TableHead>
-                    <TableHead className="w-28">상신</TableHead>
-                    <TableHead className="w-28">승인</TableHead>
-                    <TableHead className="w-24">결재 문서</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {plans.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">v{p.revision}</TableCell>
-                      <TableCell>
-                        <span
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                            PLAN_STATUS_CLASS[p.status] ?? PLAN_STATUS_CLASS.draft
-                          )}
-                        >
-                          {PLAN_STATUS_LABELS[p.status] ?? p.status}
-                        </span>
-                        {p.postReport && (
-                          <span
-                            className="mt-1 block w-fit rounded-full bg-brand-coral/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-coral-ink"
-                            title="사후보고 모드로 즉시 확정된 계획"
-                          >
-                            사후보고
-                            {p.reportStatus
-                              ? ` · ${REPORT_STATUS_LABELS[p.reportStatus] ?? p.reportStatus}`
-                              : ""}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {p.sessionLabels.length === 0
-                          ? `세션 ${p.slotCount}건 (세션 구분 없음)`
-                          : p.sessionLabels.join(" · ")}
-                        {/* 세션 세부 + 결재된 전문가별 예정가 — 접어 두고
-                            필요할 때 편다 (모바일 조회 대응) */}
-                        {p.sessions.length > 0 && (
-                          <details className="mt-1">
-                            <summary className="cursor-pointer text-[11px] font-semibold text-brand underline-offset-4 hover:underline">
-                              세션 세부 · 승인 예정가 보기
-                            </summary>
-                            <ul className="mt-1.5 space-y-1.5">
-                              {p.sessions.map((s, i) => (
-                                <li
-                                  key={`${p.id}-${s.slotId ?? i}`}
-                                  className="rounded-md border bg-secondary/30 p-2"
-                                >
-                                  <p className="font-semibold">{s.label}</p>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {[
-                                      s.schedule,
-                                      s.roleDescription,
-                                      s.locationName,
-                                      `필요 ${s.requiredCount}명`,
-                                      `소계 ${formatKrw(s.subtotal)}`,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </p>
-                                  {s.experts.length > 0 ? (
-                                    <ul className="mt-1 space-y-0.5">
-                                      {s.experts.map((e) => (
-                                        <li
-                                          key={`${p.id}-${e.code}`}
-                                          className="flex items-center justify-between gap-2 tabular-nums"
-                                        >
-                                          <span>
-                                            <span className="font-mono text-[11px]">
-                                              {e.code}
-                                            </span>{" "}
-                                            {e.name}
-                                          </span>
-                                          <span className="font-semibold text-brand-coral-ink">
-                                            {formatKrw(e.fee)}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                      섭외 대상 전문가가 지문에 없습니다 (옛 계획).
-                                    </p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
-                        {p.note && (
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            {p.note}
-                          </p>
-                        )}
-                        {p.feedbackNote && (
-                          <p className="mt-0.5 text-[11px] font-medium text-brand-coral-ink">
-                            피드백: {p.feedbackNote}
-                          </p>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {p.positionCount}명
-                      </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {formatKrw(p.plannedAmount)}
-                      </TableCell>
-                      <TableCell className="text-xs">{when(p.submittedAt)}</TableCell>
-                      <TableCell className="text-xs">{when(p.approvedAt)}</TableCell>
-                      <TableCell>
-                        {p.approvalId ? (
-                          <Button asChild size="sm" variant="ghost">
-                            <Link
-                              href={`/${tenantSlug}/approvals/${p.approvalId}`}
-                              aria-label={`v${p.revision} 결재 문서 열기`}
-                            >
-                              열기
-                            </Link>
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <PlanHistoryTable tenantSlug={tenantSlug} plans={plans} />
           )}
         </CardContent>
       </Card>

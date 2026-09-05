@@ -183,7 +183,13 @@ export async function createProject(
     const grade = gradeFromUser(user);
     if (isUserGrade(grade) && !canViewAllProjects(grade)) {
       const mins = await getAssignmentRoleMinGrades();
-      if (!roleMinGradeError("pl", grade, mins)) {
+      // PL 직급에 못 미치면 그 직급으로 가능한 최고 역할(PM → 부PM → 담당)로
+      // 넣는다 — 개설자가 팀에 없으면 기본정보·유형·필요인원 편집이 전부
+      // "배정된 담당자만"에 걸려 막다른 길이 된다 (렛츠 보고 2026-09-05)
+      const seatRole = (["pl", "pm", "deputy_pm", "member"] as const).find(
+        (r) => !roleMinGradeError(r, grade, mins)
+      );
+      if (seatRole) {
         // 배정 RLS는 계단 판정(기존 배정 기준)이라 첫 배정은 통과할 수 없다 —
         // 개설 게이트를 이미 통과한 서버 판단이므로 admin으로 심는다.
         // 주의: admin 경로에는 JWT가 없어 역할 최소레벨 트리거가 회사 조정값
@@ -195,7 +201,7 @@ export async function createProject(
             tenant_id: tenantId,
             project_id: project.id,
             user_id: user.id,
-            assignment_role: "pl",
+            assignment_role: seatRole,
             assigned_by: user.id,
           });
         if (plError) {

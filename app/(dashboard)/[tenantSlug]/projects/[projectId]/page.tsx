@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
-import { gradeFromUser, roleFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import {
   canViewAllProjects,
   gradeLabel,
@@ -22,12 +22,14 @@ import { getProjectDashboard } from "@/lib/integrations/project-dashboard";
 import {
   getProjectEngagementState,
   buildEngagementPlanDraft,
+  pickDispatchTargets,
 } from "@/lib/integrations/project-engagement";
 import { getCanceledExpertByPositionCode } from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { isExtraFeatureEnabled } from "@/lib/features/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   PROJECT_STATUS_LABELS,
@@ -94,6 +96,7 @@ import {
   type ApprovedPlanRow,
   type ApprovedPlanSession,
   type ProgressRow,
+  type SessionDispatchRow,
 } from "./engagement-progress";
 import {
   decidePlanFlow,
@@ -1004,6 +1007,7 @@ export default async function ProjectDetailPage({
   // 그 탭에서만 쓰므로 그때만 읽는다.
   let approvedPlans: ApprovedPlanRow[] = [];
   const progressRows: ProgressRow[] = [];
+  const sessionDispatch: SessionDispatchRow[] = [];
   if (tab === "engage" && modules.experts) {
     const slotLabelById = new Map(
       slotRows.map((s) => [
@@ -1206,6 +1210,134 @@ export default async function ProjectDetailPage({
           fee: position.expectedFee ?? slot.feeAmount,
         });
       }
+    }
+  }
+
+  // 승인된 세션별 송신 버튼·현황 (기획 지시 2026-09-05)
+  if (tab === "engage" && modules.experts) {
+    const stageNow = engagementState?.stage ?? "assigning";
+    const redispatch = stageNow !== "plan_approved";
+    const approvedSlots = slotRows.filter((s) =>
+      planSlotStates ? planSlotStates[s.id] === "approved" : true
+    );
+    // 나가지 않은 자리의 최근 실패 사유 — 발송 액션이 audit_logs에 남긴다.
+    // 감사로그 열람은 대표 전용 RLS라 admin으로 이 프로젝트 자리 범위만 읽는다
+    const openPositionIds = approvedSlots.flatMap((s) =>
+      s.positions
+        .filter((p) => p.status === "assigned" || p.status === "open")
+        .map((p) => p.id)
+    );
+    const failureByPosition = new Map<string, string>();
+    const tenantId = tenantIdFromUser(user);
+    const adminForLogs = createAdminClient();
+    if (openPositionIds.length > 0 && tenantId) {
+      const { data: failRows } = await adminForLogs
+        .from("audit_logs")
+        .select("resource_id, after_data, created_at")
+        .eq("tenant_id", tenantId)
+        .eq("action", "engagement.dispatch_failed")
+        .in("resource_id", openPositionIds)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      for (const row of failRows ?? []) {
+        if (!row.resource_id || failureByPosition.has(row.resource_id)) continue;
+        const reason =
+          row.after_data && typeof row.after_data === "object" && "reason" in row.after_data
+            ? String((row.after_data as { reason?: unknown }).reason ?? "")
+            : "";
+        if (reason) failureByPosition.set(row.resource_id, reason);
+      }
+    }
+    // 요청은 나갔지만 문자가 실제로 안 간 경우 — 발송 실패는 섭외 처리를
+    // 막지 않으므로(engagement-sms) sms_logs에만 남는다. 전문가별 최근 1건만
+    // 보고, 마지막이 실패면 사유를 붙인다 (상태·사유만 읽는다 — 번호·본문 제외)
+    const requestedExpertIds = Array.from(
+      new Set(
+        (positionRecords ?? [])
+          .filter((p) => p.status === "requested" || p.status === "filled")
+          .map((p) => p.expert_id ?? p.assigned_expert_id)
+          .filter((v): v is string => Boolean(v))
+      )
+    );
+    const smsFailureByExpert = new Map<string, string>();
+    if (requestedExpertIds.length > 0 && tenantId) {
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: smsRows } = await adminForLogs
+        .from("sms_logs")
+        .select("recipient_expert_id, status, error_message, created_at")
+        .eq("tenant_id", tenantId)
+        .eq("message_type", "transactional")
+        .in("recipient_expert_id", requestedExpertIds)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      const seen = new Set<string>();
+      for (const row of smsRows ?? []) {
+        if (!row.recipient_expert_id || seen.has(row.recipient_expert_id)) continue;
+        seen.add(row.recipient_expert_id);
+        if (row.status === "failed" || row.status === "blocked") {
+          smsFailureByExpert.set(
+            row.recipient_expert_id,
+            `문자 발송 실패 — ${row.error_message?.trim() || "공급자가 사유를 돌려주지 않았습니다"}. 설정 > 발송에서 공급자 상태를 확인한 뒤 코드넘버별 개별 요청으로 다시 보내세요.`
+          );
+        } else if (row.status === "test") {
+          smsFailureByExpert.set(
+            row.recipient_expert_id,
+            "SMS 테스트 모드 — 실제 문자는 나가지 않았습니다 (요청 링크는 이메일·포털 알림으로만 전달)."
+          );
+        }
+      }
+    }
+    for (const slot of approvedSlots) {
+      const raw = (positionRecords ?? [])
+        .filter((p) => p.slot_id === slot.id && p.status !== "canceled")
+        .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
+      const dispatchable = pickDispatchTargets(raw, slot.requiredCount, redispatch).length;
+      const sent = raw.filter(
+        (p) => p.status === "requested" || p.status === "filled"
+      ).length;
+      const accepted = raw.filter((p) => p.status === "filled").length;
+      const expertIdByPosition = new Map(
+        raw.map((p) => [p.id, p.expert_id ?? p.assigned_expert_id] as const)
+      );
+      const failures = slot.positions.flatMap((p) => {
+        const expertId = expertIdByPosition.get(p.id) ?? null;
+        const reason =
+          p.status === "requested" || p.status === "filled"
+            ? p.status === "requested" && expertId
+              ? smsFailureByExpert.get(expertId)
+              : undefined
+            : failureByPosition.get(p.id);
+        if (!reason) return [];
+        return [
+          {
+            code: p.code,
+            expertName: p.expertName ?? p.assignedExpertName,
+            reason,
+          },
+        ];
+      });
+      sessionDispatch.push({
+        slotId: slot.id,
+        label: slot.sessionName ?? slot.roleDescription ?? slot.slotDate,
+        detail:
+          [
+            formatEventSchedule(
+              slot.slotDate,
+              slot.periodEndDate,
+              slot.startsTime,
+              slot.endsTime
+            ),
+            slot.locationName,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+        requiredCount: slot.requiredCount,
+        dispatchable,
+        sent,
+        accepted,
+        failures,
+      });
     }
   }
 
@@ -1765,6 +1897,7 @@ export default async function ProjectDetailPage({
             }}
             plans={approvedPlans}
             rows={progressRows}
+            sessionDispatch={sessionDispatch}
             attachmentPanel={
               <AttachmentPanel
                 projectId={project.id}
