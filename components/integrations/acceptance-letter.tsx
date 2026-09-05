@@ -10,6 +10,7 @@ import type { Tables } from "@/lib/supabase/database.types";
 import { TenantBrand } from "@/components/brand/tenant-brand";
 
 import { AcceptanceAttachments } from "./acceptance-attachments";
+import { MapLinkButton } from "./map-link-button";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -157,17 +158,41 @@ export function AcceptanceLetter({
         </div>
       )}
 
-      {mapUrl && (
-        <div className="mt-4">
+      {(mapUrl || a.map_url) && (
+        <div className="mt-4 space-y-2">
           <p className="mb-1 text-xs font-semibold text-muted-foreground">
-            찾아오는 길
+            찾아오시는 길
           </p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={mapUrl}
-            alt="찾아오는 길 약도"
-            className="w-full rounded-md border object-contain"
-          />
+          {/* 지도 URL — 팝업으로 연다 (기획 지시 2026-09-05) */}
+          {a.map_url && <MapLinkButton url={a.map_url} />}
+          {mapUrl &&
+            (a.map_image_path?.toLowerCase().endsWith(".pdf") ? (
+              <object
+                data={`${mapUrl}#toolbar=0&navpanes=0`}
+                type="application/pdf"
+                className="h-[60vh] w-full rounded-md border"
+                aria-label="찾아오시는 길 약도(PDF)"
+              >
+                <p className="p-3 text-sm text-muted-foreground">
+                  이 브라우저에서는 약도 PDF를 표시할 수 없습니다.{" "}
+                  <a
+                    href={mapUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    새 창에서 열기
+                  </a>
+                </p>
+              </object>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={mapUrl}
+                alt="찾아오시는 길 약도"
+                className="w-full rounded-md border object-contain"
+              />
+            ))}
         </div>
       )}
 

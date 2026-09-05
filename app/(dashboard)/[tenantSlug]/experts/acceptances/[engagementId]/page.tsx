@@ -153,6 +153,7 @@ export default async function TenantAcceptancePage({
                 guideNote={view.acceptance.guide_note ?? ""}
                 paymentDueNote={view.acceptance.payment_due_note ?? ""}
                 submissionDocs={view.acceptance.submission_docs ?? ""}
+                mapUrl={view.acceptance.map_url ?? ""}
                 hasMap={Boolean(view.acceptance.map_image_path)}
                 attachments={view.attachments.map((a) => ({
                   id: a.id,

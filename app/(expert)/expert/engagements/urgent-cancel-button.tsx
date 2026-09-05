@@ -17,10 +17,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import {
-  cancelConfirmedEngagementByExpert,
-  EXPERT_CANCEL_REASONS,
-} from "./cancel-actions";
+import { EXPERT_CANCEL_REASONS } from "@/lib/integrations/expert-cancel-reasons";
+
+import { cancelConfirmedEngagementByExpert } from "./cancel-actions";
 
 /**
  * 전문가의 긴급 취소 — 확정된 참여를 되돌린다.

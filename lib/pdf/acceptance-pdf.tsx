@@ -187,6 +187,13 @@ export async function renderAcceptancePdf(view: AcceptanceView): Promise<Buffer>
           </View>
         )}
 
+        {a.map_url && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>찾아오시는 길</Text>
+            <Text style={styles.note}>{a.map_url}</Text>
+          </View>
+        )}
+
         <View style={styles.declaration}>
           {a.signed_via === "manual" ? (
             <Text>

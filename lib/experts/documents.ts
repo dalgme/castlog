@@ -98,6 +98,7 @@ export const ALLOWED_DOCUMENT_EXTENSIONS: Record<
   jpg: { mimes: ["image/jpeg"], canonical: "image/jpeg" },
   jpeg: { mimes: ["image/jpeg"], canonical: "image/jpeg" },
   png: { mimes: ["image/png"], canonical: "image/png" },
+  gif: { mimes: ["image/gif"], canonical: "image/gif" },
   doc: {
     mimes: ["application/msword", ...OCTET],
     canonical: "application/msword",
@@ -163,7 +164,7 @@ export type DocumentPreviewKind = "image" | "pdf" | "sheet" | "docx" | "none";
 
 export function documentPreviewKind(fileName: string): DocumentPreviewKind {
   const ext = fileExtension(fileName);
-  if (["jpg", "jpeg", "png"].includes(ext)) return "image";
+  if (["jpg", "jpeg", "png", "gif"].includes(ext)) return "image";
   if (ext === "pdf") return "pdf";
   if (["xls", "xlsx"].includes(ext)) return "sheet";
   if (ext === "docx") return "docx";
@@ -202,7 +203,7 @@ export function validateDocumentFile(
     return {
       ok: false,
       error:
-        "PDF, 이미지(JPG/PNG), 오피스(doc/docx/xls/xlsx/ppt/pptx), 한글(hwp/hwpx) 파일만 업로드할 수 있습니다.",
+        "PDF, 이미지(JPG/PNG/GIF), 오피스(doc/docx/xls/xlsx/ppt/pptx), 한글(hwp/hwpx) 파일만 업로드할 수 있습니다.",
     };
   }
   if (!rule.mimes.includes(mimeType)) {

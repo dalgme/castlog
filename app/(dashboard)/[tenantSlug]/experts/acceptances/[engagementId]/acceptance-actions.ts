@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
@@ -52,36 +53,78 @@ async function requireManager(): Promise<
   return { ok: true, userId: user.id, tenantId };
 }
 
-/**
- * 수락서 보완 편집 — 안내문 + 지급 안내(입금예정·제출서류).
- * 조건 스냅샷(역할·비용·일정)과 지급 계좌·소득구분 스냅샷은 변경하지 않는다.
- */
-export async function updateAcceptanceGuide(
-  acceptanceId: string,
-  guideNote: string,
-  paymentDueNote?: string,
-  submissionDocs?: string
-): Promise<AcceptanceActionResult> {
-  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
-  const auth = await requireManager();
-  if (!auth.ok) return auth;
-  if (guideNote.length > 3000) {
-    return { ok: false, error: "상세 설명은 3000자 이내로 입력하세요." };
-  }
-  if ((paymentDueNote ?? "").length > 200 || (submissionDocs ?? "").length > 500) {
-    return { ok: false, error: "지급 안내 문구가 너무 깁니다." };
-  }
+/** 수락서 안내 정보 — 상세 설명·입금예정·제출서류·찾아오시는 길 URL */
+export type AcceptanceGuideInput = {
+  guideNote: string;
+  paymentDueNote: string;
+  submissionDocs: string;
+  mapUrl: string;
+};
 
+const guideSchema = z.object({
+  guideNote: z.string().max(3000, "상세 설명은 3000자 이내로 입력하세요."),
+  paymentDueNote: z.string().max(200, "입금예정 안내는 200자 이내로 입력하세요."),
+  submissionDocs: z.string().max(500, "제출서류는 500자 이내로 입력하세요."),
+  mapUrl: z
+    .string()
+    .trim()
+    .max(2000, "지도 URL이 너무 깁니다.")
+    .refine(
+      (v) => v === "" || /^https?:\/\/\S+$/i.test(v),
+      "찾아오시는 길 URL은 http:// 또는 https:// 로 시작하는 주소여야 합니다."
+    ),
+});
+
+/**
+ * 안내 정보 저장 (내부) — 조건 스냅샷(역할·비용·일정)과 지급 계좌·소득구분
+ * 스냅샷은 변경하지 않는다. 검증 실패는 규칙 문구로 돌려준다 (§12-9).
+ */
+async function saveGuide(
+  acceptanceId: string,
+  input: AcceptanceGuideInput
+): Promise<AcceptanceActionResult> {
+  const parsed = guideSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "안내 정보 입력이 올바르지 않습니다.",
+    };
+  }
+  const g = parsed.data;
   const supabase = createClient();
   const { error } = await supabase
     .from("engagement_acceptances")
     .update({
-      guide_note: guideNote.trim() || null,
-      payment_due_note: paymentDueNote?.trim() || null,
-      submission_docs: submissionDocs?.trim() || null,
+      guide_note: g.guideNote.trim() || null,
+      payment_due_note: g.paymentDueNote.trim() || null,
+      submission_docs: g.submissionDocs.trim() || null,
+      map_url: g.mapUrl || null,
     })
     .eq("id", acceptanceId);
-  if (error) return { ok: false, error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
+  if (error) {
+    return {
+      ok: false,
+      error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * 수락서 보완 편집 — 안내문 + 지급 안내(입금예정·제출서류) + 찾아오시는 길 URL.
+ * 송부(sendAcceptance)에도 같은 저장이 자동으로 들어간다 — 이 버튼은 송부 전에
+ * 중간 저장하고 싶을 때만 누르면 된다 (기획 지시 2026-09-05).
+ */
+export async function updateAcceptanceGuide(
+  acceptanceId: string,
+  input: AcceptanceGuideInput
+): Promise<AcceptanceActionResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+
+  const saved = await saveGuide(acceptanceId, input);
+  if (!saved.ok) return saved;
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
   return { ok: true };
@@ -103,6 +146,14 @@ export async function uploadAcceptanceMap(
   }
   const validation = validateDocumentFile(file.type, file.name, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
+  // 약도는 화면에 그대로 그린다 — 이미지·PDF만. 오피스·한글 자료는 첨부파일로
+  if (!["jpg", "jpeg", "png", "gif", "pdf"].includes(validation.extension)) {
+    return {
+      ok: false,
+      error:
+        "찾아오는 길 약도는 이미지(JPG/PNG/GIF) 또는 PDF만 등록할 수 있습니다. 다른 형식은 '첨부파일 추가'로 올려 주세요.",
+    };
+  }
 
   const admin = createAdminClient();
   const path = `acceptances/${auth.tenantId}/${acceptanceId}-map-${crypto.randomUUID()}.${validation.extension}`;
@@ -161,7 +212,9 @@ export async function uploadAcceptanceAttachment(
     acceptance_id: acceptanceId,
     file_name: file.name,
     storage_path: path,
-    mime_type: file.type,
+    // 브라우저가 hwp 등에서 빈 MIME·octet-stream을 보내므로 정규 MIME으로 저장 —
+    // 열람 화면이 형식을 판정하는 근거다
+    mime_type: validation.contentType,
     file_size_bytes: file.size,
     uploaded_by: auth.userId,
   });
@@ -204,9 +257,15 @@ export async function deleteAcceptanceAttachment(
   return { ok: true };
 }
 
-/** 수락서 송부 — 전문가에게 확인·서명 요청 알림. */
+/**
+ * 수락서 송부 — 전문가에게 확인·서명 요청 알림.
+ * guide를 주면 상세설명·입금예정·제출서류·지도 URL의 **현재 입력값을 먼저
+ * 저장**한 뒤 송부한다 — '안내 사항 저장'을 따로 누르지 않아도 화면에 적은
+ * 그대로 나간다 (기획 지시 2026-09-05). 저장이 규칙에 걸리면 송부하지 않는다.
+ */
 export async function sendAcceptance(
-  acceptanceId: string
+  acceptanceId: string,
+  guide?: AcceptanceGuideInput
 ): Promise<AcceptanceActionResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireManager();
@@ -230,6 +289,15 @@ export async function sendAcceptance(
   if (!acceptance) return { ok: false, error: "수락서를 찾을 수 없습니다." };
   if (acceptance.status === "confirmed") {
     return { ok: false, error: "이미 확인이 완료된 수락서입니다." };
+  }
+  if (guide) {
+    const saved = await saveGuide(acceptanceId, guide);
+    if (!saved.ok) {
+      return {
+        ok: false,
+        error: `${saved.error} 안내 사항을 고친 뒤 다시 송부해 주세요.`,
+      };
+    }
   }
 
   // 상태 CAS — 읽기와 쓰기 사이에 전문가가 승인하면 confirmed→sent로 확정이

@@ -1133,6 +1133,7 @@ export type Database = {
           confirmed_by: string | null
           guide_note: string | null
           map_image_path: string | null
+          map_url: string | null
           sent_at: string | null
           signed_at: string | null
           status: string
@@ -1182,6 +1183,7 @@ export type Database = {
           confirmed_by?: string | null
           guide_note?: string | null
           map_image_path?: string | null
+          map_url?: string | null
           sent_at?: string | null
           signed_at?: string | null
           status?: string
@@ -1231,6 +1233,7 @@ export type Database = {
           confirmed_by?: string | null
           guide_note?: string | null
           map_image_path?: string | null
+          map_url?: string | null
           sent_at?: string | null
           signed_at?: string | null
           status?: string

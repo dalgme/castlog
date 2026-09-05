@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Paperclip, Send, Check, MapPin, X } from "lucide-react";
+import { Paperclip, Send, Check, MapPin, Link2, X } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow";
+import { DOCUMENT_ACCEPT_ATTR } from "@/lib/experts/documents";
 
 import {
   updateAcceptanceGuide,
@@ -30,6 +31,7 @@ export function AcceptanceEditor({
   guideNote,
   paymentDueNote,
   submissionDocs,
+  mapUrl: initialMapUrl = "",
   hasMap,
   attachments,
   expertsLite = false,
@@ -40,6 +42,8 @@ export function AcceptanceEditor({
   guideNote: string;
   paymentDueNote: string;
   submissionDocs: string;
+  /** 찾아오시는 길 지도 URL — 전문가 화면에서 팝업으로 열린다 */
+  mapUrl?: string;
   hasMap: boolean;
   attachments: { id: string; fileName: string }[];
   /** 라이트 모드 — 송부 대신 기업 담당자의 확인으로 마감한다 */
@@ -54,6 +58,13 @@ export function AcceptanceEditor({
   const [note, setNote] = useState(guideNote);
   const [dueNote, setDueNote] = useState(paymentDueNote);
   const [docs, setDocs] = useState(submissionDocs);
+  const [mapUrl, setMapUrl] = useState(initialMapUrl);
+  const guideInput = () => ({
+    guideNote: note,
+    paymentDueNote: dueNote,
+    submissionDocs: docs,
+    mapUrl,
+  });
 
   const mapRef = useRef<HTMLInputElement>(null);
   const attRef = useRef<HTMLInputElement>(null);
@@ -145,30 +156,53 @@ export function AcceptanceEditor({
                 />
               </div>
             </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground">
+                찾아오시는 길 URL (네이버·카카오 지도 등)
+              </label>
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Input
+                  value={mapUrl}
+                  onChange={(e) => setMapUrl(e.target.value)}
+                  placeholder="https://map.naver.com/..."
+                  inputMode="url"
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                전문가 화면의 ‘찾아오시는 길’ 버튼을 누르면 이 주소가 팝업으로 열립니다.
+              </p>
+            </div>
             <p className="text-[11px] text-muted-foreground">
               소득구분·입금계좌는 전문가 프로필에서 자동 반영됩니다. 주민등록번호와 전체
               계좌번호는 수락서에 기재되지 않습니다.
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => updateAcceptanceGuide(acceptanceId, note, dueNote, docs),
-                  "저장했습니다."
-                )
-              }
-            >
-              안내 사항 저장
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () => updateAcceptanceGuide(acceptanceId, guideInput()),
+                    "저장했습니다."
+                  )
+                }
+              >
+                안내 사항 저장
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                수락서 송부 시 위 내용은 자동으로 저장되어 나갑니다 — 중간 저장이
+                필요할 때만 누르세요.
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <input
               ref={mapRef}
               type="file"
-              accept="image/*,.pdf"
+              accept=".jpg,.jpeg,.png,.gif,.pdf"
               className="hidden"
               onChange={(e) => onFile(e, uploadAcceptanceMap, "약도를 등록했습니다.")}
             />
@@ -182,10 +216,12 @@ export function AcceptanceEditor({
               {hasMap ? "찾아오는 길 교체" : "찾아오는 길 등록"}
             </Button>
 
+            {/* 첨부는 xls/xlsx/hwp/hwpx/pdf/jpg/jpeg/gif/png/ppt/pptx 등 —
+                lib/experts/documents.ts 허용 목록과 서버 검증이 같다 (기획 지시 2026-09-05) */}
             <input
               ref={attRef}
               type="file"
-              accept="image/*,.pdf"
+              accept={DOCUMENT_ACCEPT_ATTR}
               className="hidden"
               onChange={(e) =>
                 onFile(e, uploadAcceptanceAttachment, "첨부파일을 등록했습니다.")
@@ -196,9 +232,13 @@ export function AcceptanceEditor({
               variant="outline"
               disabled={pending}
               onClick={() => attRef.current?.click()}
+              title="PDF·이미지(JPG/PNG/GIF)·오피스(doc/docx/xls/xlsx/ppt/pptx)·한글(hwp/hwpx), 10MB 이하"
             >
               <Paperclip className="mr-1 h-4 w-4" /> 첨부파일 추가
             </Button>
+            <span className="text-[11px] text-muted-foreground">
+              PDF · 이미지 · 엑셀 · 한글 · 파워포인트 (10MB 이하)
+            </span>
           </div>
 
           {attachments.length > 0 && (
@@ -233,7 +273,10 @@ export function AcceptanceEditor({
             size="sm"
             disabled={pending}
             onClick={() =>
-              run(() => sendAcceptance(acceptanceId), "전문가에게 송부했습니다.")
+              run(
+                () => sendAcceptance(acceptanceId, guideInput()),
+                "안내 사항을 저장하고 전문가에게 송부했습니다."
+              )
             }
           >
             <Send className="mr-1 h-4 w-4" />
