@@ -52,7 +52,7 @@ export function ProjectKindToggle({
               ? o.key === "event"
                 ? "캘린더 일정표로 세션을 등록합니다"
                 : "수행기간·분야·인원으로 세션을 만들고 멘티 정보를 기입합니다"
-              : "유형 변경은 이 프로젝트에 배정된 담당자만 할 수 있습니다"
+              : "유형 변경은 대표·이사 또는 이 프로젝트 팀(PL·PM·부PM·담당)에 배정된 사람만 할 수 있습니다. 개요 탭의 팀 구성에서 배정을 받으세요."
           }
           className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
             kind === o.key
