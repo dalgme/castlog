@@ -523,7 +523,11 @@ export default async function ProjectDetailPage({
       id: r.id,
       actionType: r.action_type,
       targetId: r.target_id,
-      targetLabel: r.target_id ? targetLabelById.get(r.target_id) ?? null : null,
+      targetLabel: r.target_id
+        ? (targetLabelById.get(r.target_id) ?? null)
+        : r.action_type === "engagement.request"
+          ? "프로젝트 전체 일괄 발송 (배정된 전원)"
+          : null,
       requestNote: r.request_note,
       status: r.status,
       requesterName: staffById.get(r.requested_by)?.name ?? "(직원)",

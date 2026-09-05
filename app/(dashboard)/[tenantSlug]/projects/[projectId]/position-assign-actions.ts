@@ -20,6 +20,7 @@ import {
 } from "@/lib/integrations/project-engagement";
 import type { ProjectStage } from "@/lib/integrations/project-stage";
 import {
+  assertSlotEditable,
   buildPlanSnapshot,
   describeSlotPlanState,
   evaluatePlanGate,
@@ -42,7 +43,8 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
-import { requestEngagementForPosition } from "./positions/[positionId]/position-actions";
+import { requestEngagementForPositionCore } from "@/lib/integrations/request-engagement";
+import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 
 export type PositionAssignResult = { ok: true } | { ok: false; error: string };
 
@@ -199,6 +201,9 @@ export async function assignExpertToPosition(input: {
       error: "이미 섭외 요청이 나갔거나 확정된 자리입니다. 배정을 바꿀 수 없습니다.",
     };
   }
+  // 결재 중·승인 세션의 후보 명단은 서버에서도 잠근다 (E2E 검수 P2-9)
+  const editable = await assertSlotEditable(position.slot_id);
+  if (!editable.ok) return editable;
 
   // 미연결 전문가는 관계를 자동 생성한다 (해제된 관계만 거부)
   const linked = await ensureExpertLink(auth.session.tenantId, input.expertId);
@@ -259,6 +264,8 @@ export async function assignExpertsToSlot(input: {
     .eq("id", input.positionId)
     .maybeSingle();
   if (!clicked) return { ok: false, error: "대상을 찾을 수 없습니다." };
+  const editable = await assertSlotEditable(clicked.slot_id);
+  if (!editable.ok) return editable;
 
   const { data: positions } = await supabase
     .from("engagement_slot_positions")
@@ -366,13 +373,15 @@ export async function unassignPosition(
   const supabase = createClient();
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, status, code, assigned_expert_id")
+    .select("id, status, code, assigned_expert_id, slot_id")
     .eq("id", positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
   if (position.status !== "assigned") {
     return { ok: false, error: "임의 배정 상태에서만 해제할 수 있습니다." };
   }
+  const editable = await assertSlotEditable(position.slot_id);
+  if (!editable.ok) return editable;
 
   const { error } = await supabase
     .from("engagement_slot_positions")
@@ -536,7 +545,12 @@ export type DispatchChannel = "sms" | "email" | "both";
 
 export type DispatchResult =
   | { ok: true; sent: number; failed: { code: string; reason: string }[] }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** 부PM 게이트 거부 — 화면이 그 자리에서 프로젝트 단위 승인 요청 UI를 띄운다 */
+      needsPmApproval?: true;
+    };
 
 /**
  * 섭외 진행 — 배정된 전원에게 한 번에 섭외 요청을 보낸다.
@@ -655,6 +669,25 @@ export async function dispatchProjectEngagements(input: {
     };
   }
 
+  // 부PM 실행 게이트 — 일괄 발송은 **프로젝트 단위 승인 1건**을 소진한다
+  // (target 없음). 자리마다 승인을 요구하면 부PM은 이 버튼을 사실상 못 쓴다
+  // (E2E 검수 P2-6). 규칙 검사(계획·대상 유무)를 다 통과한 뒤, 실제 발송 직전에
+  // 소진한다 — 검사에 걸려 돌아가는 길에 승인만 잃으면 안 된다 (리뷰 M2).
+  // 자리별 승인(target 지정)과는 호환되지 않는다 — 건별 재발송은 코드넘버 화면에서
+  // 그 자리의 승인을 따로 받는다.
+  const bulkGate = await gateDeputyAction({
+    projectId: input.projectId,
+    actionType: "engagement.request",
+    targetId: null,
+  });
+  if (!bulkGate.ok) {
+    return {
+      ok: false,
+      error: bulkGate.error,
+      ...(bulkGate.needsPmApproval ? { needsPmApproval: true as const } : {}),
+    };
+  }
+
   let sent = 0;
 
   // 묶음 섭외 (기획 확정 2026-08-30 — 20번): 같은 전문가에게 가는 여러 자리는
@@ -680,15 +713,18 @@ export async function dispatchProjectEngagements(input: {
     const [firstPosition] = group;
     if (group.length === 1 && firstPosition) {
       const position = firstPosition;
-      const result = await requestEngagementForPosition({
-        positionId: position.id,
-        expertId,
-        programName: input.programName,
-        eventSummary: input.eventSummary,
-        specialNotes: input.memo,
-        responseDeadline: input.deadline,
-        channel: input.channel,
-      });
+      const result = await requestEngagementForPositionCore(
+        {
+          positionId: position.id,
+          expertId,
+          programName: input.programName,
+          eventSummary: input.eventSummary,
+          specialNotes: input.memo,
+          responseDeadline: input.deadline,
+          channel: input.channel,
+        },
+        { deputyGate: "skip" }
+      );
       if (result.ok) sent += 1;
       else failed.push({ code: position.code, reason: result.error });
       continue;
@@ -729,16 +765,19 @@ export async function dispatchProjectEngagements(input: {
     const createdIds: string[] = [];
     const createdPositions: DispatchTarget[] = [];
     for (const position of group) {
-      const result = await requestEngagementForPosition({
-        positionId: position.id,
-        expertId,
-        programName: input.programName,
-        eventSummary: input.eventSummary,
-        specialNotes: input.memo,
-        responseDeadline: input.deadline,
-        channel: input.channel,
-        suppressSend: true,
-      });
+      const result = await requestEngagementForPositionCore(
+        {
+          positionId: position.id,
+          expertId,
+          programName: input.programName,
+          eventSummary: input.eventSummary,
+          specialNotes: input.memo,
+          responseDeadline: input.deadline,
+          channel: input.channel,
+          suppressSend: true,
+        },
+        { deputyGate: "skip" }
+      );
       if (result.ok) {
         createdIds.push(result.engagementId);
         createdPositions.push(position);
