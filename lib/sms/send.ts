@@ -53,7 +53,9 @@ async function filterAdConsented(
   tenantId: string,
   recipients: SmsRecipient[]
 ): Promise<{ allowed: SmsRecipient[]; excluded: SmsRecipient[] }> {
-  const supabase = createClient();
+  // 동의 상태도 service_role로 읽는다 — 보내는 직원의 RLS에 걸려 비어 보이면
+  // 전원이 '미동의'로 잘못 제외된다. 대상은 아래 expert_id·phone으로 한정한다
+  const supabase = createAdminClient();
   const expertIds = recipients
     .map((r) => r.expertId)
     .filter((id): id is string => id !== null);
@@ -163,8 +165,15 @@ async function loadCredentials(
   | { ok: true; creds: SmsCredentials; senderNumber: string }
   | { ok: false; error: string }
 > {
-  // service_role은 RLS가 걸리지 않으므로 tenant_id를 반드시 명시한다
-  const supabase = systemContext ? createAdminClient() : createClient();
+  // 공급자 설정은 항상 service_role로 읽는다 — tenant_sms_configs의 RLS는
+  // "설정을 관리할 수 있는 사람"(대표·sending 위임자) 기준이라, 대리·주임이
+  // 섭외요청·수락서 문자를 보내면 설정 행이 안 보여 "설정되지 않았습니다"로
+  // 조용히 떨어졌다 (렛츠 보고 2026-09-05 — 문자 미수신). 보낼 자격은 호출한
+  // 액션의 실행 게이트(engagementRequest 등)가 이미 판정했고, 키는 서버 안에서
+  // 복호화돼 공급자 호출에만 쓰인다. service_role은 RLS가 걸리지 않으므로
+  // tenant_id를 반드시 명시한다.
+  void systemContext;
+  const supabase = createAdminClient();
   let config:
     | {
         provider: string;
@@ -378,10 +387,30 @@ export async function sendTenantSms(
     }
   }
 
+  const admin = createAdminClient();
   const credsResult = testMode
     ? null // 테스트 모드는 공급자 설정 없이도 동작
     : await loadCredentials(params.tenantId, systemContext);
-  if (credsResult && !credsResult.ok) return credsResult;
+  if (credsResult && !credsResult.ok) {
+    // 공급자 호출 전에 막혀도 **전 건 기록**한다 (§12-3) — 기록이 없으면
+    // "보냈다"고 믿은 담당자가 왜 안 갔는지 알 길이 없다. 세션별 송신 현황
+    // 카드가 이 행의 error_message를 실패 사유로 보여 준다.
+    await admin.from("sms_logs").insert(
+      targets.map((recipient) => ({
+        tenant_id: params.tenantId,
+        batch_id: batchId,
+        message_type: params.messageType,
+        recipient_phone: recipient.phone,
+        recipient_expert_id: recipient.expertId,
+        body: params.body,
+        status: "failed" as const,
+        provider: null,
+        error_message: credsResult.error,
+        sent_by: params.senderUserId ?? null,
+      }))
+    );
+    return credsResult;
+  }
 
   const fromNumber = credsResult?.ok
     ? await resolveSenderNumber(supabase, params, credsResult.senderNumber)
@@ -411,7 +440,9 @@ export async function sendTenantSms(
     if (result.ok) sent += 1;
     else failed += 1;
 
-    await supabase.from("sms_logs").insert({
+    // 기록은 service_role로 — sms_logs INSERT 정책(레벨 4 실행 직급)에 걸리면
+    // 발송은 됐는데 이력만 빠지는 무증상 결함이 된다. tenant_id는 명시한다
+    await admin.from("sms_logs").insert({
       tenant_id: params.tenantId,
       batch_id: batchId,
       message_type: params.messageType,
@@ -427,7 +458,6 @@ export async function sendTenantSms(
 
   // 사용량 계측 (설계문서 4.2 — 과금 없음, 계측만)
   if (sent > 0) {
-    const admin = createAdminClient();
     const today = new Date().toISOString().slice(0, 10);
     const { data: metric } = await admin
       .from("tenant_usage_metrics")
