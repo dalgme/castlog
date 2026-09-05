@@ -18,7 +18,8 @@ const SIGNED_URL_EXPIRES_SECONDS = 60;
  * - 모든 열람은 audit_logs 기록. 파일 접근은 service_role 서명 URL로만.
  */
 export async function issueDocumentViewUrl(
-  documentId: string
+  documentId: string,
+  options: { download?: boolean } = {}
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   if (!hasSupabaseEnv()) {
     return { ok: false, error: "server_not_configured" };
@@ -35,7 +36,7 @@ export async function issueDocumentViewUrl(
   // RLS가 권한을 판정한다 — 조회 불가면 열람 권한 없음
   const { data: document } = await supabase
     .from("expert_documents")
-    .select("id, expert_id, document_type, storage_path, status")
+    .select("id, expert_id, document_type, storage_path, status, file_name")
     .eq("id", documentId)
     .maybeSingle();
 
@@ -63,5 +64,11 @@ export async function issueDocumentViewUrl(
     after_data: { document_type: document.document_type },
   });
 
-  return { ok: true, url: signed.signedUrl };
+  // '원본 열기'(download) — 저장 경로는 uuid라 내려받으면 이름이 사라진다.
+  // 원래 파일명으로 저장되게 download 파라미터를 붙인다 (한글 파일명 보전).
+  // storage-js의 download 옵션은 한글을 이중 인코딩하므로 직접 붙인다 (리뷰 1)
+  const url = options.download
+    ? `${signed.signedUrl}&download=${encodeURIComponent(document.file_name)}`
+    : signed.signedUrl;
+  return { ok: true, url };
 }

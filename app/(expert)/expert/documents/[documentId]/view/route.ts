@@ -10,7 +10,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { documentId: string } }
 ) {
-  const result = await issueDocumentViewUrl(params.documentId);
+  const download = request.nextUrl.searchParams.get("download") === "1";
+  const result = await issueDocumentViewUrl(params.documentId, { download });
 
   if (!result.ok) {
     return NextResponse.redirect(new URL("/expert/documents", request.url));

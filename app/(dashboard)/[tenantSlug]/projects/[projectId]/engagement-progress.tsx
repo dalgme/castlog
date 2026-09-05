@@ -30,6 +30,7 @@ import {
 import { DispatchDialog } from "./dispatch-dialog";
 import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
+import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 import { PlanHistoryTable } from "./plan-history-table";
 
 /**
@@ -139,6 +140,7 @@ export function EngagementProgress({
   projectDescription = null,
   canManage,
   canInput,
+  canCancel = false,
   expertsLite,
   approvalsEnabled,
   projectState,
@@ -157,6 +159,8 @@ export function EngagementProgress({
   canManage: boolean;
   /** 입력(첨부) — 레벨 5부터 */
   canInput: boolean;
+  /** 확정 후 긴급 취소 — 레벨 3부터. 후보 등록 화면에서 이 탭으로 옮김 (2026-09-05) */
+  canCancel?: boolean;
   expertsLite: boolean;
   /** approvals 모듈 — 꺼져 있으면 승인 목록 대신 "품의 없이 진행" 안내 */
   approvalsEnabled: boolean;
@@ -522,6 +526,16 @@ export function EngagementProgress({
                               expertName={r.expertName}
                             />
                           )}
+                          {/* 확정 후 긴급 취소 — 계약이 성립한 건만 (기획 지시 2026-09-05,
+                              후보 등록 화면에서 이동) */}
+                          {canCancel &&
+                            r.engagementId &&
+                            ACCEPTANCE_STAGES.includes(r.stage) && (
+                              <EngagementUrgentCancel
+                                engagementId={r.engagementId}
+                                expertName={r.expertName}
+                              />
+                            )}
                         </span>
                       </TableCell>
                     </TableRow>

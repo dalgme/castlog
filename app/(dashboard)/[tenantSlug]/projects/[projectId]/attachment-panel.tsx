@@ -78,6 +78,7 @@ export function AttachmentPanel({
     formData.set("scope", scope);
     formData.set("expertId", scope === "individual" ? expertId : "");
     formData.set("file", file);
+    formData.set("fileName", file.name); // 한글 파일명 보전
     startTransition(async () => {
       const res = await uploadProjectAttachment(formData);
       if (!res.ok) {

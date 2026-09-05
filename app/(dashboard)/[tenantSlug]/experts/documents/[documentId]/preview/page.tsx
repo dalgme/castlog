@@ -47,7 +47,7 @@ export default async function TenantDocumentPreviewPage({
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <a
-                href={`/${params.tenantSlug}/experts/documents/${doc.id}/view`}
+                href={`/${params.tenantSlug}/experts/documents/${doc.id}/view?download=1`}
                 target="_blank"
                 rel="noreferrer"
               >

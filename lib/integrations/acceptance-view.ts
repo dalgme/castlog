@@ -81,13 +81,21 @@ export async function getAcceptanceView(
   const admin = createAdminClient();
   async function sign(
     path: string | null,
-    expiresIn = SIGNED_URL_EXPIRES_SECONDS
+    expiresIn = SIGNED_URL_EXPIRES_SECONDS,
+    downloadName?: string
   ): Promise<string | null> {
     if (!path) return null;
     const { data } = await admin.storage
       .from(EXPERT_DOCUMENT_BUCKET)
       .createSignedUrl(path, expiresIn);
-    return data?.signedUrl ?? null;
+    if (!data?.signedUrl) return null;
+    // 브라우저가 못 그리는 형식(엑셀·한글·PPT)은 내려받기 — 원래 파일명으로
+    // 저장되게 download 파라미터를 붙인다. storage-js의 download 옵션은 URL 전체를
+    // encodeURI로 한 번 더 감싸 한글이 %25EC…로 이중 인코딩되므로(리뷰 1) 직접
+    // 붙인다 — 서버가 한 번 디코드한 뒤 filename*=UTF-8''로 내보낸다.
+    return downloadName
+      ? `${data.signedUrl}&download=${encodeURIComponent(downloadName)}`
+      : data.signedUrl;
   }
 
   // 첨부는 service_role로 조회 — 전문가 세션은 tenant RLS 밖이므로 여기서 처리한다.
@@ -102,12 +110,23 @@ export async function getAcceptanceView(
     sign(acceptance.seal_path),
     sign(acceptance.map_image_path),
     Promise.all(
-      (attachmentRows ?? []).map(async (a) => ({
-        id: a.id,
-        fileName: a.file_name,
-        mimeType: a.mime_type,
-        url: await sign(a.storage_path, ATTACHMENT_URL_EXPIRES_SECONDS),
-      }))
+      (attachmentRows ?? []).map(async (a) => {
+        const ext = a.file_name.toLowerCase().split(".").pop() ?? "";
+        const inline =
+          a.mime_type === "application/pdf" ||
+          (a.mime_type ?? "").startsWith("image/") ||
+          ["pdf", "jpg", "jpeg", "png", "gif"].includes(ext);
+        return {
+          id: a.id,
+          fileName: a.file_name,
+          mimeType: a.mime_type,
+          url: await sign(
+            a.storage_path,
+            ATTACHMENT_URL_EXPIRES_SECONDS,
+            inline ? undefined : a.file_name
+          ),
+        };
+      })
     ),
   ]);
 

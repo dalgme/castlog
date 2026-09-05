@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -53,13 +54,8 @@ export async function uploadExpertDocument(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "파일을 선택하세요." };
   }
-  // 한글 파일명 보전: multipart의 file.name이 인코딩 깨짐을 겪는 경우가 있어
-  // 클라이언트가 문자열 필드로 함께 보낸 원본 파일명을 우선 사용한다
-  const clientFileName = formData.get("fileName");
-  const fileName =
-    typeof clientFileName === "string" && clientFileName.trim()
-      ? clientFileName.trim()
-      : file.name;
+  // 한글 파일명 보전 — 클라이언트 fileName 필드 우선, mojibake 복원 (lib/files/upload-name)
+  const fileName = readUploadFileName(formData, file);
 
   // 용량·확장자 서버 검증 (CLAUDE.md 12-5)
   const validation = validateDocumentFile(file.type, fileName, file.size);

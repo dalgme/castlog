@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -178,7 +179,8 @@ export async function uploadAcceptanceMap(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "이미지를 선택해 주세요." };
   }
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  const fileName = readUploadFileName(formData, file);
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
   // 약도는 화면에 그대로 그린다 — 이미지·PDF만. 오피스·한글 자료는 첨부파일로
   if (!["jpg", "jpeg", "png", "gif", "pdf"].includes(validation.extension)) {
@@ -227,7 +229,8 @@ export async function uploadAcceptanceAttachment(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "파일을 선택해 주세요." };
   }
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  const fileName = readUploadFileName(formData, file);
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
 
   const admin = createAdminClient();
@@ -244,7 +247,7 @@ export async function uploadAcceptanceAttachment(
   const { error } = await supabase.from("engagement_acceptance_attachments").insert({
     tenant_id: auth.tenantId,
     acceptance_id: acceptanceId,
-    file_name: file.name,
+    file_name: fileName,
     storage_path: path,
     // 브라우저가 hwp 등에서 빈 MIME·octet-stream을 보내므로 정규 MIME으로 저장 —
     // 열람 화면이 형식을 판정하는 근거다

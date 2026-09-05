@@ -46,7 +46,7 @@ export default async function ExpertDocumentPreviewPage({
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <a
-                href={`/expert/documents/${doc.id}/view`}
+                href={`/expert/documents/${doc.id}/view?download=1`}
                 target="_blank"
                 rel="noreferrer"
               >

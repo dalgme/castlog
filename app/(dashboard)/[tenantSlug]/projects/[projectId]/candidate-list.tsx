@@ -20,7 +20,6 @@ import { commaInputHandler, formatComma } from "@/components/ui/comma-number-inp
 import { useToast } from "@/hooks/use-toast";
 
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
-import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { ManualAcceptButton } from "./manual-accept-button";
 import { PositionRequestDialog } from "./position-request-dialog";
@@ -48,7 +47,6 @@ export function CandidateList({
   positions,
   stageByPosition,
   canManage,
-  canCancel,
   canWithdraw,
   canExecute,
   expertsLite = false,
@@ -62,8 +60,6 @@ export function CandidateList({
   positions: SlotPositionRow[];
   stageByPosition: Record<string, EngagementStage>;
   canManage: boolean;
-  /** 확정 후 긴급 취소 버튼 — 레벨 3부터 (입력 권한과 별개 축) */
-  canCancel: boolean;
   /** 응답 전 회수 버튼 — 레벨 4부터 (권한 축 분리, 기획 확정 2026-08-29) */
   canWithdraw: boolean;
   /** 실행 축(섭외요청 등, 레벨 4부터) — 전화 섭외 수동 완료 버튼 */
@@ -325,15 +321,8 @@ export function CandidateList({
                     회수 권한 없음 (권한 규칙 — 기본 레벨 4)
                   </span>
                 )}
-                {canCancel &&
-                  p.engagementId &&
-                  isFilled &&
-                  stage !== "canceled" && (
-                    <EngagementUrgentCancel
-                      engagementId={p.engagementId}
-                      expertName={p.expertName ?? "전문가"}
-                    />
-                  )}
+                {/* 확정 후 긴급 취소는 '승인 목록 및 섭외 진행' 탭에서 한다
+                    (기획 지시 2026-09-05) — 여기서는 요청 전 후보만 삭제한다 */}
                 {/* 섭외 이력 — 대상자별 발송·동의·수동 처리 타임라인 */}
                 {p.engagementId && (
                   <EngagementHistoryDialog

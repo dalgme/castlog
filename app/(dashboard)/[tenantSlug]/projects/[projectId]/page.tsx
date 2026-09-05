@@ -1955,6 +1955,7 @@ export default async function ProjectDetailPage({
             projectDescription={project.description}
             canManage={canExecute}
             canInput={canInput}
+            canCancel={exec.engagementCancel}
             expertsLite={expertsLite}
             approvalsEnabled={modules.approvals}
             projectState={{

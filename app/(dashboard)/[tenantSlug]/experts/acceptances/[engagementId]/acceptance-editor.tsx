@@ -142,6 +142,7 @@ export function AcceptanceEditor({
     const fd = new FormData();
     fd.append("acceptanceId", acceptanceId);
     fd.append("file", file);
+    fd.append("fileName", file.name); // 한글 파일명 보전
     run(() => action(fd), okMsg);
   };
 

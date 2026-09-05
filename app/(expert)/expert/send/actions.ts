@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -171,7 +172,8 @@ export async function uploadSendFile(formData: FormData): Promise<UploadDocResul
     return { ok: false, error: "파일을 선택해 주세요." };
   }
 
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  const fileName = readUploadFileName(formData, file);
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
 
   const supabase = createClient();
@@ -215,9 +217,9 @@ export async function uploadSendFile(formData: FormData): Promise<UploadDocResul
       expert_id: expertId,
       document_type: documentType,
       storage_path: storagePath,
-      file_name: file.name,
+      file_name: fileName,
       file_size_bytes: file.size,
-      mime_type: file.type,
+      mime_type: validation.contentType,
     })
     .select("id, document_type, file_name")
     .single();

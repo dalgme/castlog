@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -56,12 +57,8 @@ export async function uploadCertificateFile(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "파일을 선택하세요." };
   }
-  // 한글 파일명 보전 — 클라이언트가 보낸 원본 파일명 우선
-  const clientFileName = formData.get("fileName");
-  const fileName =
-    typeof clientFileName === "string" && clientFileName.trim()
-      ? clientFileName.trim()
-      : file.name;
+  // 한글 파일명 보전 — 클라이언트 fileName 필드 우선, mojibake 복원 (lib/files/upload-name)
+  const fileName = readUploadFileName(formData, file);
   const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
 
