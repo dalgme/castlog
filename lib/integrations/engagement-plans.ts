@@ -514,11 +514,13 @@ export async function onEngagementPlanApprovalResolved(
       .eq("id", plan.parent_plan_id)
       .eq("status", "superseded");
   } else {
+    // approval_id는 지우지 않는다 — 결재 상세가 "이 결재건은 섭외계획 품의다"를
+    // 알아야 고아 재상신을 막을 수 있고(E2E 검수 P2-5), 패널의 '결재건 보기'가
+    // 반려 사유로 이어진다. 재상신 시 finalizePlanRecord가 새 결재건으로 덮는다.
     await admin
       .from("engagement_plans")
       .update({
         status: "draft",
-        approval_id: null,
         last_rejection_note: rejectionNote ?? "반려됨 (사유 미기재)",
       })
       .eq("id", plan.id);

@@ -665,16 +665,41 @@ export default async function ProjectDetailPage({
   // position_code로 되짚어 자리 행에 표시한다 (E2E 검수 P2-8)
   const priorOutcomeByCode: Record<
     string,
-    { expertName: string; outcome: "declined" | "expired" }
+    {
+      engagementId: string;
+      expertId: string;
+      expertName: string;
+      outcome: "declined" | "expired";
+    }
   > = {};
   for (const e of engagements) {
     if (e.status !== "declined" && e.status !== "expired") continue;
     if (!e.position_code || priorOutcomeByCode[e.position_code]) continue; // 최신순 — 가장 최근만
     priorOutcomeByCode[e.position_code] = {
+      engagementId: e.id,
+      expertId: e.expert_id,
       expertName: e.experts?.name ?? "전문가",
       outcome: e.status,
     };
   }
+  // 자리 행에 붙는 조건: 새 요청이 아직 없고(engagement_id 없음), 자리가 비었거나
+  // 그 전문가가 그대로 배정돼 있을 때. 다른 전문가가 새로 배정됐으면 이전
+  // 거절 표시는 오해만 낳는다 (리뷰 M3)
+  const priorOutcomeFor = (p: {
+    code: string;
+    status: string;
+    engagement_id: string | null;
+    assigned_expert_id: string | null;
+  }) => {
+    if (p.engagement_id) return null;
+    const prior = priorOutcomeByCode[p.code];
+    if (!prior) return null;
+    if (p.status === "open") return prior;
+    if (p.status === "assigned" && p.assigned_expert_id === prior.expertId) {
+      return prior;
+    }
+    return null;
+  };
 
   const slotRows: SlotRow[] = slotRecords.map((s) => ({
     id: s.id,
@@ -704,10 +729,12 @@ export default async function ProjectDetailPage({
         engagementId: p.engagement_id,
         canceledExpertName:
           p.status === "open" ? (canceledByCode[p.code] ?? null) : null,
-        priorOutcome:
-          !p.engagement_id && (p.status === "open" || p.status === "assigned")
-            ? (priorOutcomeByCode[p.code] ?? null)
-            : null,
+        priorOutcome: (() => {
+          const prior = priorOutcomeFor(p);
+          return prior
+            ? { expertName: prior.expertName, outcome: prior.outcome }
+            : null;
+        })(),
         assignedExpertName: p.assigned_expert_id
           ? (expertNameById.get(p.assigned_expert_id) ?? null)
           : null,
@@ -844,21 +871,17 @@ export default async function ProjectDetailPage({
         .filter((id): id is string => id !== null)
     )
   );
-  // 거절·만료된 건은 코드넘버 자리 행에 '이전 후보'로 표시된다 — 여기 다시
-  // 실으면 같은 건이 두 곳에 보인다 (E2E 검수 P2-8)
-  const knownPositionCodes = new Set(
-    slotRows.flatMap((slot) => slot.positions.map((p) => p.code))
+  // 자리 행에 '이전 후보'로 실제 표시된 거절·만료 건만 여기서 뺀다 — 여기 다시
+  // 실으면 같은 건이 두 곳에 보이고, 표시되지 않은 옛 건을 빼면 아무 데도
+  // 안 보인다 (E2E 검수 P2-8, 리뷰 M4)
+  const shownAsPriorOutcome = new Set(
+    (positionRecords ?? [])
+      .map((p) => priorOutcomeFor(p)?.engagementId ?? null)
+      .filter((id): id is string => id !== null)
   );
   const unlinkedEngagements: UnlinkedEngagement[] = engagements
     .filter((e) => !linkedEngagementIds.has(e.id))
-    .filter(
-      (e) =>
-        !(
-          (e.status === "declined" || e.status === "expired") &&
-          e.position_code &&
-          knownPositionCodes.has(e.position_code)
-        )
-    )
+    .filter((e) => !shownAsPriorOutcome.has(e.id))
     .map((e) => ({
       id: e.id,
       expertName: e.experts?.name ?? "-",

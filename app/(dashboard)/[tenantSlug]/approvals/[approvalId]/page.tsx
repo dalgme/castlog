@@ -485,7 +485,7 @@ export default async function ApprovalDetailPage({
           canResubmit={canResubmit && !isPlanApproval}
           planResubmitHref={
             canResubmit && isPlanApproval && planProjectId
-              ? `/${params.tenantSlug}/projects/${planProjectId}`
+              ? `/${params.tenantSlug}/projects/${planProjectId}?tab=experts`
               : null
           }
           kind={isReport ? "report" : "decision"}

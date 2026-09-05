@@ -137,11 +137,16 @@ export async function remindEngagement(
   // 묶음 발송 건이면 묶음 링크(/b) 마감도 같이 늘린다 — 건 마감만 늘리면
   // "어제 받은 묶음 링크는 만료, 오늘 링크는 유효"가 된다. 묶음 상태 전환은
   // service_role 전용이라 admin 클라이언트로 (E2E 검수 전문가 P2-7)
+  // 마감 지난 링크를 한 번 열었으면 묶음이 이미 expired로 바뀌어 있다 — 마감만
+  // 늘리면 링크는 여전히 죽어 있으므로 상태도 되살린다. admin은 RLS를 우회하니
+  // tenant_id를 직접 건다.
   if (engagement.bundle_id) {
     await createAdminClient()
       .from("engagement_bundles")
-      .update({ token_expires_at: expiresAt })
+      .update({ token_expires_at: expiresAt, status: "requested" })
       .eq("id", engagement.bundle_id)
+      .eq("tenant_id", tenantId)
+      .in("status", ["requested", "expired"])
       .lt("token_expires_at", expiresAt);
   }
 
