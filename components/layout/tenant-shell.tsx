@@ -21,6 +21,7 @@ import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { AlertBanner } from "./alert-banner";
 import { PracticeBar } from "./practice-bar";
+import { SmsTestModeBanner } from "./sms-test-mode-banner";
 import { ModuleOnboarding } from "./module-onboarding";
 import { SetupBanner } from "./setup-banner";
 
@@ -113,6 +114,7 @@ export async function TenantShell({
           canPractice={canPractice}
         />
         {canPractice && <PracticeBar practice={practice} />}
+        <SmsTestModeBanner tenantSlug={tenantSlug} />
         {/* 최초 설정에서 출발했다면 돌아올 길을 항상 띄운다 — 설정 화면마다
             붙이면 다음에 만든 화면에서 또 길이 끊긴다 */}
         <Suspense fallback={null}>

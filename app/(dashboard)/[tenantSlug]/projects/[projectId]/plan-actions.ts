@@ -294,8 +294,8 @@ async function writePlanLines(
 
 /**
  * 상신 대상 세션의 완성 검사 (기획 확정 2026-08-30 — 22번).
- * '후보 미배정' 자리가 남았거나 배정이 필요인원에 못 미치는 세션이 있으면
- * 어느 세션이 왜 걸렸는지, 무엇을 하면 되는지를 그대로 돌려준다.
+ * 배정이 필요인원에 못 미치는 세션이 있으면 어느 세션이 왜 걸렸는지, 무엇을
+ * 하면 되는지를 그대로 돌려준다. 빈 후보 TO는 막지 않는다 (E2E 검수 P2-4).
  */
 async function assertSlotsReady(
   projectId: string,
@@ -307,18 +307,14 @@ async function assertSlotsReady(
   );
   if (unready.length === 0) return { ok: true };
   const detail = unready
-    .map((s) =>
-      s.unassigned > 0
-        ? `${s.label} (후보 미배정 ${s.unassigned}자리)`
-        : `${s.label} (배정 ${s.assignedCount}/${s.requiredCount}명)`
-    )
+    .map((s) => `${s.label} (배정 ${s.assignedCount}/${s.requiredCount}명)`)
     .join(", ");
   return {
     ok: false,
     error:
-      `상신하려는 세션에 후보 미배정 항목이 남아 있습니다 (규칙): ${detail}. ` +
-      `미배정 후보 자리를 삭제하거나 전문가를 배정한 뒤 다시 품의를 상신해 주세요. ` +
-      `미완성 세션은 선택에서 빼고 완성된 세션만 먼저 상신할 수도 있습니다.`,
+      `상신하려는 세션에 필요인원만큼 전문가가 배정되지 않았습니다 (규칙): ${detail}. ` +
+      `후보 자리에 전문가를 배정하거나 필요인원을 조정한 뒤 다시 품의를 상신해 주세요. ` +
+      `미완성 세션은 선택에서 빼고 완성된 세션만 먼저 상신할 수도 있습니다. (빈 후보 자리는 상신을 막지 않습니다)`,
   };
 }
 

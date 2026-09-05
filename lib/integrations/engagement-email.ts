@@ -19,18 +19,34 @@ export async function sendEngagementEmail(params: {
   expertId: string;
   subject: string;
   body: string;
+  /** 답장 주소 — 미지정이면 발송 담당자(users.email)로 (E2E 검수 전문가 P2-5) */
+  replyTo?: string;
 }): Promise<void> {
   if (!hasSupabaseEnv()) return;
   // 라이트 모드 — 전문가 발송 전면 차단 (engagement-sms.ts와 같은 이유)
   if (await isTenantExpertsLite(params.tenantId)) return;
   try {
     const admin = createAdminClient();
-    const { data: expert } = await admin
-      .from("experts")
-      .select("name, email")
-      .eq("id", params.expertId)
-      .maybeSingle();
+    const [{ data: expert }, { data: sender }] = await Promise.all([
+      admin
+        .from("experts")
+        .select("name, email")
+        .eq("id", params.expertId)
+        .maybeSingle(),
+      params.replyTo
+        ? Promise.resolve({ data: null })
+        : admin
+            .from("users")
+            .select("email")
+            .eq("id", params.senderUserId)
+            .eq("tenant_id", params.tenantId)
+            .maybeSingle(),
+    ]);
     if (!expert?.email) return;
+
+    // "이 메일에 회신하시거나"라고 써 놓고 no-reply로 보내면 답장이 사라진다 —
+    // 담당자 주소로 답장이 오게 한다. 담당자 주소가 없으면 헤더를 넣지 않는다
+    const replyTo = params.replyTo ?? sender?.email ?? undefined;
 
     await sendTenantEmail({
       tenantId: params.tenantId,
@@ -41,6 +57,7 @@ export async function sendEngagementEmail(params: {
       recipients: [
         { email: expert.email, expertId: params.expertId, name: expert.name },
       ],
+      replyTo,
     });
   } catch {
     // 메일 실패가 섭외·수락서 처리 자체를 막지 않는다.

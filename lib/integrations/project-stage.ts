@@ -46,7 +46,7 @@ export const PROJECT_STAGE_DESCRIPTIONS: Record<ProjectStage, string> = {
   accepted_all:
     "전원이 수락했습니다. 수락서가 자동 생성되었으니 첨부를 붙여 송부하세요.",
   letters_sent:
-    "수락서를 보냈습니다. 전문가가 캐스트로그에서 확인·서명하면 확정됩니다.",
+    "수락서를 보냈습니다. 전문가가 전문가 포털에서 확인·서명하면 확정됩니다.",
   confirmed: "전원 확정. 행사 운영 단계입니다.",
   closing: "참여율과 만족도를 입력하는 단계입니다.",
   settlement_review: "회계담당자가 지급 내역과 지급품의서를 검토합니다.",

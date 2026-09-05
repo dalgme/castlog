@@ -29,7 +29,7 @@ import {
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
-import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import { portalUrl, sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
   buildEngagementRequestSms,
   sendEngagementSms,
@@ -496,7 +496,10 @@ export async function cancelEngagement(
           .filter(Boolean)
           .join(" · ") || null,
         urgent && trimmedReason ? `사유: ${trimmedReason}` : null,
-        "자세한 내용은 캐스트로그 전문가 포털에서 확인해 주세요.",
+        // 링크 없는 취소 문자는 전문가가 확인할 곳이 없다. 회사 명의 문자에
+        // 플랫폼 이름은 넣지 않는다 (§16, E2E 검수 전문가 P2-4)
+        "자세한 내용과 문의는 아래 링크(전문가 포털)에서 확인해 주세요.",
+        portalUrl("/expert/engagements"),
       ]
         .filter(Boolean)
         .join("\n"),
