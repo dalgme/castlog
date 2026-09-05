@@ -167,24 +167,28 @@ export function AcceptanceLetter({
           {a.map_url && <MapLinkButton url={a.map_url} />}
           {mapUrl &&
             (a.map_image_path?.toLowerCase().endsWith(".pdf") ? (
-              <object
-                data={`${mapUrl}#toolbar=0&navpanes=0`}
-                type="application/pdf"
-                className="h-[60vh] w-full rounded-md border"
-                aria-label="찾아오시는 길 약도(PDF)"
-              >
-                <p className="p-3 text-sm text-muted-foreground">
-                  이 브라우저에서는 약도 PDF를 표시할 수 없습니다.{" "}
-                  <a
-                    href={mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    새 창에서 열기
-                  </a>
-                </p>
-              </object>
+              <div className="space-y-1">
+                <object
+                  data={`${mapUrl}#toolbar=0&navpanes=0`}
+                  type="application/pdf"
+                  className="h-[60vh] w-full rounded-md border"
+                  aria-label="찾아오시는 길 약도(PDF)"
+                >
+                  <p className="p-3 text-sm text-muted-foreground">
+                    이 브라우저에서는 약도 PDF를 표시할 수 없습니다.
+                  </p>
+                </object>
+                {/* 모바일 사파리는 PDF를 '지원'한다고 하면서 첫 장만 그리거나
+                    비워 두므로 새 창 링크를 항상 둔다 (§10 모바일 최우선) */}
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-brand underline underline-offset-4"
+                >
+                  약도 PDF 새 창에서 열기
+                </a>
+              </div>
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img

@@ -213,7 +213,7 @@ export function AcceptanceEditor({
               onClick={() => mapRef.current?.click()}
             >
               <MapPin className="mr-1 h-4 w-4" />
-              {hasMap ? "찾아오는 길 교체" : "찾아오는 길 등록"}
+              {hasMap ? "찾아오시는 길 약도 교체" : "찾아오시는 길 약도 등록"}
             </Button>
 
             {/* 첨부는 xls/xlsx/hwp/hwpx/pdf/jpg/jpeg/gif/png/ppt/pptx 등 —

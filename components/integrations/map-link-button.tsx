@@ -17,14 +17,21 @@ export function MapLinkButton({ url }: { url: string }) {
     host = null;
   }
 
+  const safe = /^https?:\/\/\S+$/i.test(url);
+
   function open() {
-    const popup = window.open(
+    if (!safe) return;
+    // noopener가 들어가면 window.open은 항상 null을 돌려준다(명세) — 반환값으로
+    // 차단 여부를 판정하면 팝업과 새 탭이 두 번 열린다 (리뷰 1). 한 번만 연다.
+    // 팝업이 차단되면 브라우저가 새 탭으로 대신 연다.
+    window.open(
       url,
-      "castlog-map",
+      "_blank",
       "popup=yes,width=960,height=720,resizable=yes,scrollbars=yes,noopener,noreferrer"
     );
-    if (!popup) window.open(url, "_blank", "noopener,noreferrer");
   }
+
+  if (!safe) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -33,7 +40,13 @@ export function MapLinkButton({ url }: { url: string }) {
         찾아오시는 길
         <ExternalLink className="ml-1 h-3 w-3 opacity-60" aria-hidden />
       </Button>
-      {host && <span className="text-xs text-muted-foreground">{host}</span>}
+      {host && (
+        <span className="text-xs text-muted-foreground print:hidden">{host}</span>
+      )}
+      {/* 인쇄본에는 버튼이 소용없다 — 주소 자체를 찍는다 */}
+      <span className="hidden break-all text-xs text-muted-foreground print:inline">
+        {url}
+      </span>
     </div>
   );
 }

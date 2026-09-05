@@ -16,6 +16,14 @@
 alter table public.engagement_acceptances
   add column if not exists map_url text;
 
+-- 앱(Zod)과 같은 규칙을 DB에서도 — PostgREST 직접 PATCH로 javascript: 등이
+-- 들어오지 못하게 한다. 신규 컬럼이라 백필 대상 없음.
+alter table public.engagement_acceptances
+  drop constraint if exists engagement_acceptances_map_url_check;
+alter table public.engagement_acceptances
+  add constraint engagement_acceptances_map_url_check
+  check (map_url is null or map_url ~* '^https?://\S+$');
+
 update storage.buckets
 set allowed_mime_types = array[
   'application/pdf',

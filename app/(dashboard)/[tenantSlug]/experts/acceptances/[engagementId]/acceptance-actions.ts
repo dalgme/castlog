@@ -13,6 +13,8 @@ import {
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
+import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -82,29 +84,61 @@ const guideSchema = z.object({
 async function saveGuide(
   acceptanceId: string,
   input: AcceptanceGuideInput
-): Promise<AcceptanceActionResult> {
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; kind: "validation" | "rule" | "system" }
+> {
   const parsed = guideSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
       error: parsed.error.issues[0]?.message ?? "안내 정보 입력이 올바르지 않습니다.",
+      kind: "validation",
     };
   }
   const g = parsed.data;
   const supabase = createClient();
-  const { error } = await supabase
-    .from("engagement_acceptances")
-    .update({
-      guide_note: g.guideNote.trim() || null,
-      payment_due_note: g.paymentDueNote.trim() || null,
-      submission_docs: g.submissionDocs.trim() || null,
-      map_url: g.mapUrl || null,
-    })
-    .eq("id", acceptanceId);
+  const base = {
+    guide_note: g.guideNote.trim() || null,
+    payment_due_note: g.paymentDueNote.trim() || null,
+    submission_docs: g.submissionDocs.trim() || null,
+  };
+  // 확정된 수락서는 편집하지 않는다 — 화면은 폼을 숨기지만 액션 직접 호출을
+  // 막는 건 서버다 (리뷰 5). 0행이면 상태가 바뀐 것.
+  const run = (patch: TablesUpdate<"engagement_acceptances">) =>
+    supabase
+      .from("engagement_acceptances")
+      .update(patch)
+      .eq("id", acceptanceId)
+      .neq("status", "confirmed")
+      .select("id")
+      .maybeSingle();
+
+  let { data: row, error } = await run({ ...base, map_url: g.mapUrl || null });
+  if (error && isMissingColumnError(error)) {
+    // SQL 먼저(§14-10): map_url 컬럼이 아직 없는 환경 — URL 없이 저장은 계속된다
+    if (g.mapUrl) {
+      return {
+        ok: false,
+        error:
+          "지도 URL 저장은 서버 업데이트(마이그레이션) 후 가능합니다. URL을 비우고 저장하거나 캐스트로그에 알려 주세요.",
+        kind: "system",
+      };
+    }
+    ({ data: row, error } = await run(base));
+  }
   if (error) {
     return {
       ok: false,
       error: "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+      kind: "system",
+    };
+  }
+  if (!row) {
+    return {
+      ok: false,
+      error: "이미 확정된 수락서라 안내 사항을 수정할 수 없습니다 (규칙).",
+      kind: "rule",
     };
   }
   return { ok: true };
@@ -124,13 +158,13 @@ export async function updateAcceptanceGuide(
   if (!auth.ok) return auth;
 
   const saved = await saveGuide(acceptanceId, input);
-  if (!saved.ok) return saved;
+  if (!saved.ok) return { ok: false, error: saved.error };
 
   revalidatePath("/[tenantSlug]/experts/acceptances/[engagementId]", "page");
   return { ok: true };
 }
 
-/** 찾아오는 길(약도) 이미지 등록 — 암호화 버킷, 서명 URL로만 열람. */
+/** 찾아오시는 길(약도) 이미지 등록 — 암호화 버킷, 서명 URL로만 열람. */
 export async function uploadAcceptanceMap(
   formData: FormData
 ): Promise<AcceptanceActionResult> {
@@ -151,7 +185,7 @@ export async function uploadAcceptanceMap(
     return {
       ok: false,
       error:
-        "찾아오는 길 약도는 이미지(JPG/PNG/GIF) 또는 PDF만 등록할 수 있습니다. 다른 형식은 '첨부파일 추가'로 올려 주세요.",
+        "찾아오시는 길 약도는 이미지(JPG/PNG/GIF) 또는 PDF만 등록할 수 있습니다. 다른 형식은 '첨부파일 추가'로 올려 주세요.",
     };
   }
 
@@ -295,7 +329,10 @@ export async function sendAcceptance(
     if (!saved.ok) {
       return {
         ok: false,
-        error: `${saved.error} 안내 사항을 고친 뒤 다시 송부해 주세요.`,
+        error:
+          saved.kind === "validation"
+            ? `${saved.error} 안내 사항을 고친 뒤 다시 송부해 주세요.`
+            : saved.error,
       };
     }
   }

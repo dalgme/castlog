@@ -7,6 +7,7 @@ import {
   Document,
   Font,
   Image,
+  Link,
   Page,
   StyleSheet,
   Text,
@@ -190,7 +191,10 @@ export async function renderAcceptancePdf(view: AcceptanceView): Promise<Buffer>
         {a.map_url && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>찾아오시는 길</Text>
-            <Text style={styles.note}>{a.map_url}</Text>
+            {/* 긴 URL은 공백이 없어 줄바꿈이 안 된다 — 구분 문자 뒤에 zero-width space */}
+            <Link src={a.map_url} style={styles.note}>
+              {a.map_url.replace(/([/?&=\-])/g, "$1\u200B")}
+            </Link>
           </View>
         )}
 

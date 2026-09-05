@@ -114,7 +114,9 @@ export async function uploadProjectAttachment(
     expert_id: expertId,
     file_name: file.name,
     storage_path: path,
-    mime_type: file.type,
+    // 브라우저는 hwp·xls 등에서 빈 MIME이나 octet-stream을 보낸다 — 정규 MIME으로
+    // 저장해야 수락서 스냅샷 복사(acceptance.ts)가 버킷 MIME 검사에 걸리지 않는다
+    mime_type: validation.contentType,
     file_size_bytes: file.size,
     uploaded_by: auth.session.userId,
   });
