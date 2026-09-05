@@ -61,10 +61,16 @@ export function PlanHistoryTable({
 }) {
   const [showAll, setShowAll] = useState(false);
   const approved = plans.filter((p) => p.status === "approved");
+  // 전체 이력은 상신 시각 오름차순(일정순, 기획 지시) — 같은 시각·미상신은
+  // 리비전으로 보조 정렬. 승인본만 볼 때는 원래 순서(최신 리비전 우선)를 지킨다
   const visible = showAll
     ? plans
         .slice()
-        .sort((a, b) => (a.submittedAt ?? "").localeCompare(b.submittedAt ?? ""))
+        .sort(
+          (a, b) =>
+            (a.submittedAt ?? "").localeCompare(b.submittedAt ?? "") ||
+            a.revision - b.revision
+        )
     : approved;
   const hiddenCount = plans.length - approved.length;
 

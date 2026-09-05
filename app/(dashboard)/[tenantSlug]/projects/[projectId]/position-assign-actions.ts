@@ -1,5 +1,7 @@
 "use server";
 
+import { z } from "zod";
+
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
@@ -562,6 +564,9 @@ export type DispatchResult =
  * 가거나, 아무도 못 받는다. 실패한 자리는 그대로 배정 상태로 남고 화면에
  * 이유와 함께 표시된다 — 조용히 넘어가지 않는다.
  */
+/** 세션 단위 발송의 세션 id 목록 — 프로젝트 소속 검증은 아래에서 슬롯 조회로 한다 */
+const dispatchSlotIdsSchema = z.array(z.string().uuid()).min(1).max(200);
+
 export async function dispatchProjectEngagements(input: {
   projectId: string;
   channel: DispatchChannel;
@@ -575,6 +580,13 @@ export async function dispatchProjectEngagements(input: {
 }): Promise<DispatchResult> {
   const auth = await requireManager("engagementRequest");
   if (!auth.ok) return auth;
+  if (input.slotIds && !dispatchSlotIdsSchema.safeParse(input.slotIds).success) {
+    return {
+      ok: false,
+      error:
+        "세션 지정이 올바르지 않습니다 (시스템 결함). 화면을 새로고침한 뒤 다시 시도해 주세요.",
+    };
+  }
 
   const state = await getProjectEngagementState(input.projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
@@ -634,7 +646,9 @@ export async function dispatchProjectEngagements(input: {
   // 부분 상신 계획(기획 2026-08-30 — 22번)이면 승인 커버리지 밖 세션은 처음부터
   // 대상에서 뺀다 — 건별 게이트에 맡기면 묶음 생성·취소가 헛돌고(리뷰 P2-3·P2-5),
   // 매 발송이 '실패'투성이로 보인다. 뺀 세션은 규칙 사유로 명시한다 (§12-9).
-  const failed: { code: string; reason: string }[] = [];
+  // kind — rule: 규칙(품의 상태 등)으로 뺀 자리 / error: 보내려 했는데 실패한 자리.
+  // 세션별 현황 카드는 error만 보여 준다 — 규칙 사유는 승인되면 의미가 없어진다 (리뷰 H3)
+  const failed: { code: string; reason: string; kind: "rule" | "error" }[] = [];
   const modulesForDispatch = await getTenantModules();
   // 다중 계획(2026-09-05): 세션마다 어느 계획에 담겨 어디까지 왔는지가 다르다.
   // 승인(미변경) 계획에 담긴 세션만 보내고, 나머지는 세션별 사유를 남긴다.
@@ -657,7 +671,11 @@ export async function dispatchProjectEngagements(input: {
     const slotState = slotStates ? (slotStates[slot.id] ?? "none") : "approved";
     if (slotState !== "approved") {
       for (const p of slotTargets) {
-        failed.push({ code: p.code, reason: describeSlotPlanState(slotState) });
+        failed.push({
+          code: p.code,
+          reason: describeSlotPlanState(slotState),
+          kind: "rule",
+        });
       }
       continue;
     }
@@ -696,6 +714,33 @@ export async function dispatchProjectEngagements(input: {
 
   let sent = 0;
 
+  // 실패 사유를 자리 단위로 남긴다 — 세션별 송신 현황(승인 목록 및 섭외 진행 탭)이
+  // "왜 안 나갔나"를 다음 방문에도 보여 줘야 한다 (기획 지시 2026-09-05).
+  // 한 건도 못 나간 경우에도 남긴다 — 그때가 이 기록이 가장 필요한 순간이다 (리뷰 H1)
+  const logDispatchFailures = async () => {
+    const errors = failed.filter((f) => f.kind === "error");
+    if (errors.length === 0) return;
+    const codeToId = new Map((positions ?? []).map((p) => [p.code, p.id]));
+    await supabase.from("audit_logs").insert(
+      errors
+        .filter((f) => codeToId.has(f.code))
+        .map((f) => ({
+          tenant_id: auth.session.tenantId,
+          actor_auth_user_id: auth.session.userId,
+          actor_role: auth.session.role,
+          action: "engagement.dispatch_failed",
+          resource_type: "engagement_slot_position",
+          resource_id: codeToId.get(f.code) ?? null,
+          after_data: {
+            code: f.code,
+            reason: f.reason,
+            kind: f.kind,
+            project_id: input.projectId,
+          },
+        }))
+    );
+  };
+
   // 묶음 섭외 (기획 확정 2026-08-30 — 20번): 같은 전문가에게 가는 여러 자리는
   // 문자 1건 + 승인 URL 1개(/b)로 묶는다. 섭외 건 자체는 자리마다 그대로
   // 만들어진다(계약·수락서·자리 전환의 원본) — 발송만 전문가 단위로 합친다.
@@ -732,7 +777,7 @@ export async function dispatchProjectEngagements(input: {
         { deputyGate: "skip" }
       );
       if (result.ok) sent += 1;
-      else failed.push({ code: position.code, reason: result.error });
+      else failed.push({ code: position.code, reason: result.error, kind: "error" });
       continue;
     }
 
@@ -760,6 +805,7 @@ export async function dispatchProjectEngagements(input: {
         failed.push({
           code: position.code,
           reason: "묶음 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
+          kind: "error",
         });
       }
       continue;
@@ -788,7 +834,7 @@ export async function dispatchProjectEngagements(input: {
         createdIds.push(result.engagementId);
         createdPositions.push(position);
       } else {
-        failed.push({ code: position.code, reason: result.error });
+        failed.push({ code: position.code, reason: result.error, kind: "error" });
       }
     }
     if (createdIds.length === 0) {
@@ -838,6 +884,7 @@ export async function dispatchProjectEngagements(input: {
           code: position.code,
           reason:
             "섭외 건은 만들어졌으나 묶음 연결에 실패해 발송하지 못했습니다 (시스템 결함). 자리를 해제한 뒤 다시 발송해 주세요.",
+          kind: "error",
         });
       }
       continue;
@@ -909,6 +956,8 @@ export async function dispatchProjectEngagements(input: {
   }
 
   if (sent === 0) {
+    await logDispatchFailures();
+    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
     return {
       ok: false,
       error: `한 건도 발송되지 않았습니다. (${failed[0]?.reason ?? "원인 미상"})`,
@@ -935,26 +984,9 @@ export async function dispatchProjectEngagements(input: {
     after_data: { sent, failed: failed.length, channel: input.channel },
   });
 
+  await logDispatchFailures();
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  // 실패 사유를 자리 단위로 남긴다 — 세션별 송신 현황(승인 목록 및 섭외 진행 탭)이
-  // "왜 안 나갔나"를 다음 방문에도 보여 줘야 한다 (기획 지시 2026-09-05)
-  if (failed.length > 0) {
-    const codeToId = new Map((positions ?? []).map((p) => [p.code, p.id]));
-    await supabase.from("audit_logs").insert(
-      failed
-        .filter((f) => codeToId.has(f.code))
-        .map((f) => ({
-          tenant_id: auth.session.tenantId,
-          actor_auth_user_id: auth.session.userId,
-          actor_role: auth.session.role,
-          action: "engagement.dispatch_failed",
-          resource_type: "engagement_slot_position",
-          resource_id: codeToId.get(f.code) ?? null,
-          after_data: { code: f.code, reason: f.reason, project_id: input.projectId },
-        }))
-    );
-  }
-  return { ok: true, sent, failed };
+  return { ok: true, sent, failed: failed.map(({ code, reason }) => ({ code, reason })) };
 }
 
 export type AcceptanceSendResult =

@@ -179,11 +179,20 @@ export function DispatchDialog({
           </Alert>
         )}
         {needsPmApproval && (
-          <DeputyRequestInline
-            projectId={projectId}
-            actionType="engagement.request"
-            targetId={null}
-          />
+          <div className="space-y-2">
+            <DeputyRequestInline
+              projectId={projectId}
+              actionType="engagement.request"
+              targetId={null}
+            />
+            {slotIds && slotIds.length > 0 && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                이 승인은 발송 1회에 쓰입니다 — 세션별로 나눠 보내면 세션마다
+                승인이 필요합니다. 한 번에 여러 세션을 보내려면 위의 ‘전체
+                세션’ 발송을 쓰세요.
+              </p>
+            )}
+          </div>
         )}
 
         {result ? (

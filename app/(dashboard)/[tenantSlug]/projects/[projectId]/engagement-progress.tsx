@@ -109,8 +109,19 @@ export type SessionDispatchRow = {
   sent: number;
   /** 수락(확정)된 자리 */
   accepted: number;
-  /** 아직 나가지 않은 자리별 최근 실패 사유 */
-  failures: { code: string; expertName: string | null; reason: string }[];
+  /** 요청·거절·만료 흔적이 있는 세션인가 — 재발송 모드에서 일괄 대상에서 빠진다 */
+  hasHistory: boolean;
+  /** 최초 발송 이후(재발송 모드)인가 */
+  redispatch: boolean;
+  /** 프로젝트 단계가 발송을 막으면 그 사유 (서버와 같은 문구) */
+  blockedReason: string | null;
+  /** 자리별 최근 실패 사유 — error: 실패 / info: 테스트 모드 등 안내 */
+  failures: {
+    code: string;
+    expertName: string | null;
+    reason: string;
+    kind: "error" | "info";
+  }[];
 };
 
 /** 수락서가 존재하는 단계 — 이때만 '수락서 확인' 버튼이 의미 있다 */
@@ -342,19 +353,37 @@ export function EngagementProgress({
                         {" · "}필요 {r.requiredCount}명
                         {waiting > 0 && ` · 회신 대기 ${waiting}명`}
                         {r.accepted > 0 && ` · 수락 ${r.accepted}명`}
-                        {remaining > 0 && r.dispatchable === 0 && r.sent === 0 && (
-                          <span className="text-amber-800"> · 보낼 배정 후보 없음</span>
+                        {remaining > 0 && r.dispatchable === 0 && !r.blockedReason && (
+                          <span className="text-amber-800">
+                            {r.redispatch && r.hasHistory
+                              ? " · 남은 자리는 개별 요청으로"
+                              : " · 보낼 배정 후보 없음"}
+                          </span>
                         )}
                       </p>
-                      {r.failures.length > 0 && (
+                      {r.failures.some((f) => f.kind === "error") && (
                         <ul className="space-y-0.5 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
-                          {r.failures.map((f) => (
-                            <li key={f.code}>
-                              <span className="font-mono">{f.code}</span>
-                              {f.expertName ? ` ${f.expertName}` : ""} — 송신 실패:{" "}
-                              {f.reason}
-                            </li>
-                          ))}
+                          {r.failures
+                            .filter((f) => f.kind === "error")
+                            .map((f) => (
+                              <li key={f.code}>
+                                <span className="font-mono">{f.code}</span>
+                                {f.expertName ? ` ${f.expertName}` : ""} — 송신 실패:{" "}
+                                {f.reason}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                      {r.failures.some((f) => f.kind === "info") && (
+                        <ul className="space-y-0.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                          {r.failures
+                            .filter((f) => f.kind === "info")
+                            .map((f) => (
+                              <li key={f.code}>
+                                <span className="font-mono">{f.code}</span>
+                                {f.expertName ? ` ${f.expertName}` : ""} — {f.reason}
+                              </li>
+                            ))}
                         </ul>
                       )}
                     </div>
@@ -365,11 +394,14 @@ export function EngagementProgress({
                         defaultSummary={projectDescription}
                         targetCount={r.dispatchable}
                         expertsLite={expertsLite}
-                        disabled={r.dispatchable === 0}
+                        disabled={r.blockedReason !== null || r.dispatchable === 0}
                         disabledReason={
-                          r.sent >= r.requiredCount
+                          r.blockedReason ??
+                          (r.sent >= r.requiredCount
                             ? "필요인원만큼 이미 요청·확정되었습니다."
-                            : "보낼 배정 후보가 없습니다 — 거절·만료로 빈 자리는 코드넘버별 개별 요청으로 채웁니다."
+                            : r.redispatch && r.hasHistory
+                              ? "이미 요청이 나간 세션은 일괄 발송 대상이 아닙니다 (규칙) — 남은 자리는 코드넘버별 개별 요청으로 채웁니다."
+                              : "보낼 배정 후보가 없습니다 — 세션 확인 탭에서 후보를 배정한 뒤 보내세요.")
                         }
                         triggerLabel={
                           expertsLite

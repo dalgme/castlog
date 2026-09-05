@@ -23,6 +23,7 @@ import {
   getProjectEngagementState,
   buildEngagementPlanDraft,
   pickDispatchTargets,
+  REDISPATCH_STAGES,
 } from "@/lib/integrations/project-engagement";
 import { getCanceledExpertByPositionCode } from "@/lib/integrations/urgent-cancellations";
 import { DEFAULT_NOTICE_BODY } from "@/lib/integrations/notice-constants";
@@ -1008,15 +1009,16 @@ export default async function ProjectDetailPage({
   let approvedPlans: ApprovedPlanRow[] = [];
   const progressRows: ProgressRow[] = [];
   const sessionDispatch: SessionDispatchRow[] = [];
+  // 이 탭의 세션 표기는 한 가지로 — 진행 현황·승인 목록·세션별 송신 카드 공통
+  const slotLabelById = new Map(
+    slotRows.map((s) => [
+      s.id,
+      `${s.slotDate}${s.periodEndDate && s.periodEndDate !== s.slotDate ? `~${s.periodEndDate}` : ""}${
+        s.sessionName ? ` ${s.sessionName}` : ""
+      }`,
+    ])
+  );
   if (tab === "engage" && modules.experts) {
-    const slotLabelById = new Map(
-      slotRows.map((s) => [
-        s.id,
-        `${s.slotDate}${s.periodEndDate && s.periodEndDate !== s.slotDate ? `~${s.periodEndDate}` : ""}${
-          s.sessionName ? ` ${s.sessionName}` : ""
-        }`,
-      ])
-    );
     if (modules.approvals) {
       const { data: planRows } = await supabase
         .from("engagement_plans")
@@ -1217,75 +1219,140 @@ export default async function ProjectDetailPage({
   if (tab === "engage" && modules.experts) {
     const stageNow = engagementState?.stage ?? "assigning";
     const redispatch = stageNow !== "plan_approved";
+    // 단계 게이트는 서버(dispatchProjectEngagements)와 같은 판정·같은 문구 —
+    // 화면만 열어 두면 눌러도 거부되는 더미 버튼이 된다 (§14-7, 리뷰 H2)
+    const stageOpen =
+      stageNow === "plan_approved" || REDISPATCH_STAGES.includes(stageNow);
+    const blockedReason = stageOpen
+      ? null
+      : stageNow === "assigning"
+        ? "섭외 품의를 먼저 상신·승인받아야 합니다 (규칙)."
+        : stageNow === "plan_review"
+          ? "섭외 품의가 결재 진행 중입니다. 승인 후 발송할 수 있습니다."
+          : "수락서 송부 이후에는 일괄 발송을 쓸 수 없습니다 (규칙). 추가 섭외는 코드넘버별 개별 요청으로 진행해 주세요.";
     const approvedSlots = slotRows.filter((s) =>
       planSlotStates ? planSlotStates[s.id] === "approved" : true
     );
+    // 세션별 승인 시점 — 그 전에 남은 실패 기록은 지난 상황이다 (리뷰 H3)
+    const approvedSinceBySlot = new Map<string, string>();
+    for (const plan of approvedPlans) {
+      if (plan.status !== "approved" || !plan.approvedAt) continue;
+      for (const sess of plan.sessions) {
+        if (!sess.slotId) continue;
+        const prev = approvedSinceBySlot.get(sess.slotId);
+        if (!prev || prev < plan.approvedAt) approvedSinceBySlot.set(sess.slotId, plan.approvedAt);
+      }
+    }
     // 나가지 않은 자리의 최근 실패 사유 — 발송 액션이 audit_logs에 남긴다.
-    // 감사로그 열람은 대표 전용 RLS라 admin으로 이 프로젝트 자리 범위만 읽는다
-    const openPositionIds = approvedSlots.flatMap((s) =>
+    // 감사로그 열람은 대표 전용 RLS라 admin으로 읽되, 대상은 RLS로 보이는 이
+    // 프로젝트의 자리 id로 한정하고(tenant_id 조건만으로 넓히지 말 것 — 연습모드
+    // 격리도 이 한정에 기댄다) 상태·사유 컬럼만 가져온다. service key가 없는
+    // 환경에서 화면이 죽지 않도록 조회 실패는 빈 결과로 처리한다 (리뷰 M2)
+    const openPositions = approvedSlots.flatMap((s) =>
       s.positions
         .filter((p) => p.status === "assigned" || p.status === "open")
-        .map((p) => p.id)
+        .map((p) => ({ id: p.id, slotId: s.id }))
     );
     const failureByPosition = new Map<string, string>();
     const tenantId = tenantIdFromUser(user);
-    const adminForLogs = createAdminClient();
-    if (openPositionIds.length > 0 && tenantId) {
-      const { data: failRows } = await adminForLogs
-        .from("audit_logs")
-        .select("resource_id, after_data, created_at")
-        .eq("tenant_id", tenantId)
-        .eq("action", "engagement.dispatch_failed")
-        .in("resource_id", openPositionIds)
-        .order("created_at", { ascending: false })
-        .limit(200);
-      for (const row of failRows ?? []) {
-        if (!row.resource_id || failureByPosition.has(row.resource_id)) continue;
-        const reason =
-          row.after_data && typeof row.after_data === "object" && "reason" in row.after_data
-            ? String((row.after_data as { reason?: unknown }).reason ?? "")
-            : "";
-        if (reason) failureByPosition.set(row.resource_id, reason);
+    if (openPositions.length > 0 && tenantId) {
+      try {
+        const slotByPosition = new Map(openPositions.map((p) => [p.id, p.slotId]));
+        const { data: failRows } = await createAdminClient()
+          .from("audit_logs")
+          .select("resource_id, after_data, created_at")
+          .eq("tenant_id", tenantId)
+          .eq("action", "engagement.dispatch_failed")
+          .eq("resource_type", "engagement_slot_position")
+          .in(
+            "resource_id",
+            openPositions.map((p) => p.id)
+          )
+          .order("created_at", { ascending: false })
+          .limit(Math.min(1000, openPositions.length * 3 + 20));
+        for (const row of failRows ?? []) {
+          if (!row.resource_id || failureByPosition.has(row.resource_id)) continue;
+          const data =
+            row.after_data && typeof row.after_data === "object"
+              ? (row.after_data as { reason?: unknown; kind?: unknown })
+              : {};
+          // 규칙 사유(결재 중 등)는 승인되면 의미가 없어진다 — 실제 실패만 보여 준다
+          if (data.kind === "rule") continue;
+          const since = approvedSinceBySlot.get(slotByPosition.get(row.resource_id) ?? "");
+          if (since && row.created_at < since) continue;
+          const reason = typeof data.reason === "string" ? data.reason : "";
+          if (reason) failureByPosition.set(row.resource_id, reason);
+        }
+      } catch {
+        // 조회 실패 = 사유 없음으로 표시. 발송 자체는 액션에서 별도 판정된다
       }
     }
     // 요청은 나갔지만 문자가 실제로 안 간 경우 — 발송 실패는 섭외 처리를
-    // 막지 않으므로(engagement-sms) sms_logs에만 남는다. 전문가별 최근 1건만
-    // 보고, 마지막이 실패면 사유를 붙인다 (상태·사유만 읽는다 — 번호·본문 제외)
-    const requestedExpertIds = Array.from(
-      new Set(
-        (positionRecords ?? [])
-          .filter((p) => p.status === "requested" || p.status === "filled")
-          .map((p) => p.expert_id ?? p.assigned_expert_id)
-          .filter((v): v is string => Boolean(v))
-      )
+    // 막지 않으므로(engagement-sms) sms_logs에만 남는다. 그 섭외 건이 만들어진
+    // 직후 창(10분) 안의 그 전문가 발송 기록만 본다 — 다른 프로젝트·세션 안내
+    // 문자를 이 요청의 실패로 오인하지 않는다 (리뷰 M1). 상태·사유만 읽는다
+    const engagementCreatedAt = new Map(
+      (engagements ?? []).map((e) => [e.id, e.created_at] as const)
     );
-    const smsFailureByExpert = new Map<string, string>();
-    if (requestedExpertIds.length > 0 && tenantId) {
-      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: smsRows } = await adminForLogs
-        .from("sms_logs")
-        .select("recipient_expert_id, status, error_message, created_at")
-        .eq("tenant_id", tenantId)
-        .eq("message_type", "transactional")
-        .in("recipient_expert_id", requestedExpertIds)
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(300);
-      const seen = new Set<string>();
-      for (const row of smsRows ?? []) {
-        if (!row.recipient_expert_id || seen.has(row.recipient_expert_id)) continue;
-        seen.add(row.recipient_expert_id);
-        if (row.status === "failed" || row.status === "blocked") {
-          smsFailureByExpert.set(
-            row.recipient_expert_id,
-            `문자 발송 실패 — ${row.error_message?.trim() || "공급자가 사유를 돌려주지 않았습니다"}. 설정 > 발송에서 공급자 상태를 확인한 뒤 코드넘버별 개별 요청으로 다시 보내세요.`
+    const requestedPositions = (positionRecords ?? []).filter(
+      (p) =>
+        p.status === "requested" &&
+        p.engagement_id &&
+        (p.expert_id ?? p.assigned_expert_id) &&
+        engagementCreatedAt.has(p.engagement_id)
+    );
+    const smsNoteByPosition = new Map<string, { reason: string; kind: "error" | "info" }>();
+    if (requestedPositions.length > 0 && tenantId) {
+      try {
+        const createdAts = requestedPositions
+          .map((p) => engagementCreatedAt.get(p.engagement_id ?? "") ?? "")
+          .filter(Boolean)
+          .sort();
+        const windowStart = createdAts[0] ?? new Date().toISOString();
+        const { data: smsRows } = await createAdminClient()
+          .from("sms_logs")
+          .select("recipient_expert_id, status, error_message, created_at")
+          .eq("tenant_id", tenantId)
+          .eq("message_type", "transactional")
+          .in(
+            "recipient_expert_id",
+            Array.from(
+              new Set(
+                requestedPositions.map((p) => p.expert_id ?? p.assigned_expert_id ?? "")
+              )
+            )
+          )
+          .gte("created_at", windowStart)
+          .order("created_at", { ascending: true })
+          .limit(500);
+        for (const p of requestedPositions) {
+          const expertId = p.expert_id ?? p.assigned_expert_id;
+          const from = engagementCreatedAt.get(p.engagement_id ?? "");
+          if (!expertId || !from) continue;
+          const until = new Date(new Date(from).getTime() + 10 * 60 * 1000).toISOString();
+          const inWindow = (smsRows ?? []).filter(
+            (r) =>
+              r.recipient_expert_id === expertId &&
+              r.created_at >= from &&
+              r.created_at <= until
           );
-        } else if (row.status === "test") {
-          smsFailureByExpert.set(
-            row.recipient_expert_id,
-            "SMS 테스트 모드 — 실제 문자는 나가지 않았습니다 (요청 링크는 이메일·포털 알림으로만 전달)."
-          );
+          const last = inWindow[inWindow.length - 1];
+          if (!last) continue;
+          if (last.status === "failed") {
+            smsNoteByPosition.set(p.id, {
+              kind: "error",
+              reason: `문자 발송 실패 — ${last.error_message?.trim() || "공급자가 사유를 돌려주지 않았습니다"}. 설정 > 발송에서 공급자 상태를 확인한 뒤 코드넘버별 개별 요청으로 다시 보내세요.`,
+            });
+          } else if (last.status === "test") {
+            smsNoteByPosition.set(p.id, {
+              kind: "info",
+              reason:
+                "SMS 테스트 모드 — 실제 문자는 나가지 않았습니다 (요청 링크는 이메일·포털 알림으로만 전달).",
+            });
+          }
         }
+      } catch {
+        // 조회 실패 = 표시 없음
       }
     }
     for (const slot of approvedSlots) {
@@ -1297,29 +1364,30 @@ export default async function ProjectDetailPage({
         (p) => p.status === "requested" || p.status === "filled"
       ).length;
       const accepted = raw.filter((p) => p.status === "filled").length;
-      const expertIdByPosition = new Map(
-        raw.map((p) => [p.id, p.expert_id ?? p.assigned_expert_id] as const)
-      );
+      const hasHistory =
+        sent > 0 || raw.some((p) => p.status === "open" && p.assigned_expert_id !== null);
       const failures = slot.positions.flatMap((p) => {
-        const expertId = expertIdByPosition.get(p.id) ?? null;
-        const reason =
-          p.status === "requested" || p.status === "filled"
-            ? p.status === "requested" && expertId
-              ? smsFailureByExpert.get(expertId)
-              : undefined
-            : failureByPosition.get(p.id);
-        if (!reason) return [];
+        const note =
+          p.status === "requested"
+            ? smsNoteByPosition.get(p.id)
+            : p.status === "assigned" || p.status === "open"
+              ? failureByPosition.has(p.id)
+                ? { kind: "error" as const, reason: failureByPosition.get(p.id) ?? "" }
+                : undefined
+              : undefined;
+        if (!note) return [];
         return [
           {
             code: p.code,
             expertName: p.expertName ?? p.assignedExpertName,
-            reason,
+            reason: note.reason,
+            kind: note.kind,
           },
         ];
       });
       sessionDispatch.push({
         slotId: slot.id,
-        label: slot.sessionName ?? slot.roleDescription ?? slot.slotDate,
+        label: slotLabelById.get(slot.id) ?? slot.slotDate,
         detail:
           [
             formatEventSchedule(
@@ -1328,6 +1396,7 @@ export default async function ProjectDetailPage({
               slot.startsTime,
               slot.endsTime
             ),
+            slot.roleDescription,
             slot.locationName,
           ]
             .filter(Boolean)
@@ -1336,6 +1405,9 @@ export default async function ProjectDetailPage({
         dispatchable,
         sent,
         accepted,
+        hasHistory,
+        redispatch,
+        blockedReason,
         failures,
       });
     }
