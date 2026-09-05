@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Paperclip, Send, Check, MapPin, Link2, X } from "lucide-react";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { ACCEPTANCE_STATUS_LABELS } from "@/lib/integrations/acceptance-workflow";
 import { DOCUMENT_ACCEPT_ATTR } from "@/lib/experts/documents";
 
@@ -66,6 +67,54 @@ export function AcceptanceEditor({
     mapUrl,
   });
 
+  // 안내 사항 자동 저장 (기획 지시 2026-09-05) — 별도 저장 버튼 없이 입력이
+  // 멈추면(1.2초) 또는 칸을 벗어나면 저장한다. 송부 때도 현재 값을 한 번 더
+  // 저장하므로 마지막 타이핑이 빠질 일은 없다. 자동 저장은 화면을 새로고침하지
+  // 않는다 — 타이핑 중 리렌더로 커서가 튀면 안 된다.
+  const [autoSave, setAutoSave] = useState<
+    { state: "idle" } | { state: "saving" } | { state: "saved"; at: Date } | { state: "error"; message: string }
+  >({ state: "idle" });
+  const lastSavedRef = useRef(
+    JSON.stringify({
+      guideNote: guideNote,
+      paymentDueNote: paymentDueNote,
+      submissionDocs: submissionDocs,
+      mapUrl: initialMapUrl,
+    })
+  );
+  const savingRef = useRef(false);
+  const editable = status !== "confirmed";
+  const canAutoSave = editable && !expertsLite;
+
+  const flushGuide = async () => {
+    if (!canAutoSave) return;
+    const input = guideInput();
+    const key = JSON.stringify(input);
+    if (key === lastSavedRef.current || savingRef.current) return;
+    savingRef.current = true;
+    setAutoSave({ state: "saving" });
+    const r = await updateAcceptanceGuide(acceptanceId, input);
+    savingRef.current = false;
+    if (r.ok) {
+      lastSavedRef.current = key;
+      setAutoSave({ state: "saved", at: new Date() });
+    } else {
+      setAutoSave({ state: "error", message: r.error });
+    }
+  };
+
+  useEffect(() => {
+    if (!canAutoSave) return;
+    const key = JSON.stringify(guideInput());
+    if (key === lastSavedRef.current) return;
+    const timer = window.setTimeout(() => {
+      void flushGuide();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // 입력값이 바뀔 때마다 타이머를 다시 건다 — flushGuide는 최신 상태를 읽는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note, dueNote, docs, mapUrl, canAutoSave]);
+
   const mapRef = useRef<HTMLInputElement>(null);
   const attRef = useRef<HTMLInputElement>(null);
 
@@ -95,8 +144,6 @@ export function AcceptanceEditor({
     fd.append("file", file);
     run(() => action(fd), okMsg);
   };
-
-  const editable = status !== "confirmed";
 
   return (
     <div className="space-y-4">
@@ -136,6 +183,7 @@ export function AcceptanceEditor({
               rows={4}
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              onBlur={() => void flushGuide()}
               placeholder="준비물, 진행 순서, 주차 안내 등 전문가에게 전달할 안내를 작성하세요."
             />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -144,6 +192,7 @@ export function AcceptanceEditor({
                 <Input
                   value={dueNote}
                   onChange={(e) => setDueNote(e.target.value)}
+                  onBlur={() => void flushGuide()}
                   placeholder="프로그램 종료 후 30일 이내"
                 />
               </div>
@@ -152,6 +201,7 @@ export function AcceptanceEditor({
                 <Input
                   value={docs}
                   onChange={(e) => setDocs(e.target.value)}
+                  onBlur={() => void flushGuide()}
                   placeholder="예: 통장사본, 신분증사본"
                 />
               </div>
@@ -165,6 +215,7 @@ export function AcceptanceEditor({
                 <Input
                   value={mapUrl}
                   onChange={(e) => setMapUrl(e.target.value)}
+                  onBlur={() => void flushGuide()}
                   placeholder="https://map.naver.com/..."
                   inputMode="url"
                 />
@@ -177,25 +228,21 @@ export function AcceptanceEditor({
               소득구분·입금계좌는 전문가 프로필에서 자동 반영됩니다. 주민등록번호와 전체
               계좌번호는 수락서에 기재되지 않습니다.
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () => updateAcceptanceGuide(acceptanceId, guideInput()),
-                    "저장했습니다."
-                  )
-                }
-              >
-                안내 사항 저장
-              </Button>
-              <span className="text-[11px] text-muted-foreground">
-                수락서 송부 시 위 내용은 자동으로 저장되어 나갑니다 — 중간 저장이
-                필요할 때만 누르세요.
-              </span>
-            </div>
+            <p
+              className={cn(
+                "text-[11px]",
+                autoSave.state === "error" ? "text-red-700" : "text-muted-foreground"
+              )}
+              aria-live="polite"
+            >
+              {autoSave.state === "saving"
+                ? "자동 저장 중…"
+                : autoSave.state === "saved"
+                  ? `자동 저장됨 · ${autoSave.at.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+                  : autoSave.state === "error"
+                    ? `자동 저장 실패 — ${autoSave.message}`
+                    : "입력하면 자동으로 저장됩니다. 송부할 때도 현재 내용이 그대로 나갑니다."}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
