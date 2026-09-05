@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTenantModules } from "@/lib/modules/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { readUploadFileName } from "@/lib/files/upload-name";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -82,8 +83,10 @@ export async function uploadProjectAttachment(
     return { ok: false, error: "파일을 선택하세요." };
   }
 
+  // 한글 파일명 보전 — 클라이언트 fileName 필드 우선, mojibake 복원 (lib/files/upload-name)
+  const fileName = readUploadFileName(formData, file);
   // 용량·확장자는 서버에서 검증한다 (CLAUDE.md §12-5)
-  const validation = validateDocumentFile(file.type, file.name, file.size);
+  const validation = validateDocumentFile(file.type, fileName, file.size);
   if (!validation.ok) return { ok: false, error: validation.error };
 
   const supabase = createClient();
@@ -112,7 +115,7 @@ export async function uploadProjectAttachment(
     purpose,
     scope,
     expert_id: expertId,
-    file_name: file.name,
+    file_name: fileName,
     storage_path: path,
     // 브라우저는 hwp·xls 등에서 빈 MIME이나 octet-stream을 보낸다 — 정규 MIME으로
     // 저장해야 수락서 스냅샷 복사(acceptance.ts)가 버킷 MIME 검사에 걸리지 않는다

@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import { readUploadFileName } from "@/lib/files/upload-name";
 
 import { revalidatePath } from "next/cache";
 
@@ -83,11 +84,8 @@ export async function uploadMmsImageAction(
     return { ok: false, error: "JPG 이미지만 첨부할 수 있습니다 (통신사 MMS 규격)." };
   }
 
-  const clientName = formData.get("fileName");
-  const fileName =
-    typeof clientName === "string" && clientName.trim()
-      ? clientName.trim()
-      : file.name;
+  // 한글 파일명 보전 — 클라이언트 fileName 필드 우선, mojibake 복원 (lib/files/upload-name)
+  const fileName = readUploadFileName(formData, file);
 
   const result = await uploadTenantMmsImage({
     tenantId,

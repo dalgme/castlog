@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -204,11 +205,12 @@ export async function uploadBulkExpertDocument(
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expertId)) {
     return { ok: false, error: "요청 값을 확인하세요." };
   }
-  const fileName = String(formData.get("fileName") ?? "");
   const file = formData.get("file");
   if (!expertId || !isBulkDocType(docType) || !(file instanceof File)) {
     return { ok: false, error: "요청 값을 확인하세요." };
   }
+  // 한글 파일명 보전 — 클라이언트 fileName 필드 우선, mojibake 복원
+  const fileName = readUploadFileName(formData, file);
 
   // 자사 관계 전문가만 (RLS 확인)
   const supabase = createClient();
@@ -225,7 +227,7 @@ export async function uploadBulkExpertDocument(
 
   const valid = validateDocumentFile(
     file.type,
-    fileName || file.name,
+    fileName,
     file.size
   );
   if (!valid.ok) return { ok: false, error: valid.error };
@@ -268,7 +270,7 @@ export async function uploadBulkExpertDocument(
       expert_id: expertId,
       document_type: docType,
       storage_path: path,
-      file_name: fileName || file.name,
+      file_name: fileName,
       file_size_bytes: file.size,
       mime_type: valid.contentType,
       uploaded_by_tenant_id: auth.tenantId,

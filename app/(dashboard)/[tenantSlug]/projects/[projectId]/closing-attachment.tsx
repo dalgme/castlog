@@ -42,6 +42,7 @@ export function ClosingAttachment({
     formData.set("projectId", projectId);
     formData.set("engagementId", engagementId);
     formData.set("file", file);
+    formData.set("fileName", file.name); // 한글 파일명 보전
     startTransition(async () => {
       const result = await uploadSettlementLineAttachment(formData);
       if (!result.ok) setError(result.error);

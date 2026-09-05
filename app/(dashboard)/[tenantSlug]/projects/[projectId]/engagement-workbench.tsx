@@ -23,8 +23,8 @@ import {
   type EngagementStage,
 } from "@/lib/integrations/engagement-stage";
 
-import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
 import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
+import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
 
 import {
   PROJECT_STAGE_DESCRIPTIONS,
@@ -112,7 +112,7 @@ export function EngagementWorkbench({
   slotPlanStates = null,
   canManage,
   canInput,
-  canCancel,
+  canCancel = false,
   canWithdraw,
   planGate,
   planPanel,
@@ -138,8 +138,12 @@ export function EngagementWorkbench({
   canManage: boolean;
   /** 입력(후보·첨부) — 레벨 5부터 */
   canInput: boolean;
-  /** 확정 후 긴급 취소 — 레벨 3부터 */
-  canCancel: boolean;
+  /**
+   * 확정 후 긴급 취소 — 레벨 3부터. 코드넘버에 붙은 건은 '승인 목록 및 섭외
+   * 진행' 탭으로 옮겼고(기획 지시 2026-09-05), 여기서는 그 탭에 나오지 않는
+   * **코드넘버 미연결 건**에만 남긴다 (리뷰 2)
+   */
+  canCancel?: boolean;
   /** 응답 전 회수 — 레벨 4부터 (권한 축 분리, 기획 확정 2026-08-29) */
   canWithdraw: boolean;
   /**
@@ -474,7 +478,6 @@ export function EngagementWorkbench({
                   positions={slot.positions}
                   stageByPosition={stageByPosition}
                   canManage={canInput}
-                  canCancel={canCancel}
                   canWithdraw={canWithdraw}
                   canExecute={canManage}
                   expertsLite={expertsLite}

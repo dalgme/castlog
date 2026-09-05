@@ -112,6 +112,7 @@ export function SendForm({
     const fd = new FormData();
     fd.append("documentType", documentType);
     fd.append("file", file);
+    fd.append("fileName", file.name); // 한글 파일명 보전
     startTransition(async () => {
       const result = await uploadSendFile(fd);
       setUploadingType(null);

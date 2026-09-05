@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readUploadFileName } from "@/lib/files/upload-name";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -57,7 +58,8 @@ export async function uploadSettlementLineAttachment(
     return { ok: false, error: "대상 참여 건을 찾을 수 없습니다." };
   }
 
-  const validated = validateDocumentFile(file.type, file.name, file.size);
+  const fileName = readUploadFileName(formData, file);
+  const validated = validateDocumentFile(file.type, fileName, file.size);
   if (!validated.ok) return { ok: false, error: validated.error };
 
   // 파일 1개 규칙 — 기존 건이 있으면 교체(삭제 후 업로드)
@@ -85,7 +87,7 @@ export async function uploadSettlementLineAttachment(
     const { error } = await supabase
       .from("settlement_line_attachments")
       .update({
-        file_name: file.name,
+        file_name: fileName,
         storage_path: storagePath,
         mime_type: validated.contentType,
         file_size_bytes: file.size,
@@ -107,7 +109,7 @@ export async function uploadSettlementLineAttachment(
       tenant_id: auth.tenantId,
       project_id: projectId,
       engagement_id: engagementId,
-      file_name: file.name,
+      file_name: fileName,
       storage_path: storagePath,
       mime_type: validated.contentType,
       file_size_bytes: file.size,
@@ -137,7 +139,7 @@ export async function uploadSettlementLineAttachment(
     action: "settlement_attachment.upload",
     resource_type: "expert_engagement",
     resource_id: engagementId,
-    after_data: { file_name: file.name, size: file.size },
+    after_data: { file_name: fileName, size: file.size },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

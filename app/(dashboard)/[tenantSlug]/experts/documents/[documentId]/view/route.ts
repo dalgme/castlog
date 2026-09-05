@@ -16,7 +16,8 @@ export async function GET(
   await requireRole(["platform_admin", "org_admin", "manager"]);
   await requireModule("experts");
 
-  const result = await issueDocumentViewUrl(params.documentId);
+  const download = request.nextUrl.searchParams.get("download") === "1";
+  const result = await issueDocumentViewUrl(params.documentId, { download });
 
   if (!result.ok) {
     return NextResponse.redirect(
