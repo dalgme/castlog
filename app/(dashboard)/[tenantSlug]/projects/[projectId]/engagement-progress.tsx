@@ -99,6 +99,7 @@ const PLAN_STATUS_LABELS: Record<string, string> = {
   approved: "승인",
   rejected: "반려",
   superseded: "대체됨",
+  withdrawn: "상신 취소",
 };
 
 const PLAN_STATUS_CLASS: Record<string, string> = {
@@ -106,6 +107,7 @@ const PLAN_STATUS_CLASS: Record<string, string> = {
   in_progress: "bg-amber-100 text-amber-900 border-amber-200",
   rejected: "bg-red-100 text-red-900 border-red-200",
   superseded: "bg-secondary text-muted-foreground",
+  withdrawn: "bg-secondary text-muted-foreground",
   draft: "bg-secondary text-muted-foreground",
 };
 

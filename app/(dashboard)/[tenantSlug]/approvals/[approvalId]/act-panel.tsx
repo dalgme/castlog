@@ -76,11 +76,30 @@ export function ActPanel({
     });
   }
 
+  // 직전 화면(프로젝트 섭외후보 등록 등)으로. 새 탭으로 열려 이력이 없으면
+  // 결재 목록으로 보낸다
+  function goBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(`/${tenantSlug}/approvals`);
+    }
+  }
+
   function onCancel() {
+    if (
+      !window.confirm(
+        "이 결재건을 상신 취소합니다. 담긴 세션은 다시 편집·상신할 수 있는 상태로 돌아갑니다. 계속할까요?"
+      )
+    ) {
+      return;
+    }
     startTransition(async () => {
       const result = await cancelApproval(approvalId);
       if (result.ok) {
-        toast({ description: "상신을 취소했습니다." });
+        toast({
+          description: "상신을 취소했습니다. 담긴 세션이 다시 편집·상신 가능한 상태로 돌아갔습니다.",
+        });
         router.refresh();
       } else {
         toast({ variant: "destructive", description: result.error });
@@ -147,17 +166,30 @@ export function ActPanel({
           </div>
         </>
       )}
-      {canCancel && (
+      {/* '확인' = 이전 화면으로 — 결재건을 보러 들어온 상신자가 취소 말고는
+          누를 게 없어 갇히던 문제 (렛츠 보고 2026-09-05) */}
+      <div className="flex gap-2">
         <Button
           type="button"
           variant="outline"
-          className="w-full"
+          className="flex-1"
           disabled={pending}
-          onClick={onCancel}
+          onClick={goBack}
         >
-          상신 취소
+          확인 (이전 화면으로)
         </Button>
-      )}
+        {canCancel && (
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 text-destructive hover:text-destructive"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            상신 취소
+          </Button>
+        )}
+      </div>
       {canResubmit && (
         <Button
           type="button"
