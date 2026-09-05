@@ -105,6 +105,7 @@ export function EngagementWorkbench({
   tenantSlug,
   projectId,
   slots,
+  outOfPlanSlotIds = [],
   canManage,
   canInput,
   canCancel,
@@ -124,6 +125,11 @@ export function EngagementWorkbench({
   tenantSlug: string;
   projectId: string;
   slots: SlotRow[];
+  /**
+   * 살아 있는 계획(결재 중·승인)에 담기지 않은 세션 — 계획 효력 밖이라
+   * 후보·예정가 편집이 계속 열린다 (핫픽스 2026-09-05, 렛츠 보고)
+   */
+  outOfPlanSlotIds?: string[];
   /** 실행 버튼(품의 상신·섭외요청·수락서 송부) — 레벨 4부터 */
   canManage: boolean;
   /** 입력(후보·첨부) — 레벨 5부터 */
@@ -178,6 +184,7 @@ export function EngagementWorkbench({
       ).length,
     0
   );
+  const outOfPlanSlots = new Set(outOfPlanSlotIds);
 
   return (
     <Card>
@@ -199,6 +206,21 @@ export function EngagementWorkbench({
               flow={planFlow}
             />
           )}
+          {/* 결재 중인 품의 밖에 세션이 남아 있으면 버튼을 숨기지 않고 '왜 지금
+              못 올리는지'를 말한다 — 계획 품의는 프로젝트당 한 건씩 결재된다 */}
+          {canManage &&
+            projectState.stage === "plan_review" &&
+            outOfPlanSlotIds.length > 0 && (
+              <EngagementPlanButton
+                projectId={projectId}
+                disabled
+                disabledReason={`결재 중인 품의가 끝나면 나머지 세션 ${outOfPlanSlotIds.length}개를 추가 품의로 올릴 수 있습니다 (계획 품의는 한 번에 한 건씩 결재됩니다).`}
+                lines={planPreview.lines}
+                approverOptions={planApproverOptions}
+                relayOn={planRelayOn}
+                flow={planFlow}
+              />
+            )}
           {/* 섭외 문자 발송·수락서 송부는 '승인 목록 및 섭외 진행' 탭으로
               옮겼다 (기획 확정 2026-08-30 — 37번). 결재가 난 뒤에는 그 탭이
               실행 자리다 */}
@@ -371,7 +393,12 @@ export function EngagementWorkbench({
           </div>
         ) : (
           <ul className="space-y-3">
-            {slots.map((slot) => (
+            {slots.map((slot) => {
+              // 계획 밖 세션은 프로젝트 단계와 무관하게 편집이 열린다
+              const outOfPlan = outOfPlanSlots.has(slot.id);
+              const slotEditable =
+                canInput && (projectState.stage === "assigning" || outOfPlan);
+              return (
               // 앵커 — 캘린더·세션 계획의 '섭외계획' 버튼이 이 세션으로 점프한다 (29번)
               <li key={slot.id} id={`slot-${slot.id}`} className="rounded-lg border p-3 scroll-mt-24">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
@@ -386,6 +413,18 @@ export function EngagementWorkbench({
                       {slot.locationName}
                     </span>
                   )}
+                  {outOfPlan && (
+                    <span
+                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900"
+                      title={
+                        projectState.stage === "plan_review"
+                          ? "결재 중인 품의에 담기지 않은 세션입니다. 결재가 끝나면 추가 품의로 올릴 수 있으며, 그때까지 후보·예정가를 계속 편집할 수 있습니다."
+                          : "승인된 계획에 담기지 않은 세션입니다. 아래 섭외계획 패널에서 보완(추가) 품의로 올리세요."
+                      }
+                    >
+                      품의 미포함 · 편집 가능
+                    </span>
+                  )}
                   {/* 필요인원 인라인 수정 + 코랄 표기 (기획 2026-08-30 — 28번) */}
                   <RequiredCountEditor
                     // 외부 변경(다른 사용자·결재권자 수정)이 refresh로 오면
@@ -394,7 +433,7 @@ export function EngagementWorkbench({
                     slotId={slot.id}
                     value={slot.requiredCount}
                     candidateCount={slot.positions.length}
-                    editable={canInput && projectState.stage === "assigning"}
+                    editable={slotEditable}
                   />
                 </div>
 
@@ -411,11 +450,12 @@ export function EngagementWorkbench({
                   canWithdraw={canWithdraw}
                   canExecute={canManage}
                   expertsLite={expertsLite}
-                  editable={canInput && projectState.stage === "assigning"}
+                  editable={slotEditable}
                   sessionDuration={durationLabel(slot.startsTime, slot.endsTime)}
                 />
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
