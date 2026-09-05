@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+
+import { assertSlotEditable } from "@/lib/integrations/engagement-plans";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -495,6 +497,9 @@ export async function adjustSlotCount(
     .eq("id", slotId)
     .maybeSingle();
   if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
+  // 결재 중·승인 세션의 필요인원은 계획 지문의 일부다 (E2E 검수 P2-9)
+  const editable = await assertSlotEditable(slotId);
+  if (!editable.ok) return editable;
 
   // 후보 순위 모델: 필요인원은 '실제 섭외 인원 수'일 뿐, 후보 수와 분리다.
   // 늘릴 때 후보 TO가 3배수에 못 미치면 그만큼 추가 발급하고(기획 2026-08-30),
@@ -588,6 +593,8 @@ export async function addCandidate(slotId: string): Promise<SlotResult> {
     .eq("id", slotId)
     .maybeSingle();
   if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
+  const editable = await assertSlotEditable(slotId);
+  if (!editable.ok) return editable;
 
   const { data: maxRow } = await supabase
     .from("engagement_slot_positions")
@@ -797,6 +804,17 @@ export async function removeCandidate(positionId: string): Promise<SlotResult> {
   if (!auth.ok) return auth;
 
   const supabase = createClient();
+  {
+    const { data: target } = await supabase
+      .from("engagement_slot_positions")
+      .select("slot_id")
+      .eq("id", positionId)
+      .maybeSingle();
+    if (target) {
+      const editable = await assertSlotEditable(target.slot_id);
+      if (!editable.ok) return editable;
+    }
+  }
   const { data: removed, error } = await supabase
     .from("engagement_slot_positions")
     .delete()
@@ -840,6 +858,8 @@ export async function reorderCandidates(
   }
 
   const supabase = createClient();
+  const editable = await assertSlotEditable(slotId);
+  if (!editable.ok) return editable;
   // 대상 검증 — 이 세션의 후보만 (다른 세션·타 프로젝트 id 섞임 방지)
   const { data: rows } = await supabase
     .from("engagement_slot_positions")
@@ -892,6 +912,16 @@ export async function setCandidateFee(
   }
 
   const supabase = createClient();
+  {
+    const { data: target } = await supabase
+      .from("engagement_slot_positions")
+      .select("slot_id")
+      .eq("id", positionId)
+      .maybeSingle();
+    if (!target) return { ok: false, error: "대상 후보를 찾을 수 없습니다." };
+    const editable = await assertSlotEditable(target.slot_id);
+    if (!editable.ok) return editable;
+  }
   const { error } = await supabase
     .from("engagement_slot_positions")
     .update({ expected_fee: fee ? parseInt(fee, 10) : null })

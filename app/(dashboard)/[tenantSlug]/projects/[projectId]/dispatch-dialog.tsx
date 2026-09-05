@@ -10,6 +10,7 @@ import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DeputyRequestInline } from "@/components/integrations/deputy-request-inline";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +67,8 @@ export function DispatchDialog({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 부PM 게이트 거부 — 다이얼로그 안에서 바로 프로젝트 단위 승인 요청 (P2-6)
+  const [needsPmApproval, setNeedsPmApproval] = useState(false);
   const [result, setResult] = useState<{
     sent: number;
     failed: { code: string; reason: string }[];
@@ -91,6 +94,7 @@ export function DispatchDialog({
       });
       if (!res.ok) {
         setError(res.error);
+        setNeedsPmApproval(Boolean(res.needsPmApproval));
         return;
       }
       setResult({ sent: res.sent, failed: res.failed });
@@ -120,6 +124,7 @@ export function DispatchDialog({
         setOpen(next);
         if (!next) {
           setError(null);
+          setNeedsPmApproval(false);
           setResult(null);
         }
       }}
@@ -158,6 +163,13 @@ export function DispatchDialog({
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        )}
+        {needsPmApproval && (
+          <DeputyRequestInline
+            projectId={projectId}
+            actionType="engagement.request"
+            targetId={null}
+          />
         )}
 
         {result ? (

@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingColumnError } from "@/lib/supabase/errors";
+import { getTenantModules } from "@/lib/modules/server";
 
 /**
  * 섭외계획 품의 (operations ↔ approvals — CLAUDE.md 1-2-6)
@@ -254,6 +255,9 @@ export async function getPlanCoveredSlotIds(
     .map((l) => l.slot_id)
     .filter((id): id is string => id !== null);
   if (ids.length === 0) return null;
+  // 세션이 지워져 slot_id가 비면(on delete set null) 그 행은 '전체'가 아니라
+  // '없어진 세션'이다 — 남은 행만 커버리지로 본다. 살아 있는 계획의 세션 삭제는
+  // deleteSlot이 막지만, 반려·대체 계획은 막지 않는다 (E2E 검수 P2-7)
   return Array.from(new Set(ids));
 }
 
@@ -337,10 +341,11 @@ export type ActivePlan = {
 };
 
 const ACTIVE_PLAN_COLUMNS =
-  "id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, plan_signature, note, last_rejection_note, submitted_at, approved_at";
+  "id, tenant_id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, plan_signature, note, last_rejection_note, submitted_at, approved_at";
 
 type ActivePlanRow = {
   id: string;
+  tenant_id: string;
   revision: number;
   status: string;
   approval_id: string | null;
@@ -400,6 +405,47 @@ export async function getLivePlans(projectId: string): Promise<ActivePlan[]> {
       .in("status", ["draft", "in_progress", "approved"])
       .order("revision", { ascending: false });
     rows = (withoutFlow.data ?? []) as ActivePlanRow[];
+  }
+
+  // 자가 치유: 결재건이 취소·반려됐는데 계획만 in_progress로 남은 행은 살아
+  // 있는 계획이 아니다 (배포 경계에서 훅이 안 돈 경우 — 렛츠 보고 2026-09-05).
+  // 화면이 이런 행을 '결재 중'으로 잠그면 사용자는 풀 방법이 없다.
+  const inProgressApprovalIds = rows
+    .filter((r) => r.status === "in_progress" && r.approval_id)
+    .map((r) => r.approval_id as string);
+  if (inProgressApprovalIds.length > 0) {
+    const { data: approvalRows } = await supabase
+      .from("approvals")
+      .select("id, status")
+      .in("id", inProgressApprovalIds);
+    const dead = new Set(
+      (approvalRows ?? [])
+        .filter((a) => a.status === "canceled")
+        .map((a) => a.id)
+    );
+    if (dead.size > 0) {
+      const admin = createAdminClient();
+      for (const r of rows) {
+        if (r.status !== "in_progress" || !r.approval_id || !dead.has(r.approval_id)) continue;
+        await admin
+          .from("engagement_plans")
+          .update({ status: "superseded" })
+          .eq("id", r.id)
+          .eq("status", "in_progress");
+        await admin.from("audit_logs").insert({
+          tenant_id: r.tenant_id,
+          actor_auth_user_id: null,
+          actor_role: "system",
+          action: "engagement_plan.withdrawn",
+          resource_type: "engagement_plan",
+          resource_id: r.id,
+          after_data: { approval_id: r.approval_id, reason: "self-heal: approval canceled" },
+        });
+      }
+      rows = rows.filter(
+        (r) => !(r.status === "in_progress" && r.approval_id && dead.has(r.approval_id))
+      );
+    }
   }
   return rows.map(toActivePlan);
 }
@@ -620,6 +666,39 @@ export async function evaluatePlanGate(
     slotStates,
     uncoveredSlotIds,
   };
+}
+
+/**
+ * 후보·순위·예정가·필요인원 편집 가드 — 세션 단위 (E2E 검수 P2-9).
+ * 화면 잠금(워크벤치: 결재 중·승인·변경 필요 세션은 편집 불가)과 같은 기준을
+ * 서버에서 강제한다. 결재 중에 명단이 바뀌면 결재권자가 승인한 것과 실제가
+ * 어긋난다. 승인 뒤 조정은 그 계획의 변경 품의(결재권자 편집·세션 편집)로만.
+ */
+export async function assertSlotEditable(
+  slotId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const { data: slot } = await supabase
+    .from("engagement_slots")
+    .select("project_id")
+    .eq("id", slotId)
+    .maybeSingle();
+  if (!slot) return { ok: true }; // 존재 여부는 호출자가 판정한다
+  const modules = await getTenantModules();
+  const gate = await evaluatePlanGate(slot.project_id, modules.approvals);
+  if (!gate.required) return { ok: true };
+  const state = gate.slotStates[slotId] ?? "none";
+  if (state === "in_progress" || state === "approved" || state === "changed") {
+    return {
+      ok: false,
+      error:
+        `이 세션은 섭외계획이 '${SLOT_PLAN_STATE_LABELS[state]}' 상태라 후보·순위·예정가·필요인원을 편집할 수 없습니다 (규칙). ` +
+        (state === "in_progress"
+          ? "결재가 끝나거나 결재건을 상신 취소한 뒤 조정하세요."
+          : "조정이 필요하면 섭외계획 패널에서 해당 계획의 변경 품의를 올리세요."),
+    };
+  }
+  return { ok: true };
 }
 
 /**
