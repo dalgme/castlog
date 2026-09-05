@@ -16,7 +16,11 @@ import {
   formatEventSchedule,
 } from "@/lib/integrations/engagement-roles";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
-import { evaluatePlanGate } from "@/lib/integrations/engagement-plans";
+import {
+  describeSlotPlanState,
+  evaluatePlanGate,
+  type SlotPlanState,
+} from "@/lib/integrations/engagement-plans";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +90,10 @@ export default async function PositionPage({
   const canManage = await canExecTenant("engagementRequest", user);
   const modules = await getTenantModules();
   const planGate = await evaluatePlanGate(ctx.projectId, modules.approvals);
+  // 세션 단위 판정 (다중 계획, 2026-09-05)
+  const slotState: SlotPlanState = planGate.required
+    ? (planGate.slotStates[ctx.slotId] ?? "none")
+    : "approved";
   // 요청을 보낼 수 있는 자리 = open(빈 자리) 또는 assigned(배정만 된 자리).
   // 거절·만료 뒤 예비 후보에게 개별 요청하는 정식 경로가 여기다 — 서버
   // (requestEngagementForPosition)도 같은 두 상태를 허용한다 (E2E 검수 P1-3)
@@ -237,46 +245,23 @@ export default async function PositionPage({
               섭외 요청은 레벨 4 이상만 보낼 수 있습니다 (권한 규칙).
             </CardContent>
           </Card>
-        ) : planGate.required &&
-          planGate.allowed &&
-          planGate.coveredSlotIds &&
-          !planGate.coveredSlotIds.includes(ctx.slotId) ? (
-          // 부분 상신 계획 밖의 세션 — 요청 폼을 열어 두면 작성 후 서버에서야
-          // 거부된다. 여기서 먼저 보완 경로를 안내한다 (리뷰 P3-6)
+        ) : planGate.required && slotState !== "approved" ? (
+          // 세션 단위 판정 (다중 계획, 2026-09-05) — 이 세션이 승인 계획에 없으면
+          // 요청 폼을 열지 않고 상태별로 무엇을 해야 하는지 먼저 안내한다
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">
-                이 세션은 승인된 섭외계획에 없습니다
+                {slotState === "in_progress"
+                  ? "이 세션의 섭외계획이 결재 진행 중입니다"
+                  : slotState === "changed"
+                    ? "이 세션의 승인 계획이 변경되었습니다"
+                    : slotState === "rejected"
+                      ? "이 세션의 섭외계획이 반려되었습니다"
+                      : "이 세션은 승인된 섭외계획에 없습니다"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                섭외계획 품의가 세션 일부만 승인된 상태입니다 (규칙). 이 세션을
-                섭외하려면 섭외계획 패널의 <b>보완(추가) 품의</b>로 세션을
-                추가해 승인받은 뒤 진행해 주세요.
-              </p>
-              <div className="flex justify-center">
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-brand-coral-dark text-white hover:bg-brand-coral-ink"
-                >
-                  <Link
-                    href={`/${params.tenantSlug}/projects/${params.projectId}?tab=experts`}
-                  >
-                    프로젝트에서 계획 품의 진행
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : planGate.required && !planGate.allowed ? (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">섭외계획 승인 필요</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">{planGate.message}</p>
+              <p className="text-muted-foreground">{describeSlotPlanState(slotState)}</p>
               {/* 계획 품의는 직전 화면(전문가 섭외 탭 워크벤치)에서 진행한다.
                   가운데 정렬 + 코랄색 — 기획 지시 2026-08-30 (21번) */}
               <div className="flex justify-center">

@@ -47,6 +47,7 @@ import {
   buildPlanSnapshot,
   evaluatePlanGate,
   parsePlanSignatureCandidates,
+  type SlotPlanState,
   planLineKey,
   type PlanSignatureLine,
 } from "@/lib/integrations/engagement-plans";
@@ -325,6 +326,8 @@ export default async function ProjectDetailPage({
 
   // 섭외계획 품의 게이트 (experts 모듈에서만 의미가 있다)
   let planPanel: PlanPanelState | null = null;
+  /** 세션 → 계획 상태 (다중 계획). null = 게이트 없음(모듈 꺼짐) */
+  let planSlotStates: Record<string, SlotPlanState> | null = null;
   let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
   // 상급자 릴레이(27번) 상태 — 픽커의 '비워 두면' 안내를 실제 동작과 일치시킨다
   let planRelayOn = false;
@@ -333,43 +336,66 @@ export default async function ProjectDetailPage({
       evaluatePlanGate(project.id, modules.approvals),
       buildPlanSnapshot(project.id),
     ]);
+    // 다중 계획 (기획 지시 2026-09-05): 살아 있는 계획을 전부 싣는다
+    const { data: panelSlots } = await supabase
+      .from("engagement_slots")
+      .select("id, slot_date, session_name")
+      .eq("project_id", project.id);
+    const slotLabelForPanel = new Map(
+      (panelSlots ?? []).map((sr) => [
+        sr.id,
+        `${sr.slot_date}${sr.session_name ? ` ${sr.session_name}` : ""}`,
+      ])
+    );
+    // 각 승인 계획에 대한 최근 변경 품의 반려 사유 (E2E 검수 P1-1)
+    const rejectionByParent = new Map<string, string>();
+    if (gate.required && gate.plans.some((v) => v.state === "approved" || v.state === "changed")) {
+      const { data: rejectedChildren } = await supabase
+        .from("engagement_plans")
+        .select("parent_plan_id, last_rejection_note, updated_at")
+        .eq("project_id", project.id)
+        .eq("status", "rejected")
+        .not("parent_plan_id", "is", null)
+        .order("updated_at", { ascending: false });
+      for (const r of rejectedChildren ?? []) {
+        if (r.parent_plan_id && r.last_rejection_note && !rejectionByParent.has(r.parent_plan_id)) {
+          rejectionByParent.set(r.parent_plan_id, r.last_rejection_note);
+        }
+      }
+    }
     planPanel = {
       required: gate.required,
       allowed: gate.required ? gate.allowed : true,
       state: gate.required ? gate.state : "module_off",
       message: gate.required ? gate.message : "",
-      revision: gate.required ? (gate.plan?.revision ?? null) : null,
-      approvalId: gate.required ? (gate.plan?.approvalId ?? null) : null,
-      plannedAmount:
-        gate.required && gate.plan?.status === "approved"
-          ? gate.plan.plannedAmount
-          : null,
-      positionCount:
-        gate.required && gate.plan?.status === "approved"
-          ? gate.plan.positionCount
-          : null,
+      coveredSlotIds: gate.required ? gate.coveredSlotIds : null,
+      plans: gate.required
+        ? gate.plans.map((v) => ({
+            id: v.plan.id,
+            revision: v.plan.revision,
+            state: v.state,
+            approvalId: v.plan.approvalId,
+            plannedAmount: v.plan.plannedAmount,
+            positionCount: v.plan.positionCount,
+            slotCount: v.plan.slotCount,
+            coveredSlotIds: v.coveredSlotIds,
+            sessionLabels: (v.coveredSlotIds ?? []).map(
+              (id) => slotLabelForPanel.get(id) ?? "(삭제된 세션)"
+            ),
+            message: v.message,
+            postReport: v.plan.flow === "post_report",
+            lastChangeRejection:
+              v.state === "approved" || v.state === "changed"
+                ? (rejectionByParent.get(v.plan.id) ?? null)
+                : null,
+          }))
+        : [],
+      uncoveredSlotIds: gate.required ? gate.uncoveredSlotIds : [],
       currentPlannedAmount: snapshot.plannedAmount,
       currentPositionCount: snapshot.positionCount,
       currentSlotCount: snapshot.slotCount,
-      // 부분 상신 계획의 커버리지 — 보완(추가) 품의 UI의 근거 (22번)
-      coveredSlotIds: gate.required ? gate.coveredSlotIds : null,
-      lastChangeRejection: null,
     };
-    // 변경·보완 품의 반려 사유 — 부모 계획이 살아 있어 게이트는 approved지만
-    // 담당자는 왜 반려됐는지 알아야 다시 올린다 (E2E 검수 P1-1)
-    if (gate.required && gate.plan?.status === "approved") {
-      const { data: rejectedChild } = await supabase
-        .from("engagement_plans")
-        .select("last_rejection_note, updated_at")
-        .eq("project_id", project.id)
-        .eq("status", "rejected")
-        .eq("parent_plan_id", gate.plan.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      // 반려 뒤 다시 승인된 변경이 있으면 부모가 바뀌므로 자동으로 사라진다
-      planPanel.lastChangeRejection = rejectedChild?.last_rejection_note ?? null;
-    }
+    planSlotStates = gate.required ? gate.slotStates : null;
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
     // 결재라인 후보 (기획 개정 2026-08-30 — 30번): 상신자보다 **높은 직급**만.
@@ -850,22 +876,11 @@ export default async function ProjectDetailPage({
       ? planPanel.state
       : "module_off"
     : "module_off";
-  // 세션 단위 판정 (핫픽스 2026-09-05, 렛츠 보고): 부분 상신 계획은 담긴
-  // 세션에만 효력이 있다. 계획 밖 세션(뒤에 만든 세션 포함)은 '미상신'이고
-  // 후보·예정가 편집이 열려 있어야 한다 — 프로젝트 단계로 뭉뚱그리면 세션
-  // 하나를 올린 순간 나머지 전부가 '품의 중'으로 잠긴다.
-  const coveredByPlan = planPanel?.coveredSlotIds ?? null;
-  const planLive =
-    planState === "in_progress" ||
-    planState === "approved" ||
-    planState === "changed";
-  const slotOutOfPlan = (slotId: string) =>
-    planLive && coveredByPlan !== null && !coveredByPlan.includes(slotId);
+  // 세션 단위 판정 (다중 계획 — 2026-09-05): 세션마다 어느 계획에 담겨 어디까지
+  // 왔는지가 다르다. 프로젝트 단계로 뭉뚱그리면 세션 하나를 올린 순간 나머지
+  // 전부가 '품의 중'으로 잠긴다 (렛츠 보고).
   const slotPlanState = (slotId: string): PlanStageInput =>
-    slotOutOfPlan(slotId) ? "none" : planState;
-  const outOfPlanSlotIds = slotRows
-    .filter((s) => slotOutOfPlan(s.id))
-    .map((s) => s.id);
+    planSlotStates ? (planSlotStates[slotId] ?? "none") : planState;
   const stageByPosition: Record<string, EngagementStage> = {};
   for (const slot of slotRows) {
     for (const position of slot.positions) {
@@ -882,6 +897,13 @@ export default async function ProjectDetailPage({
         planState: slotPlanState(slot.id),
       });
     }
+  }
+  // 편집 개방 여부 — 살아 있는 계획(결재 중·승인)에 담기지 않은 세션만.
+  // 수락서 송부 뒤·종료·정산 단계에 새 세션을 열어 두면 갈 곳이 없다 (리뷰 M1)
+  const slotPlanStatesForWorkbench: Record<string, SlotPlanState> = {};
+  for (const slot of slotRows) {
+    const st = slotPlanState(slot.id);
+    slotPlanStatesForWorkbench[slot.id] = st === "module_off" ? "none" : st;
   }
 
   // 코드넘버에 붙지 않은 섭외 건 — 세션 아래 자리가 없으므로 작업대 끝에 모은다
@@ -1622,15 +1644,7 @@ export default async function ProjectDetailPage({
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
-            // 편집 개방은 섭외가 아직 진행 중인 단계까지만 — 수락서 송부 뒤·
-            // 종료·정산 단계에 새 세션을 열어 두면 갈 곳이 없다 (리뷰 M1)
-            outOfPlanSlotIds={
-              ["plan_review", "plan_approved", "requesting", "accepted_all"].includes(
-                engagementState?.stage ?? "assigning"
-              )
-                ? outOfPlanSlotIds
-                : []
-            }
+            slotPlanStates={planSlotStates ? slotPlanStatesForWorkbench : null}
             canManage={canExecute}
             canInput={canInput}
             canCancel={exec.engagementCancel}
@@ -1639,16 +1653,9 @@ export default async function ProjectDetailPage({
             planGate={{
               blocked: Boolean(planPanel && planPanel.required && !planPanel.allowed),
               message: planPanel?.message ?? "",
-              // 부분 상신 승인 뒤 계획 밖 세션이 남았으면 보완(추가) 품의 패널을
-              // 승인 상태에서도 그린다 (감사 P1 — 이전엔 도달 불가)
-              appendable: Boolean(
-                planPanel &&
-                  planPanel.state === "approved" &&
-                  planPanel.coveredSlotIds !== null &&
-                  slotRows.some(
-                    (s) => !planPanel.coveredSlotIds!.includes(s.id)
-                  )
-              ),
+              // 살아 있는 계획이 하나라도 있으면 계획별 카드(변경 품의 창구)를
+              // 그린다 — 다중 계획(2026-09-05)
+              appendable: Boolean(planPanel && planPanel.plans.length > 0),
             }}
             planPanel={
               planPanel ? (

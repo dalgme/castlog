@@ -41,6 +41,9 @@ export type PlanPreviewLine = {
   requiredCount: number;
 };
 
+/** 기본값을 렌더마다 새로 만들면 useMemo가 매번 깨진다 (리뷰 L6) */
+const EMPTY_LOCKS: Record<string, string> = {};
+
 /**
  * 섭외 품의서 자동 작성 및 송신.
  *
@@ -52,6 +55,7 @@ export function EngagementPlanButton({
   disabled,
   disabledReason,
   lines,
+  lockedSlots = EMPTY_LOCKS,
   approverOptions = [],
   relayOn = false,
   flow = { mode: "pre_approval", reason: null },
@@ -61,6 +65,11 @@ export function EngagementPlanButton({
   /** 왜 못 누르는지 — 비활성 버튼만 두면 사용자는 고장으로 읽는다 */
   disabledReason: string;
   lines: PlanPreviewLine[];
+  /**
+   * 이미 결재 중·승인된 계획에 담긴 세션 → 상태 라벨 (다중 계획, 2026-09-05).
+   * 고를 수 없게 잠그고 왜 잠겼는지 보여 준다.
+   */
+  lockedSlots?: Record<string, string>;
   /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
   approverOptions?: ApproverOption[];
   /** 상급자 릴레이 결재(27번) 활성 — 무선택 시 동작 안내를 실제와 일치시킨다 */
@@ -101,6 +110,8 @@ export function EngagementPlanButton({
         requiredCount: number;
         ready: boolean;
         amount: number;
+        /** 잠긴 이유 라벨 (결재 중·승인) — null이면 고를 수 있다 */
+        locked: string | null;
       }
     >();
     for (const line of lines) {
@@ -115,6 +126,7 @@ export function EngagementPlanButton({
           requiredCount: line.requiredCount,
           ready: false,
           amount: 0,
+          locked: lockedSlots[line.slotId] ?? null,
         };
         bySlot.set(line.slotId, s);
       }
@@ -129,7 +141,7 @@ export function EngagementPlanButton({
       s.ready = s.assignedCount >= s.requiredCount;
     }
     return Array.from(bySlot.values());
-  }, [lines]);
+  }, [lines, lockedSlots]);
 
   // 기본 선택 = 완성된 세션 전부. 초기화는 마운트 시가 아니라 대화상자를
   // 열 때마다 한다 — 배정은 대개 마운트 이후 router.refresh()로 도착하므로
@@ -139,7 +151,7 @@ export function EngagementPlanButton({
     if (next) {
       setError(null);
       setSelectedSlotIds(
-        sessions.filter((s) => s.ready).map((s) => s.slotId)
+        sessions.filter((s) => s.ready && !s.locked).map((s) => s.slotId)
       );
     }
     setOpen(next);
@@ -291,8 +303,8 @@ export function EngagementPlanButton({
         <div className="rounded-lg border">
           <div className="flex items-baseline justify-between border-b bg-secondary/40 px-3 py-2">
             <span className="text-xs font-semibold">
-              세션별 선택 상신 · {selectedSlotIds.length}/{sessions.length}개
-              세션
+              세션별 선택 상신 · {selectedSlotIds.length}/
+              {sessions.filter((s) => !s.locked).length}개 세션
             </span>
             <span className="text-sm font-extrabold tabular-nums">
               {formatKrw(selectedAmount)}
@@ -307,7 +319,7 @@ export function EngagementPlanButton({
                     <Checkbox
                       className="mt-0.5"
                       checked={checked}
-                      disabled={pending}
+                      disabled={pending || s.locked !== null}
                       onCheckedChange={(v) =>
                         setSelectedSlotIds((prev) =>
                           v === true
@@ -318,7 +330,17 @@ export function EngagementPlanButton({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-baseline gap-2">
-                        <span className="font-medium">{s.label}</span>
+                        <span className={s.locked ? "font-medium text-muted-foreground" : "font-medium"}>
+                          {s.label}
+                        </span>
+                        {s.locked && (
+                          <span
+                            className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                            title="이미 다른 품의에 담긴 세션입니다 — 이 상신에는 담을 수 없습니다"
+                          >
+                            {s.locked}
+                          </span>
+                        )}
                         <span className="ml-auto tabular-nums text-xs text-muted-foreground">
                           {formatKrw(s.amount)}
                         </span>
@@ -329,7 +351,7 @@ export function EngagementPlanButton({
                           .map((l) => `${l.code} ${l.expertName}`)
                           .join(" · ") || "섭외 대상 없음"}
                       </span>
-                      {!s.ready && (
+                      {!s.ready && !s.locked && (
                         <span className="mt-1 block rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] leading-relaxed text-amber-900">
                           배정 {s.assignedCount}/{s.requiredCount}명 — 필요인원만큼
                           전문가를 배정한 뒤 상신할 수 있습니다.
@@ -364,7 +386,7 @@ export function EngagementPlanButton({
               선택한 세션 중 {selectedUnready.length}개는 필요인원만큼 전문가가
               배정되지 않았습니다. 해당 세션에 전문가를 더 배정한 뒤 다시
               상신하거나, 선택에서 빼고 완성된 세션만 먼저 상신하세요.
-              (미완성 세션은 추후 보완해서 계획 변경 품의로 추가할 수 있습니다)
+              (미완성 세션은 보완한 뒤 별도 품의로 올릴 수 있습니다)
             </AlertDescription>
           </Alert>
         )}
@@ -379,10 +401,10 @@ export function EngagementPlanButton({
             </>
           ) : (
             <>
-              선택한 세션만 계획 품의에 담깁니다. 미완성 세션은 나중에 보완해
-              <b> 계획 변경 품의</b>로 추가 상신하면 됩니다. 상신 후에는 결재가
-              끝나야 선택 세션의 섭외 진행이 열리며, 이 시점까지 전문가에게는
-              아무것도 나가지 않습니다.
+              선택한 세션만 이 품의에 담깁니다. 나머지 세션은 결재 중이라도
+              나중에 이 버튼에서 <b>별도 품의</b>로 올릴 수 있습니다. 상신 후에는
+              결재가 끝나야 선택 세션의 섭외 진행이 열리며, 이 시점까지
+              전문가에게는 아무것도 나가지 않습니다.
             </>
           )}
         </p>

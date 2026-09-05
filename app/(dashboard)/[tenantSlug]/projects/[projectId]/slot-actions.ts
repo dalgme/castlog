@@ -451,6 +451,21 @@ export async function deleteSlot(slotId: string): Promise<SlotResult> {
       error: "이미 섭외를 요청한 인원이 있어 삭제할 수 없습니다. 개별 취소 후 진행하세요.",
     };
   }
+  // 결재 중·승인된 계획에 담긴 세션을 지우면 명세의 slot_id가 비어 그 계획이
+  // '전체 계획'으로 읽힌다 — 나머지 세션이 전부 잠기고 새 품의도 막힌다 (리뷰 M4)
+  const { data: livePlanLines } = await supabase
+    .from("engagement_plan_lines")
+    .select("plan_id, engagement_plans!inner (status)")
+    .eq("slot_id", slotId)
+    .in("engagement_plans.status", ["in_progress", "approved"])
+    .limit(1);
+  if (livePlanLines && livePlanLines.length > 0) {
+    return {
+      ok: false,
+      error:
+        "결재 중이거나 승인된 섭외계획에 담긴 세션은 삭제할 수 없습니다 (규칙). 결재가 끝난 뒤 그 계획의 변경 품의로 세션을 빼거나, 결재 중이면 상신 취소 후 진행하세요.",
+    };
+  }
 
   const { error } = await supabase.from("engagement_slots").delete().eq("id", slotId);
   if (error) {

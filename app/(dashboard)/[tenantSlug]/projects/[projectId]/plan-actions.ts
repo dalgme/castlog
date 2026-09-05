@@ -20,9 +20,9 @@ import {
 } from "@/lib/approvals/engine";
 import {
   buildPlanSnapshot,
+  evaluatePlanGate,
   findUnreadySlots,
-  getActivePlan,
-  getPlanCoveredSlotIds,
+  type LivePlanView,
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
@@ -98,7 +98,37 @@ async function finalizePlanRecord(
     .from("approvals")
     .update({ status: "canceled", completed_at: nowIso })
     .eq("id", approvalId);
+  // 살아 있는 계획끼리 세션 겹침 — DB 트리거(app.guard_engagement_plan_slot_overlap)
+  if (error.code === "23P01" || error.message.includes("engagement_plan_slot_overlap")) {
+    return "선택한 세션 중 이미 결재 중이거나 승인된 계획에 담긴 세션이 있습니다 (규칙). 새로고침한 뒤 그 세션을 빼고 다시 상신해 주세요. 문서는 취소 처리했습니다.";
+  }
   return "결재 연결에 실패했습니다 (시스템 오류). 문서는 취소 처리했으니 다시 시도해 주세요.";
+}
+
+/** 세션 라벨 — 오류 문구용 */
+async function slotLabels(slotIds: string[]): Promise<string> {
+  if (slotIds.length === 0) return "";
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("engagement_slots")
+    .select("id, slot_date, session_name, role_type")
+    .in("id", slotIds);
+  return (data ?? [])
+    .map((s) => `${s.slot_date} ${s.session_name ?? s.role_type}`)
+    .join(", ");
+}
+
+/** 다음 리비전 번호 — 반려·대체된 계획도 번호를 썼으므로 프로젝트 최대값+1 */
+async function nextRevision(projectId: string): Promise<number> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("engagement_plans")
+    .select("revision")
+    .eq("project_id", projectId)
+    .order("revision", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.revision ?? 0) + 1;
 }
 
 /**
@@ -346,16 +376,24 @@ export async function submitEngagementPlan(
   const ready = await assertSlotsReady(projectId, slotIds);
   if (!ready.ok) return ready;
 
-  const existing = await getActivePlan(projectId);
-  if (existing && existing.status === "in_progress") {
-    return { ok: false, error: "이미 결재가 진행중인 계획이 있습니다." };
-  }
-  if (existing && existing.status === "approved") {
-    return {
-      ok: false,
-      error:
-        "확정된 계획이 있습니다. 내용이 바뀌었다면 섭외계획 패널의 변경(보완) 상신을 이용하세요.",
-    };
+  // 다중 계획 (기획 지시 2026-09-05): 결재 중·승인된 계획이 있어도 그 계획에
+  // 담기지 않은 세션은 별도 품의로 올릴 수 있다. 이미 살아 있는 계획에 담긴
+  // 세션만 거른다 — 같은 세션이 두 결재에 오르면 어느 쪽이 진실인지 알 수 없다.
+  const gate = await evaluatePlanGate(projectId, true);
+  const targetSlotIds = snapshot.lines.map((l) => l.slotId);
+  if (gate.required) {
+    const busy = targetSlotIds.filter((id) => {
+      const st = gate.slotStates[id];
+      return st === "in_progress" || st === "approved" || st === "changed";
+    });
+    if (busy.length > 0) {
+      return {
+        ok: false,
+        error:
+          `이미 결재 중이거나 승인된 계획에 담긴 세션이 있습니다 (규칙): ${await slotLabels(busy)}. ` +
+          `그 세션을 선택에서 빼고 상신해 주세요. 승인된 세션의 내용을 바꾸려면 섭외계획 패널에서 해당 계획의 변경 품의를 올립니다.`,
+      };
+    }
   }
 
   const supabase = createClient();
@@ -374,8 +412,25 @@ export async function submitEngagementPlan(
   );
   if (!line.ok) return line;
 
-  // 계획 레코드 (반려 후 재상신이면 기존 draft를 재사용)
-  let planId = existing?.id ?? null;
+  // 반려된 계획(draft)이 이 세션들과 겹치면 그 행을 재사용한다(리비전 유지 —
+  // 반려 후 재상신). 겹치는 draft가 여럿이면 첫 건만 쓰고 나머지는 대체 처리.
+  const overlappingDrafts: LivePlanView[] = gate.required
+    ? gate.plans.filter(
+        (v) =>
+          (v.state === "rejected" || v.state === "draft") &&
+          (v.coveredSlotIds === null ||
+            v.coveredSlotIds.some((id) => targetSlotIds.includes(id)))
+      )
+    : [];
+  const reuse = overlappingDrafts[0] ?? null;
+  for (const extra of overlappingDrafts.slice(1)) {
+    await supabase
+      .from("engagement_plans")
+      .update({ status: "superseded" })
+      .eq("id", extra.plan.id);
+  }
+
+  let planId = reuse?.plan.id ?? null;
   if (planId) {
     const { error } = await supabase
       .from("engagement_plans")
@@ -394,7 +449,7 @@ export async function submitEngagementPlan(
       .insert({
         tenant_id: auth.tenantId,
         project_id: projectId,
-        revision: 1,
+        revision: await nextRevision(projectId),
         status: "draft",
         slot_count: snapshot.slotCount,
         position_count: snapshot.positionCount,
@@ -426,7 +481,8 @@ export async function submitEngagementPlan(
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
-    title: `${isReport ? "[섭외 사후보고]" : "[섭외계획]"} ${project.name}`,
+    // 세션 묶음마다 문서가 따로 간다 — 제목에 담긴 세션 수를 적어 구분한다
+    title: `${isReport ? "[섭외 사후보고]" : "[섭외계획]"} ${project.name} · 세션 ${snapshot.slotCount}건`,
     body:
       `섭외 인원 ${snapshot.positionCount}명 / 타임테이블 ${snapshot.slotCount}건\n` +
       `계획 섭외비 ${snapshot.plannedAmount.toLocaleString("ko-KR")}원\n\n` +
@@ -450,7 +506,14 @@ export async function submitEngagementPlan(
     auth.userId,
     flow.mode
   );
-  if (linkError) return { ok: false, error: linkError };
+  if (linkError) {
+    // 새로 만든 계획 행이 draft로 남으면 패널에 '임시' 카드로 떠돈다 — 지운다
+    // (명세는 cascade). 재사용한 반려 draft는 그대로 둔다 (리뷰 M2)
+    if (!reuse) {
+      await supabase.from("engagement_plans").delete().eq("id", planId);
+    }
+    return { ok: false, error: linkError };
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -485,7 +548,12 @@ export async function submitEngagementPlanChange(
    * 새 계획이 덮을 세션 (22번 — 보완 상신): 지정하면 그 세션들이 새 커버리지가
    * 된다(기존 + 추가 세션을 함께 넘긴다). 미지정 = 기존 계획의 커버리지 유지.
    */
-  slotIds: string[] = []
+  slotIds: string[] = [],
+  /**
+   * 변경할 승인 계획 (다중 계획, 2026-09-05). 미지정이면 승인 계획이 정확히
+   * 1건일 때만 그 계획으로 간주한다 — 여럿이면 화면이 골라 넘겨야 한다.
+   */
+  planId?: string | null
 ): Promise<PlanActionResult> {
   const auth = await requirePlanSession();
   if (!auth.ok) return auth;
@@ -494,17 +562,45 @@ export async function submitEngagementPlanChange(
     return { ok: false, error: "변경 사유를 입력하세요." };
   }
 
-  const current = await getActivePlan(projectId);
-  if (!current || current.status !== "approved") {
+  const gate = await evaluatePlanGate(projectId, true);
+  const approvedViews = gate.required
+    ? gate.plans.filter((v) => v.state === "approved" || v.state === "changed")
+    : [];
+  const target =
+    planId != null
+      ? (approvedViews.find((v) => v.plan.id === planId) ?? null)
+      : approvedViews.length === 1
+        ? approvedViews[0]
+        : null;
+  if (!target) {
     return {
       ok: false,
-      error: "승인된 계획이 없습니다. 최초 섭외계획 품의를 먼저 올려 주세요.",
+      error:
+        approvedViews.length === 0
+          ? "승인된 계획이 없습니다. 최초 섭외계획 품의를 먼저 올려 주세요."
+          : "변경할 계획을 지정하세요 (승인된 계획이 여러 건입니다).",
     };
   }
+  const current = target.plan;
 
-  const currentCovered = await getPlanCoveredSlotIds(current.id);
+  const currentCovered = target.coveredSlotIds;
   const effectiveSlotIds =
     slotIds.length > 0 ? slotIds : (currentCovered ?? []);
+
+  // 추가하려는 세션이 다른 살아 있는 계획에 담겨 있으면 안 된다
+  if (gate.required) {
+    const foreign = effectiveSlotIds.filter((id) => {
+      if (currentCovered !== null && currentCovered.includes(id)) return false;
+      const st = gate.slotStates[id];
+      return st === "in_progress" || st === "approved" || st === "changed";
+    });
+    if (foreign.length > 0) {
+      return {
+        ok: false,
+        error: `다른 계획(결재 중·승인)에 담긴 세션은 이 계획에 추가할 수 없습니다 (규칙): ${await slotLabels(foreign)}.`,
+      };
+    }
+  }
 
   const snapshot = await buildPlanSnapshot(
     projectId,
@@ -533,7 +629,8 @@ export async function submitEngagementPlanChange(
   );
   if (!line.ok) return line;
 
-  // 부분 유니크 인덱스(프로젝트당 열린 계획 1건) 때문에 기존 승인 계획을 먼저 비운다
+  // 같은 세션을 두 살아 있는 계획이 담을 수 없다(DB 트리거) — 변경 대상
+  // 계획을 먼저 대체 상태로 비우고, 실패하면 되살린다
   const { error: parkError } = await supabase
     .from("engagement_plans")
     .update({ status: "superseded" })
@@ -547,23 +644,15 @@ export async function submitEngagementPlanChange(
       .eq("id", current.id);
   };
 
-  // 반려된 변경 계획(rejected)도 revision을 하나 썼다 — 부모+1로 만들면
-  // 이력에 같은 번호가 두 번 나온다. 프로젝트 최대값 기준으로 잇는다
-  const { data: latestRev } = await supabase
-    .from("engagement_plans")
-    .select("revision")
-    .eq("project_id", projectId)
-    .order("revision", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextRevision = Math.max(current.revision, latestRev?.revision ?? 0) + 1;
+  // 반려된 변경 계획(rejected)도 revision을 하나 썼다 — 프로젝트 최대값+1
+  const newRevision = await nextRevision(projectId);
 
   const { data: created, error: createError } = await supabase
     .from("engagement_plans")
     .insert({
       tenant_id: auth.tenantId,
       project_id: projectId,
-      revision: nextRevision,
+      revision: newRevision,
       status: "draft",
       parent_plan_id: current.id,
       slot_count: snapshot.slotCount,
@@ -596,7 +685,7 @@ export async function submitEngagementPlanChange(
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
-    title: `${isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${current.revision + 1}] ${project.name}`,
+    title: `${isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${newRevision}] ${project.name} · 세션 ${snapshot.slotCount}건`,
     body:
       `인원 ${current.positionCount}명 → ${snapshot.positionCount}명\n` +
       `계획 섭외비 ${current.plannedAmount.toLocaleString("ko-KR")}원 → ` +
@@ -648,7 +737,7 @@ export async function submitEngagementPlanChange(
       position_count: current.positionCount,
     },
     after_data: {
-      revision: current.revision + 1,
+      revision: newRevision,
       planned_amount: snapshot.plannedAmount,
       position_count: snapshot.positionCount,
       approval_id: approval.approvalId,

@@ -18,10 +18,11 @@ import {
   pickDispatchTargets,
   REDISPATCH_STAGES,
 } from "@/lib/integrations/project-engagement";
+import type { ProjectStage } from "@/lib/integrations/project-stage";
 import {
-  getActivePlan,
   buildPlanSnapshot,
-  getPlanCoveredSlotIds,
+  describeSlotPlanState,
+  evaluatePlanGate,
 } from "@/lib/integrations/engagement-plans";
 import { submitEngagementPlan as submitPlanRecord } from "./plan-actions";
 import {
@@ -435,8 +436,21 @@ export async function submitEngagementPlan(
   const state = await getProjectEngagementState(projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
 
-  if (state.stage !== "assigning") {
-    return { ok: false, error: "이미 품의가 상신되었거나 다음 단계로 넘어갔습니다." };
+  // 다중 계획 (기획 지시 2026-09-05): 결재 중·승인된 계획이 있어도 그 밖의
+  // 세션 묶음은 별도 품의로 올릴 수 있다. 수락서 송부 이후·종료 단계에서만 닫는다.
+  const SUBMITTABLE_STAGES: readonly ProjectStage[] = [
+    "assigning",
+    "plan_review",
+    "plan_approved",
+    "requesting",
+    "accepted_all",
+  ];
+  if (!SUBMITTABLE_STAGES.includes(state.stage)) {
+    return {
+      ok: false,
+      error:
+        "수락서 송부 이후·종료 단계에서는 섭외계획 품의를 올릴 수 없습니다 (규칙). 추가 섭외는 코드넘버별 개별 요청으로 진행해 주세요.",
+    };
   }
   // 세션을 골라 부분 상신하는 경우(22번)에는 전체 배정 완료를 요구하지 않는다 —
   // 선택 세션의 완성 검사는 계획 상신(plan-actions)에서 수행한다.
@@ -449,67 +463,26 @@ export async function submitEngagementPlan(
 
   const modules = await getTenantModules();
   if (!modules.approvals) {
-    await supabase
-      .from("projects")
-      .update({ engagement_stage: "plan_approved" })
-      .eq("id", projectId);
+    if (state.stage === "assigning") {
+      await supabase
+        .from("projects")
+        .update({ engagement_stage: "plan_approved" })
+        .eq("id", projectId);
+    }
     revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
     return { ok: true, approvalId: null, autoApproved: true };
   }
 
   /**
-   * 품의는 **한 벌**만 만든다.
-   *
-   * 원래 이 버튼은 자체적으로 결재를 만들고 projects.engagement_stage만
-   * 움직였고, 화면 아래 계획 패널은 engagement_plans(지문 게이트)로 따로
-   * 결재를 만들었다 — 같은 행위의 상신 창구가 둘이라 어느 쪽으로 승인받아도
-   * 반대쪽 잠금이 안 풀렸다(검수에서 확인된 이중 구현). 이제 이 버튼이
-   * 계획 레코드 상신(plan-actions)에 위임하고, 단계 기계는 **같은 결재건**을
-   * 바라본다. 승인 한 번에 지문 게이트와 단계가 함께 열린다.
+   * 품의는 계획 레코드 상신(plan-actions)에 위임하고, 단계 기계는 같은
+   * 결재건을 바라본다 — 상신 창구가 둘이던 이중 구현의 재발 방지.
+   * 계획이 여러 건이면(2026-09-05) 프로젝트 단계는 '승인된 계획이 하나라도
+   * 있으면 plan_approved, 아니면 결재 중이 있으면 plan_review'로 판정한다.
    */
-  const activePlan = await getActivePlan(projectId);
   const snapshot = await buildPlanSnapshot(
     projectId,
     slotIds.length > 0 ? slotIds : undefined
   );
-
-  // 예전 패널 경로로 이미 승인·결재중인 계획이 있는 프로젝트 — 새 결재를
-  // 만들지 않고 단계만 그 결재건에 연결한다 (기존 데이터 구제).
-  // 부분 상신 계획(22번)은 커버리지 세션 기준으로 지문을 대조한다.
-  const rescueSignature =
-    activePlan?.status === "approved"
-      ? (
-          await buildPlanSnapshot(
-            projectId,
-            (await getPlanCoveredSlotIds(activePlan.id)) ?? undefined
-          )
-        ).signature
-      : null;
-  if (
-    activePlan?.status === "approved" &&
-    activePlan.planSignature === rescueSignature
-  ) {
-    await supabase
-      .from("projects")
-      .update({
-        engagement_stage: "plan_approved",
-        engagement_plan_approval_id: activePlan.approvalId,
-      })
-      .eq("id", projectId);
-    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-    return { ok: true, approvalId: activePlan.approvalId, autoApproved: true };
-  }
-  if (activePlan?.status === "in_progress") {
-    await supabase
-      .from("projects")
-      .update({
-        engagement_stage: "plan_review",
-        engagement_plan_approval_id: activePlan.approvalId,
-      })
-      .eq("id", projectId);
-    revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-    return { ok: true, approvalId: activePlan.approvalId, autoApproved: false };
-  }
 
   const submitted = await submitPlanRecord(projectId, "", approverIds, slotIds);
   if (!submitted.ok) return submitted;
@@ -518,13 +491,27 @@ export async function submitEngagementPlan(
   // 보고 문서는 결재가 아니라 확인용이라 plan_review에 머물지 않는다
   const postReport = submitted.flow === "post_report";
 
-  await supabase
-    .from("projects")
-    .update({
-      engagement_stage: postReport ? "plan_approved" : "plan_review",
-      engagement_plan_approval_id: approvalId,
-    })
-    .eq("id", projectId);
+  // 이미 승인된 계획이 있어(plan_approved 이후) 발송이 열려 있는 프로젝트를
+  // 새 품의가 다시 결재 중으로 되돌리면 안 된다 — 앞 단계에서만 올린다
+  const nextStage =
+    state.stage === "assigning"
+      ? postReport
+        ? "plan_approved"
+        : "plan_review"
+      : state.stage === "plan_review" && postReport
+        ? "plan_approved"
+        : null;
+  // 포인터는 '승인된 계획의 결재건'을 뜻한다 — 단계가 바뀔 때만 갱신하고,
+  // 승인 계획이 이미 있는 프로젝트에서는 결재 훅이 정한다 (리뷰 L1)
+  if (nextStage) {
+    await supabase
+      .from("projects")
+      .update({
+        engagement_stage: nextStage,
+        engagement_plan_approval_id: approvalId,
+      })
+      .eq("id", projectId);
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.session.tenantId,
@@ -629,13 +616,13 @@ export async function dispatchProjectEngagements(input: {
   // 매 발송이 '실패'투성이로 보인다. 뺀 세션은 규칙 사유로 명시한다 (§12-9).
   const failed: { code: string; reason: string }[] = [];
   const modulesForDispatch = await getTenantModules();
-  let coveredSlotIds: string[] | null = null;
-  if (modulesForDispatch.approvals) {
-    const activePlan = await getActivePlan(input.projectId);
-    if (activePlan?.status === "approved") {
-      coveredSlotIds = await getPlanCoveredSlotIds(activePlan.id);
-    }
-  }
+  // 다중 계획(2026-09-05): 세션마다 어느 계획에 담겨 어디까지 왔는지가 다르다.
+  // 승인(미변경) 계획에 담긴 세션만 보내고, 나머지는 세션별 사유를 남긴다.
+  const dispatchGate = await evaluatePlanGate(
+    input.projectId,
+    modulesForDispatch.approvals
+  );
+  const slotStates = dispatchGate.required ? dispatchGate.slotStates : null;
 
   const targets: DispatchTarget[] = [];
   for (const slot of slots ?? []) {
@@ -647,13 +634,10 @@ export async function dispatchProjectEngagements(input: {
       slot.required_count,
       redispatch
     );
-    if (coveredSlotIds !== null && !coveredSlotIds.includes(slot.id)) {
+    const slotState = slotStates ? (slotStates[slot.id] ?? "none") : "approved";
+    if (slotState !== "approved") {
       for (const p of slotTargets) {
-        failed.push({
-          code: p.code,
-          reason:
-            "승인된 섭외계획에 포함되지 않은 세션입니다 (규칙). 섭외계획 패널의 보완(추가) 품의로 승인받으면 이 버튼으로 다시 발송할 수 있습니다.",
-        });
+        failed.push({ code: p.code, reason: describeSlotPlanState(slotState) });
       }
       continue;
     }
