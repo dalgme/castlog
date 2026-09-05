@@ -687,6 +687,46 @@ export async function onEngagementReportFeedback(
 }
 
 /**
+ * 상신 취소(회수) 훅 — 상신자가 결재건을 취소하면 계획도 따라 내려온다.
+ * 계획이 in_progress로 남으면 담긴 세션이 '결재 중'으로 잠긴 채 영영 풀리지
+ * 않는다 (렛츠 보고 2026-09-05). 변경 품의였다면 부모 승인 계획을 되살린다.
+ */
+export async function onEngagementPlanApprovalCanceled(
+  approvalId: string
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: plan } = await admin
+    .from("engagement_plans")
+    .select("id, tenant_id, project_id, status, parent_plan_id")
+    .eq("approval_id", approvalId)
+    .maybeSingle();
+  if (!plan || plan.status !== "in_progress") return;
+
+  // 회수한 계획은 이력으로만 남긴다 — 세션은 즉시 편집·재상신이 열린다
+  await admin
+    .from("engagement_plans")
+    .update({ status: "superseded" })
+    .eq("id", plan.id);
+  if (plan.parent_plan_id) {
+    await admin
+      .from("engagement_plans")
+      .update({ status: "approved" })
+      .eq("id", plan.parent_plan_id)
+      .eq("status", "superseded");
+  }
+
+  await admin.from("audit_logs").insert({
+    tenant_id: plan.tenant_id,
+    actor_auth_user_id: null,
+    actor_role: "system",
+    action: "engagement_plan.withdrawn",
+    resource_type: "engagement_plan",
+    resource_id: plan.id,
+    after_data: { approval_id: approvalId, project_id: plan.project_id },
+  });
+}
+
+/**
  * 섭외계획 품의 ↔ 결재 연동 훅.
  * 결재 도메인은 계획 도메인을 알지 않는다 — 결재 종결 시 여기서 상태를 맞춘다.
  *  - 승인 → status='approved' + 승인 시점 지문 확정

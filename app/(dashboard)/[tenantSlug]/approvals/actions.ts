@@ -26,6 +26,7 @@ import {
 import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
 import {
+  onEngagementPlanApprovalCanceled,
   onEngagementPlanApprovalResolved,
   onEngagementReportFeedback,
 } from "@/lib/integrations/engagement-plans";
@@ -510,6 +511,11 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
     .update({ status: "canceled", completed_at: new Date().toISOString() })
     .eq("id", approvalId);
 
+  // 섭외계획 품의였다면 계획·프로젝트 단계도 따라 내려온다 — 그래야 담긴
+  // 세션이 '결재 중'에서 풀려 다시 편집·상신할 수 있다 (렛츠 보고 2026-09-05)
+  await onEngagementPlanApprovalCanceled(approvalId);
+  await onProjectEngagementApprovalResolved(approvalId);
+
   await supabase.from("audit_logs").insert({
     tenant_id: session.tenantId,
     actor_auth_user_id: session.userId,
@@ -521,6 +527,7 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
 
   revalidatePath("/[tenantSlug]/approvals", "page");
   revalidatePath(`/[tenantSlug]/approvals/${approvalId}`, "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
 

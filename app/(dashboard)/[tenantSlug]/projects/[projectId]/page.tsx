@@ -1126,24 +1126,31 @@ export default async function ProjectDetailPage({
           };
         });
       };
-      // 사후보고 문서(38번)의 확인 상태 — 계획이 아니라 문서에 있다
-      const reportApprovalIds = (planRows ?? [])
-        .filter((p) => p.flow === "post_report" && p.approval_id)
-        .map((p) => p.approval_id as string);
-      const { data: reportRows } = reportApprovalIds.length
+      // 결재 문서 상태 — 사후보고(38번)의 확인 상태와, 상신 취소된 계획
+      // (superseded + 문서 canceled)의 구분은 계획이 아니라 문서에 있다
+      const planApprovalIds = (planRows ?? [])
+        .map((p) => p.approval_id)
+        .filter((id): id is string => id !== null);
+      const { data: approvalRows } = planApprovalIds.length
         ? await supabase
             .from("approvals")
             .select("id, status")
-            .in("id", reportApprovalIds)
+            .in("id", planApprovalIds)
         : { data: [] as { id: string; status: string }[] };
       const reportStatusById = new Map(
-        (reportRows ?? []).map((r) => [r.id, r.status])
+        (approvalRows ?? []).map((r) => [r.id, r.status])
       );
       approvedPlans = (planRows ?? []).map((p) => ({
         id: p.id,
         revision: p.revision,
         status:
-          p.status === "draft" && p.last_rejection_note ? "rejected" : p.status,
+          p.status === "draft" && p.last_rejection_note
+            ? "rejected"
+            : p.status === "superseded" &&
+                p.approval_id &&
+                reportStatusById.get(p.approval_id) === "canceled"
+              ? "withdrawn"
+              : p.status,
         approvalId: p.approval_id,
         slotCount: p.slot_count,
         positionCount: p.position_count,
