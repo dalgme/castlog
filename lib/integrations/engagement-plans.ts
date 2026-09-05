@@ -171,6 +171,71 @@ export async function buildPlanSnapshot(
   };
 }
 
+export type PlanSignatureCandidate = {
+  code: string;
+  expertId: string | null;
+  fee: number;
+  rank: number;
+};
+
+/**
+ * 계획 지문(plan_signature)에서 상신·승인 시점의 섭외 대상(코드·전문가·예정가·
+ * 순위)을 되읽는다. 지문은 buildPlanSnapshot이 만든 형식 그대로다:
+ *   line := date|starts|ends|roleType|required|subtotal|cands
+ *   cands := code:expertId:fee:rank[,…]   lines는 ';'로 이어진다.
+ * 결재된 금액을 화면에 보여 주는 근거 — 현재 예정가는 그 뒤 바뀌었을 수 있다.
+ */
+export type PlanSignatureLine = {
+  /** 세션 명세와 맞추는 열쇠 — date|starts|ends|roleType|required|subtotal */
+  key: string;
+  candidates: PlanSignatureCandidate[];
+};
+
+/** engagement_plan_lines 한 행의 열쇠 — 지문 line의 앞 6필드와 같은 형식 */
+export function planLineKey(line: {
+  slot_date: string;
+  starts_time: string | null;
+  ends_time: string | null;
+  role_type: string;
+  required_count: number;
+  subtotal: number;
+}): string {
+  return [
+    line.slot_date,
+    line.starts_time ?? "",
+    line.ends_time ?? "",
+    line.role_type,
+    line.required_count,
+    line.subtotal,
+  ].join("|");
+}
+
+export function parsePlanSignatureCandidates(
+  signature: string | null | undefined
+): PlanSignatureLine[] {
+  const out: PlanSignatureLine[] = [];
+  if (!signature) return out;
+  for (const line of signature.split(";")) {
+    if (!line) continue;
+    const fields = line.split("|");
+    const key = fields.slice(0, 6).join("|");
+    const candidates: PlanSignatureCandidate[] = [];
+    for (const c of (fields[6] ?? "").split(",")) {
+      if (!c) continue;
+      const [code, expertId, fee, rank] = c.split(":");
+      if (!code) continue;
+      candidates.push({
+        code,
+        expertId: expertId || null,
+        fee: Number(fee) || 0,
+        rank: Number(rank) || 0,
+      });
+    }
+    out.push({ key, candidates });
+  }
+  return out;
+}
+
 /**
  * 계획이 덮는 세션(슬롯) 집합 (기획 확정 2026-08-30 — 22번).
  * 별도 컬럼 없이 계획 명세(engagement_plan_lines)의 slot_id에서 파생한다 —

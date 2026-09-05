@@ -41,6 +41,18 @@ import { EngagementHistoryDialog } from "./engagement-history-dialog";
  * 현황을 둔다.
  */
 
+export type ApprovedPlanSession = {
+  slotId: string | null;
+  label: string;
+  schedule: string | null;
+  roleDescription: string | null;
+  locationName: string | null;
+  requiredCount: number;
+  subtotal: number;
+  /** 지문에 기록된 섭외 대상 — 결재된 금액 */
+  experts: { code: string; name: string; fee: number }[];
+};
+
 export type ApprovedPlanRow = {
   id: string;
   revision: number;
@@ -54,6 +66,11 @@ export type ApprovedPlanRow = {
   note: string | null;
   /** 계획에 담긴 세션 라벨 (부분 상신·보완 상신 확인용) */
   sessionLabels: string[];
+  /**
+   * 세션별 세부 + 상신·승인 시점의 전문가별 예정가 (핫픽스 2026-09-05,
+   * 렛츠 보고 — 승인 목록에 세션 정보와 승인 금액이 없었다)
+   */
+  sessions: ApprovedPlanSession[];
   /** 38번: 사후보고로 확정된 계획인가 */
   postReport: boolean;
   /** 사후보고 문서의 상태 (in_progress=확인 대기 / approved=확인 완료 / rejected=피드백) */
@@ -70,6 +87,10 @@ export type ProgressRow = {
   expertName: string;
   stage: EngagementStage;
   engagementId: string | null;
+  /** 세션 일정·장소 한 줄 */
+  sessionDetail: string | null;
+  /** 이 자리의 예정가 (후보별 예정가, 없으면 세션 1인 비용) */
+  fee: number | null;
 };
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
@@ -349,6 +370,60 @@ export function EngagementProgress({
                         {p.sessionLabels.length === 0
                           ? `세션 ${p.slotCount}건 (세션 구분 없음)`
                           : p.sessionLabels.join(" · ")}
+                        {/* 세션 세부 + 결재된 전문가별 예정가 — 접어 두고
+                            필요할 때 편다 (모바일 조회 대응) */}
+                        {p.sessions.length > 0 && (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-[11px] font-semibold text-brand underline-offset-4 hover:underline">
+                              세션 세부 · 승인 예정가 보기
+                            </summary>
+                            <ul className="mt-1.5 space-y-1.5">
+                              {p.sessions.map((s, i) => (
+                                <li
+                                  key={`${p.id}-${s.slotId ?? i}`}
+                                  className="rounded-md border bg-secondary/30 p-2"
+                                >
+                                  <p className="font-semibold">{s.label}</p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {[
+                                      s.schedule,
+                                      s.roleDescription,
+                                      s.locationName,
+                                      `필요 ${s.requiredCount}명`,
+                                      `소계 ${formatKrw(s.subtotal)}`,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </p>
+                                  {s.experts.length > 0 ? (
+                                    <ul className="mt-1 space-y-0.5">
+                                      {s.experts.map((e) => (
+                                        <li
+                                          key={`${p.id}-${e.code}`}
+                                          className="flex items-center justify-between gap-2 tabular-nums"
+                                        >
+                                          <span>
+                                            <span className="font-mono text-[11px]">
+                                              {e.code}
+                                            </span>{" "}
+                                            {e.name}
+                                          </span>
+                                          <span className="font-semibold text-brand-coral-ink">
+                                            {formatKrw(e.fee)}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      섭외 대상 전문가가 지문에 없습니다 (옛 계획).
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                         {p.note && (
                           <p className="mt-0.5 text-[11px] text-muted-foreground">
                             {p.note}
@@ -412,6 +487,7 @@ export function EngagementProgress({
                     <TableHead>세션</TableHead>
                     <TableHead className="w-32">코드넘버</TableHead>
                     <TableHead className="w-32">전문가</TableHead>
+                    <TableHead className="w-28 text-right">예정가</TableHead>
                     <TableHead className="w-28">단계</TableHead>
                     <TableHead className="w-44 text-right">수락서</TableHead>
                   </TableRow>
@@ -419,7 +495,14 @@ export function EngagementProgress({
                 <TableBody>
                   {rows.map((r) => (
                     <TableRow key={r.positionId}>
-                      <TableCell className="text-xs">{r.slotLabel}</TableCell>
+                      <TableCell className="text-xs">
+                        {r.slotLabel}
+                        {r.sessionDetail && (
+                          <span className="block text-[11px] text-muted-foreground">
+                            {r.sessionDetail}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Link
                           href={`/${tenantSlug}/projects/${projectId}/positions/${r.positionId}`}
@@ -429,6 +512,9 @@ export function EngagementProgress({
                         </Link>
                       </TableCell>
                       <TableCell className="text-sm">{r.expertName}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {r.fee !== null ? formatKrw(r.fee) : "미정"}
+                      </TableCell>
                       <TableCell>
                         <span
                           title={ENGAGEMENT_STAGE_DESCRIPTIONS[r.stage]}
