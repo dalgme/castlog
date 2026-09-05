@@ -154,6 +154,24 @@ async function logChange(params: {
   });
 }
 
+/**
+ * 결재권자 편집은 그 결재건의 계획에 담긴 세션에만 미친다 — 계획이 여러 건
+ * (2026-09-05)이면 다른 계획의 승인 세션을 건드려 '변경 품의 필요'로
+ * 뒤집을 수 있다 (리뷰 M3). null 커버리지(옛 전체 계획)는 전 세션 허용.
+ */
+async function assertSlotInPlan(
+  planId: string,
+  slotId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const covered = await getPlanCoveredSlotIds(planId);
+  if (covered === null || covered.includes(slotId)) return { ok: true };
+  return {
+    ok: false,
+    error:
+      "이 세션은 이 결재건의 섭외계획에 담기지 않았습니다 (규칙). 다른 계획의 세션은 그 계획의 결재 화면에서 수정하세요.",
+  };
+}
+
 /** 결재권자 — 세션 내 섭외 순위 변경 (드래그 결과 저장) */
 export async function reviewerReorderCandidates(
   approvalId: string,
@@ -162,6 +180,8 @@ export async function reviewerReorderCandidates(
 ): Promise<PlanReviewResult> {
   const g = await gate(approvalId);
   if (!g.ok) return g;
+  const scoped = await assertSlotInPlan(g.planId, slotId);
+  if (!scoped.ok) return scoped;
 
   const supabase = createClient();
   const { data: rows } = await supabase
@@ -219,7 +239,7 @@ export async function reviewerRemoveCandidate(
   const supabase = createClient();
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, code, status, engagement_id, assigned_expert_id")
+    .select("id, code, status, engagement_id, assigned_expert_id, slot_id")
     .eq("id", positionId)
     .maybeSingle();
   if (
@@ -229,6 +249,8 @@ export async function reviewerRemoveCandidate(
   ) {
     return { ok: false, error: "이미 섭외가 진행된 후보는 삭제할 수 없습니다." };
   }
+  const scoped = await assertSlotInPlan(g.planId, position.slot_id);
+  if (!scoped.ok) return scoped;
 
   let expertName: string | null = null;
   if (position.assigned_expert_id) {
@@ -283,9 +305,13 @@ export async function reviewerSetCandidateFee(
   const supabase = createClient();
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, code, expected_fee, assigned_expert_id")
+    .select("id, code, expected_fee, assigned_expert_id, slot_id")
     .eq("id", positionId)
     .maybeSingle();
+  if (position) {
+    const scoped = await assertSlotInPlan(g.planId, position.slot_id);
+    if (!scoped.ok) return scoped;
+  }
   if (!position) return { ok: false, error: "대상 후보를 찾을 수 없습니다." };
 
   const nextFee = fee ? parseInt(fee, 10) : null;

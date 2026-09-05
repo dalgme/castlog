@@ -366,25 +366,60 @@ export async function buildEngagementPlanDraft(
  * (대표·이사는 전사 결재), RLS로는 프로젝트를 못 고칠 수 있기 때문이다.
  */
 export async function onProjectEngagementApprovalResolved(
-  approvalId: string,
-  outcome: "approved" | "rejected"
+  approvalId: string
 ): Promise<void> {
   const admin = createAdminClient();
 
-  const { data: project } = await admin
-    .from("projects")
-    .select("id, engagement_stage")
-    .eq("engagement_plan_approval_id", approvalId)
+  // 결재건 → 계획 → 프로젝트. 계획이 여러 건(2026-09-05)이라 프로젝트의 단일
+  // 포인터(engagement_plan_approval_id)로는 못 찾는다.
+  const { data: plan } = await admin
+    .from("engagement_plans")
+    .select("project_id")
+    .eq("approval_id", approvalId)
     .maybeSingle();
+  const { data: project } = plan
+    ? await admin
+        .from("projects")
+        .select("id, engagement_stage")
+        .eq("id", plan.project_id)
+        .maybeSingle()
+    : await admin
+        .from("projects")
+        .select("id, engagement_stage")
+        .eq("engagement_plan_approval_id", approvalId)
+        .maybeSingle();
   if (!project) return;
-  if (project.engagement_stage !== "plan_review") return;
+  if (
+    project.engagement_stage !== "plan_review" &&
+    project.engagement_stage !== "plan_approved" &&
+    project.engagement_stage !== "assigning"
+  ) {
+    return;
+  }
+
+  // 살아 있는 계획 전체로 단계를 다시 판정한다 — 이 훅은 계획 상태 동기화
+  // (onEngagementPlanApprovalResolved) 뒤에 불린다
+  const { data: livePlans } = await admin
+    .from("engagement_plans")
+    .select("id, status, approval_id, approved_at")
+    .eq("project_id", project.id)
+    .in("status", ["in_progress", "approved"])
+    .order("approved_at", { ascending: false, nullsFirst: false });
+  const approved = (livePlans ?? []).filter((p) => p.status === "approved");
+  const inProgress = (livePlans ?? []).filter((p) => p.status === "in_progress");
+  const nextStage =
+    approved.length > 0
+      ? "plan_approved"
+      : inProgress.length > 0
+        ? "plan_review"
+        : "assigning";
 
   await admin
     .from("projects")
     .update({
-      engagement_stage: outcome === "approved" ? "plan_approved" : "assigning",
-      // 반려면 품의 연결을 끊는다 — 고쳐서 새로 올리는 것이 맞다
-      engagement_plan_approval_id: outcome === "approved" ? approvalId : null,
+      engagement_stage: nextStage,
+      // 승인된 계획이 있으면 그 결재건을, 없으면 연결을 끊는다
+      engagement_plan_approval_id: approved[0]?.approval_id ?? null,
     })
     .eq("id", project.id);
 }

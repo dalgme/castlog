@@ -16,7 +16,10 @@ import {
   type SlotCandidate,
   type SlotContext,
 } from "@/lib/integrations/slot-candidates";
-import { evaluatePlanGate } from "@/lib/integrations/engagement-plans";
+import {
+  describeSlotPlanState,
+  evaluatePlanGate,
+} from "@/lib/integrations/engagement-plans";
 
 /**
  * 섭외 요청 팝업이 열릴 때 필요한 것을 한 번에 가져온다.
@@ -62,15 +65,20 @@ export async function loadPositionRequestData(
     return { ok: false, error: "이미 섭외 요청이 나갔거나 확정된 인원입니다." };
   }
 
+  // 세션 단위 판정 (다중 계획, 2026-09-05) — 이 자리의 세션이 승인 계획에
+  // 담겨 있어야 요청할 수 있다
   const gate = await evaluatePlanGate(context.projectId, modules.approvals);
+  const slotState = gate.required
+    ? (gate.slotStates[context.slotId] ?? "none")
+    : "approved";
   const candidates = await getSlotCandidates(context);
 
   return {
     ok: true,
     context,
     candidates,
-    planBlocked: gate.required && !gate.allowed,
-    planMessage: gate.required ? gate.message : "",
+    planBlocked: gate.required && slotState !== "approved",
+    planMessage: gate.required ? describeSlotPlanState(slotState) : "",
   };
 }
 
@@ -302,7 +310,10 @@ export async function loadSlotPickerData(
       conflictCount: conflictByExpert.get(e.id) ?? 0,
       alreadyInSlot: inSlotExpertIds.has(e.id),
     })),
-    planBlocked: gate.required && !gate.allowed,
-    planMessage: gate.required ? gate.message : "",
+    planBlocked:
+      gate.required && (gate.slotStates[context.slotId] ?? "none") !== "approved",
+    planMessage: gate.required
+      ? describeSlotPlanState(gate.slotStates[context.slotId] ?? "none")
+      : "",
   };
 }

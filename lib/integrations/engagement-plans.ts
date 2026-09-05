@@ -323,6 +323,7 @@ export type ActivePlan = {
   revision: number;
   status: PlanStatus;
   approvalId: string | null;
+  parentPlanId: string | null;
   slotCount: number;
   positionCount: number;
   plannedAmount: number;
@@ -331,63 +332,157 @@ export type ActivePlan = {
   lastRejectionNote: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
+  /** 38번 — 사후보고로 확정된 계획 (컬럼 미적용 환경은 null) */
+  flow: "pre_approval" | "post_report" | null;
 };
 
-/** 프로젝트의 현재 유효 계획 (draft/in_progress/approved 중 1건) */
-export async function getActivePlan(
-  projectId: string
-): Promise<ActivePlan | null> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("engagement_plans")
-    .select(
-      "id, revision, status, approval_id, slot_count, position_count, planned_amount, plan_signature, note, last_rejection_note, submitted_at, approved_at"
-    )
-    .eq("project_id", projectId)
-    .in("status", ["draft", "in_progress", "approved"])
-    .maybeSingle();
+const ACTIVE_PLAN_COLUMNS =
+  "id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, plan_signature, note, last_rejection_note, submitted_at, approved_at";
 
-  if (!data) return null;
+type ActivePlanRow = {
+  id: string;
+  revision: number;
+  status: string;
+  approval_id: string | null;
+  parent_plan_id: string | null;
+  slot_count: number;
+  position_count: number;
+  planned_amount: number;
+  plan_signature: string;
+  note: string | null;
+  last_rejection_note: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  flow?: string | null;
+};
+
+function toActivePlan(row: ActivePlanRow): ActivePlan {
   return {
-    id: data.id,
-    revision: data.revision,
-    status: data.status as PlanStatus,
-    approvalId: data.approval_id,
-    slotCount: data.slot_count,
-    positionCount: data.position_count,
-    plannedAmount: data.planned_amount,
-    planSignature: data.plan_signature,
-    note: data.note,
-    lastRejectionNote: data.last_rejection_note,
-    submittedAt: data.submitted_at,
-    approvedAt: data.approved_at,
+    id: row.id,
+    revision: row.revision,
+    status: row.status as PlanStatus,
+    approvalId: row.approval_id,
+    parentPlanId: row.parent_plan_id,
+    slotCount: row.slot_count,
+    positionCount: row.position_count,
+    plannedAmount: row.planned_amount,
+    planSignature: row.plan_signature,
+    note: row.note,
+    lastRejectionNote: row.last_rejection_note,
+    submittedAt: row.submitted_at,
+    approvedAt: row.approved_at,
+    flow:
+      row.flow === "post_report" || row.flow === "pre_approval" ? row.flow : null,
   };
 }
+
+/**
+ * 프로젝트의 살아 있는 계획들 (다중 — 기획 지시 2026-09-05).
+ * draft(반려 뒤 수정 대기)·in_progress·approved. 세션 묶음마다 계획이 따로
+ * 있을 수 있다 — 같은 세션이 두 살아 있는 계획에 담기지 않는 것만 DB 트리거
+ * (app.guard_engagement_plan_slot_overlap)가 보장한다. 최신 리비전이 먼저.
+ */
+export async function getLivePlans(projectId: string): Promise<ActivePlan[]> {
+  const supabase = createClient();
+  const withFlow = await supabase
+    .from("engagement_plans")
+    .select(`${ACTIVE_PLAN_COLUMNS}, flow`)
+    .eq("project_id", projectId)
+    .in("status", ["draft", "in_progress", "approved"])
+    .order("revision", { ascending: false });
+  let rows: ActivePlanRow[] = (withFlow.data ?? []) as ActivePlanRow[];
+  if (isMissingColumnError(withFlow.error)) {
+    // flow 컬럼 미적용 환경 (§14-10 부재 폴백)
+    const withoutFlow = await supabase
+      .from("engagement_plans")
+      .select(ACTIVE_PLAN_COLUMNS)
+      .eq("project_id", projectId)
+      .in("status", ["draft", "in_progress", "approved"])
+      .order("revision", { ascending: false });
+    rows = (withoutFlow.data ?? []) as ActivePlanRow[];
+  }
+  return rows.map(toActivePlan);
+}
+
+/** 세션 하나가 계획 품의에서 어디까지 왔는가 */
+export type SlotPlanState =
+  | "none" // 어느 살아 있는 계획에도 없음 — 상신 가능
+  | "in_progress" // 결재 진행중 계획에 담김
+  | "rejected" // 반려된 계획(draft)에 담김 — 수정 후 재상신
+  | "approved" // 승인 계획에 담김 — 섭외요청 가능
+  | "changed"; // 승인 뒤 내용이 바뀜 — 변경 품의 필요
+
+export const SLOT_PLAN_STATE_LABELS: Record<SlotPlanState, string> = {
+  none: "품의 미포함",
+  in_progress: "결재 중",
+  rejected: "반려 · 재상신 필요",
+  approved: "승인",
+  changed: "변경 품의 필요",
+};
+
+/** 세션 단위 상태 설명 — 요청 화면·실패 문구 공용 (§12-9) */
+export function describeSlotPlanState(state: SlotPlanState): string {
+  switch (state) {
+    case "approved":
+      return "승인된 섭외계획에 담긴 세션입니다. 섭외요청을 보낼 수 있습니다.";
+    case "in_progress":
+      return "이 세션의 섭외계획 품의가 결재 진행중입니다 (상태 미충족). 승인되면 섭외요청을 보낼 수 있습니다.";
+    case "changed":
+      return "승인된 계획과 이 세션의 현재 내용(인원·비용·일정)이 다릅니다 (규칙). 섭외계획 패널에서 그 계획의 변경 품의를 올린 뒤 진행해 주세요.";
+    case "rejected":
+      return "이 세션이 담긴 섭외계획 품의가 반려되었습니다 (규칙). 내용을 조정한 뒤 '섭외 품의서 자동 작성 및 송신'으로 다시 상신해 주세요.";
+    case "none":
+    default:
+      return "이 세션은 아직 어떤 섭외계획 품의에도 담기지 않았습니다 (규칙). '섭외 품의서 자동 작성 및 송신'에서 이 세션을 골라 상신하고 승인받은 뒤 진행해 주세요.";
+  }
+}
+
+/** 살아 있는 계획 하나의 판정 결과 */
+export type LivePlanView = {
+  plan: ActivePlan;
+  /** draft = 한 번도 결재에 오르지 않은 임시 행(상신 실패 잔재) */
+  state: "in_progress" | "rejected" | "approved" | "changed" | "draft";
+  /** 계획이 덮는 세션 — null = 전체(세션 구분 없는 옛 계획) */
+  coveredSlotIds: string[] | null;
+  message: string;
+};
 
 export type PlanGate =
   | { required: false; reason: "module_off" }
   | {
       required: true;
+      /** 승인돼 발송 가능한 계획이 하나라도 있는가 */
       allowed: boolean;
+      /**
+       * 대표 상태 (프로젝트 배지·요약 문구): approved > changed > in_progress
+       * > rejected > none. 세션별 판정은 slotStates가 진실이다.
+       */
       state:
         | "none" // 계획 미상신
         | "in_progress" // 결재 진행중
         | "rejected" // 반려 — 수정 후 재상신 필요
         | "approved" // 승인 — 섭외요청 가능
         | "changed"; // 승인 후 섭외 테이블 변경 — 변경 품의 필요
+      /** 대표 계획 (승인 우선) */
       plan: ActivePlan | null;
       message: string;
       /**
-       * 계획이 덮는 세션 집합 (기획 2026-08-30 — 22번).
-       * null = 전체(계획 없음 포함). 부분 상신 계획이면 승인 효력도 이 세션들에만
-       * 미친다 — 밖의 세션은 보완(변경) 품의로 추가한 뒤 섭외할 수 있다.
+       * 발송 가능 커버리지 = 승인(미변경) 계획들의 세션 합집합.
+       * null = 전체(세션 구분 없는 옛 승인 계획이 있음). 계획이 없으면 [].
        */
       coveredSlotIds: string[] | null;
+      /** 살아 있는 계획 전부 (최신 리비전 먼저) */
+      plans: LivePlanView[];
+      /** 세션 → 상태 (프로젝트의 모든 세션) */
+      slotStates: Record<string, SlotPlanState>;
+      /** 어느 살아 있는 계획에도 없는 세션 — 새 품의로 상신할 수 있다 */
+      uncoveredSlotIds: string[];
     };
 
 /**
- * 섭외요청 가능 여부 판정. approvals 모듈이 꺼져 있으면 게이트 자체가 없다.
- * 화면 표시와 서버 액션 차단에 같은 함수를 쓴다.
+ * 섭외요청 가능 여부 판정 — 세션 단위 (다중 계획, 2026-09-05).
+ * approvals 모듈이 꺼져 있으면 게이트 자체가 없다.
+ * 화면 표시와 서버 액션 차단이 같은 함수를 쓴다.
  */
 export async function evaluatePlanGate(
   projectId: string,
@@ -395,81 +490,146 @@ export async function evaluatePlanGate(
 ): Promise<PlanGate> {
   if (!approvalsEnabled) return { required: false, reason: "module_off" };
 
-  const plan = await getActivePlan(projectId);
+  const supabase = createClient();
+  const [plans, { data: slotRows }] = await Promise.all([
+    getLivePlans(projectId),
+    supabase
+      .from("engagement_slots")
+      .select("id")
+      .eq("project_id", projectId),
+  ]);
+  const allSlotIds = (slotRows ?? []).map((s) => s.id);
 
-  if (!plan) {
-    return {
-      required: true,
-      allowed: false,
-      state: "none",
-      plan: null,
-      message:
-        "섭외계획 품의가 상신되지 않았습니다. 섭외 테이블을 확정한 뒤 계획 품의를 올려 주세요.",
-      coveredSlotIds: null,
-    };
+  const views: LivePlanView[] = [];
+  for (const plan of plans) {
+    const coveredSlotIds = await getPlanCoveredSlotIds(plan.id);
+    if (plan.status === "in_progress") {
+      views.push({
+        plan,
+        state: "in_progress",
+        coveredSlotIds,
+        message: `리비전 ${plan.revision} — 결재 진행중입니다. 승인 후 담긴 세션의 섭외요청을 보낼 수 있습니다.`,
+      });
+      continue;
+    }
+    if (plan.status === "draft") {
+      views.push({
+        plan,
+        state: plan.lastRejectionNote ? "rejected" : "draft",
+        coveredSlotIds,
+        message: plan.lastRejectionNote
+          ? `리비전 ${plan.revision} — 반려되었습니다. 사유: ${plan.lastRejectionNote}`
+          : `리비전 ${plan.revision} — 상신되지 않은 임시 계획입니다.`,
+      });
+      continue;
+    }
+    // approved — 승인 이후 '계획에 담긴 세션'이 바뀌었는지 대조.
+    // 계획 밖 세션의 추가·수정은 변경으로 치지 않는다.
+    const snapshot = await buildPlanSnapshot(projectId, coveredSlotIds ?? undefined);
+    if (plan.planSignature !== snapshot.signature) {
+      views.push({
+        plan,
+        state: "changed",
+        coveredSlotIds,
+        message: `리비전 ${plan.revision} — 승인된 계획과 현재 섭외 테이블이 다릅니다(인원·비용·일정 변경). 변경 품의를 올린 뒤 진행해 주세요.`,
+      });
+    } else {
+      views.push({
+        plan,
+        state: "approved",
+        coveredSlotIds,
+        message: `리비전 ${plan.revision} — 승인 완료. 담긴 세션의 섭외요청을 보낼 수 있습니다.`,
+      });
+    }
   }
 
-  // 부분 상신 계획(기획 2026-08-30 — 22번)은 담긴 세션 기준으로만 대조한다.
-  const coveredSlotIds = await getPlanCoveredSlotIds(plan.id);
-
-  if (plan.status === "in_progress") {
-    return {
-      required: true,
-      allowed: false,
-      state: "in_progress",
-      plan,
-      message: "섭외계획 품의가 결재 진행중입니다. 승인 후 섭외요청을 보낼 수 있습니다.",
-      coveredSlotIds,
-    };
+  // 세션별 판정 — 살아 있는 계획이 세션을 나눠 갖는다. 겹침은 DB가 막지만
+  // 옛 전체 계획(null)과 공존하는 예외는 승인 > 결재중 > 반려 순으로 고른다
+  const rank: Record<LivePlanView["state"], number> = {
+    approved: 5,
+    changed: 4,
+    in_progress: 3,
+    rejected: 2,
+    draft: 1,
+  };
+  const slotStates: Record<string, SlotPlanState> = {};
+  for (const slotId of allSlotIds) {
+    let best: LivePlanView | null = null;
+    for (const v of views) {
+      const covers = v.coveredSlotIds === null || v.coveredSlotIds.includes(slotId);
+      if (!covers) continue;
+      if (!best || rank[v.state] > rank[best.state]) best = v;
+    }
+    slotStates[slotId] =
+      !best || best.state === "draft" ? "none" : best.state;
   }
+  const uncoveredSlotIds = allSlotIds.filter((id) => slotStates[id] === "none");
 
-  if (plan.status === "draft") {
-    return {
-      required: true,
-      allowed: false,
-      state: plan.lastRejectionNote ? "rejected" : "none",
-      plan,
-      message: plan.lastRejectionNote
-        ? `섭외계획 품의가 반려되었습니다. 사유: ${plan.lastRejectionNote}`
-        : "섭외계획 품의를 상신해 주세요.",
-      coveredSlotIds,
-    };
-  }
+  const approvedViews = views.filter((v) => v.state === "approved");
+  const coveredSlotIds: string[] | null = approvedViews.some(
+    (v) => v.coveredSlotIds === null
+  )
+    ? null
+    : Array.from(
+        new Set(approvedViews.flatMap((v) => v.coveredSlotIds ?? []))
+      );
 
-  // approved — 승인 이후 '계획에 담긴 세션'이 바뀌었는지 대조.
-  // 계획 밖 세션의 추가·수정은 변경으로 치지 않는다 — 보완(변경) 품의로
-  // 추가하기 전에는 그 세션의 섭외요청 자체가 막혀 있기 때문이다.
-  const snapshot = await buildPlanSnapshot(projectId, coveredSlotIds ?? undefined);
-  if (plan.planSignature !== snapshot.signature) {
-    return {
-      required: true,
-      allowed: false,
-      state: "changed",
-      plan,
-      message:
-        "승인된 계획과 현재 섭외 테이블이 다릅니다(인원·비용·일정 변경). 계획 변경 품의를 올린 뒤 진행해 주세요.",
-      coveredSlotIds,
-    };
-  }
+  const representative =
+    approvedViews[0] ??
+    views.find((v) => v.state === "changed") ??
+    views.find((v) => v.state === "in_progress") ??
+    views.find((v) => v.state === "rejected") ??
+    null;
+  const state: Extract<PlanGate, { required: true }>["state"] =
+    representative === null || representative.state === "draft"
+      ? "none"
+      : representative.state;
+
+  const counts = {
+    approved: approvedViews.length,
+    changed: views.filter((v) => v.state === "changed").length,
+    inProgress: views.filter((v) => v.state === "in_progress").length,
+    rejected: views.filter((v) => v.state === "rejected").length,
+  };
+  const summary = [
+    counts.approved > 0 ? `승인 ${counts.approved}건` : null,
+    counts.changed > 0 ? `변경 품의 필요 ${counts.changed}건` : null,
+    counts.inProgress > 0 ? `결재 중 ${counts.inProgress}건` : null,
+    counts.rejected > 0 ? `반려 ${counts.rejected}건` : null,
+    uncoveredSlotIds.length > 0 ? `미상신 세션 ${uncoveredSlotIds.length}개` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const message =
+    views.length === 0
+      ? "섭외계획 품의가 상신되지 않았습니다. 세션별 후보를 배정한 뒤 '섭외 품의서 자동 작성 및 송신'으로 계획 품의를 올려 주세요."
+      : counts.approved > 0
+        ? `섭외계획 ${summary}. 승인된 세션의 섭외요청을 보낼 수 있습니다.`
+        : counts.inProgress > 0
+          ? `섭외계획 ${summary}. 결재가 끝나면 그 세션의 섭외요청을 보낼 수 있습니다. 미상신 세션은 지금도 별도 품의로 올릴 수 있습니다.`
+          : `섭외계획 ${summary}. 내용을 조정한 뒤 다시 상신해 주세요.`;
 
   return {
     required: true,
-    allowed: true,
-    state: "approved",
-    plan,
-    message: `섭외계획 승인 완료 (리비전 ${plan.revision}).`,
+    allowed: approvedViews.length > 0,
+    state,
+    plan: representative?.plan ?? null,
+    message,
     coveredSlotIds,
+    plans: views,
+    slotStates,
+    uncoveredSlotIds,
   };
 }
 
 /**
- * 섭외요청 서버 액션의 공용 가드.
+ * 섭외요청 서버 액션의 공용 가드 — 세션 단위.
  * 진행 중인 섭외건(이미 요청된 포지션)에는 적용하지 않는다 — 신규 송신만 막는다.
  */
 export async function assertEngagementAllowed(
   projectId: string | null,
   approvalsEnabled: boolean,
-  /** 요청이 속한 세션 — 부분 상신 계획이면 계획에 담긴 세션만 통과 (22번) */
+  /** 요청이 속한 세션 — 그 세션이 승인 계획에 담겨 있어야 통과 (22번·다중 계획) */
   slotId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   // 프로젝트에 연결되지 않은 단건 섭외는 계획 대상이 아니다
@@ -477,14 +637,12 @@ export async function assertEngagementAllowed(
 
   const gate = await evaluatePlanGate(projectId, approvalsEnabled);
   if (!gate.required) return { ok: true };
-  if (!gate.allowed) return { ok: false, error: gate.message };
-  if (slotId && gate.coveredSlotIds && !gate.coveredSlotIds.includes(slotId)) {
-    return {
-      ok: false,
-      error:
-        "이 세션은 승인된 섭외계획에 포함되지 않았습니다 (규칙). 섭외계획 패널에서 보완(변경) 품의로 세션을 추가·승인받은 뒤 진행해 주세요.",
-    };
+  if (slotId) {
+    const state = gate.slotStates[slotId] ?? "none";
+    if (state === "approved") return { ok: true };
+    return { ok: false, error: describeSlotPlanState(state) };
   }
+  if (!gate.allowed) return { ok: false, error: gate.message };
   return { ok: true };
 }
 

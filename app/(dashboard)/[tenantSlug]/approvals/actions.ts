@@ -415,7 +415,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
     await onPaymentApprovalResolved(approvalId, "rejected", comment || null);
     await onProjectClosingApprovalResolved(approvalId, "rejected");
     await onEngagementPlanApprovalResolved(approvalId, "rejected", comment || null);
-    await onProjectEngagementApprovalResolved(approvalId, "rejected");
+    await onProjectEngagementApprovalResolved(approvalId);
   } else {
     const remainingInGroup = currentGroup.filter((s) => s.id !== myStep.id).length;
     const laterPending = allSteps.some(
@@ -430,7 +430,7 @@ export async function actOnApproval(input: ApprovalActInput): Promise<ActResult>
         await onPaymentApprovalResolved(approvalId, "approved", null);
         await onProjectClosingApprovalResolved(approvalId, "approved");
         await onEngagementPlanApprovalResolved(approvalId, "approved", null);
-        await onProjectEngagementApprovalResolved(approvalId, "approved");
+        await onProjectEngagementApprovalResolved(approvalId);
       }
     }
   }

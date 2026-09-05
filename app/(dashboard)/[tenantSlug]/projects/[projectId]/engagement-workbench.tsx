@@ -33,6 +33,10 @@ import {
 } from "@/lib/integrations/project-stage";
 
 import type { SlotRow } from "./slot-table";
+import {
+  SLOT_PLAN_STATE_LABELS,
+  type SlotPlanState,
+} from "@/lib/integrations/engagement-plans";
 import { CandidateList } from "./candidate-list";
 import { RequiredCountEditor } from "./required-count-editor";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
@@ -105,7 +109,7 @@ export function EngagementWorkbench({
   tenantSlug,
   projectId,
   slots,
-  outOfPlanSlotIds = [],
+  slotPlanStates = null,
   canManage,
   canInput,
   canCancel,
@@ -126,10 +130,10 @@ export function EngagementWorkbench({
   projectId: string;
   slots: SlotRow[];
   /**
-   * 살아 있는 계획(결재 중·승인)에 담기지 않은 세션 — 계획 효력 밖이라
-   * 후보·예정가 편집이 계속 열린다 (핫픽스 2026-09-05, 렛츠 보고)
+   * 세션 → 계획 상태 (다중 계획, 2026-09-05). 결재 중·승인·변경 필요 세션은
+   * 편집이 잠기고, 미상신·반려 세션은 열린다. null = 전자결재 미사용(게이트 없음)
    */
-  outOfPlanSlotIds?: string[];
+  slotPlanStates?: Record<string, SlotPlanState> | null;
   /** 실행 버튼(품의 상신·섭외요청·수락서 송부) — 레벨 4부터 */
   canManage: boolean;
   /** 입력(후보·첨부) — 레벨 5부터 */
@@ -184,7 +188,22 @@ export function EngagementWorkbench({
       ).length,
     0
   );
-  const outOfPlanSlots = new Set(outOfPlanSlotIds);
+  // 다중 계획 (2026-09-05): 계획 품의는 수락서 송부 전까지 언제든 올릴 수 있다 —
+  // 결재 중·승인된 세션은 잠기고 나머지 세션만 담긴다
+  const submittableStage = (
+    ["assigning", "plan_review", "plan_approved", "requesting", "accepted_all"] as const
+  ).includes(projectState.stage as never);
+  const slotState = (slotId: string): SlotPlanState =>
+    slotPlanStates ? (slotPlanStates[slotId] ?? "none") : "none";
+  const slotLocked = (slotId: string) => {
+    const st = slotState(slotId);
+    return st === "in_progress" || st === "approved" || st === "changed";
+  };
+  const lockedSlots: Record<string, string> = {};
+  for (const s of slots) {
+    if (slotLocked(s.id)) lockedSlots[s.id] = SLOT_PLAN_STATE_LABELS[slotState(s.id)];
+  }
+  const submittableCount = slots.filter((s) => !slotLocked(s.id)).length;
 
   return (
     <Card>
@@ -193,34 +212,24 @@ export function EngagementWorkbench({
           전문가 섭외 진행 · 배정 {projectState.assigned + (projectState.total - projectState.open - projectState.assigned)}/{projectState.total}
         </CardTitle>
         <div className="flex flex-wrap items-center gap-2">
-          {canManage && projectState.stage === "assigning" && (
+          {canManage && submittableStage && (
             <EngagementPlanButton
               projectId={projectId}
-              // 세션별 선택 상신 (기획 2026-08-30 — 22번): 전체 배정 완료를
-              // 기다리지 않는다 — 완성된 세션만 골라 먼저 상신할 수 있다.
-              disabled={projectState.total === 0}
-              disabledReason="세션(코드넘버)을 먼저 등록하세요."
+              // 세션별 선택 상신 (기획 2026-08-30 — 22번) + 다중 계획(2026-09-05):
+              // 결재 중·승인된 계획이 있어도 나머지 세션을 별도 품의로 올린다
+              disabled={projectState.total === 0 || submittableCount === 0}
+              disabledReason={
+                projectState.total === 0
+                  ? "세션(코드넘버)을 먼저 등록하세요."
+                  : "모든 세션이 결재 중이거나 승인되었습니다. 세션을 추가하면 별도 품의로 올릴 수 있습니다."
+              }
               lines={planPreview.lines}
+              lockedSlots={lockedSlots}
               approverOptions={planApproverOptions}
               relayOn={planRelayOn}
               flow={planFlow}
             />
           )}
-          {/* 결재 중인 품의 밖에 세션이 남아 있으면 버튼을 숨기지 않고 '왜 지금
-              못 올리는지'를 말한다 — 계획 품의는 프로젝트당 한 건씩 결재된다 */}
-          {canManage &&
-            projectState.stage === "plan_review" &&
-            outOfPlanSlotIds.length > 0 && (
-              <EngagementPlanButton
-                projectId={projectId}
-                disabled
-                disabledReason={`결재 중인 품의가 끝나면 나머지 세션 ${outOfPlanSlotIds.length}개를 추가 품의로 올릴 수 있습니다 (계획 품의는 한 번에 한 건씩 결재됩니다).`}
-                lines={[]}
-                approverOptions={planApproverOptions}
-                relayOn={planRelayOn}
-                flow={planFlow}
-              />
-            )}
           {/* 섭외 문자 발송·수락서 송부는 '승인 목록 및 섭외 진행' 탭으로
               옮겼다 (기획 확정 2026-08-30 — 37번). 결재가 난 뒤에는 그 탭이
               실행 자리다 */}
@@ -319,9 +328,10 @@ export function EngagementWorkbench({
             ))}
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
-            ‘품의 중 · 결재 완료’는 프로젝트 단위의 섭외계획 품의 상태입니다
-            (전자결재를 쓰지 않는 회사에서는 나타나지 않습니다). 그 뒤 단계는
-            코드넘버 한 자리씩 따로 갑니다.
+            ‘결재 중 · 결재 완료’는 세션(묶음)별 섭외계획 품의 상태입니다 —
+            세션 묶음마다 품의가 따로 가고, 결재 중인 품의가 있어도 나머지
+            세션은 별도 품의로 올릴 수 있습니다 (전자결재를 쓰지 않는 회사에서는
+            나타나지 않습니다). 그 뒤 단계는 코드넘버 한 자리씩 따로 갑니다.
           </p>
         </details>
 
@@ -394,10 +404,10 @@ export function EngagementWorkbench({
         ) : (
           <ul className="space-y-3">
             {slots.map((slot) => {
-              // 계획 밖 세션은 프로젝트 단계와 무관하게 편집이 열린다
-              const outOfPlan = outOfPlanSlots.has(slot.id);
-              const slotEditable =
-                canInput && (projectState.stage === "assigning" || outOfPlan);
+              // 세션 단위 잠금 (다중 계획): 결재 중·승인·변경 필요 세션만 잠긴다
+              const st = slotState(slot.id);
+              const locked = slotLocked(slot.id);
+              const slotEditable = canInput && submittableStage && !locked;
               return (
               // 앵커 — 캘린더·세션 계획의 '섭외계획' 버튼이 이 세션으로 점프한다 (29번)
               <li key={slot.id} id={`slot-${slot.id}`} className="rounded-lg border p-3 scroll-mt-24">
@@ -413,16 +423,34 @@ export function EngagementWorkbench({
                       {slot.locationName}
                     </span>
                   )}
-                  {outOfPlan && (
+                  {slotPlanStates && (
                     <span
-                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900"
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[11px] font-semibold",
+                        st === "approved"
+                          ? "bg-emerald-100 text-emerald-900"
+                          : st === "in_progress"
+                            ? "bg-amber-100 text-amber-900"
+                            : st === "changed"
+                              ? "bg-rose-100 text-rose-900"
+                              : st === "rejected"
+                                ? "bg-red-100 text-red-900"
+                                : "bg-violet-100 text-violet-900"
+                      )}
                       title={
-                        projectState.stage === "plan_review"
-                          ? "결재 중인 품의에 담기지 않은 세션입니다. 결재가 끝나면 추가 품의로 올릴 수 있으며, 그때까지 후보·예정가를 계속 편집할 수 있습니다."
-                          : "승인된 계획에 담기지 않은 세션입니다. 아래 섭외계획 패널에서 보완(추가) 품의로 올리세요."
+                        st === "none"
+                          ? "아직 품의에 담기지 않은 세션입니다. 후보·예정가를 편집하고 '섭외 품의서 자동 작성 및 송신'에서 골라 상신하세요 — 결재 중인 품의가 있어도 별도 품의로 올릴 수 있습니다."
+                          : st === "rejected"
+                            ? "이 세션의 품의가 반려되었습니다. 조정 후 다시 상신하세요."
+                            : st === "in_progress"
+                              ? "이 세션의 품의가 결재 진행 중입니다. 승인되면 섭외 문자를 보낼 수 있습니다."
+                              : st === "changed"
+                                ? "승인 뒤 내용이 바뀌었습니다. 아래 섭외계획 패널에서 변경 품의를 올리세요."
+                                : "승인된 세션입니다. '승인 목록 및 섭외 진행' 탭에서 섭외 문자를 보냅니다."
                       }
                     >
-                      품의 미포함 · 편집 가능
+                      {SLOT_PLAN_STATE_LABELS[st]}
+                      {!locked && submittableStage ? " · 편집 가능" : ""}
                     </span>
                   )}
                   {/* 필요인원 인라인 수정 + 코랄 표기 (기획 2026-08-30 — 28번) */}

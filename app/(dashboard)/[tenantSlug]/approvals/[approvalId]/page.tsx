@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { getPlanCoveredSlotIds } from "@/lib/integrations/engagement-plans";
 import { ActPanel } from "./act-panel";
 import { PlanReviewPanel, type ReviewSlot } from "./plan-review-panel";
 
@@ -147,13 +148,19 @@ export default async function ApprovalDetailPage({
     if (plan) {
       isPlanApproval = true;
       planProjectId = plan.project_id;
-      const { data: planSlots } = await supabase
+      // 이 결재건의 계획에 담긴 세션만 — 계획이 여러 건(2026-09-05)이면 다른
+      // 계획의 세션은 여기서 보이지도, 고쳐지지도 않아야 한다 (리뷰 M3)
+      const coveredForReview = await getPlanCoveredSlotIds(plan.id);
+      const { data: allPlanSlots } = await supabase
         .from("engagement_slots")
         .select("id, slot_date, starts_time, session_name, role_type, required_count")
         .eq("project_id", plan.project_id)
         .order("slot_date", { ascending: true })
         .order("starts_time", { ascending: true });
-      const planSlotIds = (planSlots ?? []).map((s) => s.id);
+      const planSlots = (allPlanSlots ?? []).filter(
+        (s) => coveredForReview === null || coveredForReview.includes(s.id)
+      );
+      const planSlotIds = planSlots.map((s) => s.id);
       const { data: candidates } = planSlotIds.length
         ? await supabase
             .from("engagement_slot_positions")
@@ -179,7 +186,7 @@ export default async function ApprovalDetailPage({
       const expertNameById = new Map(
         (candidateExperts ?? []).map((e) => [e.id, e.name])
       );
-      reviewSlots = (planSlots ?? []).map((slot) => ({
+      reviewSlots = planSlots.map((slot) => ({
         slotId: slot.id,
         label: `${slot.session_name ?? slot.role_type} · ${slot.slot_date}${
           slot.starts_time ? ` ${slot.starts_time.slice(0, 5)}` : ""
