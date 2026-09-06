@@ -212,6 +212,8 @@ export const CHECKLIST_LOG_ACTION_LABELS: Record<string, string> = {
   "item.update": "항목 수정",
   "item.delete": "항목 삭제",
   "item.reorder": "순서 변경",
+  "item.move": "분류 이동",
+  "group.rename": "분류 이름 변경",
   "item.import": "항목 불러오기",
   "due.change": "마감일 변경(사유)",
   "due.reason_update": "변경 사유 수정",

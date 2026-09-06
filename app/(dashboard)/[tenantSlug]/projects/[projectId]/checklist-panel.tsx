@@ -1,16 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  GripVertical,
-  MessageSquare,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Download, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,8 +30,23 @@ import {
   dueTone,
   type ChecklistKind,
 } from "@/lib/checklists/kinds";
+import {
+  GROUP_FIELDS,
+  buildGroups,
+  groupFieldLabel,
+  groupValuesOf,
+  moveGroupBefore,
+  moveItemBefore,
+  sameGroup,
+  type GroupField,
+  type GroupValues,
+  type ItemGroup,
+  type Shade,
+} from "@/lib/checklists/groups";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
 import { DateCell, EditableText } from "@/components/checklists/editable-cell";
+import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
+import type React from "react";
 
 import {
   acknowledgeDueChanges,
@@ -51,6 +58,7 @@ import {
   getProjectChecklistLogs,
   importCommonChecklist,
   importTypedItems,
+  renameChecklistGroup,
   reorderChecklistItems,
   setPlannedDue,
   updateChecklistDday,
@@ -168,6 +176,21 @@ export function ProjectChecklistPanel({
   }
 
   const hasCommon = checklists.some((c) => c.kind === "common");
+
+  // 시트는 탭으로 전환한다 (기획 지시 2026-09-06). 새로 만든 시트가 생기면 그 탭으로.
+  const idsKey = checklists.map((c) => c.id).join(",");
+  const [selectedId, setSelectedId] = useState<string | null>(checklists[0]?.id ?? null);
+  const prevIdsRef = useRef<string[]>(checklists.map((c) => c.id));
+  useEffect(() => {
+    const cur = checklists.map((c) => c.id);
+    const added = cur.filter((id) => !prevIdsRef.current.includes(id));
+    prevIdsRef.current = cur;
+    if (added.length > 0) setSelectedId(added[added.length - 1]!);
+    else if (!selectedId || !cur.includes(selectedId)) setSelectedId(cur[0] ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+  const selected = checklists.find((c) => c.id === selectedId) ?? checklists[0] ?? null;
+
   const dDayLeft = header.dday
     ? Math.round((Date.parse(header.dday) - Date.parse(today)) / 86_400_000)
     : null;
@@ -263,10 +286,40 @@ export function ProjectChecklistPanel({
         </Alert>
       )}
 
-      {checklists.map((c) => (
+      {checklists.length > 0 && (
+        <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label="체크리스트 시트">
+          {checklists.map((c) => {
+            const active = c.id === selected?.id;
+            const done = c.items.filter((i) => i.completedOn).length;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setSelectedId(c.id)}
+                className={cn(
+                  "-mb-px rounded-t-md border px-3 py-1.5 text-xs transition-colors",
+                  active
+                    ? "border-b-white bg-white font-semibold text-brand"
+                    : "border-transparent bg-muted text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {c.name}
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                  {c.items.length}
+                  {CHECKLIST_COLUMNS[c.kind].some((col) => col.key === "plannedDue") && `/${done}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {selected && (
         <ChecklistCard
-          key={c.id}
-          checklist={c}
+          key={selected.id}
+          checklist={selected}
           users={users}
           canEdit={canEdit}
           myUserId={myUserId}
@@ -274,7 +327,7 @@ export function ProjectChecklistPanel({
           pending={pending}
           run={run}
         />
-      ))}
+      )}
     </div>
   );
 }
@@ -388,29 +441,88 @@ function ChecklistCard({
   pending: boolean;
   run: (fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) => void;
 }) {
-  const columns = CHECKLIST_COLUMNS[checklist.kind];
-  const [dragId, setDragId] = useState<string | null>(null);
+  const groupFields = GROUP_FIELDS[checklist.kind];
+  // 분류 열은 묶음 머리행에 보이므로 항목 행에서는 뺀다
+  const columns = CHECKLIST_COLUMNS[checklist.kind].filter(
+    (c) => !(groupFields as string[]).includes(c.key)
+  );
+  const groupLabels = Object.fromEntries(
+    (["phase", "category", "subcategory"] as GroupField[]).map((f) => [f, groupFieldLabel(checklist.kind, f)])
+  ) as Record<GroupField, string>;
+  const [drag, setDrag] = useState<Drag | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
+  // 낙관적 분류 이어받기 — 서버가 다시 그리기 전까지 옮긴 항목을 목적지 묶음으로 보이게 (리뷰 M2)
+  const [overrides, setOverrides] = useState<Record<string, GroupValues>>({});
   const [openMemo, setOpenMemo] = useState<Record<string, boolean>>({});
+  const [openClassify, setOpenClassify] = useState<Record<string, boolean>>({});
   const [dueDialog, setDueDialog] = useState<{ item: ProjectChecklistItemView; next: string | null } | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const serverIds = checklist.items.map((i) => i.id);
   const serverKey = serverIds.join(",");
   // 서버 목록이 바뀌면(추가·삭제·불러오기) 드래그 중 잡아 둔 순서를 버린다 (리뷰 M1)
   useEffect(() => {
     setOrder(null);
+    setOverrides({});
   }, [serverKey]);
   const ids = order ?? serverIds;
-  const byId = new Map(checklist.items.map((i) => [i.id, i]));
+  const byId = new Map(
+    checklist.items.map((i) => [i.id, overrides[i.id] ? { ...i, ...overrides[i.id] } : i])
+  );
+  const groups = buildGroups(ids, byId, groupFields);
   const hasSchedule = columns.some((c) => c.key === "plannedDue");
+  const span = columns.length + 3;
 
-  function onDrop(targetId: string) {
-    if (!dragId || dragId === targetId) return;
-    const next = ids.filter((id) => id !== dragId);
-    next.splice(next.indexOf(targetId), 0, dragId);
+  function commitOrder(next: string[], adopt: { itemIds: string[]; values: GroupValues } | null) {
+    setDrag(null);
+    // 자리도 분류도 그대로면 서버에 보내지 않는다 (리뷰 M4)
+    if (adopt === null && next.join(",") === ids.join(",")) return;
     setOrder(next);
-    setDragId(null);
-    run(() => reorderChecklistItems(checklist.id, next));
+    if (adopt) {
+      setOverrides((o) => ({ ...o, ...Object.fromEntries(adopt.itemIds.map((id) => [id, adopt.values])) }));
+    }
+    run(async () => {
+      const r = await reorderChecklistItems(checklist.id, next, adopt);
+      if (!r.ok) {
+        setOrder(null);
+        setOverrides({});
+      }
+      return r;
+    });
+  }
+
+  /** 항목 위에 놓기 — 항목은 그 앞으로(분류 이어받음), 묶음은 그 항목의 묶음 앞으로 */
+  function dropOnItem(targetId: string) {
+    if (!drag) return;
+    const target = byId.get(targetId);
+    if (!target) return;
+    if (drag.kind === "item") {
+      if (drag.id === targetId) return setDrag(null);
+      const me = byId.get(drag.id);
+      const adopt = me && !sameGroup(me, target, groupFields)
+        ? { itemIds: [drag.id], values: groupValuesOf(target, groupFields) }
+        : null;
+      return commitOrder(moveItemBefore(ids, drag.id, targetId), adopt);
+    }
+    const targetGroup = groups.find((g) => g.ids.includes(targetId));
+    if (!targetGroup || targetGroup.key === drag.key) return setDrag(null);
+    commitOrder(moveGroupBefore(ids, drag.ids, targetGroup.ids[0]!), null);
+  }
+
+  /** 묶음 머리행에 놓기 — 항목은 그 묶음 맨 앞으로 들어가고, 묶음은 그 묶음 앞으로 */
+  function dropOnGroup(g: ItemGroup) {
+    if (!drag) return;
+    if (drag.kind === "item") {
+      const me = byId.get(drag.id);
+      const adopt = me && !sameGroup(me, g.values, groupFields) ? { itemIds: [drag.id], values: g.values } : null;
+      return commitOrder(moveItemBefore(ids, drag.id, g.ids[0]!), adopt);
+    }
+    if (drag.key === g.key) return setDrag(null);
+    commitOrder(moveGroupBefore(ids, drag.ids, g.ids[0]!), null);
+  }
+
+  function dropAtEnd() {
+    if (!drag) return;
+    if (drag.kind === "item") return commitOrder(moveItemBefore(ids, drag.id, null), null);
+    commitOrder(moveGroupBefore(ids, drag.ids, null), null);
   }
 
   function patch(item: ProjectChecklistItemView, key: string, value: string | null) {
@@ -440,9 +552,6 @@ function ChecklistCard({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <button type="button" onClick={() => setCollapsed((v) => !v)} className="text-muted-foreground" aria-label="접기/펼치기" aria-expanded={!collapsed}>
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
           {checklist.name}
           <span className="text-[11px] font-normal text-muted-foreground">
             {CHECKLIST_KIND_LABELS[checklist.kind]} · {checklist.items.length}개
@@ -481,71 +590,112 @@ function ChecklistCard({
           )}
         </div>
       </CardHeader>
-      {!collapsed && (
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-xs">
-              <thead className="text-left text-muted-foreground">
-                <tr>
-                  <th className="w-6" />
-                  <th className="w-8 py-1 font-medium">No</th>
-                  {columns.map((c) => (
-                    <th key={c.key} className={cn("py-1 pr-2 font-medium", c.width)}>{c.label}</th>
-                  ))}
-                  <th className="w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {ids.map((id, idx) => {
-                  const item = byId.get(id);
-                  if (!item) return null;
-                  const tone = dueTone(item.plannedDue, item.completedOn, today);
-                  const auto = autoDueDate(checklist.dday, item.offsetDays);
-                  const memoOpen = openMemo[id] ?? false;
-                  return (
-                    <ItemRows
-                      key={id}
-                      idx={idx}
-                      item={item}
-                      columns={columns}
-                      tone={tone}
-                      auto={auto}
-                      users={users}
-                      canEdit={canEdit}
-                      myUserId={myUserId}
-                      pending={pending}
-                      dragging={dragId === id}
-                      memoOpen={memoOpen}
-                      onToggleMemo={() => setOpenMemo((m) => ({ ...m, [id]: !memoOpen }))}
-                      onDragStart={() => setDragId(id)}
-                      onDrop={() => onDrop(id)}
-                      onPatch={(k, v) => patch(item, k, v)}
-                      onPlannedDue={(v) => changePlannedDue(item, v)}
-                      onAddAfter={() => run(() => addChecklistItem(checklist.id, item.id, "새 항목"))}
-                      onDelete={() => {
-                        if (window.confirm(`'${item.title}' 항목을 삭제할까요?`)) run(() => deleteChecklistItem(item.id));
-                      }}
-                      onReason={(changeId, reason) => run(() => updateDueChangeReason(changeId, reason), "변경 사유를 고쳤습니다.")}
-                    />
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {canEdit && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-2"
-              disabled={pending}
-              onClick={() => run(() => addChecklistItem(checklist.id, null, "새 항목"))}
-            >
-              <Plus className="mr-1 h-4 w-4" aria-hidden /> 항목 추가
-            </Button>
-          )}
-        </CardContent>
-      )}
+      <CardContent>
+        {groupFields.length > 0 && (
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            {groupFields.map((f) => groupLabels[f]).join(" › ")} 묶음별로 음영이 다릅니다. 묶음 머리행에서 이름을
+            고치면 묶음 전체에 적용되고, 머리행 손잡이를 끌면 묶음이 통째로 움직입니다. 항목을 다른 묶음에
+            놓으면 그 분류로 들어갑니다. 항목 하나만 다른 분류로 두려면 행 끝의 분류(태그) 단추를 누르세요.
+          </p>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] text-xs">
+            <thead className="text-left text-muted-foreground">
+              <tr>
+                <th className="w-6" />
+                <th className="w-8 py-1 font-medium">No</th>
+                {columns.map((c) => (
+                  <th key={c.key} className={cn("py-1 pr-2 font-medium", c.width)}>{c.label}</th>
+                ))}
+                <th className="w-20" />
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(() => {
+                let idx = 0;
+                return groups.map((g) => (
+                  <GroupBlock
+                    key={g.anchorId}
+                    group={g}
+                    fields={groupFields}
+                    span={span}
+                    canEdit={canEdit}
+                    pending={pending}
+                    labels={groupLabels}
+                    dragging={drag?.kind === "group" && drag.key === g.key}
+                    onDragStart={() => setDrag({ kind: "group", key: g.key, ids: g.ids })}
+                    onDragEnd={() => setDrag(null)}
+                    onDrop={() => dropOnGroup(g)}
+                    onRename={(field, value) =>
+                      run(() => renameChecklistGroup(checklist.id, g.ids, field, value), "분류 이름을 바꿨습니다.")
+                    }
+                    onAdd={() => run(() => addChecklistItem(checklist.id, g.ids[g.ids.length - 1] ?? null, "새 항목"))}
+                  >
+                    {g.ids.map((id) => {
+                      const item = byId.get(id);
+                      if (!item) return null;
+                      const rowIdx = idx;
+                      idx += 1;
+                      const tone = dueTone(item.plannedDue, item.completedOn, today);
+                      const auto = autoDueDate(checklist.dday, item.offsetDays);
+                      const memoOpen = openMemo[id] ?? false;
+                      const classifyOpen = openClassify[id] ?? false;
+                      return (
+                        <ItemRows
+                          key={id}
+                          idx={rowIdx}
+                          item={item}
+                          columns={columns}
+                          groupFields={groupFields}
+                          groupLabels={groupLabels}
+                          tone={tone}
+                          auto={auto}
+                          shade={g.shade}
+                          users={users}
+                          canEdit={canEdit}
+                          myUserId={myUserId}
+                          pending={pending}
+                          dragging={
+                            (drag?.kind === "item" && drag.id === id) ||
+                            (drag?.kind === "group" && drag.ids.includes(id))
+                          }
+                          memoOpen={memoOpen}
+                          classifyOpen={classifyOpen}
+                          onToggleMemo={() => setOpenMemo((m) => ({ ...m, [id]: !memoOpen }))}
+                          onToggleClassify={() => setOpenClassify((m) => ({ ...m, [id]: !classifyOpen }))}
+                          onDragStart={() => setDrag({ kind: "item", id })}
+                          onDragEnd={() => setDrag(null)}
+                          onDrop={() => dropOnItem(id)}
+                          onPatch={(k, v) => patch(item, k, v)}
+                          onPlannedDue={(v) => changePlannedDue(item, v)}
+                          onAddAfter={() => run(() => addChecklistItem(checklist.id, item.id, "새 항목"))}
+                          onDelete={() => {
+                            if (window.confirm(`'${item.title}' 항목을 삭제할까요?`)) run(() => deleteChecklistItem(item.id));
+                          }}
+                          onReason={(changeId, reason) => run(() => updateDueChangeReason(changeId, reason), "변경 사유를 고쳤습니다.")}
+                        />
+                      );
+                    })}
+                  </GroupBlock>
+                ));
+              })()}
+              {canEdit && ids.length > 0 && <DropEndRow colSpan={span} active={drag !== null} onDrop={dropAtEnd} />}
+            </tbody>
+          </table>
+        </div>
+        {canEdit && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            disabled={pending}
+            onClick={() => run(() => addChecklistItem(checklist.id, null, "새 항목"))}
+          >
+            <Plus className="mr-1 h-4 w-4" aria-hidden /> 항목 추가
+          </Button>
+        )}
+      </CardContent>
       {dueDialog && (
         <DueChangeDialog
           item={dueDialog.item}
@@ -563,23 +713,75 @@ function ChecklistCard({
   );
 }
 
+type Drag = { kind: "item"; id: string } | { kind: "group"; key: string; ids: string[] };
+
+/** 묶음 머리행 + 그 묶음의 항목 행들. 묶음 열이 없는 종류(마감일)는 머리행 없이 항목만 */
+function GroupBlock({
+  group, fields, labels, span, canEdit, pending, dragging, onDragStart, onDragEnd, onDrop, onRename, onAdd, children,
+}: {
+  group: ItemGroup;
+  fields: GroupField[];
+  span: number;
+  canEdit: boolean;
+  pending: boolean;
+  dragging: boolean;
+  labels: Record<GroupField, string>;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
+  onRename: (field: GroupField, value: string | null) => void;
+  onAdd: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      {fields.length > 0 && (
+        <GroupHeaderRow
+          fields={fields}
+          labels={labels}
+          values={group.values}
+          count={group.ids.length}
+          colSpan={span}
+          canEdit={canEdit}
+          shade={group.shade}
+          dragging={dragging}
+          pending={pending}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDrop={onDrop}
+          onRename={onRename}
+          onAdd={onAdd}
+        />
+      )}
+      {children}
+    </>
+  );
+}
+
 function ItemRows({
-  idx, item, columns, tone, auto, users, canEdit, myUserId, pending, dragging, memoOpen,
-  onToggleMemo, onDragStart, onDrop, onPatch, onPlannedDue, onAddAfter, onDelete, onReason,
+  idx, item, columns, groupFields, groupLabels, tone, auto, shade, users, canEdit, myUserId, pending, dragging,
+  memoOpen, classifyOpen, onToggleMemo, onToggleClassify, onDragStart, onDragEnd, onDrop, onPatch, onPlannedDue,
+  onAddAfter, onDelete, onReason,
 }: {
   idx: number;
   item: ProjectChecklistItemView;
   columns: { key: string; label: string; width?: string }[];
+  groupFields: GroupField[];
+  groupLabels: Record<GroupField, string>;
   tone: ReturnType<typeof dueTone>;
   auto: string | null;
+  shade: Shade;
   users: { id: string; name: string }[];
   canEdit: boolean;
   myUserId: string;
   pending: boolean;
   dragging: boolean;
   memoOpen: boolean;
+  classifyOpen: boolean;
   onToggleMemo: () => void;
+  onToggleClassify: () => void;
   onDragStart: () => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   onPatch: (key: string, value: string | null) => void;
   onPlannedDue: (value: string | null) => void;
@@ -596,7 +798,7 @@ function ItemRows({
           e.preventDefault();
           onDrop();
         }}
-        className={cn("align-top", dragging && "opacity-50")}
+        className={cn("align-top", shade.row, dragging && "opacity-50")}
       >
         {/* 드래그 손잡이만 draggable — 행 전체면 칸 안 글자 선택이 안 된다 (리뷰 H4) */}
         <td
@@ -606,6 +808,7 @@ function ItemRows({
             e.dataTransfer.effectAllowed = "move";
             onDragStart();
           }}
+          onDragEnd={onDragEnd}
           className={cn("py-1 text-muted-foreground", canEdit && "cursor-grab")}
           title={canEdit ? "끌어서 순서 변경" : undefined}
         >
@@ -723,6 +926,16 @@ function ItemRows({
           >
             <MessageSquare className="h-3.5 w-3.5" aria-hidden />
           </button>
+          {canEdit && groupFields.length > 0 && (
+            <button
+              type="button"
+              title="이 항목만 분류 바꾸기"
+              className={cn("rounded p-1 hover:text-brand", classifyOpen ? "text-brand" : "text-muted-foreground")}
+              onClick={onToggleClassify}
+            >
+              <Tag className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
           {canEdit && (
             <>
               <button type="button" title="아래에 항목 추가" className="rounded p-1 text-muted-foreground hover:text-brand" disabled={pending} onClick={onAddAfter}>
@@ -735,6 +948,26 @@ function ItemRows({
           )}
         </td>
       </tr>
+      {classifyOpen && canEdit && (
+        <tr className="bg-secondary/30">
+          <td colSpan={span} className="px-8 py-1.5">
+            <p className="mb-0.5 text-[11px] font-semibold text-muted-foreground">
+              이 항목만 분류 바꾸기 — {item.title}
+              <span className="ml-1 font-normal">(새 이름을 적으면 새 묶음으로 갈라집니다. 비우면 미분류)</span>
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {groupFields.map((f) => (
+                <label key={f} className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  {groupLabels[f]}
+                  <span className="inline-block w-40">
+                    <EditableText value={item[f]} placeholder="(미분류)" onSave={(v) => onPatch(f, v)} />
+                  </span>
+                </label>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
       {memoOpen && (
         <tr className="bg-secondary/30">
           <td colSpan={span} className="px-8 py-1.5">
