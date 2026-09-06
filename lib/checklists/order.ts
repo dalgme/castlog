@@ -5,6 +5,9 @@ import type { createClient } from "@/lib/supabase/server";
 /**
  * 체크리스트 항목 정렬 (표준시트·프로젝트 공용). sort_order는 10 간격으로 두고,
  * 사이에 끼울 틈이 없으면 전체를 다시 번호 매긴다.
+ *
+ * 일괄 저장은 DB 함수(reorder_*_items, security invoker — 호출자 RLS 적용)로
+ * 한 번에 한다. 함수가 아직 없는 DB(SQL 먼저)에서는 건별 갱신으로 떨어진다.
  */
 type Supabase = ReturnType<typeof createClient>;
 type OrderTable = "checklist_template_items" | "project_checklist_items";
@@ -18,7 +21,7 @@ async function listOrder(supabase: Supabase, table: OrderTable, parentId: string
   return data ?? [];
 }
 
-async function setOrder(supabase: Supabase, table: OrderTable, parentId: string, id: string, sortOrder: number, updatedBy: string | null) {
+async function setOrderOne(supabase: Supabase, table: OrderTable, parentId: string, id: string, sortOrder: number, updatedBy: string | null) {
   if (table === "checklist_template_items") {
     await supabase
       .from("checklist_template_items")
@@ -63,7 +66,17 @@ export async function applyOrder(
   updatedBy: string | null
 ): Promise<void> {
   void _parentKey;
-  for (let i = 0; i < orderedIds.length; i += 1) {
-    await setOrder(supabase, table, parentId, orderedIds[i]!, (i + 1) * 10, updatedBy);
+  // 이 부모에 속한 id만 — 다른 시트의 id가 섞여 와도 건드리지 않는다
+  const own = new Set((await listOrder(supabase, table, parentId)).map((r) => r.id));
+  const ids = orderedIds.filter((id) => own.has(id));
+  if (ids.length === 0) return;
+  const { error } =
+    table === "checklist_template_items"
+      ? await supabase.rpc("reorder_checklist_template_items", { p_ids: ids })
+      : await supabase.rpc("reorder_project_checklist_items", { p_ids: ids });
+  if (!error) return;
+  // 함수 부재(42883/PGRST202) 등 — 건별 갱신 폴백
+  for (let i = 0; i < ids.length; i += 1) {
+    await setOrderOne(supabase, table, parentId, ids[i]!, (i + 1) * 10, updatedBy);
   }
 }

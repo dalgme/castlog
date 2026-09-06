@@ -177,7 +177,7 @@ export default async function ProjectDetailPage({
   const projectResult = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, host_org, executor_org, dday_date, project_kind"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by, host_org, executor_org, dday_date, project_kind"
     )
     .eq("id", params.projectId)
     .maybeSingle();
@@ -186,7 +186,7 @@ export default async function ProjectDetailPage({
     const { data: legacyProject } = await supabase
       .from("projects")
       .select(
-        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
+        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by"
       )
       .eq("id", params.projectId)
       .maybeSingle();
@@ -1785,8 +1785,8 @@ export default async function ProjectDetailPage({
             canEdit={
               canViewAllProjects(grade) ||
               myAssignmentRole !== null ||
-              role === "platform_admin" ||
-              role === "manager"
+              project.created_by === user?.id ||
+              role === "platform_admin"
             }
           />
         )}

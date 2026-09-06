@@ -7,7 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { isChecklistKind, type ChecklistLogRow } from "@/lib/checklists/kinds";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
-import { logChecklist, requireTenantStaff } from "@/lib/checklists/server";
+import {
+  logChecklist,
+  requireTemplateEditor,
+  requireTenantStaff,
+} from "@/lib/checklists/server";
 
 /**
  * 체크리스트 표준시트 편집 (설정 > 체크리스트 표준시트).
@@ -49,7 +53,7 @@ export async function createTemplate(
   kind: string,
   name: string
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!isChecklistKind(kind)) return { ok: false, error: "종류를 확인하세요." };
   const trimmed = name.trim();
@@ -86,7 +90,7 @@ export async function createTemplate(
 }
 
 export async function renameTemplate(templateId: string, name: string): Promise<ChecklistActionResult> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(templateId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const trimmed = name.trim();
@@ -108,7 +112,7 @@ export async function renameTemplate(templateId: string, name: string): Promise<
 }
 
 export async function deleteTemplate(templateId: string): Promise<ChecklistActionResult> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(templateId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const supabase = createClient();
@@ -135,7 +139,7 @@ export async function addTemplateItem(
   afterItemId: string | null,
   patch: TemplateItemPatch
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(templateId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const parsed = templateItemPatchSchema.safeParse(patch);
@@ -174,7 +178,7 @@ export async function updateTemplateItem(
   itemId: string,
   patch: TemplateItemPatch
 ): Promise<ChecklistActionResult> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(itemId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const parsed = templateItemPatchSchema.safeParse(patch);
@@ -216,7 +220,7 @@ export async function updateTemplateItem(
 }
 
 export async function deleteTemplateItem(itemId: string): Promise<ChecklistActionResult> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(itemId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const supabase = createClient();
@@ -237,7 +241,7 @@ export async function reorderTemplateItems(
   templateId: string,
   orderedIds: string[]
 ): Promise<ChecklistActionResult> {
-  const gate = await requireTenantStaff();
+  const gate = await requireTemplateEditor();
   if (!gate.ok) return gate;
   if (!uuid.safeParse(templateId).success || !z.array(uuid).max(2000).safeParse(orderedIds).success) {
     return { ok: false, error: "대상을 확인할 수 없습니다." };

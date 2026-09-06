@@ -40,6 +40,7 @@ export function ChecklistLogsDialog({
         setOpen(next);
         if (next) {
           setError(null);
+          setRows(null);
           startTransition(async () => {
             const r = await load();
             if (r.ok) setRows(r.rows);

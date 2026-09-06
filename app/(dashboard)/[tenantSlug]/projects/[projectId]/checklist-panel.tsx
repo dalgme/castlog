@@ -39,7 +39,7 @@ import {
   type ChecklistKind,
 } from "@/lib/checklists/kinds";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
-import { EditableText } from "@/components/checklists/editable-cell";
+import { DateCell, EditableText } from "@/components/checklists/editable-cell";
 
 import {
   acknowledgeDueChanges,
@@ -47,6 +47,7 @@ import {
   createChecklistFromTemplate,
   deleteChecklistItem,
   deleteProjectChecklist,
+  getProjectAllChecklistLogs,
   getProjectChecklistLogs,
   importCommonChecklist,
   importTypedItems,
@@ -149,7 +150,8 @@ export function ProjectChecklistPanel({
   // 상급자 열람 표시 — 변경 사유가 상급자에게 '오픈'된 시점을 기록한다 (기획 07)
   useEffect(() => {
     void acknowledgeDueChanges(projectId).then((r) => {
-      if (r.ok) router.refresh();
+      // 실제로 '오픈' 처리된 사유가 있을 때만 다시 그린다 (리뷰 M4)
+      if (r.ok && r.opened > 0) router.refresh();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -243,6 +245,10 @@ export function ProjectChecklistPanel({
           <Button asChild variant="ghost" size="sm">
             <a href={`/${tenantSlug}/settings/checklists`}>표준시트 편집</a>
           </Button>
+          <ChecklistLogsDialog
+            title="이 프로젝트의 체크리스트 전체"
+            load={() => getProjectAllChecklistLogs(projectId)}
+          />
         </div>
       )}
 
@@ -388,7 +394,13 @@ function ChecklistCard({
   const [openMemo, setOpenMemo] = useState<Record<string, boolean>>({});
   const [dueDialog, setDueDialog] = useState<{ item: ProjectChecklistItemView; next: string | null } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const ids = order ?? checklist.items.map((i) => i.id);
+  const serverIds = checklist.items.map((i) => i.id);
+  const serverKey = serverIds.join(",");
+  // 서버 목록이 바뀌면(추가·삭제·불러오기) 드래그 중 잡아 둔 순서를 버린다 (리뷰 M1)
+  useEffect(() => {
+    setOrder(null);
+  }, [serverKey]);
+  const ids = order ?? serverIds;
   const byId = new Map(checklist.items.map((i) => [i.id, i]));
   const hasSchedule = columns.some((c) => c.key === "plannedDue");
 
@@ -428,7 +440,7 @@ function ChecklistCard({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <button type="button" onClick={() => setCollapsed((v) => !v)} className="text-muted-foreground" aria-label="접기/펼치기">
+          <button type="button" onClick={() => setCollapsed((v) => !v)} className="text-muted-foreground" aria-label="접기/펼치기" aria-expanded={!collapsed}>
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {checklist.name}
@@ -441,15 +453,12 @@ function ChecklistCard({
           {hasSchedule && (
             <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
               D-Day
-              <input
-                type="date"
-                defaultValue={checklist.dday ?? ""}
+              <DateCell
+                value={checklist.dday}
                 disabled={!canEdit}
-                onBlur={(e) => {
-                  const v = e.target.value || null;
-                  if (v !== (checklist.dday ?? null)) run(() => updateChecklistDday(checklist.id, v));
-                }}
-                className="rounded border px-1 py-0.5 text-xs"
+                ariaLabel="D-Day"
+                className="w-36 rounded border border-input px-1 py-0.5 text-xs"
+                onCommit={(v) => run(() => updateChecklistDday(checklist.id, v))}
               />
             </label>
           )}
@@ -462,7 +471,7 @@ function ChecklistCard({
               className="h-7 px-2 text-[11px] text-destructive"
               disabled={pending}
               onClick={() => {
-                if (window.confirm(`'${checklist.name}'를 삭제할까요? 항목과 기록이 함께 지워집니다.`)) {
+                if (window.confirm(`'${checklist.name}'를 삭제할까요? 항목이 지워집니다. 변경 로그는 '이 프로젝트의 체크리스트 전체' 로그에 남습니다.`)) {
                   run(() => deleteProjectChecklist(checklist.id), "삭제했습니다.");
                 }
               }}
@@ -582,13 +591,24 @@ function ItemRows({
   return (
     <>
       <tr
-        draggable={canEdit}
-        onDragStart={onDragStart}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
+        onDrop={(e) => {
+          e.preventDefault();
+          onDrop();
+        }}
         className={cn("align-top", dragging && "opacity-50")}
       >
-        <td className={cn("py-1 text-muted-foreground", canEdit && "cursor-grab")} title={canEdit ? "끌어서 순서 변경" : undefined}>
+        {/* 드래그 손잡이만 draggable — 행 전체면 칸 안 글자 선택이 안 된다 (리뷰 H4) */}
+        <td
+          draggable={canEdit}
+          onDragStart={(e) => {
+            e.dataTransfer.setData("text/plain", item.id);
+            e.dataTransfer.effectAllowed = "move";
+            onDragStart();
+          }}
+          className={cn("py-1 text-muted-foreground", canEdit && "cursor-grab")}
+          title={canEdit ? "끌어서 순서 변경" : undefined}
+        >
           <GripVertical className="h-4 w-4" aria-hidden />
         </td>
         <td className="py-1 tabular-nums text-muted-foreground">{idx + 1}</td>
@@ -599,6 +619,7 @@ function ItemRows({
                 <select
                   value={item.assigneeUserId ?? ""}
                   disabled={!canEdit}
+                  aria-label={`${item.title} 담당`}
                   onChange={(e) => onPatch("assigneeUserId", e.target.value || null)}
                   className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand"
                 >
@@ -616,12 +637,11 @@ function ItemRows({
           if (c.key === "plannedDue") {
             return (
               <td key={c.key} className="py-0.5 pr-2">
-                <input
-                  type="date"
-                  value={item.plannedDue ?? ""}
+                <DateCell
+                  value={item.plannedDue}
                   disabled={!canEdit}
-                  onChange={(e) => onPlannedDue(e.target.value || null)}
-                  className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand"
+                  ariaLabel={`${item.title} 마감일 계획`}
+                  onCommit={onPlannedDue}
                 />
               </td>
             );
@@ -629,13 +649,12 @@ function ItemRows({
           if (c.key === "completedOn") {
             return (
               <td key={c.key} className={cn("py-0.5 pr-2", DUE_TONE_CLASS[tone])} title={DUE_TONE_LABELS[tone] || undefined}>
-                <input
-                  type="date"
-                  value={item.completedOn ?? ""}
+                <DateCell
+                  value={item.completedOn}
                   disabled={!canEdit}
-                  onChange={(e) => onPatch("completedOn", e.target.value || null)}
+                  ariaLabel={`${item.title} 완료일`}
+                  onCommit={(v) => onPatch("completedOn", v)}
                   className={cn(
-                    "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand",
                     (tone === "overdue" || tone === "urgent" || tone === "soon") && "text-white [color-scheme:dark]"
                   )}
                 />

@@ -1,11 +1,17 @@
 import "server-only";
 
+import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
+import {
+  gradeFromUser,
+  practiceFromUser,
+  roleFromUser,
+  tenantIdFromUser,
+} from "@/lib/auth/tenant";
 import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { recordActionDenial } from "@/lib/monitoring/action-denials";
 
@@ -16,8 +22,12 @@ import { DEFAULT_CHECKLIST_TEMPLATES } from "./default-templates";
  * (기획 지시 2026-09-05)
  */
 
-/** 표준시트가 하나도 없는 테넌트에 기본 양식(렛츠 ver.20260703)을 1회 시드한다 */
-export async function ensureTenantTemplates(tenantId: string): Promise<void> {
+/**
+ * 표준시트가 하나도 없는 테넌트에 기본 양식(렛츠 ver.20260703)을 1회 시드한다.
+ * 요청 단위 cache — 같은 렌더에서 두 번 세지 않는다. 동시 첫 진입은 공통·유형별
+ * 유니크 인덱스(20260905000005)가 막는다 — 충돌 나면 그 시트는 건너뛴다.
+ */
+export const ensureTenantTemplates = cache(async (tenantId: string): Promise<void> => {
   if (!hasSupabaseEnv()) return;
   const admin = createAdminClient();
   const { count, error } = await admin
@@ -27,7 +37,7 @@ export async function ensureTenantTemplates(tenantId: string): Promise<void> {
   if (error || (count ?? 0) > 0) return;
 
   for (const t of DEFAULT_CHECKLIST_TEMPLATES) {
-    const { data: created } = await admin
+    const { data: created, error: insertError } = await admin
       .from("checklist_templates")
       .insert({
         tenant_id: tenantId,
@@ -37,6 +47,7 @@ export async function ensureTenantTemplates(tenantId: string): Promise<void> {
       })
       .select("id")
       .single();
+    if (insertError?.code === "23505") continue; // 다른 요청이 먼저 시드했다
     if (!created) continue;
     const rows = t.items.map((it, i) => ({
       tenant_id: tenantId,
@@ -54,7 +65,7 @@ export async function ensureTenantTemplates(tenantId: string): Promise<void> {
       await admin.from("checklist_template_items").insert(rows.slice(i, i + 200));
     }
   }
-}
+});
 
 export type ChecklistActor = {
   user: User;
@@ -97,9 +108,25 @@ export async function requireTenantStaff(): Promise<
   };
 }
 
+/** 표준시트 편집 — 임직원 누구나. 연습모드에서는 회사 표준을 건드리지 않는다 (리뷰 M7) */
+export async function requireTemplateEditor(): Promise<
+  { ok: true; actor: ChecklistActor } | { ok: false; error: string }
+> {
+  const staff = await requireTenantStaff();
+  if (!staff.ok) return staff;
+  if (practiceFromUser(staff.actor.user)) {
+    return {
+      ok: false,
+      error: "연습모드에서는 회사 표준시트를 수정하지 않습니다 (규칙). 연습을 끄고 다시 시도해 주세요.",
+    };
+  }
+  return staff;
+}
+
 /**
- * 프로젝트 팀 — 배정된 누구나(PL·PM·부PM·담당) + 전사 열람 권한자(대표·이사·팀장).
- * DB의 app.is_project_team과 같은 판정 (기획 02·03·04·08).
+ * 프로젝트 팀 — 배정된 누구나(PL·PM·부PM·담당) + 전사 열람 권한자(대표·이사) +
+ * 개설자. 팀장 이하는 배정된 프로젝트만 (CLAUDE.md §3-1). DB의 app.is_project_team과
+ * 같은 판정 (기획 02·03·04·08). 프로젝트가 열람 범위(RLS) 밖이면 거부한다.
  */
 export async function requireProjectTeam(projectId: string): Promise<
   { ok: true; actor: ChecklistActor } | { ok: false; error: string }
@@ -107,11 +134,17 @@ export async function requireProjectTeam(projectId: string): Promise<
   const staff = await requireTenantStaff();
   if (!staff.ok) return staff;
   const { actor } = staff;
-  if (actor.role === "platform_admin" || actor.role === "org_admin" || actor.role === "manager") {
-    return staff;
-  }
-  if (isUserGrade(actor.grade) && canViewAllProjects(actor.grade)) return staff;
   const supabase = createClient();
+  // RLS로 보이는 프로젝트인가 — 테넌트·연습모드·열람 범위를 한 번에 판정
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, created_by")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다 (열람 범위 밖이거나 삭제됨)." };
+  if (actor.role === "platform_admin" || actor.role === "org_admin") return staff;
+  if (isUserGrade(actor.grade) && canViewAllProjects(actor.grade)) return staff;
+  if (project.created_by === actor.userId) return staff;
   const { data: mine } = await supabase
     .from("project_assignments")
     .select("assignment_role")

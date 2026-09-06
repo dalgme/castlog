@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 import {
-  autoDueDate,
   isChecklistKind,
   kstToday,
   type ChecklistLogRow,
@@ -27,7 +26,13 @@ import {
 
 export type Result = { ok: true } | { ok: false; error: string };
 const uuid = z.string().uuid();
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식(yyyy-mm-dd)을 확인하세요.");
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식(yyyy-mm-dd)을 확인하세요.")
+  .refine((v) => {
+    const y = Number(v.slice(0, 4));
+    return y >= 2000 && y <= 2100 && !Number.isNaN(Date.parse(v));
+  }, "날짜는 2000~2100년 사이여야 합니다.");
 const SYSTEM_FAIL = "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.";
 
 function revalidate() {
@@ -341,6 +346,12 @@ export async function updateChecklistItem(itemId: string, patch: ChecklistItemPa
     assigneeChange.before = assigneeChange.before ? (byId.get(assigneeChange.before) ?? assigneeChange.before) : null;
     assigneeChange.after = assigneeChange.after ? (byId.get(assigneeChange.after) ?? assigneeChange.after) : null;
   }
+  // 담당은 자사 재직자만 — RLS로 보이는 users에 있어야 한다 (리뷰 LOW)
+  if (typeof update.assignee_user_id === "string") {
+    const { data: assignee } = await supabase
+      .from("users").select("id").eq("id", update.assignee_user_id).maybeSingle();
+    if (!assignee) return { ok: false, error: "담당자를 찾을 수 없습니다. 목록에서 다시 선택하세요." };
+  }
   const { error } = await supabase.from("project_checklist_items").update(update).eq("id", itemId);
   if (error) return { ok: false, error: SYSTEM_FAIL };
   for (const c of changes) {
@@ -483,12 +494,14 @@ export async function updateDueChangeReason(changeId: string, reason: string): P
  * 상급자 열람 표시 — 이 프로젝트의 변경 사유 중 아직 열리지 않은 것을, 작성자보다
  * 직급이 높은 열람자가 처음 볼 때 '오픈'으로 기록한다. 화면이 열릴 때 호출된다.
  */
-export async function acknowledgeDueChanges(projectId: string): Promise<Result> {
+export async function acknowledgeDueChanges(
+  projectId: string
+): Promise<{ ok: true; opened: number } | { ok: false; error: string }> {
   if (!uuid.safeParse(projectId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const gate = await requireTenantStaff();
   if (!gate.ok) return gate;
   const myGrade = isUserGrade(gate.actor.grade) ? gate.actor.grade : null;
-  if (!myGrade) return { ok: true };
+  if (!myGrade) return { ok: true, opened: 0 };
   const supabase = createClient();
   const { data: open } = await supabase
     .from("project_checklist_due_changes")
@@ -497,12 +510,22 @@ export async function acknowledgeDueChanges(projectId: string): Promise<Result> 
   const targets = (open ?? []).filter(
     (c) => c.changed_by !== gate.actor.userId && isUserGrade(c.changed_by_grade) && gradeRank(myGrade) > gradeRank(c.changed_by_grade)
   );
-  if (targets.length === 0) return { ok: true };
-  await supabase
+  if (targets.length === 0) return { ok: true, opened: 0 };
+  const { data: updated } = await supabase
     .from("project_checklist_due_changes")
     .update({ opened_by: gate.actor.userId, opened_at: new Date().toISOString() })
-    .in("id", targets.map((t) => t.id)).is("opened_by", null);
-  return { ok: true };
+    .in("id", targets.map((t) => t.id)).is("opened_by", null)
+    .select("id");
+  return { ok: true, opened: updated?.length ?? 0 };
+}
+
+function toLogRows(
+  data: { id: string; created_at: string; actor_name: string | null; action: string; item_title: string | null; field: string | null; before_value: string | null; after_value: string | null }[] | null
+): ChecklistLogRow[] {
+  return (data ?? []).map((r) => ({
+    id: r.id, at: r.created_at, actorName: r.actor_name, action: r.action,
+    itemTitle: r.item_title, field: r.field, before: r.before_value, after: r.after_value,
+  }));
 }
 
 export async function getProjectChecklistLogs(
@@ -512,22 +535,35 @@ export async function getProjectChecklistLogs(
   const gate = await requireTenantStaff();
   if (!gate.ok) return gate;
   const supabase = createClient();
+  // 체크리스트가 열람 범위 안인지 RLS로 먼저 확인 (리뷰 M3)
+  const { data: c } = await supabase
+    .from("project_checklists").select("id").eq("id", checklistId).maybeSingle();
+  if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다 (열람 범위 밖이거나 삭제됨)." };
   const { data } = await supabase
     .from("checklist_logs")
     .select("id, created_at, actor_name, action, item_title, field, before_value, after_value")
     .eq("checklist_id", checklistId)
     .order("created_at", { ascending: false })
     .limit(300);
-  return {
-    ok: true,
-    rows: (data ?? []).map((r) => ({
-      id: r.id, at: r.created_at, actorName: r.actor_name, action: r.action,
-      itemTitle: r.item_title, field: r.field, before: r.before_value, after: r.after_value,
-    })),
-  };
+  return { ok: true, rows: toLogRows(data) };
 }
 
-/** 항목의 자동 마감일 (서버·화면 동일 계산) */
-export async function computeAutoDue(dday: string | null, offsetDays: number | null): Promise<string | null> {
-  return autoDueDate(dday, offsetDays);
+/** 프로젝트 전체 로그 — 삭제된 시트의 기록까지 (기획 15, 리뷰 M6) */
+export async function getProjectAllChecklistLogs(
+  projectId: string
+): Promise<{ ok: true; rows: ChecklistLogRow[] } | { ok: false; error: string }> {
+  if (!uuid.safeParse(projectId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
+  const gate = await requireTenantStaff();
+  if (!gate.ok) return gate;
+  const supabase = createClient();
+  const { data: p } = await supabase.from("projects").select("id").eq("id", projectId).maybeSingle();
+  if (!p) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  const { data } = await supabase
+    .from("checklist_logs")
+    .select("id, created_at, actor_name, action, item_title, field, before_value, after_value")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  return { ok: true, rows: toLogRows(data) };
 }
+

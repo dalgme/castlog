@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 
@@ -121,7 +121,12 @@ function TemplateCard({
   const columns = CHECKLIST_COLUMNS[template.kind].filter((c) => c.template);
   const [dragId, setDragId] = useState<string | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
-  const ids = order ?? template.items.map((i) => i.id);
+  const serverIds = template.items.map((i) => i.id);
+  const serverKey = serverIds.join(",");
+  useEffect(() => {
+    setOrder(null);
+  }, [serverKey]);
+  const ids = order ?? serverIds;
   const byId = new Map(template.items.map((i) => [i.id, i]));
   const deletable = template.kind !== "common" && template.kind !== "typed";
 
@@ -199,13 +204,23 @@ function TemplateCard({
                 return (
                   <tr
                     key={id}
-                    draggable
-                    onDragStart={() => setDragId(id)}
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => onDrop(id)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      onDrop(id);
+                    }}
                     className={cn("align-top", dragId === id && "opacity-50")}
                   >
-                    <td className="cursor-grab py-1 text-muted-foreground" title="끌어서 순서 변경">
+                    <td
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId(id);
+                      }}
+                      className="cursor-grab py-1 text-muted-foreground"
+                      title="끌어서 순서 변경"
+                    >
                       <GripVertical className="h-4 w-4" aria-hidden />
                     </td>
                     <td className="py-1 tabular-nums text-muted-foreground">{idx + 1}</td>

@@ -81,3 +81,47 @@ export function EditableText({
     />
   );
 }
+
+/**
+ * 날짜 칸 — 브라우저 date 입력은 자릿수를 채울 때마다 change가 나므로(2026을
+ * 치는 동안 0002·0020·0202·2026) 칸을 벗어날 때만 저장한다 (리뷰 H3).
+ */
+export function DateCell({
+  value,
+  onCommit,
+  disabled = false,
+  className,
+  ariaLabel,
+}: {
+  value: string | null;
+  onCommit: (next: string | null) => void;
+  disabled?: boolean;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+  return (
+    <input
+      type="date"
+      value={draft}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = draft || null;
+        if (next !== (value ?? null)) onCommit(next);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setDraft(value ?? "");
+      }}
+      className={cn(
+        "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand disabled:opacity-100",
+        className
+      )}
+    />
+  );
+}

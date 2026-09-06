@@ -5548,6 +5548,14 @@ export type Database = {
       }
     }
     Functions: {
+      reorder_checklist_template_items: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
+      reorder_project_checklist_items: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
       snapshot_tenant_usage: { Args: { target_date?: string }; Returns: number }
     }
     Enums: {
