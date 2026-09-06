@@ -11,6 +11,7 @@ import {
   kstToday,
   type ChecklistLogRow,
 } from "@/lib/checklists/kinds";
+import { GROUP_FIELDS, GROUP_FIELD_LABELS } from "@/lib/checklists/groups";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
 import {
   logChecklist,
@@ -379,18 +380,95 @@ export async function deleteChecklistItem(itemId: string): Promise<Result> {
   return { ok: true };
 }
 
-export async function reorderChecklistItems(checklistId: string, orderedIds: string[]): Promise<Result> {
+const groupValuesSchema = z.object({
+  phase: z.string().max(40).nullable(),
+  category: z.string().max(80).nullable(),
+  subcategory: z.string().max(80).nullable(),
+});
+const adoptSchema = z.object({ itemIds: z.array(uuid).min(1).max(500), values: groupValuesSchema });
+export type GroupAdopt = z.infer<typeof adoptSchema>;
+
+/**
+ * 순서 저장 + (다른 분류 묶음에 놓았으면) 그 묶음의 시기·구분·세부 분류를 이어받는다
+ * (기획 지시 2026-09-06 — 카테고리 묶음 이동).
+ */
+export async function reorderChecklistItems(
+  checklistId: string,
+  orderedIds: string[],
+  adopt?: GroupAdopt | null
+): Promise<Result> {
   if (!uuid.safeParse(checklistId).success || !z.array(uuid).max(2000).safeParse(orderedIds).success) {
     return { ok: false, error: "대상을 확인할 수 없습니다." };
   }
+  const parsedAdopt = adopt ? adoptSchema.safeParse(adopt) : null;
+  if (parsedAdopt && !parsedAdopt.success) return { ok: false, error: "분류 값을 확인하세요." };
+  const supabase = createClient();
+  const { data: c } = await supabase
+    .from("project_checklists").select("id, project_id, kind").eq("id", checklistId).maybeSingle();
+  if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
+  const gate = await requireProjectTeam(c.project_id);
+  if (!gate.ok) return gate;
+  await applyOrder(supabase, "project_checklist_items", "checklist_id", checklistId, orderedIds, gate.actor.userId);
+  await logChecklist(gate.actor, { scope: "project", action: "item.reorder", checklistId, projectId: c.project_id, after: `${orderedIds.length}개 항목 순서 변경` });
+  if (parsedAdopt?.success) {
+    const fields = isChecklistKind(c.kind) ? GROUP_FIELDS[c.kind] : [];
+    const { itemIds, values } = parsedAdopt.data;
+    const update: TablesUpdate<"project_checklist_items"> = { updated_by: gate.actor.userId };
+    for (const f of fields) update[f] = values[f]?.trim() || null;
+    const { data: moved } = await supabase
+      .from("project_checklist_items").select("id, title").in("id", itemIds).eq("checklist_id", checklistId);
+    if (fields.length > 0 && moved && moved.length > 0) {
+      const { error } = await supabase
+        .from("project_checklist_items").update(update).in("id", moved.map((m) => m.id)).eq("checklist_id", checklistId);
+      if (error) return { ok: false, error: SYSTEM_FAIL };
+      const label = fields.map((f) => update[f] ?? "(미분류)").join(" › ");
+      for (const m of moved) {
+        await logChecklist(gate.actor, {
+          scope: "project", action: "item.move", checklistId, projectId: c.project_id,
+          itemId: m.id, itemTitle: m.title, field: "분류", after: label,
+        });
+      }
+    }
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/** 묶음 머리행에서 분류 이름 변경 — 묶음의 모든 항목에 적용 (기획 지시 2026-09-06) */
+export async function renameChecklistGroup(
+  checklistId: string,
+  itemIds: string[],
+  field: string,
+  value: string | null
+): Promise<Result> {
+  if (!uuid.safeParse(checklistId).success || !z.array(uuid).min(1).max(500).safeParse(itemIds).success) {
+    return { ok: false, error: "대상을 확인할 수 없습니다." };
+  }
+  if (field !== "phase" && field !== "category" && field !== "subcategory") {
+    return { ok: false, error: "분류 열을 확인하세요." };
+  }
+  const next = value?.trim() || null;
+  if (next && next.length > (field === "phase" ? 40 : 80)) return { ok: false, error: "분류 이름이 너무 깁니다." };
   const supabase = createClient();
   const { data: c } = await supabase
     .from("project_checklists").select("id, project_id").eq("id", checklistId).maybeSingle();
   if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
   const gate = await requireProjectTeam(c.project_id);
   if (!gate.ok) return gate;
-  await applyOrder(supabase, "project_checklist_items", "checklist_id", checklistId, orderedIds, gate.actor.userId);
-  await logChecklist(gate.actor, { scope: "project", action: "item.reorder", checklistId, projectId: c.project_id, after: `${orderedIds.length}개 항목 순서 변경` });
+  const { data: rows } = await supabase
+    .from("project_checklist_items").select(`id, ${field}`).in("id", itemIds).eq("checklist_id", checklistId);
+  if (!rows || rows.length === 0) return { ok: false, error: "항목을 찾을 수 없습니다." };
+  const before = (rows[0] as Record<string, string | null>)[field] ?? null;
+  if ((before ?? "") === (next ?? "")) return { ok: true };
+  const update: TablesUpdate<"project_checklist_items"> = { updated_by: gate.actor.userId };
+  update[field] = next;
+  const { error } = await supabase
+    .from("project_checklist_items").update(update).in("id", rows.map((r) => r.id)).eq("checklist_id", checklistId);
+  if (error) return { ok: false, error: SYSTEM_FAIL };
+  await logChecklist(gate.actor, {
+    scope: "project", action: "group.rename", checklistId, projectId: c.project_id,
+    itemTitle: `${rows.length}개 항목`, field: GROUP_FIELD_LABELS[field], before, after: next,
+  });
   revalidate();
   return { ok: true };
 }
