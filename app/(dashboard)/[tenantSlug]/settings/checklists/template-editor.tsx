@@ -26,6 +26,7 @@ import {
   type GroupValues,
   type ItemGroup,
 } from "@/lib/checklists/groups";
+import type { TemplateItemView, TemplateView } from "@/lib/checklists/template-view";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
 import { EditableText } from "@/components/checklists/editable-cell";
 import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
@@ -43,26 +44,7 @@ import {
   type TemplateItemPatch,
 } from "./actions";
 
-export type TemplateItemView = {
-  id: string;
-  phase: string | null;
-  category: string | null;
-  subcategory: string | null;
-  title: string;
-  offsetDays: number | null;
-  quantity: string | null;
-  note: string | null;
-};
-
-export type TemplateView = {
-  id: string;
-  kind: ChecklistKind;
-  name: string;
-  updatedAt: string;
-  /** 마지막으로 시트를 고친 임직원 — 회사 공용 시트라 표시한다 */
-  updatedByName: string | null;
-  items: TemplateItemView[];
-};
+export type { TemplateItemView, TemplateView } from "@/lib/checklists/template-view";
 
 /**
  * 표준시트 편집 (기획 01·11·13·14) — 누구나 항목을 고치고, 끌어서 순서를 바꾼다.
@@ -71,9 +53,12 @@ export type TemplateView = {
 export function TemplateEditor({
   kind,
   templates,
+  onChanged,
 }: {
   kind: ChecklistKind;
   templates: TemplateView[];
+  /** 팝업처럼 서버 컴포넌트 밖에서 쓸 때 — 저장 성공 후 목록을 다시 불러온다 */
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -87,6 +72,7 @@ export function TemplateEditor({
       else {
         if (ok) toast({ description: ok });
         router.refresh();
+        onChanged?.();
       }
     });
   }

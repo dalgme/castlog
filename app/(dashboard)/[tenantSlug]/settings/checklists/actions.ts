@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { isChecklistKind, type ChecklistLogRow } from "@/lib/checklists/kinds";
 import { GROUP_FIELDS, GROUP_FIELD_LABELS, type GroupField } from "@/lib/checklists/groups";
+import { loadTemplateViews } from "@/lib/checklists/load-templates";
+import { ensureTenantTemplates } from "@/lib/checklists/server";
+import type { TemplateView } from "@/lib/checklists/template-view";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
 import {
   logChecklist,
@@ -350,4 +353,19 @@ export async function getTemplateLogs(
       itemTitle: r.item_title, field: r.field, before: r.before_value, after: r.after_value,
     })),
   };
+}
+
+/** 프로젝트 탭 '설정' 팝업용 — 그 종류의 회사 표준시트 (전 임직원 공유) */
+export async function getTemplatesForKind(
+  kind: string
+): Promise<{ ok: true; templates: TemplateView[] } | { ok: false; error: string }> {
+  const gate = await requireTenantStaff();
+  if (!gate.ok) return gate;
+  if (!isChecklistKind(kind)) return { ok: false, error: "종류를 확인하세요." };
+  await ensureTenantTemplates(gate.actor.tenantId);
+  const { templates, missingTable } = await loadTemplateViews(kind);
+  if (missingTable) {
+    return { ok: false, error: "체크리스트 기능이 아직 준비되지 않았습니다 (마이그레이션 미적용) — 캐스트로그에 알려 주세요." };
+  }
+  return { ok: true, templates };
 }

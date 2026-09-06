@@ -46,6 +46,7 @@ import {
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
 import { DateCell, EditableText } from "@/components/checklists/editable-cell";
 import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
+import { TemplateSettingsDialog } from "@/components/checklists/template-settings-dialog";
 import type React from "react";
 
 import {
@@ -224,47 +225,62 @@ export function ProjectChecklistPanel({
       {/* ── 시트 불러오기 / 사용하기 ─────────────────────────────────── */}
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2">
-          {!hasCommon && (
-            <Button
-              type="button"
-              size="sm"
+          {/* 추가 단추마다 옆에 '설정'(톱니) — 그 종류의 회사 표준시트를 팝업에서 고친다 (기획 지시 2026-09-06) */}
+          <span className="inline-flex items-center gap-0.5">
+            {!hasCommon && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={pending}
+                onClick={() => run(() => importCommonChecklist(projectId), "공통 체크리스트를 불러왔습니다.")}
+              >
+                <Download className="mr-1 h-4 w-4" aria-hidden /> 공통 체크리스트 불러오기
+              </Button>
+            )}
+            {hasCommon && <span className="text-[11px] text-muted-foreground">공통 표준시트</span>}
+            <TemplateSettingsDialog kind="common" />
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <TypedImportDialog
+              groups={typedSubcategories}
               disabled={pending}
-              onClick={() => run(() => importCommonChecklist(projectId), "공통 체크리스트를 불러왔습니다.")}
-            >
-              <Download className="mr-1 h-4 w-4" aria-hidden /> 공통 체크리스트 불러오기
-            </Button>
-          )}
-          <TypedImportDialog
-            groups={typedSubcategories}
-            disabled={pending}
-            onImport={(subs) =>
-              run(async () => {
-                const r = await importTypedItems(projectId, subs);
-                return r;
-              }, "유형별 항목을 추가했습니다.")
-            }
-          />
-          {USE_BUTTON_KINDS.flatMap((kind) =>
-            templates
-              .filter((t) => t.kind === kind)
-              .map((t) => {
-                const used = checklists.some((c) => c.templateId === t.id);
-                return (
-                  <Button
-                    key={t.id}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={pending || used}
-                    title={used ? "이미 사용 중" : `${t.itemCount}개 항목`}
-                    onClick={() => run(() => createChecklistFromTemplate(projectId, t.id), `${t.name}를 만들었습니다.`)}
-                  >
-                    <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-                    {t.name} 사용하기
-                  </Button>
-                );
-              })
-          )}
+              onImport={(subs) =>
+                run(async () => {
+                  const r = await importTypedItems(projectId, subs);
+                  return r;
+                }, "유형별 항목을 추가했습니다.")
+              }
+            />
+            <TemplateSettingsDialog kind="typed" />
+          </span>
+          {USE_BUTTON_KINDS.map((kind) => {
+            const ofKind = templates.filter((t) => t.kind === kind);
+            return (
+              <span key={kind} className="inline-flex items-center gap-0.5">
+                {ofKind.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground">{CHECKLIST_KIND_LABELS[kind]} 없음</span>
+                )}
+                {ofKind.map((t) => {
+                  const used = checklists.some((c) => c.templateId === t.id);
+                  return (
+                    <Button
+                      key={t.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={pending || used}
+                      title={used ? "이미 사용 중" : `${t.itemCount}개 항목`}
+                      onClick={() => run(() => createChecklistFromTemplate(projectId, t.id), `${t.name}를 만들었습니다.`)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
+                      {t.name} 사용하기
+                    </Button>
+                  );
+                })}
+                <TemplateSettingsDialog kind={kind} />
+              </span>
+            );
+          })}
           <Button asChild variant="ghost" size="sm">
             <a href={`/${tenantSlug}/settings/checklists`}>표준시트 편집</a>
           </Button>
