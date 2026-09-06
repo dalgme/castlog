@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Tag, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,12 +16,13 @@ import {
 } from "@/lib/checklists/kinds";
 import {
   GROUP_FIELDS,
-  GROUP_FIELD_LABELS,
   buildGroups,
+  groupFieldLabel,
   groupValuesOf,
   moveGroupBefore,
   moveItemBefore,
   sameGroup,
+  type GroupField,
   type GroupValues,
   type ItemGroup,
 } from "@/lib/checklists/groups";
@@ -138,23 +139,42 @@ function TemplateCard({
   const columns = CHECKLIST_COLUMNS[template.kind].filter(
     (c) => c.template && !(groupFields as string[]).includes(c.key)
   );
+  const groupLabels = Object.fromEntries(
+    (["phase", "category", "subcategory"] as GroupField[]).map((f) => [f, groupFieldLabel(template.kind, f)])
+  ) as Record<GroupField, string>;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, GroupValues>>({});
+  const [openClassify, setOpenClassify] = useState<Record<string, boolean>>({});
   const serverIds = template.items.map((i) => i.id);
   const serverKey = serverIds.join(",");
   useEffect(() => {
     setOrder(null);
+    setOverrides({});
   }, [serverKey]);
   const ids = order ?? serverIds;
-  const byId = new Map(template.items.map((i) => [i.id, i]));
+  const byId = new Map(
+    template.items.map((i) => [i.id, overrides[i.id] ? { ...i, ...overrides[i.id] } : i])
+  );
   const groups = buildGroups(ids, byId, groupFields);
   const span = columns.length + 3;
   const deletable = template.kind !== "common" && template.kind !== "typed";
 
   function commitOrder(next: string[], adopt: { itemIds: string[]; values: GroupValues } | null) {
-    setOrder(next);
     setDrag(null);
-    run(() => reorderTemplateItems(template.id, next, adopt));
+    if (adopt === null && next.join(",") === ids.join(",")) return;
+    setOrder(next);
+    if (adopt) {
+      setOverrides((o) => ({ ...o, ...Object.fromEntries(adopt.itemIds.map((id) => [id, adopt.values])) }));
+    }
+    run(async () => {
+      const r = await reorderTemplateItems(template.id, next, adopt);
+      if (!r.ok) {
+        setOrder(null);
+        setOverrides({});
+      }
+      return r;
+    });
   }
 
   function dropOnItem(targetId: string) {
@@ -236,9 +256,9 @@ function TemplateCard({
       <CardContent>
         {groupFields.length > 0 && (
           <p className="mb-2 text-[11px] text-muted-foreground">
-            {groupFields.map((f) => GROUP_FIELD_LABELS[f]).join(" › ")} 묶음별로 음영이 다릅니다. 묶음 머리행에서
+            {groupFields.map((f) => groupLabels[f]).join(" › ")} 묶음별로 음영이 다릅니다. 묶음 머리행에서
             이름을 고치면 묶음 전체에 적용되고, 머리행 손잡이를 끌면 묶음이 통째로 움직입니다. 항목을 다른 묶음에
-            놓으면 그 분류로 들어갑니다.
+            놓으면 그 분류로 들어갑니다. 항목 하나만 다른 분류로 두려면 행 끝의 분류(태그) 단추를 누르세요.
           </p>
         )}
         <div className="overflow-x-auto">
@@ -259,10 +279,11 @@ function TemplateCard({
               {(() => {
                 let idx = 0;
                 return groups.map((g) => (
-                  <Fragment key={g.key}>
+                  <Fragment key={g.anchorId}>
                     {groupFields.length > 0 && (
                       <GroupHeaderRow
                         fields={groupFields}
+                        labels={groupLabels}
                         values={g.values}
                         count={g.ids.length}
                         colSpan={span}
@@ -271,6 +292,7 @@ function TemplateCard({
                         dragging={drag?.kind === "group" && drag.key === g.key}
                         pending={pending}
                         onDragStart={() => setDrag({ kind: "group", key: g.key, ids: g.ids })}
+                        onDragEnd={() => setDrag(null)}
                         onDrop={() => dropOnGroup(g)}
                         onRename={(field, value) =>
                           run(() => renameTemplateGroup(template.id, g.ids, field, value), "분류 이름을 바꿨습니다.")
@@ -293,9 +315,10 @@ function TemplateCard({
                       if (!item) return null;
                       const rowIdx = idx;
                       idx += 1;
+                      const classifyOpen = openClassify[id] ?? false;
                       return (
+                        <Fragment key={id}>
                         <tr
-                          key={id}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
                             e.preventDefault();
@@ -304,7 +327,8 @@ function TemplateCard({
                           className={cn(
                             "align-top",
                             g.shade.row,
-                            drag?.kind === "item" && drag.id === id && "opacity-50"
+                            ((drag?.kind === "item" && drag.id === id) ||
+                              (drag?.kind === "group" && drag.ids.includes(id))) && "opacity-50"
                           )}
                         >
                           <td
@@ -314,6 +338,7 @@ function TemplateCard({
                               e.dataTransfer.effectAllowed = "move";
                               setDrag({ kind: "item", id });
                             }}
+                            onDragEnd={() => setDrag(null)}
                             className="cursor-grab py-1 text-muted-foreground"
                             title="끌어서 순서 변경"
                           >
@@ -342,6 +367,16 @@ function TemplateCard({
                             );
                           })}
                           <td className="py-0.5 text-right">
+                            {groupFields.length > 0 && (
+                              <button
+                                type="button"
+                                title="이 항목만 분류 바꾸기"
+                                className={cn("rounded p-1 hover:text-brand", classifyOpen ? "text-brand" : "text-muted-foreground")}
+                                onClick={() => setOpenClassify((m) => ({ ...m, [id]: !classifyOpen }))}
+                              >
+                                <Tag className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            )}
                             <button
                               type="button"
                               title="아래에 항목 추가"
@@ -375,6 +410,31 @@ function TemplateCard({
                             </button>
                           </td>
                         </tr>
+                        {classifyOpen && (
+                          <tr className="bg-secondary/30">
+                            <td colSpan={span} className="px-8 py-1.5">
+                              <p className="mb-0.5 text-[11px] font-semibold text-muted-foreground">
+                                이 항목만 분류 바꾸기 — {item.title}
+                                <span className="ml-1 font-normal">(새 이름을 적으면 새 묶음으로 갈라집니다. 비우면 미분류)</span>
+                              </p>
+                              <div className="flex flex-wrap gap-3">
+                                {groupFields.map((f) => (
+                                  <label key={f} className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    {groupLabels[f]}
+                                    <span className="inline-block w-40">
+                                      <EditableText
+                                        value={item[f]}
+                                        placeholder="(미분류)"
+                                        onSave={(v) => run(() => updateTemplateItem(item.id, patchOf(item, f, v)))}
+                                      />
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </Fragment>

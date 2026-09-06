@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, GripVertical, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Download, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -32,8 +32,8 @@ import {
 } from "@/lib/checklists/kinds";
 import {
   GROUP_FIELDS,
-  GROUP_FIELD_LABELS,
   buildGroups,
+  groupFieldLabel,
   groupValuesOf,
   moveGroupBefore,
   moveItemBefore,
@@ -446,26 +446,47 @@ function ChecklistCard({
   const columns = CHECKLIST_COLUMNS[checklist.kind].filter(
     (c) => !(groupFields as string[]).includes(c.key)
   );
+  const groupLabels = Object.fromEntries(
+    (["phase", "category", "subcategory"] as GroupField[]).map((f) => [f, groupFieldLabel(checklist.kind, f)])
+  ) as Record<GroupField, string>;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
+  // 낙관적 분류 이어받기 — 서버가 다시 그리기 전까지 옮긴 항목을 목적지 묶음으로 보이게 (리뷰 M2)
+  const [overrides, setOverrides] = useState<Record<string, GroupValues>>({});
   const [openMemo, setOpenMemo] = useState<Record<string, boolean>>({});
+  const [openClassify, setOpenClassify] = useState<Record<string, boolean>>({});
   const [dueDialog, setDueDialog] = useState<{ item: ProjectChecklistItemView; next: string | null } | null>(null);
   const serverIds = checklist.items.map((i) => i.id);
   const serverKey = serverIds.join(",");
   // 서버 목록이 바뀌면(추가·삭제·불러오기) 드래그 중 잡아 둔 순서를 버린다 (리뷰 M1)
   useEffect(() => {
     setOrder(null);
+    setOverrides({});
   }, [serverKey]);
   const ids = order ?? serverIds;
-  const byId = new Map(checklist.items.map((i) => [i.id, i]));
+  const byId = new Map(
+    checklist.items.map((i) => [i.id, overrides[i.id] ? { ...i, ...overrides[i.id] } : i])
+  );
   const groups = buildGroups(ids, byId, groupFields);
   const hasSchedule = columns.some((c) => c.key === "plannedDue");
   const span = columns.length + 3;
 
   function commitOrder(next: string[], adopt: { itemIds: string[]; values: GroupValues } | null) {
-    setOrder(next);
     setDrag(null);
-    run(() => reorderChecklistItems(checklist.id, next, adopt));
+    // 자리도 분류도 그대로면 서버에 보내지 않는다 (리뷰 M4)
+    if (adopt === null && next.join(",") === ids.join(",")) return;
+    setOrder(next);
+    if (adopt) {
+      setOverrides((o) => ({ ...o, ...Object.fromEntries(adopt.itemIds.map((id) => [id, adopt.values])) }));
+    }
+    run(async () => {
+      const r = await reorderChecklistItems(checklist.id, next, adopt);
+      if (!r.ok) {
+        setOrder(null);
+        setOverrides({});
+      }
+      return r;
+    });
   }
 
   /** 항목 위에 놓기 — 항목은 그 앞으로(분류 이어받음), 묶음은 그 항목의 묶음 앞으로 */
@@ -572,9 +593,9 @@ function ChecklistCard({
       <CardContent>
         {groupFields.length > 0 && (
           <p className="mb-2 text-[11px] text-muted-foreground">
-            {groupFields.map((f) => GROUP_FIELD_LABELS[f]).join(" › ")} 묶음별로 음영이 다릅니다. 묶음 머리행에서 이름을
+            {groupFields.map((f) => groupLabels[f]).join(" › ")} 묶음별로 음영이 다릅니다. 묶음 머리행에서 이름을
             고치면 묶음 전체에 적용되고, 머리행 손잡이를 끌면 묶음이 통째로 움직입니다. 항목을 다른 묶음에
-            놓으면 그 분류로 들어갑니다.
+            놓으면 그 분류로 들어갑니다. 항목 하나만 다른 분류로 두려면 행 끝의 분류(태그) 단추를 누르세요.
           </p>
         )}
         <div className="overflow-x-auto">
@@ -594,14 +615,16 @@ function ChecklistCard({
                 let idx = 0;
                 return groups.map((g) => (
                   <GroupBlock
-                    key={g.key}
+                    key={g.anchorId}
                     group={g}
                     fields={groupFields}
                     span={span}
                     canEdit={canEdit}
                     pending={pending}
+                    labels={groupLabels}
                     dragging={drag?.kind === "group" && drag.key === g.key}
                     onDragStart={() => setDrag({ kind: "group", key: g.key, ids: g.ids })}
+                    onDragEnd={() => setDrag(null)}
                     onDrop={() => dropOnGroup(g)}
                     onRename={(field, value) =>
                       run(() => renameChecklistGroup(checklist.id, g.ids, field, value), "분류 이름을 바꿨습니다.")
@@ -616,12 +639,15 @@ function ChecklistCard({
                       const tone = dueTone(item.plannedDue, item.completedOn, today);
                       const auto = autoDueDate(checklist.dday, item.offsetDays);
                       const memoOpen = openMemo[id] ?? false;
+                      const classifyOpen = openClassify[id] ?? false;
                       return (
                         <ItemRows
                           key={id}
                           idx={rowIdx}
                           item={item}
                           columns={columns}
+                          groupFields={groupFields}
+                          groupLabels={groupLabels}
                           tone={tone}
                           auto={auto}
                           shade={g.shade}
@@ -629,10 +655,16 @@ function ChecklistCard({
                           canEdit={canEdit}
                           myUserId={myUserId}
                           pending={pending}
-                          dragging={drag?.kind === "item" && drag.id === id}
+                          dragging={
+                            (drag?.kind === "item" && drag.id === id) ||
+                            (drag?.kind === "group" && drag.ids.includes(id))
+                          }
                           memoOpen={memoOpen}
+                          classifyOpen={classifyOpen}
                           onToggleMemo={() => setOpenMemo((m) => ({ ...m, [id]: !memoOpen }))}
+                          onToggleClassify={() => setOpenClassify((m) => ({ ...m, [id]: !classifyOpen }))}
                           onDragStart={() => setDrag({ kind: "item", id })}
+                          onDragEnd={() => setDrag(null)}
                           onDrop={() => dropOnItem(id)}
                           onPatch={(k, v) => patch(item, k, v)}
                           onPlannedDue={(v) => changePlannedDue(item, v)}
@@ -685,7 +717,7 @@ type Drag = { kind: "item"; id: string } | { kind: "group"; key: string; ids: st
 
 /** 묶음 머리행 + 그 묶음의 항목 행들. 묶음 열이 없는 종류(마감일)는 머리행 없이 항목만 */
 function GroupBlock({
-  group, fields, span, canEdit, pending, dragging, onDragStart, onDrop, onRename, onAdd, children,
+  group, fields, labels, span, canEdit, pending, dragging, onDragStart, onDragEnd, onDrop, onRename, onAdd, children,
 }: {
   group: ItemGroup;
   fields: GroupField[];
@@ -693,7 +725,9 @@ function GroupBlock({
   canEdit: boolean;
   pending: boolean;
   dragging: boolean;
+  labels: Record<GroupField, string>;
   onDragStart: () => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   onRename: (field: GroupField, value: string | null) => void;
   onAdd: () => void;
@@ -704,6 +738,7 @@ function GroupBlock({
       {fields.length > 0 && (
         <GroupHeaderRow
           fields={fields}
+          labels={labels}
           values={group.values}
           count={group.ids.length}
           colSpan={span}
@@ -712,6 +747,7 @@ function GroupBlock({
           dragging={dragging}
           pending={pending}
           onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
           onDrop={onDrop}
           onRename={onRename}
           onAdd={onAdd}
@@ -723,12 +759,15 @@ function GroupBlock({
 }
 
 function ItemRows({
-  idx, item, columns, tone, auto, shade, users, canEdit, myUserId, pending, dragging, memoOpen,
-  onToggleMemo, onDragStart, onDrop, onPatch, onPlannedDue, onAddAfter, onDelete, onReason,
+  idx, item, columns, groupFields, groupLabels, tone, auto, shade, users, canEdit, myUserId, pending, dragging,
+  memoOpen, classifyOpen, onToggleMemo, onToggleClassify, onDragStart, onDragEnd, onDrop, onPatch, onPlannedDue,
+  onAddAfter, onDelete, onReason,
 }: {
   idx: number;
   item: ProjectChecklistItemView;
   columns: { key: string; label: string; width?: string }[];
+  groupFields: GroupField[];
+  groupLabels: Record<GroupField, string>;
   tone: ReturnType<typeof dueTone>;
   auto: string | null;
   shade: Shade;
@@ -738,8 +777,11 @@ function ItemRows({
   pending: boolean;
   dragging: boolean;
   memoOpen: boolean;
+  classifyOpen: boolean;
   onToggleMemo: () => void;
+  onToggleClassify: () => void;
   onDragStart: () => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   onPatch: (key: string, value: string | null) => void;
   onPlannedDue: (value: string | null) => void;
@@ -766,6 +808,7 @@ function ItemRows({
             e.dataTransfer.effectAllowed = "move";
             onDragStart();
           }}
+          onDragEnd={onDragEnd}
           className={cn("py-1 text-muted-foreground", canEdit && "cursor-grab")}
           title={canEdit ? "끌어서 순서 변경" : undefined}
         >
@@ -883,6 +926,16 @@ function ItemRows({
           >
             <MessageSquare className="h-3.5 w-3.5" aria-hidden />
           </button>
+          {canEdit && groupFields.length > 0 && (
+            <button
+              type="button"
+              title="이 항목만 분류 바꾸기"
+              className={cn("rounded p-1 hover:text-brand", classifyOpen ? "text-brand" : "text-muted-foreground")}
+              onClick={onToggleClassify}
+            >
+              <Tag className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
           {canEdit && (
             <>
               <button type="button" title="아래에 항목 추가" className="rounded p-1 text-muted-foreground hover:text-brand" disabled={pending} onClick={onAddAfter}>
@@ -895,6 +948,26 @@ function ItemRows({
           )}
         </td>
       </tr>
+      {classifyOpen && canEdit && (
+        <tr className="bg-secondary/30">
+          <td colSpan={span} className="px-8 py-1.5">
+            <p className="mb-0.5 text-[11px] font-semibold text-muted-foreground">
+              이 항목만 분류 바꾸기 — {item.title}
+              <span className="ml-1 font-normal">(새 이름을 적으면 새 묶음으로 갈라집니다. 비우면 미분류)</span>
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {groupFields.map((f) => (
+                <label key={f} className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  {groupLabels[f]}
+                  <span className="inline-block w-40">
+                    <EditableText value={item[f]} placeholder="(미분류)" onSave={(v) => onPatch(f, v)} />
+                  </span>
+                </label>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
       {memoOpen && (
         <tr className="bg-secondary/30">
           <td colSpan={span} className="px-8 py-1.5">

@@ -3,12 +3,7 @@
 import { GripVertical, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  GROUP_FIELD_LABELS,
-  type GroupField,
-  type GroupValues,
-  type Shade,
-} from "@/lib/checklists/groups";
+import { type GroupField, type GroupValues, type Shade } from "@/lib/checklists/groups";
 
 import { EditableText } from "./editable-cell";
 
@@ -19,6 +14,7 @@ import { EditableText } from "./editable-cell";
  */
 export function GroupHeaderRow({
   fields,
+  labels,
   values,
   count,
   colSpan,
@@ -27,11 +23,13 @@ export function GroupHeaderRow({
   dragging,
   pending,
   onDragStart,
+  onDragEnd,
   onDrop,
   onRename,
   onAdd,
 }: {
   fields: GroupField[];
+  labels: Record<GroupField, string>;
   values: GroupValues;
   count: number;
   colSpan: number;
@@ -40,6 +38,7 @@ export function GroupHeaderRow({
   dragging: boolean;
   pending: boolean;
   onDragStart: () => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   onRename: (field: GroupField, value: string | null) => void;
   onAdd: () => void;
@@ -60,6 +59,7 @@ export function GroupHeaderRow({
           e.dataTransfer.effectAllowed = "move";
           onDragStart();
         }}
+        onDragEnd={onDragEnd}
         className={cn("py-1 text-muted-foreground", canEdit && "cursor-grab")}
         title={canEdit ? "끌어서 분류 전체 이동" : undefined}
       >
@@ -70,7 +70,7 @@ export function GroupHeaderRow({
           {fields.map((f, i) => (
             <span key={f} className="inline-flex items-center gap-1">
               {i > 0 && <span className="text-muted-foreground">›</span>}
-              <span className="text-[10px] text-muted-foreground">{GROUP_FIELD_LABELS[f]}</span>
+              <span className="text-[10px] text-muted-foreground">{labels[f]}</span>
               <span className="inline-block min-w-[6rem] max-w-[14rem]">
                 <EditableText
                   value={values[f]}

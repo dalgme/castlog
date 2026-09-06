@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { isChecklistKind, type ChecklistLogRow } from "@/lib/checklists/kinds";
-import { GROUP_FIELDS, GROUP_FIELD_LABELS } from "@/lib/checklists/groups";
+import { GROUP_FIELDS, GROUP_FIELD_LABELS, type GroupField } from "@/lib/checklists/groups";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
 import {
   logChecklist,
@@ -262,15 +262,16 @@ export async function reorderTemplateItems(
   const supabase = createClient();
   const { data: t } = await supabase.from("checklist_templates").select("kind").eq("id", templateId).maybeSingle();
   if (!t) return { ok: false, error: "시트를 찾을 수 없습니다." };
-  await applyOrder(supabase, "checklist_template_items", "template_id", templateId, orderedIds, gate.actor.userId);
-  await logChecklist(gate.actor, { scope: "template", action: "item.reorder", templateId, after: `${orderedIds.length}개 항목 순서 변경` });
+  // 분류 이어받기를 먼저 — 실패하면 순서도 저장하지 않는다 (리뷰 L1)
+  let adopted = false;
   if (parsedAdopt?.success) {
     const fields = isChecklistKind(t.kind) ? GROUP_FIELDS[t.kind] : [];
     const { itemIds, values } = parsedAdopt.data;
     const update: TablesUpdate<"checklist_template_items"> = { updated_by: gate.actor.userId };
     for (const f of fields) update[f] = values[f]?.trim() || null;
     const { data: moved } = await supabase
-      .from("checklist_template_items").select("id, title").in("id", itemIds).eq("template_id", templateId);
+      .from("checklist_template_items")
+      .select("id, title, phase, category, subcategory").in("id", itemIds).eq("template_id", templateId);
     if (fields.length > 0 && moved && moved.length > 0) {
       const { error } = await supabase
         .from("checklist_template_items").update(update).in("id", moved.map((m) => m.id)).eq("template_id", templateId);
@@ -278,10 +279,16 @@ export async function reorderTemplateItems(
       const label = fields.map((f) => update[f] ?? "(미분류)").join(" › ");
       for (const m of moved) {
         await logChecklist(gate.actor, {
-          scope: "template", action: "item.move", templateId, itemId: m.id, itemTitle: m.title, field: "분류", after: label,
+          scope: "template", action: "item.move", templateId, itemId: m.id, itemTitle: m.title, field: "분류",
+          before: fields.map((f) => m[f] ?? "(미분류)").join(" › "), after: label,
         });
       }
+      adopted = true;
     }
+  }
+  await applyOrder(supabase, "checklist_template_items", "template_id", templateId, orderedIds, gate.actor.userId);
+  if (!adopted) {
+    await logChecklist(gate.actor, { scope: "template", action: "item.reorder", templateId, after: `${orderedIds.length}개 항목 순서 변경` });
   }
   revalidate();
   return { ok: true };
@@ -291,7 +298,7 @@ export async function reorderTemplateItems(
 export async function renameTemplateGroup(
   templateId: string,
   itemIds: string[],
-  field: string,
+  field: GroupField,
   value: string | null
 ): Promise<ChecklistActionResult> {
   const gate = await requireTemplateEditor();
@@ -306,10 +313,10 @@ export async function renameTemplateGroup(
   if (next && next.length > (field === "phase" ? 40 : 80)) return { ok: false, error: "분류 이름이 너무 깁니다." };
   const supabase = createClient();
   const { data: rows } = await supabase
-    .from("checklist_template_items").select(`id, ${field}`).in("id", itemIds).eq("template_id", templateId);
+    .from("checklist_template_items").select("id, phase, category, subcategory").in("id", itemIds).eq("template_id", templateId);
   if (!rows || rows.length === 0) return { ok: false, error: "항목을 찾을 수 없습니다." };
-  const before = (rows[0] as Record<string, string | null>)[field] ?? null;
-  if ((before ?? "") === (next ?? "")) return { ok: true };
+  const before = rows[0]![field] ?? null;
+  if (rows.every((r) => (r[field] ?? "") === (next ?? ""))) return { ok: true };
   const update: TablesUpdate<"checklist_template_items"> = { updated_by: gate.actor.userId };
   update[field] = next;
   const { error } = await supabase

@@ -1,4 +1,4 @@
-import type { ChecklistKind } from "./kinds";
+import { CHECKLIST_COLUMNS, type ChecklistKind } from "./kinds";
 
 /**
  * 체크리스트 분류 묶음 (기획 지시 2026-09-06).
@@ -15,6 +15,11 @@ export const GROUP_FIELD_LABELS: Record<GroupField, string> = {
   category: "구분",
   subcategory: "세부 분류",
 };
+
+/** 종류별 묶음 열 라벨 — 시트 열 이름과 맞춘다 (착수보고회는 '사업 분류') */
+export function groupFieldLabel(kind: ChecklistKind, field: GroupField): string {
+  return CHECKLIST_COLUMNS[kind].find((c) => c.key === field)?.label ?? GROUP_FIELD_LABELS[field];
+}
 
 /** 종류별 묶음 열 — 앞이 큰 분류. 비어 있으면 묶지 않는다 */
 export const GROUP_FIELDS: Record<ChecklistKind, GroupField[]> = {
@@ -77,6 +82,8 @@ export function sameGroup(a: GroupValues, b: GroupValues, fields: GroupField[]):
 export type ItemGroup = {
   /** 분류 값 조합 + 등장 순번 — 같은 분류가 떨어져 두 번 나와도 구분된다 */
   key: string;
+  /** 첫 항목 id — React key용. 이름을 바꾸거나 옮겨도 바뀌지 않는다 (리뷰 M3) */
+  anchorId: string;
   values: GroupValues;
   ids: string[];
   shade: Shade;
@@ -103,7 +110,7 @@ export function buildGroups<T extends GroupableItem>(
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const shadeLabel = fields.length ? values[fields[fields.length - 1]!] : null;
-    groups.push({ key: `${base}#${n}`, values, ids: [id], shade: shadeFor(shadeLabel, fields) });
+    groups.push({ key: `${base}#${n}`, anchorId: id, values, ids: [id], shade: shadeFor(shadeLabel, fields) });
   }
   return groups;
 }
