@@ -6,10 +6,10 @@ import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { canViewAllProjects, isUserGrade } from "@/lib/auth/grades";
 import { getTenantModules } from "@/lib/modules/server";
-import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { cn } from "@/lib/utils";
 import { ensureTenantTemplates } from "@/lib/checklists/server";
+import { loadTemplateViews } from "@/lib/checklists/load-templates";
 import {
   CHECKLIST_KINDS,
   CHECKLIST_KIND_DESCRIPTIONS,
@@ -17,11 +17,12 @@ import {
   isChecklistKind,
   type ChecklistKind,
 } from "@/lib/checklists/kinds";
+import type { TemplateView } from "@/lib/checklists/template-view";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
 import { SettingsTabs } from "@/components/layout/settings-tabs";
 
-import { TemplateEditor, type TemplateView } from "./template-editor";
+import { TemplateEditor } from "./template-editor";
 
 export const metadata = { title: "체크리스트 표준시트" };
 
@@ -72,73 +73,9 @@ export default async function ChecklistTemplatesPage({
   let missingTable = false;
   if (hasSupabaseEnv()) {
     await ensureTenantTemplates(tenantId);
-    const supabase = createClient();
-    const { data: rows, error } = await supabase
-      .from("checklist_templates")
-      .select("id, kind, name, sort_order, updated_at, updated_by")
-      .eq("is_active", true)
-      .order("kind", { ascending: true })
-      .order("sort_order", { ascending: true });
-    if (error && error.code === "42P01") {
-      missingTable = true;
-    } else {
-      const ids = (rows ?? []).map((r) => r.id);
-      // 마지막 수정자 — 회사 공용 시트라 "누가 언제 고쳤는지"가 보여야 한다
-      const [{ data: items }] = await Promise.all([
-        ids.length
-          ? supabase
-              .from("checklist_template_items")
-              .select("id, template_id, sort_order, phase, category, subcategory, title, offset_days, quantity, note, updated_at, updated_by")
-              .in("template_id", ids)
-              .order("sort_order", { ascending: true })
-          : Promise.resolve({ data: [] as { id: string; template_id: string; sort_order: number; phase: string | null; category: string | null; subcategory: string | null; title: string; offset_days: number | null; quantity: string | null; note: string | null; updated_at: string; updated_by: string | null }[] }),
-      ]);
-      const editorIds = Array.from(
-        new Set(
-          [...(rows ?? []).map((r) => r.updated_by), ...(items ?? []).map((it) => it.updated_by)].filter(
-            (v): v is string => Boolean(v)
-          )
-        )
-      );
-      const { data: editors } = editorIds.length
-        ? await supabase.from("users").select("id, name").in("id", editorIds)
-        : { data: [] as { id: string; name: string }[] };
-      const editorName = new Map((editors ?? []).map((u) => [u.id, u.name]));
-      templates = (rows ?? [])
-        .filter((r): r is typeof r & { kind: ChecklistKind } =>
-          (CHECKLIST_KINDS as readonly string[]).includes(r.kind)
-        )
-        .map((r) => {
-          const own = (items ?? []).filter((it) => it.template_id === r.id);
-          // 항목 수정도 시트 수정으로 본다 — 가장 늦은 시각과 그때의 수정자
-          const lastItem = own.reduce<(typeof own)[number] | null>(
-            (m, it) => (m && m.updated_at > it.updated_at ? m : it), null
-          );
-          const latest =
-            lastItem && lastItem.updated_at > r.updated_at
-              ? { at: lastItem.updated_at, by: lastItem.updated_by }
-              : { at: r.updated_at, by: r.updated_by };
-          return {
-          id: r.id,
-          kind: r.kind,
-          name: r.name,
-          updatedAt: latest.at,
-          updatedByName: latest.by ? (editorName.get(latest.by) ?? null) : null,
-          items: (items ?? [])
-            .filter((it) => it.template_id === r.id)
-            .map((it) => ({
-              id: it.id,
-              phase: it.phase,
-              category: it.category,
-              subcategory: it.subcategory,
-              title: it.title,
-              offsetDays: it.offset_days,
-              quantity: it.quantity,
-              note: it.note,
-            })),
-          };
-        });
-    }
+    const loaded = await loadTemplateViews();
+    templates = loaded.templates;
+    missingTable = loaded.missingTable;
   }
 
   return (
