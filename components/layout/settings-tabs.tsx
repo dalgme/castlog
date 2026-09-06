@@ -72,6 +72,13 @@ export function SettingsTabs({
       show: showRules,
     },
     {
+      // 체크리스트 표준시트 — 임직원 누구나 수정 (기획 지시 2026-09-05 — 14)
+      key: "checklists",
+      label: "체크리스트 표준시트",
+      href: `/${tenantSlug}/settings/checklists`,
+      show: true,
+    },
+    {
       // 종결 프로젝트 보관 체계 확인 — 대표·이사 전용 (기획 2026-08-30)
       key: "archive",
       label: "프로젝트 보관",

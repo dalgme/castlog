@@ -87,6 +87,7 @@ import {
   type PlanPanelState,
 } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
+import { ChecklistTab } from "./checklist-tab";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
 import {
   EngagementWorkbench,
@@ -316,6 +317,8 @@ export default async function ProjectDetailPage({
   }
 
   // 단계 23: 종료 기여도 + 종료 상태
+  // 체크리스트 상단 '담당자(로그인 주체)' — 로그인한 사람의 이름
+  const viewerName = (staffResult.data ?? []).find((u) => u.id === user?.id)?.name ?? "";
   const staffOptions = (staffResult.data ?? []).map((u) => ({
     id: u.id,
     name: u.name,
@@ -1761,6 +1764,32 @@ export default async function ProjectDetailPage({
         </Card>
         )}
         {/* 세션 · 코드넘버는 공통 기반 — experts 없이도 TO 관리가 가능해야 한다 */}
+        {tab === "checklist" && (
+          // 체크리스트 (기획 지시 2026-09-05) — 편집은 프로젝트 팀(배정된 누구나)
+          // + 전사 열람 권한자. 서버 액션도 같은 판정(requireProjectTeam)
+          <ChecklistTab
+            tenantSlug={params.tenantSlug}
+            tenantId={tenantIdFromUser(user) ?? ""}
+            project={{
+              id: project.id,
+              name: project.name,
+              starts_on: project.starts_on,
+              ends_on: project.ends_on,
+              client_name: project.client_name,
+              host_org: project.host_org,
+              executor_org: project.executor_org,
+              dday_date: project.dday_date,
+            }}
+            viewerUserId={user?.id ?? ""}
+            viewerName={viewerName}
+            canEdit={
+              canViewAllProjects(grade) ||
+              myAssignmentRole !== null ||
+              role === "platform_admin" ||
+              role === "manager"
+            }
+          />
+        )}
         {tab === "sessions" && (
         <Card>
             <CardHeader className="pb-3">
