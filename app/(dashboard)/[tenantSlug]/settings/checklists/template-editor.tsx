@@ -59,6 +59,8 @@ export type TemplateView = {
   kind: ChecklistKind;
   name: string;
   updatedAt: string;
+  /** 마지막으로 시트를 고친 임직원 — 회사 공용 시트라 표시한다 */
+  updatedByName: string | null;
   items: TemplateItemView[];
 };
 
@@ -233,7 +235,13 @@ function TemplateCard({
           />
         </CardTitle>
         <div className="flex items-center gap-1">
-          <span className="text-[11px] text-muted-foreground">{template.items.length}개 항목</span>
+          <span className="text-[11px] text-muted-foreground">
+            {template.items.length}개 항목 · 마지막 수정{" "}
+            {new Date(template.updatedAt).toLocaleString("ko-KR", {
+              timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+            })}
+            {template.updatedByName ? ` ${template.updatedByName}` : ""}
+          </span>
           <ChecklistLogsDialog title={template.name} load={() => getTemplateLogs(template.id)} />
           {deletable && (
             <Button
