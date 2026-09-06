@@ -4,11 +4,12 @@ import { randomUUID } from "crypto";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingColumnError } from "@/lib/supabase/errors";
+import type { TablesInsert } from "@/lib/supabase/database.types";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { isPracticeMode } from "@/lib/practice/server";
-import { isMissingColumnError } from "@/lib/supabase/db-errors";
 import {
   isSmsTestMode,
   sendSms,
@@ -146,7 +147,36 @@ export type TenantSmsSendParams = {
   batchId?: string | null;
   /** MMS 이미지 id (기획 확정 2026-08-23) — uploadTenantMmsImage로 발급 */
   imageId?: string | null;
+  /**
+   * 이 문자가 담은 섭외 건 id (기획 지시 2026-09-05) — 섭외 진행 탭의
+   * 멘토별 발송 이력·재발송이 이 연결로 판정한다. 묶음 발송은 여러 건.
+   */
+  engagementIds?: string[] | null;
 };
+
+/**
+ * sms_logs 기록 — engagement_ids 컬럼이 아직 없는 DB(SQL 먼저, §14-10)에서는
+ * 연결 없이 기록한다. 기록 실패가 발송을 막지는 않는다.
+ */
+async function insertSmsLog(
+  admin: ReturnType<typeof createAdminClient>,
+  rows: TablesInsert<"sms_logs">[]
+): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await admin.from("sms_logs").insert(rows);
+  if (error && isMissingColumnError(error)) {
+    const { error: retryError } = await admin.from("sms_logs").insert(
+      rows.map((r) => {
+        const { engagement_ids: _omit, ...rest } = r;
+        void _omit;
+        return rest;
+      })
+    );
+    if (retryError) console.error("[sms] log insert failed:", retryError.code);
+  } else if (error) {
+    console.error("[sms] log insert failed:", error.code);
+  }
+}
 
 /**
  * 테넌트 설정 조회 + 자격증명 해석.
@@ -192,7 +222,7 @@ async function loadCredentials(
     )
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  if (full.error && isMissingColumnError(full.error.message)) {
+  if (full.error && isMissingColumnError(full.error)) {
     // mode 컬럼은 보류 중인 b(캐스트로그 발송) 마이그레이션 소속이다.
     // 그 마이그레이션이 아직 적용되지 않은 DB에서 **기존 자사 발송이 죽으면
     // 안 된다** — 구버전 스키마로 재조회하고 전부 byo로 간주한다.
@@ -395,7 +425,8 @@ export async function sendTenantSms(
     // 공급자 호출 전에 막혀도 **전 건 기록**한다 (§12-3) — 기록이 없으면
     // "보냈다"고 믿은 담당자가 왜 안 갔는지 알 길이 없다. 세션별 송신 현황
     // 카드가 이 행의 error_message를 실패 사유로 보여 준다.
-    await admin.from("sms_logs").insert(
+    await insertSmsLog(
+      admin,
       targets.map((recipient) => ({
         tenant_id: params.tenantId,
         batch_id: batchId,
@@ -407,6 +438,7 @@ export async function sendTenantSms(
         provider: null,
         error_message: credsResult.error,
         sent_by: params.senderUserId ?? null,
+        engagement_ids: params.engagementIds ?? null,
       }))
     );
     return credsResult;
@@ -442,18 +474,21 @@ export async function sendTenantSms(
 
     // 기록은 service_role로 — sms_logs INSERT 정책(레벨 4 실행 직급)에 걸리면
     // 발송은 됐는데 이력만 빠지는 무증상 결함이 된다. tenant_id는 명시한다
-    await admin.from("sms_logs").insert({
-      tenant_id: params.tenantId,
-      batch_id: batchId,
-      message_type: params.messageType,
-      recipient_phone: recipient.phone,
-      recipient_expert_id: recipient.expertId,
-      body: finalBody,
-      status,
-      provider: credsResult?.ok ? credsResult.creds.provider : "test",
-      error_message: result.ok ? null : result.error,
-      sent_by: params.senderUserId,
-    });
+    await insertSmsLog(admin, [
+      {
+        tenant_id: params.tenantId,
+        batch_id: batchId,
+        message_type: params.messageType,
+        recipient_phone: recipient.phone,
+        recipient_expert_id: recipient.expertId,
+        body: finalBody,
+        status,
+        provider: credsResult?.ok ? credsResult.creds.provider : "test",
+        error_message: result.ok ? null : result.error,
+        sent_by: params.senderUserId,
+        engagement_ids: params.engagementIds ?? null,
+      },
+    ]);
   }
 
   // 사용량 계측 (설계문서 4.2 — 과금 없음, 계측만)

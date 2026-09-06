@@ -32,6 +32,12 @@ import { AcceptanceSendDialog } from "./acceptance-send-dialog";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 import { PlanHistoryTable } from "./plan-history-table";
+import {
+  ResendSlotButton,
+  ResendSmsButton,
+  SmsHistoryCell,
+  type SmsSummary,
+} from "./sms-resend";
 
 /**
  * 승인 목록 및 섭외 진행 탭 (기획 확정 2026-08-30 — 37번).
@@ -93,6 +99,8 @@ export type ProgressRow = {
   sessionDetail: string | null;
   /** 이 자리의 예정가 (후보별 예정가, 없으면 세션 1인 비용) */
   fee: number | null;
+  /** 이 섭외 건으로 나간 문자 발송 이력 (기획 지시 2026-09-05) */
+  sms?: SmsSummary | null;
 };
 
 /**
@@ -116,6 +124,8 @@ export type SessionDispatchRow = {
   redispatch: boolean;
   /** 프로젝트 단계가 발송을 막으면 그 사유 (서버와 같은 문구) */
   blockedReason: string | null;
+  /** 회신 대기(requested) 건 수 — 세션 단위 재발송 대상 */
+  waitingCount: number;
   /** 자리별 최근 실패 사유 — error: 실패 / info: 테스트 모드 등 안내 */
   failures: {
     code: string;
@@ -392,6 +402,15 @@ export function EngagementProgress({
                       )}
                     </div>
                     {canManage && (
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {r.waitingCount > 0 && !expertsLite && (
+                        <ResendSlotButton
+                          projectId={projectId}
+                          slotId={r.slotId}
+                          sessionLabel={r.label}
+                          waitingCount={r.waitingCount}
+                        />
+                      )}
                       <DispatchDialog
                         projectId={projectId}
                         projectName={projectName}
@@ -416,6 +435,7 @@ export function EngagementProgress({
                         sessionLabel={r.label}
                         size="xs"
                       />
+                      </div>
                     )}
                   </li>
                 );
@@ -467,6 +487,7 @@ export function EngagementProgress({
                     <TableHead className="w-32">전문가</TableHead>
                     <TableHead className="w-28 text-right">예정가</TableHead>
                     <TableHead className="w-28">단계</TableHead>
+                    <TableHead className="w-48">문자 발송</TableHead>
                     <TableHead className="w-44 text-right">수락서</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -503,6 +524,22 @@ export function EngagementProgress({
                         >
                           {ENGAGEMENT_STAGE_LABELS[r.stage]}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {/* 멘토별 문자 발송 상황·이력 + 재발송 (기획 지시 2026-09-05) */}
+                        <div className="flex flex-col items-start gap-1">
+                          <SmsHistoryCell sms={r.sms ?? null} expertName={r.expertName} />
+                          {canManage &&
+                            !expertsLite &&
+                            r.engagementId &&
+                            r.stage === "requested" && (
+                              <ResendSmsButton
+                                engagementId={r.engagementId}
+                                projectId={projectId}
+                                expertName={r.expertName}
+                              />
+                            )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <span className="inline-flex items-center gap-1">

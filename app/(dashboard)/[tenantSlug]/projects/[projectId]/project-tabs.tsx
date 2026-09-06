@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 export const PROJECT_TAB_KEYS = [
   "overview",
   "basic",
+  "checklist",
   "sessions",
   "experts",
   "engage",
@@ -46,6 +47,14 @@ const TAB_DEFS: readonly {
     activeClass: "border-teal-600 bg-teal-600 text-white shadow-sm",
     idleClass:
       "border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100",
+  },
+  {
+    // 체크리스트 (기획 지시 2026-09-05) — 기본설정 오른쪽. 공통 기반, 모듈 게이트 없음
+    key: "checklist",
+    label: "체크리스트",
+    activeClass: "border-amber-600 bg-amber-600 text-white shadow-sm",
+    idleClass:
+      "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
   },
   {
     key: "sessions",

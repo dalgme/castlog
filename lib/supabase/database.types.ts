@@ -14,6 +14,345 @@ export type Database = {
   }
   public: {
     Tables: {
+      checklist_templates: {
+        Row: {
+          id: string
+          tenant_id: string
+          kind: string
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          kind: string
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          kind?: string
+          name?: string
+          sort_order?: number
+          is_active?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      checklist_template_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          template_id: string
+          sort_order: number
+          phase: string | null
+          category: string | null
+          subcategory: string | null
+          title: string
+          offset_days: number | null
+          quantity: string | null
+          note: string | null
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          template_id: string
+          sort_order?: number
+          phase?: string | null
+          category?: string | null
+          subcategory?: string | null
+          title: string
+          offset_days?: number | null
+          quantity?: string | null
+          note?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          template_id?: string
+          sort_order?: number
+          phase?: string | null
+          category?: string | null
+          subcategory?: string | null
+          title?: string
+          offset_days?: number | null
+          quantity?: string | null
+          note?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_checklists: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          kind: string
+          template_id: string | null
+          name: string
+          dday_date: string | null
+          is_practice: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          kind: string
+          template_id?: string | null
+          name: string
+          dday_date?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          kind?: string
+          template_id?: string | null
+          name?: string
+          dday_date?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_checklist_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          checklist_id: string
+          project_id: string
+          sort_order: number
+          phase: string | null
+          category: string | null
+          subcategory: string | null
+          title: string
+          offset_days: number | null
+          quantity: string | null
+          assignee_user_id: string | null
+          planned_due_on: string | null
+          planned_due_set_on: string | null
+          planned_due_set_by: string | null
+          completed_on: string | null
+          note: string | null
+          memo: string | null
+          check1: string | null
+          check2: string | null
+          decision: string | null
+          applicable: string | null
+          is_practice: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          checklist_id: string
+          project_id: string
+          sort_order?: number
+          phase?: string | null
+          category?: string | null
+          subcategory?: string | null
+          title: string
+          offset_days?: number | null
+          quantity?: string | null
+          assignee_user_id?: string | null
+          planned_due_on?: string | null
+          planned_due_set_on?: string | null
+          planned_due_set_by?: string | null
+          completed_on?: string | null
+          note?: string | null
+          memo?: string | null
+          check1?: string | null
+          check2?: string | null
+          decision?: string | null
+          applicable?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          checklist_id?: string
+          project_id?: string
+          sort_order?: number
+          phase?: string | null
+          category?: string | null
+          subcategory?: string | null
+          title?: string
+          offset_days?: number | null
+          quantity?: string | null
+          assignee_user_id?: string | null
+          planned_due_on?: string | null
+          planned_due_set_on?: string | null
+          planned_due_set_by?: string | null
+          completed_on?: string | null
+          note?: string | null
+          memo?: string | null
+          check1?: string | null
+          check2?: string | null
+          decision?: string | null
+          applicable?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_checklist_due_changes: {
+        Row: {
+          id: string
+          tenant_id: string
+          item_id: string
+          project_id: string
+          changed_on: string
+          prev_due_on: string | null
+          new_due_on: string | null
+          reason: string
+          changed_by: string | null
+          changed_by_grade: string | null
+          opened_by: string | null
+          opened_at: string | null
+          is_practice: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          item_id: string
+          project_id: string
+          changed_on: string
+          prev_due_on?: string | null
+          new_due_on?: string | null
+          reason: string
+          changed_by?: string | null
+          changed_by_grade?: string | null
+          opened_by?: string | null
+          opened_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          item_id?: string
+          project_id?: string
+          changed_on?: string
+          prev_due_on?: string | null
+          new_due_on?: string | null
+          reason?: string
+          changed_by?: string | null
+          changed_by_grade?: string | null
+          opened_by?: string | null
+          opened_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      checklist_logs: {
+        Row: {
+          id: string
+          tenant_id: string
+          scope: string
+          template_id: string | null
+          checklist_id: string | null
+          project_id: string | null
+          item_id: string | null
+          action: string
+          item_title: string | null
+          field: string | null
+          before_value: string | null
+          after_value: string | null
+          actor_user_id: string | null
+          actor_name: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          scope: string
+          template_id?: string | null
+          checklist_id?: string | null
+          project_id?: string | null
+          item_id?: string | null
+          action: string
+          item_title?: string | null
+          field?: string | null
+          before_value?: string | null
+          after_value?: string | null
+          actor_user_id?: string | null
+          actor_name?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          scope?: string
+          template_id?: string | null
+          checklist_id?: string | null
+          project_id?: string | null
+          item_id?: string | null
+          action?: string
+          item_title?: string | null
+          field?: string | null
+          before_value?: string | null
+          after_value?: string | null
+          actor_user_id?: string | null
+          actor_name?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       ad_consents: {
         Row: {
           auth_user_id: string | null
@@ -4067,6 +4406,7 @@ export type Database = {
           batch_id: string | null
           body: string
           created_at: string
+          engagement_ids: string[] | null
           error_message: string | null
           id: string
           message_type: string
@@ -4081,6 +4421,7 @@ export type Database = {
           batch_id?: string | null
           body: string
           created_at?: string
+          engagement_ids?: string[] | null
           error_message?: string | null
           id?: string
           message_type: string
@@ -4095,6 +4436,7 @@ export type Database = {
           batch_id?: string | null
           body?: string
           created_at?: string
+          engagement_ids?: string[] | null
           error_message?: string | null
           id?: string
           message_type?: string
@@ -5206,6 +5548,14 @@ export type Database = {
       }
     }
     Functions: {
+      reorder_checklist_template_items: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
+      reorder_project_checklist_items: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
       snapshot_tenant_usage: { Args: { target_date?: string }; Returns: number }
     }
     Enums: {

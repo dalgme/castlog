@@ -404,6 +404,7 @@ export async function sendAcceptance(
     tenantId: auth.tenantId,
     senderUserId: auth.userId,
     expertId: acceptance.expert_id,
+    engagementIds: [acceptance.engagement_id],
     body: [
       `[${acceptance.tenant_name}] 수락서 도착`,
       title,

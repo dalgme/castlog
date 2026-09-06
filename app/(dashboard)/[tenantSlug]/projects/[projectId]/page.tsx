@@ -87,6 +87,7 @@ import {
   type PlanPanelState,
 } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
+import { ChecklistTab } from "./checklist-tab";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
 import {
   EngagementWorkbench,
@@ -99,6 +100,7 @@ import {
   type ProgressRow,
   type SessionDispatchRow,
 } from "./engagement-progress";
+import type { SmsSummary } from "./sms-resend";
 import {
   decidePlanFlow,
   type PlanFlow,
@@ -175,7 +177,7 @@ export default async function ProjectDetailPage({
   const projectResult = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, host_org, executor_org, dday_date, project_kind"
+      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by, host_org, executor_org, dday_date, project_kind"
     )
     .eq("id", params.projectId)
     .maybeSingle();
@@ -184,7 +186,7 @@ export default async function ProjectDetailPage({
     const { data: legacyProject } = await supabase
       .from("projects")
       .select(
-        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount"
+        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by"
       )
       .eq("id", params.projectId)
       .maybeSingle();
@@ -315,6 +317,8 @@ export default async function ProjectDetailPage({
   }
 
   // 단계 23: 종료 기여도 + 종료 상태
+  // 체크리스트 상단 '담당자(로그인 주체)' — 로그인한 사람의 이름
+  const viewerName = (staffResult.data ?? []).find((u) => u.id === user?.id)?.name ?? "";
   const staffOptions = (staffResult.data ?? []).map((u) => ({
     id: u.id,
     name: u.name,
@@ -1183,12 +1187,70 @@ export default async function ProjectDetailPage({
         feedbackNote: p.feedback_note,
       }));
     }
+    // 멘토별 섭외 문자 발송 이력 (기획 지시 2026-09-05) — sms_logs.engagement_ids
+    // 로 정확히 연결. 감사·발송 로그 열람은 RLS가 좁으므로 admin으로 이 프로젝트의
+    // 섭외 건 id로만 한정해 읽는다. 컬럼이 없는 DB(SQL 먼저)면 빈 결과
+    const smsByEngagement = new Map<string, SmsSummary>();
+    {
+      const engagementIds = slotRows.flatMap((s) =>
+        s.positions.map((p) => p.engagementId).filter((v): v is string => Boolean(v))
+      );
+      const smsTenantId = tenantIdFromUser(user);
+      if (engagementIds.length > 0 && smsTenantId) {
+        try {
+          const { data: smsRows } = await createAdminClient()
+            .from("sms_logs")
+            .select("engagement_ids, status, error_message, created_at, body")
+            .eq("tenant_id", smsTenantId)
+            .overlaps("engagement_ids", engagementIds)
+            .order("created_at", { ascending: false })
+            // 건당 요청·재안내·수락서 문자가 쌓인다 — 건수에 비례해 읽는다 (리뷰 M4)
+            .limit(Math.min(2000, 200 + engagementIds.length * 10));
+          const idSet = new Set(engagementIds);
+          for (const row of smsRows ?? []) {
+            for (const eid of row.engagement_ids ?? []) {
+              if (!idSet.has(eid)) continue;
+              const cur = smsByEngagement.get(eid) ?? {
+                count: 0,
+                lastAt: null,
+                lastStatus: null,
+                lastError: null,
+                items: [],
+              };
+              cur.count += 1;
+              if (!cur.lastAt) {
+                cur.lastAt = row.created_at;
+                cur.lastStatus = row.status;
+                cur.lastError = row.error_message;
+              }
+              if (cur.items.length < 20) {
+                // 본문 첫 줄·공급자 오류는 발송 권한자(레벨 4)만 — sms_logs 열람 RLS와
+                // 같은 경계 (리뷰 M3). 나머지 직원은 횟수·시각·상태만 본다
+                cur.items.push({
+                  at: row.created_at,
+                  status: row.status,
+                  error: canExecute ? row.error_message : null,
+                  preview: canExecute ? (row.body.split("\n")[0] ?? "").slice(0, 60) : "",
+                });
+              }
+              if (!canExecute) cur.lastError = null;
+              smsByEngagement.set(eid, cur);
+            }
+          }
+        } catch {
+          // 조회 실패 = 이력 없음으로 표시
+        }
+      }
+    }
     for (const slot of slotRows) {
       for (const position of slot.positions) {
         // 전문가가 붙은 자리만 — 빈 TO는 진행 현황이 아니다
         const name = position.expertName ?? position.assignedExpertName;
         if (!name || position.status === "canceled") continue;
         progressRows.push({
+          sms: position.engagementId
+            ? (smsByEngagement.get(position.engagementId) ?? null)
+            : null,
           positionId: position.id,
           slotLabel: slotLabelById.get(slot.id) ?? slot.slotDate,
           code: position.code,
@@ -1366,6 +1428,10 @@ export default async function ProjectDetailPage({
       const accepted = raw.filter((p) => p.status === "filled").length;
       const hasHistory =
         sent > 0 || raw.some((p) => p.status === "open" && p.assigned_expert_id !== null);
+      // 회신 대기(requested) 건 — 세션 단위 재발송 대상
+      const waitingCount = raw.filter(
+        (p) => p.status === "requested" && p.engagement_id
+      ).length;
       const failures = slot.positions.flatMap((p) => {
         const note =
           p.status === "requested"
@@ -1409,6 +1475,7 @@ export default async function ProjectDetailPage({
         redispatch,
         blockedReason,
         failures,
+        waitingCount,
       });
     }
   }
@@ -1697,6 +1764,32 @@ export default async function ProjectDetailPage({
         </Card>
         )}
         {/* 세션 · 코드넘버는 공통 기반 — experts 없이도 TO 관리가 가능해야 한다 */}
+        {tab === "checklist" && (
+          // 체크리스트 (기획 지시 2026-09-05) — 편집은 프로젝트 팀(배정된 누구나)
+          // + 전사 열람 권한자. 서버 액션도 같은 판정(requireProjectTeam)
+          <ChecklistTab
+            tenantSlug={params.tenantSlug}
+            tenantId={tenantIdFromUser(user) ?? ""}
+            project={{
+              id: project.id,
+              name: project.name,
+              starts_on: project.starts_on,
+              ends_on: project.ends_on,
+              client_name: project.client_name,
+              host_org: project.host_org,
+              executor_org: project.executor_org,
+              dday_date: project.dday_date,
+            }}
+            viewerUserId={user?.id ?? ""}
+            viewerName={viewerName}
+            canEdit={
+              canViewAllProjects(grade) ||
+              myAssignmentRole !== null ||
+              project.created_by === user?.id ||
+              role === "platform_admin"
+            }
+          />
+        )}
         {tab === "sessions" && (
         <Card>
             <CardHeader className="pb-3">

@@ -25,6 +25,8 @@ export async function sendEngagementSms(params: {
   senderUserId: string;
   expertId: string;
   body: string;
+  /** 이 문자가 담은 섭외 건 — 진행 탭 발송 이력 연결 (2026-09-05) */
+  engagementIds?: string[];
 }): Promise<void> {
   if (!hasSupabaseEnv()) return;
   // 라이트 모드(수기 섭외 관리) — 전문가에게 나가는 발송을 전부 끈다.
@@ -48,6 +50,7 @@ export async function sendEngagementSms(params: {
       recipients: [
         { phone: expert.phone, expertId: params.expertId, name: expert.name },
       ],
+      engagementIds: params.engagementIds ?? null,
     });
     if (!result.ok) {
       // 섭외 처리는 막지 않되 흔적은 남긴다 — sms_logs에는 sendTenantSms가
