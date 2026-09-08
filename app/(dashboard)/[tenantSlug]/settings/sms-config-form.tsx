@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
-import { saveSmsConfig } from "./actions";
+import { saveSmsConfig, updateSmsSenderNumber } from "./actions";
 
 const SECRET_LABEL: Record<string, string> = {
   solapi: "API Secret",
@@ -36,8 +36,10 @@ const SECRET_LABEL: Record<string, string> = {
 
 /**
  * SMS 공급자 설정 폼 — 키는 저장 후 다시 표시하지 않는다 (마스킹).
- * 키가 등록되어 있으면 입력폼을 잠근다(기획 확정 2026-08-22) — '수정 입력'을
+ * 키가 등록되어 있으면 입력폼을 잠근다(기획 확정 2026-08-22) — 'API 키 변경'을
  * 눌러야 열리고, 저장이 끝나면 다시 잠긴다. 실수로 키를 덮어쓰는 일을 막는다.
+ * 다만 **발신번호는 잠금 상태에서도 바꿀 수 있다** (기획 지시 2026-09-08) —
+ * 번호만 바꾸려는데 키를 다시 받아 적게 하면 사실상 바꿀 수 없다.
  */
 export function SmsConfigForm({
   current,
@@ -62,6 +64,20 @@ export function SmsConfigForm({
   });
 
   const provider = form.watch("provider");
+
+  const senderNumber = form.watch("senderNumber");
+  const senderChanged = Boolean(current) && senderNumber !== current?.senderNumber;
+
+  function onSaveSenderOnly() {
+    setServerError(null);
+    startTransition(async () => {
+      const valid = await form.trigger("senderNumber");
+      if (!valid) return;
+      const result = await updateSmsSenderNumber(form.getValues("senderNumber"));
+      if (result.ok) toast({ description: "발신번호를 변경했습니다." });
+      else setServerError(result.error);
+    });
+  }
 
   function onSubmit(values: SmsConfigInput) {
     setServerError(null);
@@ -90,8 +106,8 @@ export function SmsConfigForm({
           <Alert>
             <AlertDescription>
               현재 설정: {current.provider} / 발신번호 {current.senderNumber} — API
-              키는 암호화되어 저장되어 있으며 다시 표시되지 않습니다. 변경하려면
-              새 키를 입력하세요.
+              키는 암호화되어 저장되어 있으며 다시 표시되지 않습니다. 발신번호는
+              아래에서 바로 바꿀 수 있고, 키를 바꿀 때만 ‘API 키 변경’을 누르세요.
             </AlertDescription>
           </Alert>
         )}
@@ -169,7 +185,8 @@ export function SmsConfigForm({
             <FormItem>
               <FormLabel>발신번호</FormLabel>
               <FormControl>
-                <Input placeholder="02-123-4567" disabled={locked} {...field} />
+                {/* 잠금 상태에서도 번호는 바꿀 수 있다 — 키 재입력을 요구하지 않는다 */}
+                <Input placeholder="02-123-4567" {...field} />
               </FormControl>
               <FormDescription>
                 통신사에 사전등록된 자사 발신번호만 사용할 수 있습니다 (법적
@@ -189,14 +206,25 @@ export function SmsConfigForm({
           )}
         />
         {locked ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => setLocked(false)}
-          >
-            수정 입력
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={pending || !senderChanged}
+              title={senderChanged ? undefined : "번호를 바꾸면 저장할 수 있습니다"}
+              onClick={onSaveSenderOnly}
+            >
+              {pending ? "저장 중..." : "발신번호만 저장"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setLocked(false)}
+            >
+              API 키 변경
+            </Button>
+          </div>
         ) : (
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "저장 중..." : "등록/저장"}

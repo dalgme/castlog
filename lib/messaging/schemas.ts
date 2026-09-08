@@ -13,6 +13,14 @@ export const smsConfigSchema = z.object({
 });
 export type SmsConfigInput = z.infer<typeof smsConfigSchema>;
 
+/** 발신번호만 변경 — 이미 등록된 자격증명은 그대로 둔다 (기획 지시 2026-09-08) */
+export const senderNumberOnlySchema = z.object({
+  senderNumber: z
+    .string()
+    .regex(/^[\d-]{8,13}$/, "사전등록 발신번호를 입력하세요 (예: 02-123-4567)."),
+});
+export type SenderNumberOnlyInput = z.infer<typeof senderNumberOnlySchema>;
+
 /** 캐스트로그 발송(b) 신청 — 자사 발신번호 + 담당자가 알려준 이용코드 */
 export const platformSmsSchema = z.object({
   senderNumber: z

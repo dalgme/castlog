@@ -11,6 +11,7 @@ import { explainActionError } from "@/lib/ux/action-errors";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   platformSmsSchema,
+  senderNumberOnlySchema,
   smsConfigSchema,
   type PlatformSmsInput,
   type SmsConfigInput,
@@ -206,6 +207,65 @@ export async function setSmsConfigActive(
     actor_role: auth.isCeo ? "org_admin" : "manager",
     action: active ? "sms_config.activate" : "sms_config.deactivate",
     resource_type: "tenant_sms_config",
+  });
+
+  revalidatePath("/[tenantSlug]/settings", "page");
+  return { ok: true };
+}
+
+/**
+ * 대표 발신번호만 변경 (기획 지시 2026-09-08).
+ *
+ * 번호 하나 바꾸자고 API 키를 다시 받아 적을 수는 없다 — 키는 저장 후 화면에
+ * 다시 보이지 않으므로, 전체 저장을 요구하면 키를 새로 발급받지 않는 한 번호를
+ * 못 바꾼다. 여기서는 sender_number만 갱신하고 자격증명·모드는 건드리지 않는다.
+ */
+export async function updateSmsSenderNumber(
+  senderNumber: string
+): Promise<SaveSmsConfigResult> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const parsed = senderNumberOnlySchema.safeParse({ senderNumber });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const { userId, tenantId } = auth;
+
+  const supabase = createClient();
+  const { data: existing } = await supabase
+    .from("tenant_sms_configs")
+    .select("sender_number")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!existing) {
+    return {
+      ok: false,
+      error:
+        "아직 발송 설정이 없습니다 (상태 미충족). 공급자·API 키를 먼저 등록한 뒤 발신번호를 바꿀 수 있습니다.",
+    };
+  }
+  if (existing.sender_number === parsed.data.senderNumber) return { ok: true };
+
+  const { error } = await supabase
+    .from("tenant_sms_configs")
+    .update({ sender_number: parsed.data.senderNumber })
+    .eq("tenant_id", tenantId);
+  if (error) {
+    return { ok: false, error: await explainActionError(error.message, "발신번호를 저장하지 못했습니다.") };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_auth_user_id: userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: "sms_config.sender_update",
+    resource_type: "tenant_sms_config",
+    before_data: { sender_number: existing.sender_number },
+    after_data: { sender_number: parsed.data.senderNumber },
   });
 
   revalidatePath("/[tenantSlug]/settings", "page");
