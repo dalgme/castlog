@@ -70,7 +70,7 @@ export function CreateTenantDialog({
       slug: "",
       name: defaults?.name ?? "",
       planName: "",
-      modules: { experts: true, approvals: true, operations: true },
+      modules: { experts: true, approvals: true, operations: true, quotes: true },
       orgAdminName: defaults?.orgAdminName ?? "",
       orgAdminEmail: defaults?.orgAdminEmail ?? "",
     },

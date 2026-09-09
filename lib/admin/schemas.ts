@@ -23,6 +23,7 @@ export const tenantCreateSchema = z.object({
     experts: z.boolean(),
     approvals: z.boolean(),
     operations: z.boolean(),
+    quotes: z.boolean(),
   }),
   orgAdminName: z
     .string()
@@ -42,6 +43,7 @@ export const tenantModulesSchema = z.object({
     experts: z.boolean(),
     approvals: z.boolean(),
     operations: z.boolean(),
+    quotes: z.boolean(),
   }),
 });
 export type TenantModulesInput = z.infer<typeof tenantModulesSchema>;

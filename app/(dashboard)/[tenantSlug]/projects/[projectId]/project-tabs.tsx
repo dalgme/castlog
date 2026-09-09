@@ -16,6 +16,7 @@ export const PROJECT_TAB_KEYS = [
   "overview",
   "basic",
   "checklist",
+  "quote",
   "sessions",
   "experts",
   "engage",
@@ -30,6 +31,8 @@ const TAB_DEFS: readonly {
   label: string;
   /** experts 모듈이 있어야 의미가 있는 탭 */
   needsExperts?: boolean;
+  /** quotes(견적·정산) 모듈이 있어야 의미가 있는 탭 */
+  needsQuotes?: boolean;
   /** 탭 고유색 (기획 확정 2026-08-22) — Tailwind는 리터럴 클래스만 인식한다 */
   activeClass: string;
   idleClass: string;
@@ -55,6 +58,14 @@ const TAB_DEFS: readonly {
     activeClass: "border-amber-600 bg-amber-600 text-white shadow-sm",
     idleClass:
       "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+  },
+  {
+    // 견적·내부실견적·정산 (기획 지시 2026-09-09) — quotes 모듈
+    key: "quote",
+    label: "견적·정산",
+    needsQuotes: true,
+    activeClass: "border-rose-600 bg-rose-600 text-white shadow-sm",
+    idleClass: "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
   },
   {
     key: "sessions",
@@ -103,11 +114,13 @@ const TAB_DEFS: readonly {
 /** 쿼리 문자열을 탭 키로 — 모르는 값·모듈 꺼진 탭은 첫 탭으로 되돌린다 */
 export function resolveProjectTab(
   raw: string | undefined,
-  hasExperts: boolean
+  hasExperts: boolean,
+  hasQuotes = true
 ): ProjectTabKey {
   const found = TAB_DEFS.find((t) => t.key === raw);
   if (!found) return "overview";
   if (found.needsExperts && !hasExperts) return "overview";
+  if (found.needsQuotes && !hasQuotes) return "overview";
   return found.key;
 }
 
@@ -116,13 +129,17 @@ export function ProjectTabs({
   projectId,
   active,
   hasExperts,
+  hasQuotes = true,
 }: {
   tenantSlug: string;
   projectId: string;
   active: ProjectTabKey;
   hasExperts: boolean;
+  hasQuotes?: boolean;
 }) {
-  const tabs = TAB_DEFS.filter((t) => !t.needsExperts || hasExperts);
+  const tabs = TAB_DEFS.filter(
+    (t) => (!t.needsExperts || hasExperts) && (!t.needsQuotes || hasQuotes)
+  );
 
   return (
     <nav className="flex flex-wrap gap-1 border-b bg-white px-5 pt-3">

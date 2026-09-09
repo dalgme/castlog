@@ -88,6 +88,7 @@ import {
 } from "./engagement-plan-panel";
 import { ProjectTabs, resolveProjectTab } from "./project-tabs";
 import { ChecklistTab } from "./checklist-tab";
+import { QuoteTab } from "./quote-tab";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
 import {
   EngagementWorkbench,
@@ -977,7 +978,7 @@ export default async function ProjectDetailPage({
   const planFlow: PlanFlow =
     modules.experts &&
     modules.approvals &&
-    resolveProjectTab(searchParams.tab, modules.experts) === "experts"
+    resolveProjectTab(searchParams.tab, modules.experts, modules.quotes) === "experts"
       ? await decidePlanFlow({
           amount: planDraft?.amount ?? 0,
           requesterGrade: grade,
@@ -1006,7 +1007,7 @@ export default async function ProjectDetailPage({
     canManagePayments(),
   ]);
 
-  const tab = resolveProjectTab(searchParams.tab, modules.experts);
+  const tab = resolveProjectTab(searchParams.tab, modules.experts, modules.quotes);
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -1521,6 +1522,7 @@ export default async function ProjectDetailPage({
         projectId={project.id}
         active={tab}
         hasExperts={modules.experts}
+        hasQuotes={modules.quotes}
       />
       <main className="space-y-5 p-5">
         {tab === "overview" && (
@@ -1782,6 +1784,20 @@ export default async function ProjectDetailPage({
             }}
             viewerUserId={user?.id ?? ""}
             viewerName={viewerName}
+            canEdit={
+              canViewAllProjects(grade) ||
+              myAssignmentRole !== null ||
+              project.created_by === user?.id ||
+              role === "platform_admin"
+            }
+          />
+        )}
+        {tab === "quote" && (
+          // 견적·내부실견적·정산 (기획 지시 2026-09-09) — quotes 모듈.
+          // 편집은 체크리스트와 같은 판정(프로젝트 팀 + 전사 열람 권한자)
+          <QuoteTab
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
             canEdit={
               canViewAllProjects(grade) ||
               myAssignmentRole !== null ||
