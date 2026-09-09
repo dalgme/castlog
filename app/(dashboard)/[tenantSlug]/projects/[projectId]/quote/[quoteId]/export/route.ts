@@ -6,6 +6,7 @@ import { xlsxResponse, type SheetRows } from "@/lib/exports/xlsx";
 import { getTenantModules } from "@/lib/modules/server";
 import { buildQuoteTotals } from "@/lib/quotes/calc";
 import { loadQuote } from "@/lib/quotes/load";
+import { logQuote, requireQuotesModule } from "@/lib/quotes/server";
 
 /**
  * 견적서 엑셀 내보내기 (기획 지시 2026-09-09 — 01).
@@ -107,6 +108,15 @@ export async function GET(
     { 항목: "이메일", 내용: quote.supplierEmail ?? "" },
     { 항목: "버전", 내용: `v${quote.version}${quote.status === "issued" ? " (발행)" : " (작성 중)"}` },
   ];
+
+  // 누가 언제 대외 문서를 내려받았는지 남긴다 (마이그레이션 주석의 doc.export)
+  const gate = await requireQuotesModule(quote.projectId);
+  if (gate.ok) {
+    await logQuote(gate.actor, {
+      docType: "quote", docId: quote.id, projectId: quote.projectId, version: quote.version,
+      action: "doc.export", after: "엑셀 내려받기",
+    });
+  }
 
   return xlsxResponse(`견적서_${quote.title}_v${quote.version}`, [
     ["견적서", header],

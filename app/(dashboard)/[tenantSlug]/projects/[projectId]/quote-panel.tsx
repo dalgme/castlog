@@ -194,7 +194,12 @@ export function QuotePanel({
         pending={pending}
         run={run}
         onCreateVersion={() =>
-          run(() => newQuoteVersion(quote.id), `v${quote.version} 내용을 복사한 새 버전을 만들었습니다.`)
+          // 만들고 나서 이전 버전에 머물면 아무 일도 없던 것처럼 보인다 (리뷰 M6)
+          run(async () => {
+            const r = await newQuoteVersion(quote.id);
+            if (r.ok) setSelectedId(r.id);
+            return r;
+          }, `v${quote.version} 내용을 복사한 새 버전을 만들었습니다.`)
         }
       />
     </div>
@@ -633,7 +638,7 @@ function NumCell({
   return (
     <td className="py-0.5 pr-2">
       <div className="flex items-center gap-0.5">
-        <MoneyInput value={value} disabled={!canEdit} ariaLabel={label} onCommit={onValue} />
+        <MoneyInput value={value} disabled={!canEdit} ariaLabel={label} decimals onCommit={onValue} />
         <span className="w-8 shrink-0">
           <EditableText value={unit} disabled={!canEdit} placeholder="단위" onSave={onUnit} />
         </span>

@@ -15,9 +15,9 @@ export type RoundingMode = (typeof ROUNDING_MODES)[number];
 
 export const ROUNDING_LABELS: Record<RoundingMode, string> = {
   none: "선택 안함",
-  floor_1k: "1,000원 미만 절사",
-  floor_10k: "10,000원 미만 절사",
-  floor_100k: "10,000원 이하 절사 (십만 단위)",
+  floor_1k: "1,000원 미만 절사 (천 단위 버림)",
+  floor_10k: "10,000원 미만 절사 (만 단위 버림)",
+  floor_100k: "100,000원 미만 절사 (십만 단위 버림)",
 };
 
 export function isRoundingMode(v: unknown): v is RoundingMode {
@@ -47,6 +47,17 @@ export function applyRounding(total: number, mode: RoundingMode): number {
 export function formatMoney(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "";
   return Math.round(value).toLocaleString("ko-KR");
+}
+
+/**
+ * 수량·횟수·일수 표시 — 소수를 반올림하면 안 된다 (리뷰 M4).
+ * 0.5명 × 1,000,000원 = 500,000원인데 수량이 '1'로 보이면 발주처에 나가는
+ * 종이 위에서 산식이 맞지 않는다.
+ */
+export function formatQty(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 100) / 100;
+  return rounded.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 }
 
 /** 비율 표시 — 12.3% */

@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { ROUNDING_MODES } from "@/lib/quotes/calc";
 import {
   logQuote,
@@ -25,7 +26,12 @@ import {
 export type QuoteResult = { ok: true } | { ok: false; error: string };
 
 const uuid = z.string().uuid();
-const SYSTEM_FAIL = "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.";
+const SAVE_FAIL = "저장에 실패했습니다.";
+
+/** 원인 분류를 문구에 담는다 (CLAUDE.md §12-9) */
+async function saveError(message: string, fallback = SAVE_FAIL): Promise<{ ok: false; error: string }> {
+  return { ok: false, error: await explainActionError(message, fallback) };
+}
 const LOCKED =
   "발행된 견적서는 고칠 수 없습니다 (규칙). '새 버전 작성'을 누르면 이 내용을 복사한 다음 버전이 만들어지고, 발행본은 그대로 보관됩니다.";
 
@@ -87,6 +93,22 @@ export async function createQuote(
     .eq("id", gate.actor.tenantId)
     .maybeSingle();
 
+  // 두 사람이 각자 탭에서 누르면 빈 초안이 둘 생긴다 — 서버에서 막는다 (리뷰 M2)
+  const { data: openDraft } = await supabase
+    .from("project_quotes")
+    .select("id, version")
+    .eq("project_id", projectId)
+    .eq("status", "draft")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (openDraft) {
+    return {
+      ok: false,
+      error: `작성 중인 견적서(v${openDraft.version})가 이미 있습니다 (상태 미충족). 그 초안을 발행하거나 지운 뒤 새로 만드세요.`,
+    };
+  }
+
   const { data: last } = await supabase
     .from("project_quotes")
     .select("version")
@@ -124,7 +146,7 @@ export async function createQuote(
     })
     .select("id")
     .single();
-  if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !created) return saveError(error?.message ?? "");
 
   // 빈 표는 무엇을 적어야 하는지 알려주지 않는다 — 표준 항목 묶음을 한 줄씩 깔아 둔다
   await supabase.from("project_quote_items").insert(
@@ -228,7 +250,7 @@ export async function updateQuote(quoteId: string, patch: QuotePatch): Promise<Q
   if (update.title === null) return { ok: false, error: "사업명을 입력하세요." };
 
   const { error } = await supabase.from("project_quotes").update(update).eq("id", quoteId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   for (const c of changes) {
     await logQuote(actor, {
       docType: "quote", docId: quoteId, projectId: quote.project_id, version: quote.version,
@@ -260,7 +282,7 @@ export async function issueQuote(quoteId: string): Promise<QuoteResult> {
       updated_by: actor.userId,
     })
     .eq("id", quoteId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: "quote", docId: quoteId, projectId: quote.project_id, version: quote.version,
     action: "doc.issue", after: `v${quote.version}`,
@@ -285,6 +307,8 @@ export async function newQuoteVersion(
     .select("id, version")
     .eq("project_id", quote.project_id)
     .eq("status", "draft")
+    .order("version", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (openDraft) {
     return {
@@ -335,7 +359,7 @@ export async function newQuoteVersion(
     })
     .select("id")
     .single();
-  if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !created) return saveError(error?.message ?? "");
 
   const { data: items } = await supabase
     .from("project_quote_items")
@@ -378,7 +402,7 @@ export async function deleteQuote(quoteId: string): Promise<QuoteResult> {
     };
   }
   const { error } = await supabase.from("project_quotes").delete().eq("id", quoteId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: "quote", docId: quoteId, projectId: quote.project_id, version: quote.version,
     action: "doc.delete", before: `v${quote.version}`,
@@ -465,7 +489,7 @@ export async function addQuoteItem(
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !data) return saveError(error?.message ?? "");
   await logQuote(actor, {
     docType: "quote", docId: quoteId, projectId: quote.project_id, version: quote.version,
     action: "item.add", itemTitle: seed?.section ?? prev?.section ?? "새 항목",
@@ -514,7 +538,7 @@ export async function updateQuoteItem(
   if (update.name === null) update.name = "";
 
   const { error } = await supabase.from("project_quote_items").update(update).eq("id", itemId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   for (const c of changes) {
     await logQuote(actor, {
       docType: "quote", docId: before.quote_id, projectId: quote.project_id, version: quote.version,
@@ -539,7 +563,7 @@ export async function deleteQuoteItem(itemId: string): Promise<QuoteResult> {
   if (!open.ok) return open;
   const { actor, quote } = open;
   const { error } = await supabase.from("project_quote_items").delete().eq("id", itemId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: "quote", docId: before.quote_id, projectId: quote.project_id, version: quote.version,
     action: "item.delete", itemTitle: before.name || before.section, before: before.name,
