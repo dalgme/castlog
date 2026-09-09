@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 
@@ -8,6 +8,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { buildCostTotals, formatMoney, formatPercent } from "@/lib/quotes/calc";
@@ -63,7 +71,14 @@ export function CostPanel({
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const mine = sheets.filter((s) => s.kind === kind);
+  const mineKey = mine.map((s) => s.id).join(",");
   const [selectedId, setSelectedId] = useState<string | null>(mine[0]?.id ?? null);
+  // 목록이 바뀌었는데 고른 문서가 사라졌으면 최신본으로 (리뷰 M6)
+  useEffect(() => {
+    const ids = mine.map((s) => s.id);
+    setSelectedId((cur) => (cur && ids.includes(cur) ? cur : (ids[0] ?? null)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mineKey]);
   const sheet = mine.find((s) => s.id === selectedId) ?? mine[0] ?? null;
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) {
@@ -92,7 +107,13 @@ export function CostPanel({
           <Button
             type="button"
             disabled={pending}
-            onClick={() => run(() => createCostSheet(projectId, kind), `${KIND_LABEL[kind]} 초안을 만들었습니다.`)}
+            onClick={() =>
+              run(async () => {
+                const r = await createCostSheet(projectId, kind);
+                if (r.ok) setSelectedId(r.id);
+                return r;
+              }, `${KIND_LABEL[kind]} 초안을 만들었습니다.`)
+            }
           >
             <Plus className="mr-1 h-4 w-4" aria-hidden /> {KIND_LABEL[kind]} 만들기
           </Button>
@@ -141,6 +162,7 @@ export function CostPanel({
         latestQuoteVersion={latestQuoteVersion}
         pending={pending}
         run={run}
+        onSelect={setSelectedId}
       />
     </div>
   );
@@ -154,6 +176,7 @@ function CostSheetCard({
   latestQuoteVersion,
   pending,
   run,
+  onSelect,
 }: {
   sheet: LoadedCostSheet;
   kind: CostSheetKind;
@@ -162,7 +185,10 @@ function CostSheetCard({
   latestQuoteVersion: number | null;
   pending: boolean;
   run: (fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) => void;
+  onSelect: (id: string) => void;
 }) {
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const editable = canEdit && sheet.status === "draft";
   const totals = buildCostTotals(
     sheet.lines.map((l) => ({
@@ -214,7 +240,15 @@ function CostSheetCard({
                   size="sm"
                   variant="outline"
                   disabled={pending}
-                  onClick={() => run(() => resyncCostSheet(sheet.id), "견적서 최신본을 반영했습니다.")}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "견적서 최신본으로 왼쪽을 다시 깝니다. 적어 둔 지출은 항목 이름으로 이어지고, 새 견적서에서 사라진 항목의 지출은 '연결 끊김' 줄로 남습니다. 진행할까요?"
+                      )
+                    )
+                      return;
+                    run(() => resyncCostSheet(sheet.id), "견적서 최신본을 반영했습니다.");
+                  }}
                 >
                   <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden /> 견적 최신본 반영
                 </Button>
@@ -245,8 +279,8 @@ function CostSheetCard({
                 variant="outline"
                 disabled={pending}
                 onClick={() => {
-                  const reason = window.prompt("반려 사유를 입력하세요.");
-                  if (reason && reason.trim()) run(() => rejectCostSheet(sheet.id, reason), "반려했습니다.");
+                  setRejectReason("");
+                  setRejectOpen(true);
                 }}
               >
                 반려
@@ -282,7 +316,13 @@ function CostSheetCard({
                 size="sm"
                 variant="outline"
                 disabled={pending}
-                onClick={() => run(() => newCostSheetVersion(sheet.id), "새 버전 초안을 만들었습니다 — 재승인이 필요합니다.")}
+                onClick={() =>
+                  run(async () => {
+                    const r = await newCostSheetVersion(sheet.id);
+                    if (r.ok) onSelect(r.id);
+                    return r;
+                  }, "새 버전 초안을 만들었습니다 — 재승인이 필요합니다.")
+                }
               >
                 새 버전 작성
               </Button>
@@ -450,9 +490,7 @@ function CostSheetCard({
                 <td className="py-1 pr-2 text-muted-foreground">자동 계산</td>
                 <td className="py-1 pr-2 text-right tabular-nums">{formatMoney(totals.vatRow.spend)}</td>
                 <td />
-                <td className="py-1 pr-2 text-right tabular-nums text-muted-foreground">
-                  {formatMoney(totals.refundTotal)}
-                </td>
+                <td className="py-1 pr-2 text-right text-[11px] text-muted-foreground">환급 합계 반영</td>
                 <td className="py-1 pr-2 text-right tabular-nums">{formatMoney(totals.vatRow.profit)}</td>
                 <td />
               </tr>
@@ -495,6 +533,38 @@ function CostSheetCard({
           </Button>
         )}
       </CardContent>
+
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{KIND_LABEL[kind]} 반려</DialogTitle>
+            <DialogDescription>
+              반려하면 초안으로 돌아가 작성자가 고칠 수 있습니다. 사유는 변경 로그에 남습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="예: 강사비 단가가 계약서와 다릅니다. 확인 후 다시 올려 주세요."
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setRejectOpen(false)}>
+              취소
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || !rejectReason.trim()}
+              onClick={() => {
+                setRejectOpen(false);
+                run(() => rejectCostSheet(sheet.id, rejectReason), "반려했습니다.");
+              }}
+            >
+              반려하기
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

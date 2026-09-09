@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { formatMoney, parseMoney } from "@/lib/quotes/calc";
+import { formatMoney, formatQty, parseMoney } from "@/lib/quotes/calc";
 
 /**
  * 금액·수량 입력 — 보고 있을 때는 1,000 단위 쉼표, 고칠 때는 숫자만
@@ -18,6 +18,7 @@ export function MoneyInput({
   className,
   ariaLabel,
   placeholder,
+  decimals = false,
 }: {
   value: number;
   onCommit: (next: number) => void;
@@ -26,7 +27,10 @@ export function MoneyInput({
   className?: string;
   ariaLabel?: string;
   placeholder?: string;
+  /** 수량·횟수·일수처럼 소수가 의미를 갖는 칸 — 반올림해 보여주지 않는다 */
+  decimals?: boolean;
 }) {
+  const show = decimals ? formatQty : formatMoney;
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState(String(value));
   const committed = useRef(value);
@@ -39,7 +43,7 @@ export function MoneyInput({
   if (disabled) {
     return (
       <span className={cn("block px-1 py-0.5 text-xs tabular-nums", align === "right" && "text-right", className)}>
-        {formatMoney(value)}
+        {show(value)}
       </span>
     );
   }
@@ -50,7 +54,7 @@ export function MoneyInput({
       inputMode="decimal"
       aria-label={ariaLabel}
       placeholder={placeholder}
-      value={focused ? draft : formatMoney(value)}
+      value={focused ? draft : show(value)}
       onFocus={() => {
         setDraft(value === 0 ? "" : String(value));
         setFocused(true);

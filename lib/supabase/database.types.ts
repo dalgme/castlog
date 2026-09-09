@@ -5920,6 +5920,10 @@ export type Database = {
       }
     }
     Functions: {
+      resync_project_cost_lines: {
+        Args: { p_sheet_id: string; p_lines: Json }
+        Returns: number
+      }
       reorder_checklist_template_items: {
         Args: { p_ids: string[] }
         Returns: number

@@ -1,10 +1,10 @@
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
 
-import { requireUser } from "@/lib/auth/session";
+import { requireRole } from "@/lib/auth/session";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getTenantModules } from "@/lib/modules/server";
-import { buildQuoteTotals, formatMoney } from "@/lib/quotes/calc";
+import { buildQuoteTotals, formatMoney, formatQty } from "@/lib/quotes/calc";
 import { loadQuote } from "@/lib/quotes/load";
 import { EmptyState } from "@/components/layout/empty-state";
 
@@ -22,7 +22,8 @@ export default async function QuotePrintPage({
 }: {
   params: { tenantSlug: string; projectId: string; quoteId: string };
 }) {
-  await requireUser();
+  // 엑셀 라우트와 같은 기준으로 막는다 — 전문가는 대외 견적서를 볼 수 없다 (리뷰 L7)
+  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   if (!hasSupabaseEnv()) {
     return <EmptyState title="서버 설정 대기 중" description="Supabase 환경변수가 설정되면 표시됩니다." />;
   }
@@ -108,9 +109,9 @@ export default async function QuotePrintPage({
                 <tr>
                   <Td>{item.section ?? ""}</Td>
                   <Td>{item.name}</Td>
-                  <Td className="text-right">{`${formatMoney(item.qty)}${item.qtyUnit ?? ""}`}</Td>
-                  <Td className="text-right">{`${formatMoney(item.times)}${item.timesUnit ?? ""}`}</Td>
-                  <Td className="text-right">{`${formatMoney(item.days)}${item.daysUnit ?? ""}`}</Td>
+                  <Td className="text-right">{`${formatQty(item.qty)}${item.qtyUnit ?? ""}`}</Td>
+                  <Td className="text-right">{`${formatQty(item.times)}${item.timesUnit ?? ""}`}</Td>
+                  <Td className="text-right">{`${formatQty(item.days)}${item.daysUnit ?? ""}`}</Td>
                   <Td className="text-right">{formatMoney(item.unitPrice)}</Td>
                   <Td className="text-right">{formatMoney(totals.amounts[item.id] ?? 0)}</Td>
                 </tr>
@@ -126,6 +127,7 @@ export default async function QuotePrintPage({
               </Fragment>
             );
           })}
+          <SumRow label="소 계 합" value={totals.directTotal} />
           <SumRow label={`간접비 (${quote.indirectLabel}, ${(quote.indirectRate * 100).toFixed(1)}%)`} value={totals.indirect} />
           <SumRow label="합 계 (소계 + 간접비)" value={totals.totalWithIndirect} strong />
           <SumRow label={`${quote.profitLabel} (${(quote.profitRate * 100).toFixed(1)}%)`} value={totals.profit} />

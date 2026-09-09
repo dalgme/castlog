@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { gradeRank, isUserGrade } from "@/lib/auth/grades";
+import { explainActionError } from "@/lib/ux/action-errors";
 import { buildQuoteTotals } from "@/lib/quotes/calc";
 import { loadQuote } from "@/lib/quotes/load";
 import { logQuote, requireQuotesModule } from "@/lib/quotes/server";
@@ -24,7 +25,12 @@ export type CostResult = { ok: true } | { ok: false; error: string };
 
 const uuid = z.string().uuid();
 const amount = z.number().finite().min(-1e12).max(1e12);
-const SYSTEM_FAIL = "저장에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.";
+const SAVE_FAIL = "저장에 실패했습니다.";
+
+/** 원인 분류를 문구에 담는다 (CLAUDE.md §12-9) — RLS 거부를 시스템 오류로 뭉뚱그리지 않는다 */
+async function saveError(message: string, fallback = SAVE_FAIL): Promise<{ ok: false; error: string }> {
+  return { ok: false, error: await explainActionError(message, fallback) };
+}
 
 const KIND_LABEL: Record<CostSheetKind, string> = {
   internal: "내부실견적서",
@@ -62,21 +68,22 @@ async function openSheet(sheetId: string, opts: { forEdit: boolean }) {
   return { ok: true as const, actor: gate.actor, sheet, kind, supabase };
 }
 
-/** 결재 자격 — 작성자보다 높은 권한단계여야 한다 (기획 지시: 상급자 결재) */
-async function isSupervisorOf(
-  approverGrade: string | null,
-  targetUserId: string | null
-): Promise<boolean> {
-  if (!isUserGrade(approverGrade)) return false;
-  if (!targetUserId) return true;
+/**
+ * 결재 자격 — 관련자(작성자·상신자) **전원**보다 높은 권한단계여야 한다.
+ * 종전에는 상신자 한 사람만 봤다: 팀장이 쓴 문서를 사원이 대신 상신하면 그
+ * 팀장이 자기 문서를 스스로 승인할 수 있었다 (리뷰 H2).
+ */
+async function isAbove(actorGrade: string | null, targetUserIds: (string | null)[]): Promise<boolean> {
+  if (!isUserGrade(actorGrade)) return false;
+  const ids = Array.from(new Set(targetUserIds.filter((v): v is string => Boolean(v))));
+  if (ids.length === 0) return true;
   const supabase = createClient();
-  const { data: target } = await supabase
-    .from("users")
-    .select("grade")
-    .eq("id", targetUserId)
-    .maybeSingle();
-  const targetGrade = isUserGrade(target?.grade) ? target.grade : null;
-  return gradeRank(approverGrade) > gradeRank(targetGrade);
+  const { data } = await supabase.from("users").select("id, grade").in("id", ids);
+  const highest = (data ?? []).reduce(
+    (max, u) => Math.max(max, gradeRank(isUserGrade(u.grade) ? u.grade : null)),
+    0
+  );
+  return gradeRank(actorGrade) > highest;
 }
 
 // ── 문서 만들기 ─────────────────────────────────────────────────────────────
@@ -91,15 +98,38 @@ async function baseLinesFromQuote(quoteId: string) {
     })),
     { indirectRate: quote.indirectRate, profitRate: quote.profitRate, vatRate: quote.vatRate, rounding: quote.rounding }
   );
+  // 간접비·기업이윤도 계약금액의 일부다 — 줄로 깔지 않으면 그만큼 수익이
+  // 통째로 빠진다(원본 엑셀 '내부용' 시트도 두 항목을 행으로 둔다, 리뷰 H4).
   return {
     quote,
     totals,
-    lines: quote.items.map((i) => ({
-      baseSection: i.section,
-      baseName: i.name,
-      baseAmount: totals.amounts[i.id] ?? 0,
-    })),
+    lines: [
+      ...quote.items.map((i) => ({
+        baseSection: i.section,
+        baseName: i.name,
+        baseAmount: totals.amounts[i.id] ?? 0,
+      })),
+      { baseSection: "간접비", baseName: quote.indirectLabel, baseAmount: totals.indirect },
+      { baseSection: "기업이윤", baseName: quote.profitLabel, baseAmount: totals.profit },
+    ],
   };
+}
+
+/** 최신 견적서 — 발행본 우선 (리뷰 M3) */
+async function latestQuote(projectId: string, opts: { issuedOnly: boolean }) {
+  const supabase = createClient();
+  let q = supabase
+    .from("project_quotes")
+    .select("id, version, status")
+    .eq("project_id", projectId);
+  if (opts.issuedOnly) q = q.eq("status", "issued");
+  const { data } = await q.order("version", { ascending: false }).limit(1).maybeSingle();
+  return data ?? null;
+}
+
+/** 왼쪽 줄을 값으로 잇는다 — 순서(인덱스)가 아니라 (항목, 세부내역) 짝으로 (리뷰 H3·M7) */
+function keyOfLine(section: string | null, name: string | null): string {
+  return `${(section ?? "").trim()}\u0001${(name ?? "").trim()}`;
 }
 
 /**
@@ -118,12 +148,16 @@ export async function createCostSheet(
   }
   const supabase = createClient();
 
+  // 행이 2개 이상이면 maybeSingle이 error + data:null을 준다 — 그대로 두면
+  // 중복 방지 가드가 오히려 통과한다(fail-open, 리뷰 M2)
   const { data: openDraft } = await supabase
     .from("project_cost_sheets")
     .select("id, version, status")
     .eq("project_id", projectId)
     .eq("kind", kind)
     .neq("status", "confirmed")
+    .order("version", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (openDraft) {
     return {
@@ -136,16 +170,13 @@ export async function createCostSheet(
   let quoteId: string | null = null;
   let sourceSheetId: string | null = null;
   let sourceVersion: number | null = null;
-  let compare = new Map<number, { note: string | null; spend: number }>();
+  const compare = new Map<string, { note: string | null; spend: number }>();
+  const compareExtras: { note: string | null; spend: number }[] = [];
 
   if (kind === "internal") {
-    const { data: quote } = await supabase
-      .from("project_quotes")
-      .select("id, version")
-      .eq("project_id", projectId)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // 발행본을 우선한다 — 작성 중인 빈 초안(단가 0)에 붙으면 제안금액이 0이 되어
+    // 수익률이 '-'로 나온다 (리뷰 M3)
+    const quote = await latestQuote(projectId, { issuedOnly: true }) ?? (await latestQuote(projectId, { issuedOnly: false }));
     if (!quote) {
       return { ok: false, error: "이 프로젝트에 견적서가 없습니다 (상태 미충족). 견적서를 먼저 만드세요." };
     }
@@ -172,10 +203,15 @@ export async function createCostSheet(
     quoteId = internal.quote_id;
     const { data: srcLines } = await supabase
       .from("project_cost_lines")
-      .select("note, spend, sort_order")
+      .select("base_section, base_name, note, spend, sort_order")
       .eq("sheet_id", internal.id)
       .order("sort_order", { ascending: true });
-    compare = new Map((srcLines ?? []).map((l, i) => [i, { note: l.note, spend: Number(l.spend) }]));
+    for (const l of srcLines ?? []) {
+      const entry = { note: l.note, spend: Number(l.spend) };
+      // 견적에 없던 '추가 지출'은 짝지을 줄이 없다 — 비교 전용 줄로 뒤에 붙인다
+      if (l.base_name === null) compareExtras.push(entry);
+      else compare.set(keyOfLine(l.base_section, l.base_name), entry);
+    }
   }
 
   if (!quoteId) {
@@ -216,19 +252,35 @@ export async function createCostSheet(
     })
     .select("id")
     .single();
-  if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !created) return saveError(error?.message ?? "", `${KIND_LABEL[kind]}를 만들지 못했습니다.`);
 
-  if (base.lines.length > 0) {
-    await supabase.from("project_cost_lines").insert(
-      base.lines.map((l, i) => ({
-        tenant_id: gate.actor.tenantId,
-        sheet_id: created.id,
-        sort_order: (i + 1) * 10,
+  const rows = [
+    ...base.lines.map((l) => {
+      const c = compare.get(keyOfLine(l.baseSection, l.baseName));
+      return {
         base_section: l.baseSection,
         base_name: l.baseName,
         base_amount: l.baseAmount,
-        compare_note: compare.get(i)?.note ?? null,
-        compare_spend: compare.get(i)?.spend ?? null,
+        compare_note: c?.note ?? null,
+        compare_spend: c?.spend ?? null,
+      };
+    }),
+    // 내부실견적서에만 있던 추가 지출도 정산서에서 보여야 한다 (리뷰 M7)
+    ...compareExtras.map((c) => ({
+      base_section: null,
+      base_name: null,
+      base_amount: 0,
+      compare_note: c.note,
+      compare_spend: c.spend,
+    })),
+  ];
+  if (rows.length > 0) {
+    await supabase.from("project_cost_lines").insert(
+      rows.map((r, i) => ({
+        tenant_id: gate.actor.tenantId,
+        sheet_id: created.id,
+        sort_order: (i + 1) * 10,
+        ...r,
       }))
     );
   }
@@ -297,7 +349,7 @@ export async function updateCostSheet(sheetId: string, patch: CostSheetPatch): P
   if (changes.length === 0) return { ok: true };
 
   const { error } = await supabase.from("project_cost_sheets").update(update).eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   for (const c of changes) {
     await logQuote(actor, {
       docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
@@ -358,7 +410,7 @@ export async function updateCostLine(lineId: string, patch: CostLinePatch): Prom
   if (changes.length === 0) return { ok: true };
 
   const { error } = await supabase.from("project_cost_lines").update(update).eq("id", lineId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   for (const c of changes) {
     await logQuote(actor, {
       docType: kind, docId: before.sheet_id, projectId: sheet.project_id, version: sheet.version,
@@ -405,7 +457,7 @@ export async function addCostLine(
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !data) return saveError(error?.message ?? "");
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
     action: "item.add", itemTitle: "(추가 항목)",
@@ -434,7 +486,7 @@ export async function deleteCostLine(lineId: string): Promise<CostResult> {
     };
   }
   const { error } = await supabase.from("project_cost_lines").delete().eq("id", lineId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: kind, docId: before.sheet_id, projectId: sheet.project_id, version: sheet.version,
     action: "item.delete", itemTitle: before.note || "(추가 항목)",
@@ -458,7 +510,7 @@ export async function submitCostSheet(sheetId: string): Promise<CostResult> {
       updated_by: actor.userId,
     })
     .eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
     action: "doc.submit", after: `v${sheet.version}`,
@@ -472,12 +524,19 @@ export async function approveCostSheet(sheetId: string): Promise<CostResult> {
   if (!open.ok) return open;
   const { supabase, actor, sheet, kind } = open;
   if (sheet.status !== "submitted") {
-    return { ok: false, error: `결재 상신된 문서만 승인할 수 있습니다 (상태 미충족).` };
+    return { ok: false, error: "결재 상신된 문서만 승인할 수 있습니다 (상태 미충족)." };
   }
-  if (!(await isSupervisorOf(actor.grade, sheet.submitted_by ?? sheet.created_by))) {
+  const authors = [sheet.created_by, sheet.submitted_by];
+  if (authors.includes(actor.userId)) {
     return {
       ok: false,
-      error: `${KIND_LABEL[kind]}는 작성자보다 상위 권한단계의 상급자만 승인할 수 있습니다 (권한 규칙).`,
+      error: `본인이 작성하거나 상신한 ${KIND_LABEL[kind]}는 스스로 승인할 수 없습니다 (권한 규칙). 상급자에게 승인을 요청하세요.`,
+    };
+  }
+  if (!(await isAbove(actor.grade, authors))) {
+    return {
+      ok: false,
+      error: `${KIND_LABEL[kind]}는 작성자·상신자보다 상위 권한단계의 상급자만 승인할 수 있습니다 (권한 규칙).`,
     };
   }
   const { error } = await supabase
@@ -489,7 +548,7 @@ export async function approveCostSheet(sheetId: string): Promise<CostResult> {
       updated_by: actor.userId,
     })
     .eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
     action: "doc.approve", after: `v${sheet.version} 확정`,
@@ -505,8 +564,8 @@ export async function rejectCostSheet(sheetId: string, reason: string): Promise<
   if (sheet.status !== "submitted") {
     return { ok: false, error: "결재 상신된 문서만 반려할 수 있습니다 (상태 미충족)." };
   }
-  if (!(await isSupervisorOf(actor.grade, sheet.submitted_by ?? sheet.created_by))) {
-    return { ok: false, error: "작성자보다 상위 권한단계의 상급자만 반려할 수 있습니다 (권한 규칙)." };
+  if (!(await isAbove(actor.grade, [sheet.created_by, sheet.submitted_by]))) {
+    return { ok: false, error: "작성자·상신자보다 상위 권한단계의 상급자만 반려할 수 있습니다 (권한 규칙)." };
   }
   const text = reason.trim();
   if (!text) return { ok: false, error: "반려 사유를 입력하세요." };
@@ -514,7 +573,7 @@ export async function rejectCostSheet(sheetId: string, reason: string): Promise<
     .from("project_cost_sheets")
     .update({ status: "draft", submitted_at: null, submitted_by: null, updated_by: actor.userId })
     .eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
     action: "doc.reject", after: text.slice(0, 400),
@@ -531,8 +590,16 @@ export async function grantCostSheetEdit(
   const open = await openSheet(sheetId, { forEdit: false });
   if (!open.ok) return open;
   const { supabase, actor, sheet, kind } = open;
-  if (!(await isSupervisorOf(actor.grade, sheet.approved_by ?? sheet.created_by))) {
-    return { ok: false, error: "수정 허용은 상급자만 지정할 수 있습니다 (권한 규칙)." };
+  if (sheet.status !== "confirmed") {
+    return { ok: false, error: "확정된 문서에만 수정 허용을 지정할 수 있습니다 (상태 미충족)." };
+  }
+  // 승인한 본인이 최상위 등급(대표)이면 '자기보다 위'가 없다 — 그러면 아무도
+  // 고칠 수 없는 문서가 된다 (리뷰 H1)
+  if (
+    actor.userId !== sheet.approved_by &&
+    !(await isAbove(actor.grade, [sheet.approved_by ?? sheet.created_by]))
+  ) {
+    return { ok: false, error: "수정 허용은 승인한 상급자 본인 또는 그보다 상위 권한자만 지정할 수 있습니다 (권한 규칙)." };
   }
   if (userId !== null) {
     if (!uuid.safeParse(userId).success) return { ok: false, error: "담당자를 확인할 수 없습니다." };
@@ -548,7 +615,7 @@ export async function grantCostSheetEdit(
       updated_by: actor.userId,
     })
     .eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message);
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
     action: "doc.edit_grant", after: userId ? "수정 허용" : "수정 허용 해제",
@@ -568,7 +635,8 @@ export async function newCostSheetVersion(
     return { ok: false, error: "확정된 문서에서만 새 버전을 만들 수 있습니다 (상태 미충족)." };
   }
   const granted = sheet.edit_grant_to === actor.userId;
-  if (!granted && !(await isSupervisorOf(actor.grade, sheet.approved_by ?? sheet.created_by))) {
+  const isApprover = actor.userId === sheet.approved_by;
+  if (!granted && !isApprover && !(await isAbove(actor.grade, [sheet.approved_by ?? sheet.created_by]))) {
     return {
       ok: false,
       error: `확정된 ${KIND_LABEL[kind]}는 상급자가 직접 고치거나, 상급자가 '수정 허용'으로 지정한 담당자만 새 버전을 만들 수 있습니다 (권한 규칙).`,
@@ -580,6 +648,8 @@ export async function newCostSheetVersion(
     .eq("project_id", sheet.project_id)
     .eq("kind", sheet.kind)
     .neq("status", "confirmed")
+    .order("version", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (openDraft) {
     return {
@@ -588,9 +658,26 @@ export async function newCostSheetVersion(
     };
   }
 
+  // 옛 버전 탭에서 눌러도 항상 마지막 버전 뒤에 붙인다 — 종전에는 version+1이
+  // 이미 있는 번호와 부딪혀 "시스템 오류"로 끝났다 (리뷰 M1)
+  const { data: last } = await supabase
+    .from("project_cost_sheets")
+    .select("version")
+    .eq("project_id", sheet.project_id)
+    .eq("kind", sheet.kind)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last && last.version !== sheet.version) {
+    return {
+      ok: false,
+      error: `이 문서는 최신 버전이 아닙니다 (상태 미충족). v${last.version}에서 새 버전을 만드세요.`,
+    };
+  }
+
   const { data: src } = await supabase.from("project_cost_sheets").select("*").eq("id", sheetId).maybeSingle();
   if (!src) return { ok: false, error: "문서를 찾을 수 없습니다." };
-  const version = sheet.version + 1;
+  const version = (last?.version ?? sheet.version) + 1;
 
   const { data: created, error } = await supabase
     .from("project_cost_sheets")
@@ -618,7 +705,7 @@ export async function newCostSheetVersion(
     })
     .select("id")
     .single();
-  if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+  if (error || !created) return saveError(error?.message ?? "");
 
   const { data: lines } = await supabase
     .from("project_cost_lines")
@@ -639,68 +726,106 @@ export async function newCostSheetVersion(
   return { ok: true, id: created.id };
 }
 
-/** 원본(견적서) 최신본으로 왼쪽을 다시 맞춘다 — 초안에서만 */
-export async function resyncCostSheet(sheetId: string): Promise<CostResult> {
+/**
+ * 원본(견적서) 최신본으로 왼쪽을 다시 맞춘다 — 내부실견적서 초안에서만.
+ *
+ * 줄을 지우고 다시 넣는 작업이라 **한 트랜잭션(RPC)** 으로 돌린다. 종전에는
+ * DELETE와 INSERT가 별도 요청이라 중간에 실패하면 기입한 지출이 통째로
+ * 사라졌다 (리뷰 H3). 이어 받을 값도 순서(인덱스)가 아니라 (항목, 세부내역)
+ * 짝으로 찾는다 — 견적서 중간에 한 줄이 끼면 그 아래 지출이 전부 밀렸다.
+ */
+export async function resyncCostSheet(
+  sheetId: string
+): Promise<{ ok: true; matched: number; orphaned: number } | { ok: false; error: string }> {
   const open = await openSheet(sheetId, { forEdit: true });
   if (!open.ok) return open;
   const { supabase, actor, sheet, kind } = open;
+  if (kind !== "internal") {
+    return {
+      ok: false,
+      error: "정산서의 왼쪽은 확정된 내부실견적서입니다 (규칙). 견적서 갱신은 내부실견적서에서 반영하세요.",
+    };
+  }
 
-  const { data: latest } = await supabase
-    .from("project_quotes")
-    .select("id, version")
-    .eq("project_id", sheet.project_id)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const latest = await latestQuote(sheet.project_id, { issuedOnly: true })
+    ?? (await latestQuote(sheet.project_id, { issuedOnly: false }));
   if (!latest) return { ok: false, error: "견적서를 찾을 수 없습니다 (상태 미충족)." };
 
   const base = await baseLinesFromQuote(latest.id);
   if (!base) return { ok: false, error: "견적서를 읽을 수 없습니다." };
 
-  // 기입한 지출은 순서대로 이어 받는다 — 줄 수가 달라지면 남는 줄은 비워 둔다
   const { data: current } = await supabase
     .from("project_cost_lines")
-    .select("id, note, spend, vat_refundable, compare_note, compare_spend, base_name, sort_order")
+    .select("base_section, base_name, note, spend, vat_refundable, compare_note, compare_spend, sort_order")
     .eq("sheet_id", sheetId)
     .order("sort_order", { ascending: true });
-  const kept = (current ?? []).filter((l) => l.base_name !== null);
-  const extras = (current ?? []).filter((l) => l.base_name === null);
+  const kept = new Map<string, (typeof current extends (infer T)[] | null ? T : never)>();
+  const extras: NonNullable<typeof current> = [];
+  for (const l of current ?? []) {
+    if (l.base_name === null) extras.push(l);
+    else kept.set(keyOfLine(l.base_section, l.base_name), l);
+  }
 
-  await supabase.from("project_cost_lines").delete().eq("sheet_id", sheetId);
-  await supabase.from("project_cost_lines").insert([
-    ...base.lines.map((l, i) => ({
-      tenant_id: actor.tenantId,
-      sheet_id: sheetId,
-      sort_order: (i + 1) * 10,
+  let matched = 0;
+  const nextLines = base.lines.map((l) => {
+    const prev = kept.get(keyOfLine(l.baseSection, l.baseName));
+    if (prev) {
+      matched += 1;
+      kept.delete(keyOfLine(l.baseSection, l.baseName));
+    }
+    return {
       base_section: l.baseSection,
       base_name: l.baseName,
       base_amount: l.baseAmount,
-      compare_note: kept[i]?.compare_note ?? null,
-      compare_spend: kept[i]?.compare_spend ?? null,
-      note: kept[i]?.note ?? null,
-      spend: kept[i]?.spend ?? 0,
-      vat_refundable: kept[i]?.vat_refundable ?? false,
-    })),
-    ...extras.map((l, i) => ({
-      tenant_id: actor.tenantId,
-      sheet_id: sheetId,
-      sort_order: (base.lines.length + i + 1) * 10,
-      base_section: null,
-      base_name: null,
-      base_amount: 0,
-      compare_note: l.compare_note,
-      compare_spend: l.compare_spend,
-      note: l.note,
-      spend: l.spend,
-      vat_refundable: l.vat_refundable,
-    })),
-  ]);
+      compare_note: prev?.compare_note ?? null,
+      compare_spend: prev?.compare_spend ?? null,
+      note: prev?.note ?? null,
+      spend: prev?.spend ?? 0,
+      vat_refundable: prev?.vat_refundable ?? false,
+    };
+  });
+  // 새 견적서에서 사라진 항목의 지출은 버리지 않는다 — '연결 끊김'으로 남겨
+  // 담당자가 옮기거나 지우게 한다 (조용히 사라지면 금액이 맞지 않는다)
+  const orphans = Array.from(kept.values()).map((l) => ({
+    base_section: null,
+    base_name: null,
+    base_amount: 0,
+    compare_note: l.compare_note,
+    compare_spend: l.compare_spend,
+    note: `[연결 끊김: ${l.base_section ?? ""} ${l.base_name ?? ""}] ${l.note ?? ""}`.trim().slice(0, 500),
+    spend: l.spend,
+    vat_refundable: l.vat_refundable,
+  }));
+  const keepExtras = extras.map((l) => ({
+    base_section: null,
+    base_name: null,
+    base_amount: 0,
+    compare_note: l.compare_note,
+    compare_spend: l.compare_spend,
+    note: l.note,
+    spend: l.spend,
+    vat_refundable: l.vat_refundable,
+  }));
+
+  const { error: rpcError } = await supabase.rpc("resync_project_cost_lines", {
+    p_sheet_id: sheetId,
+    p_lines: [...nextLines, ...keepExtras, ...orphans],
+  });
+  if (rpcError) {
+    return {
+      ok: false,
+      error: await explainActionError(
+        rpcError.message,
+        "견적서 반영에 실패했습니다. 기존 내용은 그대로 남아 있습니다 — 잠시 후 다시 시도해 주세요."
+      ),
+    };
+  }
 
   const { error } = await supabase
     .from("project_cost_sheets")
     .update({
       quote_id: latest.id,
-      source_version: kind === "internal" ? latest.version : sheet.source_sheet_id ? undefined : latest.version,
+      source_version: latest.version,
       base_total: base.totals.grandTotal,
       base_vat: base.totals.vat,
       base_proposal: base.totals.proposal,
@@ -708,12 +833,13 @@ export async function resyncCostSheet(sheetId: string): Promise<CostResult> {
       updated_by: actor.userId,
     })
     .eq("id", sheetId);
-  if (error) return { ok: false, error: SYSTEM_FAIL };
+  if (error) return saveError(error.message, "견적서 반영에 실패했습니다.");
 
   await logQuote(actor, {
     docType: kind, docId: sheetId, projectId: sheet.project_id, version: sheet.version,
-    action: "doc.resync", after: `견적서 v${latest.version} 반영`,
+    action: "doc.resync",
+    after: `견적서 v${latest.version} 반영 (이어받음 ${matched}건${orphans.length ? `, 연결 끊김 ${orphans.length}건` : ""})`,
   });
   revalidate();
-  return { ok: true };
+  return { ok: true, matched, orphaned: orphans.length };
 }

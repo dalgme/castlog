@@ -149,7 +149,9 @@ export async function loadProjectQuotes(
     .from("project_quotes")
     .select(QUOTE_COLUMNS)
     .eq("project_id", projectId)
-    .order("version", { ascending: false });
+    .order("version", { ascending: false })
+    // 버전이 쌓여도 탭 진입이 무거워지지 않게 (리뷰 L4)
+    .limit(20);
   if (error?.code === "42P01") return { quotes: [], missingTable: true };
   const rows = (data ?? []) as unknown as QuoteRow[];
   const [items, names] = await Promise.all([

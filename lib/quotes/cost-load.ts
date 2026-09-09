@@ -85,7 +85,8 @@ export async function loadCostSheets(
     .from("project_cost_sheets")
     .select(SHEET_COLUMNS)
     .eq("project_id", projectId)
-    .order("version", { ascending: false });
+    .order("version", { ascending: false })
+    .limit(40);
   if (error?.code === "42P01") return { sheets: [], missingTable: true };
   const rows = (data ?? []) as unknown as SheetRow[];
   if (rows.length === 0) return { sheets: [], missingTable: false };
