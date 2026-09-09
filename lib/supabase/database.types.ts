@@ -14,6 +14,378 @@ export type Database = {
   }
   public: {
     Tables: {
+      project_quotes: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          version: number
+          status: string
+          title: string
+          headcount: string | null
+          period_text: string | null
+          quote_date: string | null
+          valid_text: string | null
+          client_name: string | null
+          supplier_name: string | null
+          supplier_reg_no: string | null
+          supplier_ceo: string | null
+          supplier_address: string | null
+          supplier_biz_type: string | null
+          supplier_biz_item: string | null
+          supplier_phone: string | null
+          supplier_email: string | null
+          indirect_label: string
+          indirect_rate: number
+          profit_label: string
+          profit_rate: number
+          vat_rate: number
+          rounding: string
+          note: string | null
+          issued_at: string | null
+          issued_by: string | null
+          is_practice: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          version?: number
+          status?: string
+          title?: string
+          headcount?: string | null
+          period_text?: string | null
+          quote_date?: string | null
+          valid_text?: string | null
+          client_name?: string | null
+          supplier_name?: string | null
+          supplier_reg_no?: string | null
+          supplier_ceo?: string | null
+          supplier_address?: string | null
+          supplier_biz_type?: string | null
+          supplier_biz_item?: string | null
+          supplier_phone?: string | null
+          supplier_email?: string | null
+          indirect_label?: string
+          indirect_rate?: number
+          profit_label?: string
+          profit_rate?: number
+          vat_rate?: number
+          rounding?: string
+          note?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          version?: number
+          status?: string
+          title?: string
+          headcount?: string | null
+          period_text?: string | null
+          quote_date?: string | null
+          valid_text?: string | null
+          client_name?: string | null
+          supplier_name?: string | null
+          supplier_reg_no?: string | null
+          supplier_ceo?: string | null
+          supplier_address?: string | null
+          supplier_biz_type?: string | null
+          supplier_biz_item?: string | null
+          supplier_phone?: string | null
+          supplier_email?: string | null
+          indirect_label?: string
+          indirect_rate?: number
+          profit_label?: string
+          profit_rate?: number
+          vat_rate?: number
+          rounding?: string
+          note?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_quote_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          quote_id: string
+          sort_order: number
+          section: string | null
+          name: string
+          qty: number
+          qty_unit: string | null
+          times: number
+          times_unit: string | null
+          days: number
+          days_unit: string | null
+          unit_price: number
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          quote_id: string
+          sort_order?: number
+          section?: string | null
+          name?: string
+          qty?: number
+          qty_unit?: string | null
+          times?: number
+          times_unit?: string | null
+          days?: number
+          days_unit?: string | null
+          unit_price?: number
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          quote_id?: string
+          sort_order?: number
+          section?: string | null
+          name?: string
+          qty?: number
+          qty_unit?: string | null
+          times?: number
+          times_unit?: string | null
+          days?: number
+          days_unit?: string | null
+          unit_price?: number
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_cost_sheets: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          kind: string
+          version: number
+          status: string
+          quote_id: string | null
+          source_sheet_id: string | null
+          source_version: number | null
+          base_total: number
+          base_vat: number
+          base_proposal: number
+          base_trimmed: number
+          travel_note: string | null
+          travel_amount: number
+          travel_refundable: boolean
+          reserve_note: string | null
+          reserve_amount: number
+          reserve_refundable: boolean
+          submitted_at: string | null
+          submitted_by: string | null
+          approved_at: string | null
+          approved_by: string | null
+          edit_grant_to: string | null
+          edit_grant_by: string | null
+          edit_grant_at: string | null
+          is_practice: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          kind: string
+          version?: number
+          status?: string
+          quote_id?: string | null
+          source_sheet_id?: string | null
+          source_version?: number | null
+          base_total?: number
+          base_vat?: number
+          base_proposal?: number
+          base_trimmed?: number
+          travel_note?: string | null
+          travel_amount?: number
+          travel_refundable?: boolean
+          reserve_note?: string | null
+          reserve_amount?: number
+          reserve_refundable?: boolean
+          submitted_at?: string | null
+          submitted_by?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          edit_grant_to?: string | null
+          edit_grant_by?: string | null
+          edit_grant_at?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          kind?: string
+          version?: number
+          status?: string
+          quote_id?: string | null
+          source_sheet_id?: string | null
+          source_version?: number | null
+          base_total?: number
+          base_vat?: number
+          base_proposal?: number
+          base_trimmed?: number
+          travel_note?: string | null
+          travel_amount?: number
+          travel_refundable?: boolean
+          reserve_note?: string | null
+          reserve_amount?: number
+          reserve_refundable?: boolean
+          submitted_at?: string | null
+          submitted_by?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          edit_grant_to?: string | null
+          edit_grant_by?: string | null
+          edit_grant_at?: string | null
+          is_practice?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_cost_lines: {
+        Row: {
+          id: string
+          tenant_id: string
+          sheet_id: string
+          sort_order: number
+          base_section: string | null
+          base_name: string | null
+          base_amount: number
+          compare_note: string | null
+          compare_spend: number | null
+          note: string | null
+          spend: number
+          vat_refundable: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          sheet_id: string
+          sort_order?: number
+          base_section?: string | null
+          base_name?: string | null
+          base_amount?: number
+          compare_note?: string | null
+          compare_spend?: number | null
+          note?: string | null
+          spend?: number
+          vat_refundable?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          sheet_id?: string
+          sort_order?: number
+          base_section?: string | null
+          base_name?: string | null
+          base_amount?: number
+          compare_note?: string | null
+          compare_spend?: number | null
+          note?: string | null
+          spend?: number
+          vat_refundable?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      quote_logs: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string | null
+          doc_type: string
+          doc_id: string | null
+          version: number | null
+          action: string
+          item_title: string | null
+          field: string | null
+          before_value: string | null
+          after_value: string | null
+          actor_user_id: string | null
+          actor_name: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id?: string | null
+          doc_type: string
+          doc_id?: string | null
+          version?: number | null
+          action: string
+          item_title?: string | null
+          field?: string | null
+          before_value?: string | null
+          after_value?: string | null
+          actor_user_id?: string | null
+          actor_name?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string | null
+          doc_type?: string
+          doc_id?: string | null
+          version?: number | null
+          action?: string
+          item_title?: string | null
+          field?: string | null
+          before_value?: string | null
+          after_value?: string | null
+          actor_user_id?: string | null
+          actor_name?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       checklist_templates: {
         Row: {
           id: string

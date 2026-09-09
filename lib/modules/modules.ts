@@ -9,6 +9,7 @@ import type { Json } from "@/lib/supabase/database.types";
  *  - experts    전문가 섭외·관리 (풀·등록·서류·섭외·평가·지급/세무)
  *  - approvals  품의·전자결재 (품의서·결재라인·전결규정·대결)
  *  - operations 행사 운영 심화 (21스텝 라이프사이클·공개링크·프로젝트 복제)
+ *  - quotes     견적·내부실견적·정산 (대외 견적서, 원가·수익 내부문서)
  *
  * insights(통계·AI 보고서)는 향후 분리 예정 키 — 지금은 공통 기반에 포함.
  *
@@ -37,7 +38,7 @@ export const COMMON_BASELINE_FEATURES: readonly string[] = [
   "문자·이메일 발송 인프라, 수신거부 처리",
   "감사로그, 사용량 계측, 알림함",
 ];
-export const MODULE_KEYS = ["experts", "approvals", "operations"] as const;
+export const MODULE_KEYS = ["experts", "approvals", "operations", "quotes"] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
 export type ModuleFlags = Record<ModuleKey, boolean>;
@@ -47,6 +48,7 @@ export const DEFAULT_MODULES: ModuleFlags = {
   experts: true,
   approvals: true,
   operations: true,
+  quotes: true,
 };
 
 /**
@@ -61,12 +63,14 @@ export const MODULE_NUMBERS: Record<ModuleKey, number> = {
   experts: 1,
   approvals: 2,
   operations: 3,
+  quotes: 4,
 };
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   experts: "전문가 섭외·관리",
   approvals: "품의·전자결재",
   operations: "행사 운영 심화",
+  quotes: "견적·내부실견적·정산",
 };
 
 /** 모듈 선택 화면에서 '이걸 켜면 무엇이 열리는지' 보여주는 설명. */
@@ -77,6 +81,8 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
     "품의서·결재라인·전결규정·대결/위임. 섭외계획·프로젝트 종료·지급에 결재 게이트가 붙습니다",
   operations:
     "프로젝트 21스텝 라이프사이클 기본 구성. 공개링크(설문·모집 등)·프로젝트 복제·보고서는 순차 제공 예정",
+  quotes:
+    "프로젝트별 견적서(자동계산·절사·버전) + 내부실견적서·정산서(원가·부가세 환급·수익률, 상급자 결재로 확정)",
 };
 
 /** 각 모듈을 켰을 때 기존 데이터와 이어야 할 것 — 후행 활성 안내에 쓴다. */
@@ -89,6 +95,10 @@ export const MODULE_ONBOARDING_HINTS: Record<ModuleKey, readonly string[]> = {
     "전결규정을 먼저 등록하세요. 없으면 결재선을 매번 직접 지정해야 합니다.",
     "결재 없이 확정해 둔 지급 배치 중 대기 상태인 건은 지급 품의로 상신할 수 있습니다.",
     "이제 섭외요청 전에 섭외계획 품의 승인이 필요합니다.",
+  ],
+  quotes: [
+    "프로젝트 상세의 '견적' 탭에서 견적서를 만들면 내부실견적서·정산서가 그 견적에 이어집니다.",
+    "이미 진행 중인 프로젝트에도 지금 견적서를 만들 수 있습니다 — 기존 데이터는 그대로입니다.",
   ],
   operations: [
     "기존 프로젝트에는 21스텝이 없습니다. 프로젝트 상세의 '기본 스텝 만들기' 버튼으로 채울 수 있습니다.",
