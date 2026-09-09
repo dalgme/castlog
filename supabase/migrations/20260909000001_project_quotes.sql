@@ -135,6 +135,9 @@ create table if not exists public.project_cost_lines (
   base_section text,
   base_name text,
   base_amount numeric(14,2) not null default 0,
+  -- 비교용 스냅샷 — 정산서에서 내부실견적의 지출·비고를 읽기 전용으로 나란히 본다
+  compare_note text,
+  compare_spend numeric(14,2),
   -- 오른쪽 기입
   note text,
   spend numeric(14,2) not null default 0,

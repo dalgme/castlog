@@ -1,12 +1,16 @@
+import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { loadProjectQuotes } from "@/lib/quotes/load";
+import { loadCostSheets } from "@/lib/quotes/cost-load";
 import { EmptyState } from "@/components/layout/empty-state";
 
-import { QuotePanel, type QuoteView } from "./quote-panel";
+import { QuoteWorkbench } from "./quote-workbench";
+import type { QuoteView } from "./quote-panel";
 
 /**
- * 견적·정산 탭 로더 (서버). 열람은 RLS(프로젝트 열람 범위), 편집 자격은
- * page에서 판정해 canEdit로 받는다 (프로젝트 팀 + 전사 열람 권한자).
+ * 견적·정산 탭 로더 (서버) — 견적서·내부실견적서·정산서를 한 번에 읽는다.
+ * 열람은 RLS(견적은 프로젝트 열람 범위, 원가문서는 프로젝트 팀), 편집 자격은
+ * page에서 판정해 canEdit로 받는다.
  */
 export async function QuoteTab({
   tenantSlug,
@@ -20,7 +24,10 @@ export async function QuoteTab({
   if (!hasSupabaseEnv()) {
     return <EmptyState title="서버 설정 대기 중" description="Supabase 환경변수가 설정되면 표시됩니다." />;
   }
-  const { quotes, missingTable } = await loadProjectQuotes(projectId);
+  const [{ quotes, missingTable }, { sheets }] = await Promise.all([
+    loadProjectQuotes(projectId),
+    loadCostSheets(projectId),
+  ]);
   if (missingTable) {
     return (
       <EmptyState
@@ -29,12 +36,24 @@ export async function QuoteTab({
       />
     );
   }
+
+  // 수정 허용 지정 대상 — 자사 재직자 (RLS 범위)
+  const supabase = createClient();
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true })
+    .limit(300);
+
   return (
-    <QuotePanel
+    <QuoteWorkbench
       tenantSlug={tenantSlug}
       projectId={projectId}
       canEdit={canEdit}
       quotes={quotes as QuoteView[]}
+      costSheets={sheets}
+      users={users ?? []}
     />
   );
 }

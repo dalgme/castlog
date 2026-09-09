@@ -290,6 +290,8 @@ export type Database = {
           base_section: string | null
           base_name: string | null
           base_amount: number
+          compare_note: string | null
+          compare_spend: number | null
           note: string | null
           spend: number
           vat_refundable: boolean
@@ -304,6 +306,8 @@ export type Database = {
           base_section?: string | null
           base_name?: string | null
           base_amount?: number
+          compare_note?: string | null
+          compare_spend?: number | null
           note?: string | null
           spend?: number
           vat_refundable?: boolean
@@ -318,6 +322,8 @@ export type Database = {
           base_section?: string | null
           base_name?: string | null
           base_amount?: number
+          compare_note?: string | null
+          compare_spend?: number | null
           note?: string | null
           spend?: number
           vat_refundable?: boolean
