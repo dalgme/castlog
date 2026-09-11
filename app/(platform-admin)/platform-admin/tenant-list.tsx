@@ -1,6 +1,7 @@
 import { Building2, Mail, Phone, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   MODULE_KEYS,
@@ -197,6 +198,10 @@ export function TenantList({ rows }: { rows: TenantAdminRow[] }) {
                 )}
 
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {/* 대표 외 직원 계정·비밀번호 지원은 이용자 화면에서 */}
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/platform-admin/users/${tenant.id}`}>이용자</a>
+                  </Button>
                   {/* 대표가 비밀번호를 못 정해 못 들어오는 상황을 여기서 푼다 */}
                   <ResendInviteButton
                     tenantId={tenant.id}

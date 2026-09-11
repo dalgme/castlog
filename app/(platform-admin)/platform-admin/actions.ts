@@ -4,10 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { sendAccountInviteEmail } from "@/lib/auth/account-invite";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
-import { roleFromUser } from "@/lib/auth/tenant";
+import { requirePlatformAdminSession } from "@/lib/admin/platform-session";
 import { generateTempPassword } from "@/lib/admin/passwords";
 import {
   tenantCreateSchema,
@@ -27,20 +26,6 @@ export type CreateTenantResult =
       inviteError?: string;
     }
   | { ok: false; error: string };
-
-/** 현재 세션이 플랫폼관리자인지 확인 (JWT app_metadata 기준) */
-async function requirePlatformAdminSession(): Promise<
-  { ok: true; userId: string } | { ok: false; error: string }
-> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || roleFromUser(user) !== "platform_admin") {
-    return { ok: false, error: "플랫폼관리자 권한이 필요합니다." };
-  }
-  return { ok: true, userId: user.id };
-}
 
 /**
  * 테넌트 생성 (설계문서 7.1 — 셀프 온보딩 없음, 플랫폼관리자 수동 생성)

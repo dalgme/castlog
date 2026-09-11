@@ -32,6 +32,9 @@ import {
   JoinRequestsPanel,
   type JoinRequestRow,
 } from "../org/join-requests-panel";
+import { PasswordSupportActions } from "@/components/admin/password-support-actions";
+
+import { issueStaffTempPassword, sendStaffResetEmail } from "../org/password-actions";
 import { StaffActiveToggle } from "../org/staff-active-toggle";
 import { StaffEditDialog } from "../org/staff-edit-dialog";
 import { StaffGradeSelect } from "../org/staff-grade-select";
@@ -310,7 +313,7 @@ export default async function StaffSettingsPage({
                         <TableHead>부서</TableHead>
                         <TableHead>직급</TableHead>
                         <TableHead>상태</TableHead>
-                        <TableHead className="w-32">관리</TableHead>
+                        <TableHead className="w-44">관리</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -359,6 +362,16 @@ export default async function StaffSettingsPage({
                                 userId={member.id}
                                 isActive={member.is_active}
                                 isSelf={member.id === sessionUser?.id}
+                              />
+                              {/* 비밀번호 리셋 — 본인 것은 내 설정에서, 대표 것은 대표만 (서버가 판정) */}
+                              <PasswordSupportActions
+                                compact
+                                userId={member.id}
+                                userName={member.name}
+                                email={member.email}
+                                disabled={member.id === sessionUser?.id || !member.is_active}
+                                sendReset={sendStaffResetEmail}
+                                issueTemp={issueStaffTempPassword}
                               />
                             </span>
                           </TableCell>
