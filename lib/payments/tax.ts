@@ -63,6 +63,25 @@ export function calculateWithholding(
   return { gross, withholding, net: gross - withholding };
 }
 
+export type WithholdingSplit = {
+  incomeTax: number; // 소득세
+  localTax: number; // 지방소득세 (소득세의 10%)
+  withholding: number; // 합계 — calculateWithholding().withholding 과 같다
+};
+
+/**
+ * 원천징수를 소득세·지방소득세로 나눈다 (외부 회계 프로그램 연동용 — 원천징수
+ * 이행상황신고서는 두 세목을 따로 적는다). 규칙·소액부징수는 calculateWithholding 과 같다.
+ */
+export function splitWithholding(paymentType: PaymentType, gross: number): WithholdingSplit {
+  const { withholding } = calculateWithholding(paymentType, gross);
+  if (withholding === 0) return { incomeTax: 0, localTax: 0, withholding: 0 };
+  const taxable = paymentType === "other_income" ? Math.floor(gross * 0.4) : gross;
+  const rate = paymentType === "other_income" ? 0.2 : 0.03;
+  const incomeTax = Math.floor(taxable * rate);
+  return { incomeTax, localTax: withholding - incomeTax, withholding };
+}
+
 export function isPaymentType(value: string | null | undefined): value is PaymentType {
   return (
     value === "business_income" || value === "other_income" || value === "business"
