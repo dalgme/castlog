@@ -63,6 +63,7 @@ export function CreateProjectDialog({
       businessYear: String(new Date().getFullYear()),
       clientName: "",
       hostOrg: "",
+      contractType: "",
       categoryId: "",
       code: "",
       startsOn: "",
@@ -186,6 +187,28 @@ export function CreateProjectDialog({
                 )}
               />
             </div>
+            {/* 계약 처리 구분 (기획 2026-09-21) — 모르면 비워 두고 '기본정보 수정'에서 정한다 */}
+            <FormField
+              control={form.control}
+              name="contractType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>계약 처리 구분 (선택 — 수의/입찰)</FormLabel>
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="아직 모르면 비워 두세요" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="private">수의 계약</SelectItem>
+                      <SelectItem value="bid">입찰</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="categoryId"

@@ -28,7 +28,12 @@ export type ReviewAuto = {
   pmName: string | null;
   deputyPmNames: string[];
   contractPeriod: string;
-  eventDates: string;
+  /** D-Day 기준일 표기 — 세션이 하나도 없을 때의 행사일 폴백 */
+  ddayDate: string;
+  /** 행사일 표의 칸 — 세션마다 하나 (가로 3칸, 넘치면 다음 행) */
+  sessions: { label: string; when: string }[];
+  /** 계약 처리 구분 표기 — 기본정보(생성·수정)에서 정한다. null = 미정 */
+  contractType: string | null;
   venue: string;
 };
 
@@ -43,6 +48,8 @@ export type ReviewItemRow = {
   expertId: string | null;
   form: string | null;
   body: string;
+  authorName: string | null;
+  createdAt: string;
 };
 
 /** 계약 성립 전문가 — 평가 행을 자동으로 놓는다 */
@@ -55,7 +62,8 @@ export type ReviewExpertAuto = {
   hint: string | null;
 };
 
-const OPS_PRESETS = ["발주처 담당자", "대관처(행사장)", "참여인원", "기타사항"];
+/** 운영·관리 특이사항의 고정 영역 — 영역마다 줄을 댓글처럼 쌓는다 (기획 2026-09-21) */
+const OPS_AREAS = ["발주처 담당자", "대관처(행사장)", "참여인원", "기타사항"];
 
 const REGISTER_CLASS = "h-7 px-2 text-[11px] bg-indigo-600 text-white hover:bg-indigo-700";
 const EDIT_CLASS = "h-7 px-2 text-[11px] border-indigo-300 text-indigo-800 hover:bg-indigo-50";
@@ -64,11 +72,17 @@ function formatWon(n: number | null): string {
   return n === null ? "미기입" : `${n.toLocaleString("ko-KR")}원`;
 }
 
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
+
 function Dash({ text }: { text: string | null | undefined }) {
   return text ? <>{text}</> : <span className="text-muted-foreground">미기입</span>;
 }
 
-/** 두 값 중 하나를 고르는 체크 단추 (수의/입찰, 여/부) */
+/** 두 값 중 하나를 고르는 체크 단추 (여/부) */
 function ChoiceButtons<T extends string>({
   value,
   options,
@@ -131,6 +145,35 @@ function DoneCheck({
         {checked ? "■ 완료" : "□ 미완료"}
       </span>
     </label>
+  );
+}
+
+/** 행사일 — 세션을 가로 3칸 표에 놓고 넘치면 다음 행 (기획 2026-09-21) */
+function SessionGrid({ sessions }: { sessions: { label: string; when: string }[] }) {
+  const rows: { label: string; when: string }[][] = [];
+  for (let i = 0; i < sessions.length; i += 3) rows.push(sessions.slice(i, i + 3));
+  return (
+    <table className="w-full table-fixed border-collapse">
+      <tbody>
+        {rows.map((row, r) => (
+          <tr key={r}>
+            {[0, 1, 2].map((c) => {
+              const cell = row[c];
+              return (
+                <td key={c} className="w-1/3 border bg-white px-2 py-1.5 align-top text-xs">
+                  {cell ? (
+                    <>
+                      <div className="font-semibold">{cell.label}</div>
+                      <div className="text-muted-foreground">{cell.when}</div>
+                    </>
+                  ) : null}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -254,15 +297,13 @@ function SummarySection({
               <tr>
                 <th className={th2}>계약 처리 구분(수의/입찰)</th>
                 <td className={td}>
-                  <ChoiceButtons
-                    value={form.contractType}
-                    options={[
-                      { value: "private", label: "수의 계약" },
-                      { value: "bid", label: "입찰" },
-                    ]}
-                    onChange={(v) => patch({ contractType: v })}
-                    disabled={!editable}
-                  />
+                  {auto.contractType ? (
+                    <span className="font-semibold">■ {auto.contractType}</span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      미정 — 기본설정 탭의 「기본정보 수정」에서 수의 계약/입찰을 고르면 여기에 표시됩니다.
+                    </span>
+                  )}
                 </td>
               </tr>
               <tr>
@@ -281,23 +322,21 @@ function SummarySection({
                   기간 및 장소
                 </th>
                 <th className={th2}>계약기간/행사일</th>
-                <td className={td}>
-                  <div className="space-y-1">
-                    <div>
-                      {auto.contractPeriod || <span className="text-muted-foreground">기간 미기입</span>}
-                      {" / "}
-                      {form.eventDatesText ?? auto.eventDates ?? ""}
-                      {!form.eventDatesText && !auto.eventDates && (
-                        <span className="text-muted-foreground">행사일 미기입</span>
-                      )}
-                    </div>
-                    {editable && (
-                      <Input
-                        value={form.eventDatesText ?? ""}
-                        onChange={(e) => patch({ eventDatesText: e.target.value })}
-                        placeholder={auto.eventDates ? `세션 일정 자동: ${auto.eventDates} (다르게 적으려면 입력)` : "행사일을 적어 주세요"}
-                        className="h-7 text-xs"
-                      />
+                <td className={cn(td, "space-y-1.5")}>
+                  <div>
+                    <span className="text-xs text-muted-foreground">계약기간 </span>
+                    {auto.contractPeriod || <span className="text-muted-foreground">미기입</span>}
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">행사일 (세션별)</span>
+                    {auto.sessions.length > 0 ? (
+                      <div className="mt-1">
+                        <SessionGrid sessions={auto.sessions} />
+                      </div>
+                    ) : (
+                      <span className="ml-1 text-muted-foreground">
+                        {auto.ddayDate || "등록된 세션이 없습니다 (기본설정 탭에서 세션을 만들면 자동으로 채워집니다)."}
+                      </span>
                     )}
                   </div>
                 </td>
@@ -386,7 +425,7 @@ function SummarySection({
 }
 
 // ---------------------------------------------------------------------------
-// 2·3. 행 단위 구간 (전문가 평가 · 운영 특이사항)
+// 2. 전문가 평가 — 행 단위
 // ---------------------------------------------------------------------------
 type RowState = {
   /** 화면 키 (저장 전에는 임시값) */
@@ -397,60 +436,22 @@ type RowState = {
   form: string;
   body: string;
   editing: boolean;
-  /** 자동 행(전문가·기본 구분)은 삭제 대신 비워 둔다 */
+  /** 자동 행(전문가)은 삭제 대신 비워 둔다 */
   auto: boolean;
+  authorName: string | null;
+  createdAt: string | null;
 };
 
-function RowsSection({
-  projectId,
-  section,
-  title,
-  note,
-  subjectLabel,
-  withForm,
-  initialRows,
-  canEdit,
-}: {
-  projectId: string;
-  section: "expert" | "ops";
-  title: string;
-  note?: string;
-  subjectLabel: string;
-  /** 참여 형태 열 (전문가 평가만) */
-  withForm: boolean;
-  initialRows: RowState[];
-  canEdit: boolean;
-}) {
+function useRowActions(projectId: string, section: "expert" | "ops", withForm: boolean) {
   const { toast } = useToast();
-  const [rows, setRows] = useState<RowState[]>(initialRows);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  function patchRow(key: string, p: Partial<RowState>) {
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...p } : r)));
-  }
-
-  function addRow() {
-    setRows((prev) => [
-      ...prev,
-      {
-        key: `new-${Date.now()}-${prev.length}`,
-        id: null,
-        expertId: null,
-        subject: "",
-        form: "",
-        body: "",
-        editing: true,
-        auto: false,
-      },
-    ]);
-  }
-
-  function register(row: RowState, index: number) {
-    if (!row.subject.trim() && !row.expertId) {
-      toast({ variant: "destructive", description: `${subjectLabel}을(를) 적어 주세요.` });
-      return;
-    }
+  function register(
+    row: RowState,
+    index: number,
+    onSaved: (id: string) => void
+  ) {
     setBusyKey(row.key);
     startTransition(async () => {
       const r = await saveReviewItem({
@@ -468,14 +469,14 @@ function RowsSection({
         toast({ variant: "destructive", description: r.error });
         return;
       }
-      patchRow(row.key, { id: r.id, editing: false, body: row.body.trim(), subject: row.subject.trim() });
+      onSaved(r.id);
       toast({ description: row.id ? "수정했습니다." : "등록했습니다." });
     });
   }
 
-  function remove(row: RowState) {
+  function remove(row: RowState, onRemoved: () => void) {
     if (!row.id) {
-      setRows((prev) => prev.filter((r) => r.key !== row.key));
+      onRemoved();
       return;
     }
     if (!window.confirm("이 줄을 삭제할까요? 되돌릴 수 없습니다.")) return;
@@ -487,9 +488,91 @@ function RowsSection({
         toast({ variant: "destructive", description: r.error });
         return;
       }
-      setRows((prev) => prev.filter((k) => k.key !== row.key));
+      onRemoved();
       toast({ description: "삭제했습니다." });
     });
+  }
+
+  return { busyKey, register, remove, toast };
+}
+
+function RowButtons({
+  row,
+  busy,
+  canDelete,
+  onRegister,
+  onEdit,
+  onRemove,
+}: {
+  row: RowState;
+  busy: boolean;
+  canDelete: boolean;
+  onRegister: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {row.editing ? (
+        <Button type="button" size="sm" className={REGISTER_CLASS} onClick={onRegister} disabled={busy}>
+          <Check className="mr-0.5 h-3 w-3" aria-hidden />
+          등록
+        </Button>
+      ) : (
+        <Button type="button" size="sm" variant="outline" className={EDIT_CLASS} onClick={onEdit} disabled={busy}>
+          <Pencil className="mr-0.5 h-3 w-3" aria-hidden />
+          수정
+        </Button>
+      )}
+      {canDelete && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+          onClick={onRemove}
+          disabled={busy}
+          title={row.id ? "삭제" : "취소"}
+        >
+          <Trash2 className="mr-0.5 h-3 w-3" aria-hidden />
+          {row.id ? "삭제" : "취소"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ExpertSection({
+  projectId,
+  initialRows,
+  canEdit,
+}: {
+  projectId: string;
+  initialRows: RowState[];
+  canEdit: boolean;
+}) {
+  const [rows, setRows] = useState<RowState[]>(initialRows);
+  const { busyKey, register, remove, toast } = useRowActions(projectId, "expert", true);
+
+  function patchRow(key: string, p: Partial<RowState>) {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...p } : r)));
+  }
+  function addRow() {
+    setRows((prev) => [
+      ...prev,
+      {
+        key: `new-${Date.now()}-${prev.length}`,
+        id: null,
+        expertId: null,
+        subject: "",
+        form: "",
+        body: "",
+        editing: true,
+        auto: false,
+        authorName: null,
+        createdAt: null,
+      },
+    ]);
   }
 
   const th = "border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold";
@@ -499,8 +582,10 @@ function RowsSection({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <div>
-          <CardTitle className="text-sm">{title}</CardTitle>
-          {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
+          <CardTitle className="text-sm">2. 전문가(강사) 평가 (담당 PM 작성)</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">
+            ※ 평가항목: 준비도(자료 등), 전달력 및 집중도, 적합성(대상/주제/목적 등), 기타사항 등. 계약이 성립한 전문가는 자동으로 줄이 놓입니다.
+          </p>
         </div>
         {canEdit && (
           <Button type="button" size="sm" variant="outline" className={EDIT_CLASS} onClick={addRow} title="줄 추가">
@@ -514,16 +599,16 @@ function RowsSection({
           <table className="w-full min-w-[40rem] border-collapse">
             <thead>
               <tr>
-                <th className={cn(th, "w-36")}>{subjectLabel}</th>
-                {withForm && <th className={cn(th, "w-40")}>참여 형태</th>}
-                <th className={th}>{withForm ? "평가 내용" : "내용"}</th>
+                <th className={cn(th, "w-36")}>참여 전문가명</th>
+                <th className={cn(th, "w-40")}>참여 형태</th>
+                <th className={th}>평가 내용</th>
                 {canEdit && <th className={cn(th, "w-28")}>처리</th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={withForm ? 4 : 3} className="border px-2 py-4 text-center text-xs text-muted-foreground">
+                  <td colSpan={4} className="border px-2 py-4 text-center text-xs text-muted-foreground">
                     아직 줄이 없습니다. {canEdit ? "'줄 추가'로 시작하세요." : ""}
                   </td>
                 </tr>
@@ -539,31 +624,29 @@ function RowsSection({
                         <Input
                           value={row.subject}
                           onChange={(e) => patchRow(row.key, { subject: e.target.value })}
-                          placeholder={subjectLabel}
+                          placeholder="참여 전문가명"
                           className="h-7 text-xs"
                         />
                       )}
                     </td>
-                    {withForm && (
-                      <td className={td}>
-                        {editable ? (
-                          <Input
-                            value={row.form}
-                            onChange={(e) => patchRow(row.key, { form: e.target.value })}
-                            placeholder="강의 (주제)"
-                            className="h-7 text-xs"
-                          />
-                        ) : (
-                          <span className="whitespace-pre-wrap text-xs">{row.form || "-"}</span>
-                        )}
-                      </td>
-                    )}
+                    <td className={td}>
+                      {editable ? (
+                        <Input
+                          value={row.form}
+                          onChange={(e) => patchRow(row.key, { form: e.target.value })}
+                          placeholder="강의 (주제)"
+                          className="h-7 text-xs"
+                        />
+                      ) : (
+                        <span className="whitespace-pre-wrap text-xs">{row.form || "-"}</span>
+                      )}
+                    </td>
                     <td className={td}>
                       {editable ? (
                         <Textarea
                           value={row.body}
                           onChange={(e) => patchRow(row.key, { body: e.target.value })}
-                          placeholder={withForm ? "특이사항 없음." : "내용을 적어 주세요."}
+                          placeholder="특이사항 없음."
                           className="min-h-[72px] text-sm"
                           rows={3}
                         />
@@ -575,46 +658,22 @@ function RowsSection({
                     </td>
                     {canEdit && (
                       <td className={cn(td, "text-center")}>
-                        <div className="flex flex-col items-center gap-1">
-                          {row.editing ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              className={REGISTER_CLASS}
-                              onClick={() => register(row, index)}
-                              disabled={busyKey === row.key}
-                            >
-                              <Check className="mr-0.5 h-3 w-3" aria-hidden />
-                              등록
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className={EDIT_CLASS}
-                              onClick={() => patchRow(row.key, { editing: true })}
-                              disabled={busyKey === row.key}
-                            >
-                              <Pencil className="mr-0.5 h-3 w-3" aria-hidden />
-                              수정
-                            </Button>
-                          )}
-                          {!row.auto && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
-                              onClick={() => remove(row)}
-                              disabled={busyKey === row.key}
-                              title={row.id ? "삭제" : "취소"}
-                            >
-                              <Trash2 className="mr-0.5 h-3 w-3" aria-hidden />
-                              {row.id ? "삭제" : "취소"}
-                            </Button>
-                          )}
-                        </div>
+                        <RowButtons
+                          row={row}
+                          busy={busyKey === row.key}
+                          canDelete={!row.auto}
+                          onRegister={() => {
+                            if (!row.subject.trim() && !row.expertId) {
+                              toast({ variant: "destructive", description: "참여 전문가명을 적어 주세요." });
+                              return;
+                            }
+                            register(row, index, (id) =>
+                              patchRow(row.key, { id, editing: false, body: row.body.trim(), subject: row.subject.trim() })
+                            );
+                          }}
+                          onEdit={() => patchRow(row.key, { editing: true })}
+                          onRemove={() => remove(row, () => setRows((prev) => prev.filter((r) => r.key !== row.key)))}
+                        />
                       </td>
                     )}
                   </tr>
@@ -626,6 +685,184 @@ function RowsSection({
       </CardContent>
     </Card>
   );
+}
+
+// ---------------------------------------------------------------------------
+// 3. 운영·관리 특이사항 — 영역마다 줄을 댓글처럼 쌓는다 (기획 2026-09-21)
+// ---------------------------------------------------------------------------
+function OpsSection({
+  projectId,
+  title,
+  initialRows,
+  canEdit,
+}: {
+  projectId: string;
+  title: string;
+  initialRows: RowState[];
+  canEdit: boolean;
+}) {
+  const [rows, setRows] = useState<RowState[]>(initialRows);
+  const { busyKey, register, remove, toast } = useRowActions(projectId, "ops", false);
+
+  function patchRow(key: string, p: Partial<RowState>) {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...p } : r)));
+  }
+  function addLine(area: string) {
+    setRows((prev) => [
+      ...prev,
+      {
+        key: `new-${Date.now()}-${prev.length}`,
+        id: null,
+        expertId: null,
+        subject: area,
+        form: "",
+        body: "",
+        editing: true,
+        auto: false,
+        authorName: null,
+        createdAt: null,
+      },
+    ]);
+  }
+
+  // 영역 = 고정 4개 + 저장돼 있는 다른 구분(옛 저장분·직접 적은 구분)
+  const areas = [
+    ...OPS_AREAS,
+    ...Array.from(new Set(rows.map((r) => r.subject))).filter((s) => !OPS_AREAS.includes(s)),
+  ];
+
+  const th = "border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold";
+  const td = "border px-2 py-1.5 text-sm align-top";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">{title}</CardTitle>
+        <p className="mt-1 text-xs text-muted-foreground">
+          영역마다 「줄 추가」로 내용을 계속 쌓습니다. 줄마다 등록하면 작성자와 시각이 남고, 「수정」으로 고칠 수 있습니다.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] border-collapse">
+            <thead>
+              <tr>
+                <th className={cn(th, "w-36")}>구분</th>
+                <th className={th}>내용</th>
+                {canEdit && <th className={cn(th, "w-28")}>처리</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {areas.map((area) => {
+                const lines = rows.filter((r) => r.subject === area);
+                const span = Math.max(1, lines.length) + (canEdit ? 1 : 0);
+                return (
+                  <FragmentRows key={area}>
+                    {lines.length === 0 && (
+                      <tr>
+                        <th rowSpan={span} className={cn(td, "w-36 bg-neutral-50 text-left text-xs font-semibold")}>
+                          {area}
+                        </th>
+                        <td className={cn(td, "text-xs text-muted-foreground")} colSpan={canEdit ? 2 : 1}>
+                          아직 적은 내용이 없습니다.
+                        </td>
+                      </tr>
+                    )}
+                    {lines.map((row, i) => {
+                      const editable = canEdit && row.editing && busyKey !== row.key;
+                      const index = rows.findIndex((r) => r.key === row.key);
+                      return (
+                        <tr key={row.key} className={cn(row.id === null && "bg-amber-50/40")}>
+                          {i === 0 && (
+                            <th rowSpan={span} className={cn(td, "w-36 bg-neutral-50 text-left text-xs font-semibold")}>
+                              {area}
+                            </th>
+                          )}
+                          <td className={td}>
+                            {editable ? (
+                              <Textarea
+                                value={row.body}
+                                onChange={(e) => patchRow(row.key, { body: e.target.value })}
+                                placeholder="내용을 적어 주세요."
+                                className="min-h-[60px] text-sm"
+                                rows={2}
+                                autoFocus={row.id === null}
+                              />
+                            ) : (
+                              <div>
+                                <div className="whitespace-pre-wrap">
+                                  {row.body || <span className="text-muted-foreground">미기입</span>}
+                                </div>
+                                {(row.authorName || row.createdAt) && (
+                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                    {row.authorName ?? ""}
+                                    {row.authorName && row.createdAt ? " · " : ""}
+                                    {row.createdAt ? formatWhen(row.createdAt) : ""}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          {canEdit && (
+                            <td className={cn(td, "text-center")}>
+                              <RowButtons
+                                row={row}
+                                busy={busyKey === row.key}
+                                canDelete
+                                onRegister={() => {
+                                  if (!row.body.trim()) {
+                                    toast({ variant: "destructive", description: "내용을 적어 주세요." });
+                                    return;
+                                  }
+                                  register(row, index, (id) =>
+                                    patchRow(row.key, {
+                                      id,
+                                      editing: false,
+                                      body: row.body.trim(),
+                                      createdAt: row.createdAt ?? new Date().toISOString(),
+                                    })
+                                  );
+                                }}
+                                onEdit={() => patchRow(row.key, { editing: true })}
+                                onRemove={() => remove(row, () => setRows((prev) => prev.filter((r) => r.key !== row.key)))}
+                              />
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    {canEdit && (
+                      <tr>
+                        <td className={cn(td, "py-1")} colSpan={2}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-1.5 text-[11px] text-indigo-700 hover:bg-indigo-50"
+                            onClick={() => addLine(area)}
+                            disabled={lines.some((l) => l.id === null)}
+                            title={lines.some((l) => l.id === null) ? "먼저 위 줄을 등록하세요" : "줄 추가"}
+                          >
+                            <Plus className="mr-0.5 h-3 w-3" aria-hidden />
+                            줄 추가
+                          </Button>
+                        </td>
+                      </tr>
+                    )}
+                  </FragmentRows>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** tbody 안에서 여러 tr을 묶는 프래그먼트 (key용) */
+function FragmentRows({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
 
 // ---------------------------------------------------------------------------
@@ -648,6 +885,19 @@ export function ProjectReviewTab({
   hasExperts: boolean;
   canEdit: boolean;
 }) {
+  const toRow = (i: ReviewItemRow, auto: boolean): RowState => ({
+    key: i.id,
+    id: i.id,
+    expertId: i.expertId,
+    subject: i.subject,
+    form: i.form ?? "",
+    body: i.body,
+    editing: false,
+    auto,
+    authorName: i.authorName,
+    createdAt: i.createdAt,
+  });
+
   // 전문가 평가 행: 저장된 행(전문가 연결·직접 추가) + 아직 등록 안 된 계약 성립 전문가
   const savedExpertItems = items.filter((i) => i.section === "expert");
   const savedByExpert = new Map(
@@ -657,42 +907,38 @@ export function ProjectReviewTab({
     ...experts.map((e) => {
       const s = savedByExpert.get(e.expertId);
       return s
-        ? { key: s.id, id: s.id, expertId: e.expertId, subject: s.subject || e.name, form: s.form ?? "", body: s.body, editing: false, auto: true }
-        : { key: `auto-${e.expertId}`, id: null, expertId: e.expertId, subject: e.name, form: e.form, body: e.hint ?? "", editing: true, auto: true };
+        ? { ...toRow(s, true), subject: s.subject || e.name }
+        : {
+            key: `auto-${e.expertId}`,
+            id: null,
+            expertId: e.expertId,
+            subject: e.name,
+            form: e.form,
+            body: e.hint ?? "",
+            editing: true,
+            auto: true,
+            authorName: null,
+            createdAt: null,
+          };
     }),
     // 전문가 연결이 끊긴(더는 계약 성립이 아닌) 저장 행도 남긴다 — 기록이다
     ...savedExpertItems
       .filter((i) => !i.expertId || !experts.some((e) => e.expertId === i.expertId))
-      .map((i) => ({ key: i.id, id: i.id, expertId: i.expertId, subject: i.subject, form: i.form ?? "", body: i.body, editing: false, auto: Boolean(i.expertId) })),
+      .map((i) => toRow(i, Boolean(i.expertId))),
   ];
 
-  const savedOps = items.filter((i) => i.section === "ops");
-  const opsRows: RowState[] =
-    savedOps.length > 0
-      ? savedOps.map((i) => ({ key: i.id, id: i.id, expertId: null, subject: i.subject, form: "", body: i.body, editing: false, auto: false }))
-      : OPS_PRESETS.map((label, n) => ({ key: `preset-${n}`, id: null, expertId: null, subject: label, form: "", body: "", editing: true, auto: false }));
+  const opsRows: RowState[] = items
+    .filter((i) => i.section === "ops")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((i) => toRow(i, false));
 
   return (
     <div className="space-y-5">
       <SummarySection projectId={projectId} auto={auto} saved={saved} canEdit={canEdit} />
-      {hasExperts && (
-        <RowsSection
-          projectId={projectId}
-          section="expert"
-          title="2. 전문가(강사) 평가 (담당 PM 작성)"
-          note="※ 평가항목: 준비도(자료 등), 전달력 및 집중도, 적합성(대상/주제/목적 등), 기타사항 등. 계약이 성립한 전문가는 자동으로 줄이 놓입니다."
-          subjectLabel="참여 전문가명"
-          withForm
-          initialRows={expertRows}
-          canEdit={canEdit}
-        />
-      )}
-      <RowsSection
+      {hasExperts && <ExpertSection projectId={projectId} initialRows={expertRows} canEdit={canEdit} />}
+      <OpsSection
         projectId={projectId}
-        section="ops"
         title={`${hasExperts ? "3" : "2"}. 프로젝트 운영 및 관리 특이사항`}
-        subjectLabel="구분"
-        withForm={false}
         initialRows={opsRows}
         canEdit={canEdit}
       />

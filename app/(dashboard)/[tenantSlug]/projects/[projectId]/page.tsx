@@ -122,6 +122,7 @@ import {
 } from "@/lib/integrations/contribution-slots";
 import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
 import { formatKoreanDateFull } from "@/lib/checklists/dates";
+import { contractTypeLabel } from "@/lib/operations/schemas";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -189,31 +190,42 @@ export default async function ProjectDetailPage({
 
   // 신규 컬럼(주관·수행기관·D-Day·유형)은 42703 한정 폴백 (§14-10) —
   // 마이그레이션 전 환경에서 상세 전체가 404로 죽으면 안 된다 (리뷰 P2-3)
+  const BASE_PROJECT_COLUMNS =
+    "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by";
   const projectResult = await supabase
     .from("projects")
     .select(
-      "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by, host_org, executor_org, dday_date, project_kind"
+      `${BASE_PROJECT_COLUMNS}, host_org, executor_org, dday_date, project_kind, contract_type`
     )
     .eq("id", params.projectId)
     .maybeSingle();
   let project = projectResult.data;
   if (projectResult.error?.code === "42703") {
-    const { data: legacyProject } = await supabase
+    // 계약 처리 구분(0008, 기획 2026-09-21)만 없는 환경 → 그 컬럼만 빼고 다시
+    const { data: withoutContract, error: withoutContractError } = await supabase
       .from("projects")
-      .select(
-        "id, name, code, business_year, client_name, status, starts_on, ends_on, description, closing_approval_id, closed_at, budget_amount, created_by"
-      )
+      .select(`${BASE_PROJECT_COLUMNS}, host_org, executor_org, dday_date, project_kind`)
       .eq("id", params.projectId)
       .maybeSingle();
-    project = legacyProject
-      ? {
-          ...legacyProject,
-          host_org: null,
-          executor_org: null,
-          dday_date: null,
-          project_kind: "event",
-        }
-      : null;
+    if (withoutContractError?.code === "42703") {
+      const { data: legacyProject } = await supabase
+        .from("projects")
+        .select(BASE_PROJECT_COLUMNS)
+        .eq("id", params.projectId)
+        .maybeSingle();
+      project = legacyProject
+        ? {
+            ...legacyProject,
+            host_org: null,
+            executor_org: null,
+            dday_date: null,
+            project_kind: "event",
+            contract_type: null,
+          }
+        : null;
+    } else {
+      project = withoutContract ? { ...withoutContract, contract_type: null } : null;
+    }
   }
 
   if (!project) notFound();
@@ -1530,7 +1542,7 @@ export default async function ProjectDetailPage({
         .maybeSingle(),
       supabase
         .from("project_review_items")
-        .select("id, section, sort_order, subject, expert_id, form, body")
+        .select("id, section, sort_order, subject, expert_id, form, body, created_by, created_at")
         .eq("project_id", project.id)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true }),
@@ -1560,6 +1572,8 @@ export default async function ProjectDetailPage({
       expertId: i.expert_id,
       form: i.form,
       body: i.body,
+      authorName: i.created_by ? (staffNameById.get(i.created_by) ?? null) : null,
+      createdAt: i.created_at,
     }));
     // 계약 성립 전문가의 참여 형태 — 배정된 세션의 역할 유형(강사·멘토링/컨설팅 등) + 세션명
     const roleTypeBySlot = new Map(slotRecords.map((s) => [s.id, s.role_type]));
@@ -1585,9 +1599,11 @@ export default async function ProjectDetailPage({
         hint: hintByExpert.get(t.expertId) ?? null,
       };
     });
-    const eventDates = Array.from(
-      new Set(slotRows.map((s) => describeSchedule(s.schedule, { withYear: true, withMeta: false })))
-    ).join(", ");
+    // 행사일 — 세션마다 한 칸 (가로 3칸 표, 기획 2026-09-21)
+    const reviewSessions = slotRows.map((s) => ({
+      label: s.sessionName ?? s.roleDescription ?? slotLabelById.get(s.id) ?? s.slotDate,
+      when: describeSchedule(s.schedule, { withYear: true, withMeta: false }),
+    }));
     const venue = Array.from(
       new Set(slotRecords.map((s) => s.location_name?.trim()).filter((v): v is string => Boolean(v)))
     ).join(" / ");
@@ -1603,7 +1619,9 @@ export default async function ProjectDetailPage({
         project.starts_on || project.ends_on
           ? `${formatKoreanDateFull(project.starts_on) || "?"} ~ ${formatKoreanDateFull(project.ends_on) || "?"}`
           : "",
-      eventDates: eventDates || (project.dday_date ? formatKoreanDateFull(project.dday_date) : ""),
+      ddayDate: project.dday_date ? formatKoreanDateFull(project.dday_date) : "",
+      sessions: reviewSessions,
+      contractType: contractTypeLabel(project.contract_type),
       venue,
     };
   }
@@ -1692,6 +1710,10 @@ export default async function ProjectDetailPage({
                     hostOrg: project.host_org ?? "",
                     executorOrg: project.executor_org ?? "",
                     ddayDate: project.dday_date ?? "",
+                    contractType:
+                      project.contract_type === "private" || project.contract_type === "bid"
+                        ? project.contract_type
+                        : "",
                   }}
                 />
               )}
@@ -1713,6 +1735,14 @@ export default async function ProjectDetailPage({
                 <div>
                   <dt className="text-xs text-muted-foreground">수행기관</dt>
                   <dd>{project.executor_org ?? <span className="text-muted-foreground">미기입</span>}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">계약 처리 구분</dt>
+                  <dd>
+                    {contractTypeLabel(project.contract_type) ?? (
+                      <span className="text-muted-foreground">미정 (기본정보 수정에서 설정)</span>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">사업기간</dt>
