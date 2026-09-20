@@ -68,20 +68,21 @@ export function EngagementReviseButton({
 
   return (
     <>
+      {/* 거절 행은 붉은 '거절' 버튼이 현재 상태다 — 누르면 승인으로 바꿀 수 있다 (기획 지시 2026-09-21) */}
       <Button
         type="button"
         size="sm"
         variant={toAccept ? "default" : "outline"}
         className={
           toAccept
-            ? "h-6 bg-yellow-400 px-1.5 text-[10px] text-yellow-950 hover:bg-yellow-500"
+            ? "h-7 bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700"
             : "h-6 px-1.5 text-[10px] text-muted-foreground hover:bg-neutral-200"
         }
-        title={toAccept ? "거절을 승인(수락)으로 바꿉니다" : "승인을 거절로 바꿉니다 (수락서 발송 전만)"}
+        title={toAccept ? "거절됨 — 누르면 승인(수락)으로 바꿀 수 있습니다" : "승인을 거절로 바꿉니다 (수락서 발송 전만)"}
         onClick={() => setOpen(true)}
       >
-        {toAccept ? <Check className="mr-0.5 h-3 w-3" aria-hidden /> : <X className="mr-0.5 h-3 w-3" aria-hidden />}
-        {toAccept ? "승인으로 변경" : "거절로 변경"}
+        <X className="mr-0.5 h-3 w-3" aria-hidden />
+        {toAccept ? "거절" : "거절로 변경"}
       </Button>
       <Dialog open={open} onOpenChange={(v) => !v && close()}>
         <DialogContent className="sm:max-w-md">
