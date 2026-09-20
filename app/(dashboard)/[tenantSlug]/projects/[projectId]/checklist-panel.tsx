@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Download, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
+import { Copy, Download, FileSpreadsheet, FolderInput, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,9 @@ import {
   getProjectAllChecklistLogs,
   getProjectChecklistLogs,
   importCommonChecklist,
+  importProjectChecklists,
   importTypedItems,
+  listMyChecklistSources,
   renameChecklistGroup,
   reorderChecklistItems,
   setPlannedDue,
@@ -74,6 +76,7 @@ import {
   updateChecklistItem,
   updateDueChangeReason,
   type ChecklistItemPatch,
+  type ChecklistSourceProject,
 } from "./checklist-actions";
 
 export type DueChangeView = {
@@ -290,6 +293,17 @@ export function ProjectChecklistPanel({
             />
             <TemplateSettingsDialog kind="typed" />
           </span>
+          {/* 내가 참여한 다른 프로젝트의 체크리스트를 통째로 가져온다 (기획 지시 2026-09-21) */}
+          <ProjectImportDialog
+            projectId={projectId}
+            disabled={pending}
+            onImport={(ids) =>
+              run(async () => {
+                const r = await importProjectChecklists(projectId, ids);
+                return r;
+              }, "다른 프로젝트의 체크리스트를 불러왔습니다.")
+            }
+          />
           {USE_BUTTON_KINDS.map((kind) => {
             const ofKind = templates.filter((t) => t.kind === kind);
             return (
@@ -340,7 +354,24 @@ export function ProjectChecklistPanel({
       )}
 
       {checklists.length > 0 && (
-        <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label="체크리스트 시트">
+        <div className="flex flex-wrap items-end gap-1 border-b" role="tablist" aria-label="체크리스트 시트">
+          {/* 엑셀 저장 — 이 시트 / 전체 (열람자 누구나, 기획 지시 2026-09-21) */}
+          <span className="order-last ml-auto inline-flex items-center gap-1 pb-1">
+            {selected && (
+              <Button asChild variant="outline" size="sm" className="h-7 text-xs">
+                <a href={`/${tenantSlug}/projects/${projectId}/checklists/export?checklist=${selected.id}`} title={`${selected.name} 시트만 엑셀로 저장`}>
+                  <FileSpreadsheet className="mr-1 h-3.5 w-3.5" aria-hidden /> 이 시트 엑셀 저장
+                </a>
+              </Button>
+            )}
+            {checklists.length > 1 && (
+              <Button asChild variant="ghost" size="sm" className="h-7 text-xs">
+                <a href={`/${tenantSlug}/projects/${projectId}/checklists/export`} title="모든 시트를 한 파일에 시트별로 저장">
+                  전체 엑셀 저장
+                </a>
+              </Button>
+            )}
+          </span>
           {checklists.map((c) => {
             const active = c.id === selected?.id;
             const done = c.items.filter((i) => i.completedOn).length;
@@ -489,6 +520,133 @@ function TypedImportDialog({
             onClick={() => { onImport(selected); setOpen(false); setSelected([]); }}
           >
             {selected.length}개 카테고리 불러오기
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 내가 참여한 프로젝트 → 그 프로젝트의 시트를 골라 통째로 불러온다 (기획 지시 2026-09-21) */
+function ProjectImportDialog({
+  projectId,
+  disabled,
+  onImport,
+}: {
+  projectId: string;
+  disabled: boolean;
+  onImport: (checklistIds: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ChecklistSourceProject[] | null>(null);
+  const [projectSel, setProjectSel] = useState<string>("");
+  const [selected, setSelected] = useState<string[]>([]);
+
+  function handleOpen(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      setSelected([]);
+      return;
+    }
+    if (projects !== null) return;
+    setLoading(true);
+    setError(null);
+    void listMyChecklistSources(projectId).then((r) => {
+      setLoading(false);
+      if (!r.ok) return setError(r.error);
+      setProjects(r.projects);
+      setProjectSel(r.projects[0]?.id ?? "");
+    });
+  }
+
+  const current = projects?.find((p) => p.id === projectSel) ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="outline" disabled={disabled}>
+          <FolderInput className="mr-1 h-4 w-4" aria-hidden /> 체크리스트 불러오기
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>다른 프로젝트의 체크리스트 불러오기</DialogTitle>
+          <DialogDescription>
+            내가 참여했던 프로젝트의 시트를 골라 가져옵니다. 항목·분류·권장(D±)·담당·참고사항만
+            복사되고, 마감일 계획·완료일·메모는 이 프로젝트에서 새로 적습니다. 공통·유형별
+            시트는 이 프로젝트의 공통 체크리스트 끝에 붙습니다.
+          </DialogDescription>
+        </DialogHeader>
+        {loading && <p className="text-xs text-muted-foreground">참여한 프로젝트를 찾는 중…</p>}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {projects && projects.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            체크리스트가 있는 참여 프로젝트가 없습니다. 개요 탭의 팀 구성에 배정된 프로젝트만 보입니다.
+          </p>
+        )}
+        {projects && projects.length > 0 && (
+          <div className="space-y-3">
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold">프로젝트</span>
+              <select
+                value={projectSel}
+                onChange={(e) => {
+                  setProjectSel(e.target.value);
+                  setSelected([]);
+                }}
+                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.businessYear ? `${p.businessYear} · ` : ""}{p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="max-h-[45vh] space-y-1.5 overflow-y-auto">
+              {current?.checklists.map((c) => {
+                const on = selected.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-xs",
+                      on && "border-brand bg-brand/5"
+                    )}
+                  >
+                    <Checkbox
+                      checked={on}
+                      onCheckedChange={(v) =>
+                        setSelected((prev) => (v ? [...prev, c.id] : prev.filter((x) => x !== c.id)))
+                      }
+                    />
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-muted-foreground">
+                      {CHECKLIST_KIND_LABELS[c.kind]} · {c.itemCount}개 항목
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => handleOpen(false)}>닫기</Button>
+          <Button
+            type="button"
+            disabled={selected.length === 0 || disabled}
+            onClick={() => {
+              onImport(selected);
+              handleOpen(false);
+            }}
+          >
+            {selected.length}개 시트 불러오기
           </Button>
         </div>
       </DialogContent>

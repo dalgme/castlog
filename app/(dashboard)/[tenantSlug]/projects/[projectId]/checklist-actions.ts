@@ -9,6 +9,7 @@ import { gradeRank, isUserGrade } from "@/lib/auth/grades";
 import {
   isChecklistKind,
   kstToday,
+  type ChecklistKind,
   type ChecklistLogRow,
 } from "@/lib/checklists/kinds";
 import { GROUP_FIELDS, GROUP_FIELD_LABELS, type GroupField } from "@/lib/checklists/groups";
@@ -609,6 +610,165 @@ export async function deleteChecklistItems(
   });
   revalidate();
   return { ok: true, removed: rows.length };
+}
+
+/** 내가 참여한 다른 프로젝트 — '체크리스트 불러오기' 선택지 (기획 지시 2026-09-21) */
+export type ChecklistSourceProject = {
+  id: string;
+  name: string;
+  businessYear: number | null;
+  checklists: { id: string; kind: ChecklistKind; name: string; itemCount: number }[];
+};
+
+export async function listMyChecklistSources(
+  projectId: string
+): Promise<{ ok: true; projects: ChecklistSourceProject[] } | { ok: false; error: string }> {
+  if (!uuid.safeParse(projectId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
+  const gate = await requireTenantStaff();
+  if (!gate.ok) return gate;
+  const supabase = createClient();
+  // '참여했던' = project_assignments에 배정된 프로젝트 (개설만 한 프로젝트 포함)
+  const [{ data: assigned }, { data: created }] = await Promise.all([
+    supabase.from("project_assignments").select("project_id").eq("user_id", gate.actor.userId),
+    supabase.from("projects").select("id").eq("created_by", gate.actor.userId),
+  ]);
+  const ids = Array.from(
+    new Set([...(assigned ?? []).map((a) => a.project_id), ...(created ?? []).map((p) => p.id)])
+  ).filter((id) => id !== projectId);
+  if (ids.length === 0) return { ok: true, projects: [] };
+  const [{ data: projects }, { data: lists }] = await Promise.all([
+    supabase
+      .from("projects").select("id, name, business_year").in("id", ids)
+      .order("business_year", { ascending: false }).order("name", { ascending: true }),
+    supabase
+      .from("project_checklists").select("id, project_id, kind, name").in("project_id", ids)
+      .order("created_at", { ascending: true }),
+  ]);
+  const listIds = (lists ?? []).map((l) => l.id);
+  const { data: items } = listIds.length
+    ? await supabase.from("project_checklist_items").select("checklist_id").in("checklist_id", listIds)
+    : { data: [] as { checklist_id: string }[] };
+  const countByList = new Map<string, number>();
+  for (const it of items ?? []) countByList.set(it.checklist_id, (countByList.get(it.checklist_id) ?? 0) + 1);
+  const result: ChecklistSourceProject[] = (projects ?? [])
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      businessYear: p.business_year ?? null,
+      checklists: (lists ?? [])
+        .filter((l) => l.project_id === p.id && isChecklistKind(l.kind))
+        .map((l) => ({
+          id: l.id, kind: l.kind as ChecklistKind, name: l.name, itemCount: countByList.get(l.id) ?? 0,
+        })),
+    }))
+    .filter((p) => p.checklists.length > 0);
+  return { ok: true, projects: result };
+}
+
+/**
+ * 다른 프로젝트의 체크리스트 불러오기 (기획 지시 2026-09-21).
+ * 항목·분류·권장(D±)·담당·참고사항만 복사한다 — 마감일 계획·완료일·메모·확인란은
+ * 새 프로젝트에서 새로 적는다. 공통·유형별은 이 프로젝트의 공통 시트 끝에 붙고,
+ * 나머지 종류는 같은 표준시트의 시트가 있으면 그 끝에, 없으면 새 시트로 만든다.
+ * 담당이 퇴사자면 이 프로젝트의 PM으로 바꾼다.
+ */
+export async function importProjectChecklists(
+  projectId: string,
+  sourceChecklistIds: string[]
+): Promise<{ ok: true; added: number; sheets: number } | { ok: false; error: string }> {
+  const gate = await requireProjectTeam(projectId);
+  if (!gate.ok) return gate;
+  const idsParsed = z.array(uuid).min(1).max(20).safeParse(sourceChecklistIds);
+  if (!idsParsed.success) return { ok: false, error: "불러올 체크리스트를 선택하세요." };
+  const supabase = createClient();
+  const { data: sourcesRaw } = await supabase
+    .from("project_checklists").select("id, project_id, kind, name, template_id")
+    .in("id", idsParsed.data).neq("project_id", projectId);
+  const sources = (sourcesRaw ?? []).filter((s): s is typeof s & { kind: ChecklistKind } => isChecklistKind(s.kind));
+  if (sources.length === 0) {
+    return { ok: false, error: "불러올 체크리스트를 찾을 수 없습니다 (열람 범위 밖이거나 삭제됨). 새로고침 후 다시 선택하세요." };
+  }
+  // 본인이 참여한 프로젝트만 — 전사 열람 권한자라도 남의 프로젝트를 복사해 오지 않는다 (규칙)
+  const srcProjectIds = Array.from(new Set(sources.map((s) => s.project_id)));
+  const [{ data: mine }, { data: createdByMe }, { data: srcProjects }] = await Promise.all([
+    supabase.from("project_assignments").select("project_id").eq("user_id", gate.actor.userId).in("project_id", srcProjectIds),
+    supabase.from("projects").select("id").eq("created_by", gate.actor.userId).in("id", srcProjectIds),
+    supabase.from("projects").select("id, name").in("id", srcProjectIds),
+  ]);
+  const allowed = new Set([...(mine ?? []).map((m) => m.project_id), ...(createdByMe ?? []).map((p) => p.id)]);
+  const permitted = sources.filter((s) => allowed.has(s.project_id));
+  if (permitted.length === 0) {
+    return { ok: false, error: "본인이 참여한 프로젝트의 체크리스트만 불러올 수 있습니다 (규칙)." };
+  }
+  const projectNameById = new Map((srcProjects ?? []).map((p) => [p.id, p.name]));
+  const { data: srcItems } = await supabase
+    .from("project_checklist_items")
+    .select("checklist_id, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, sort_order")
+    .in("checklist_id", permitted.map((s) => s.id)).order("sort_order", { ascending: true });
+  const assigneeIds = Array.from(new Set((srcItems ?? []).map((it) => it.assignee_user_id).filter((v): v is string => Boolean(v))));
+  const { data: activeUsers } = assigneeIds.length
+    ? await supabase.from("users").select("id").in("id", assigneeIds).eq("is_active", true)
+    : { data: [] as { id: string }[] };
+  const active = new Set((activeUsers ?? []).map((u) => u.id));
+  const pmId = await projectPmUserId(supabase, projectId);
+  const dday = await projectDday(supabase, projectId);
+  const { data: existingRaw } = await supabase
+    .from("project_checklists").select("id, kind, template_id").eq("project_id", projectId);
+  const existing = [...(existingRaw ?? [])];
+
+  let added = 0;
+  let sheets = 0;
+  for (const src of permitted) {
+    const items = (srcItems ?? []).filter((it) => it.checklist_id === src.id);
+    if (items.length === 0) continue;
+    const targetKind: ChecklistKind = src.kind === "typed" ? "common" : src.kind;
+    let target = existing.find((e) =>
+      targetKind === "common" ? e.kind === "common" : Boolean(src.template_id) && e.template_id === src.template_id
+    );
+    if (!target) {
+      const { data: createdList, error } = await supabase
+        .from("project_checklists")
+        .insert({
+          tenant_id: gate.actor.tenantId, project_id: projectId, kind: targetKind,
+          template_id: src.template_id, name: targetKind === "common" ? "프로젝트 체크리스트" : src.name,
+          dday_date: dday, created_by: gate.actor.userId, updated_by: gate.actor.userId,
+        })
+        .select("id, kind, template_id").single();
+      if (error || !createdList) return { ok: false, error: SYSTEM_FAIL };
+      target = createdList;
+      existing.push(createdList);
+      sheets++;
+      await logChecklist(gate.actor, {
+        scope: "project", action: "checklist.create", checklistId: createdList.id, projectId,
+        after: `'${projectNameById.get(src.project_id) ?? "다른 프로젝트"}' ${src.name} 불러오기로 생성`,
+      });
+    }
+    const { data: last } = await supabase
+      .from("project_checklist_items").select("sort_order").eq("checklist_id", target.id)
+      .order("sort_order", { ascending: false }).limit(1).maybeSingle();
+    const base = last?.sort_order ?? 0;
+    const rows = items.map((it, i) => ({
+      tenant_id: gate.actor.tenantId, checklist_id: target!.id, project_id: projectId,
+      sort_order: base + (i + 1) * 10,
+      phase: it.phase, category: it.category, subcategory: it.subcategory, title: it.title,
+      offset_days: it.offset_days, quantity: it.quantity, note: it.note,
+      assignee_user_id: it.assignee_user_id && active.has(it.assignee_user_id) ? it.assignee_user_id : pmId,
+      created_by: gate.actor.userId, updated_by: gate.actor.userId,
+    }));
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await supabase.from("project_checklist_items").insert(rows.slice(i, i + 200));
+      if (error) return { ok: false, error: SYSTEM_FAIL };
+    }
+    added += rows.length;
+    await logChecklist(gate.actor, {
+      scope: "project", action: "checklist.import_project", checklistId: target.id, projectId,
+      field: projectNameById.get(src.project_id) ?? null,
+      after: `'${projectNameById.get(src.project_id) ?? "다른 프로젝트"}' ${src.name}에서 ${rows.length}개 항목`,
+    });
+  }
+  if (added === 0) return { ok: false, error: "선택한 체크리스트에 항목이 없습니다." };
+  revalidate();
+  return { ok: true, added, sheets };
 }
 
 export type PlannedDueResult =
