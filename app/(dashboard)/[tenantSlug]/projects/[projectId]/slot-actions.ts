@@ -13,6 +13,7 @@ import { explainActionError } from "@/lib/ux/action-errors";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { loadSlotSchedule } from "@/lib/integrations/slot-schedule";
+import { propagateSlotToEngagements } from "@/lib/integrations/slot-sync";
 import { computeFeeTotal, unitFromHourly } from "@/lib/sessions/fees";
 
 export type SlotResult = { ok: true } | { ok: false; error: string };
@@ -343,6 +344,12 @@ export async function updateSlot(
   }
   const dateErr = await replaceSlotDates(supabase, auth.tenantId, slotId, dates);
   if (dateErr) return { ok: false, error: dateErr };
+
+  // 회차·회차당 시간·진행 방식·날짜가 바뀌면 후보별 단가·총액을 다시 계산하고,
+  // 그 세션을 인용하는 섭외 건·수락서(발송 전)까지 따라가게 한다 (기획 지시 2026-09-21).
+  // 결재 승인 뒤의 변경은 지문이 달라져 '변경 품의 필요'로 잡힌다 (evaluatePlanGate)
+  await recomputeSlotFees(supabase, slotId);
+  await propagateSlotToEngagements(auth.tenantId, slotId, { userId: auth.userId, role: auth.role });
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -1189,6 +1196,73 @@ export async function applySlotUnitFees(slotId: string, input: UnitFeeInput): Pr
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
+}
+
+/**
+ * 세션 내용 변경 뒤 단가·총액 재계산 (기획 지시 2026-09-21).
+ *  - 세션 일괄 단가: 시간당 비용이 있으면 회당 단가 = 시간당 비용 × 회차당 시간으로 다시.
+ *  - 후보별: 개별 수정(fee_custom) 후보는 자기 시간당 비용(없으면 자기 회당 단가)으로,
+ *    나머지는 세션 값으로. 총액 = 회차 × 단가 (병행은 온/오프 합 또는 범위).
+ * 회차·회차당 시간·진행 방식·날짜 수가 바뀌었는데 예정가가 옛 값으로 남아 품의·
+ * 문자·진행 현황이 전부 옛 금액을 인용하던 결함의 근본 수정.
+ */
+async function recomputeSlotFees(supabase: ReturnType<typeof createClient>, slotId: string) {
+  const { data: slot } = await supabase.from("engagement_slots").select(SLOT_FEE_COLUMNS).eq("id", slotId).maybeSingle();
+  if (!slot) return;
+  const schedule = await loadSlotSchedule(supabase, slot);
+  const hours = schedule.hoursPerSession;
+  const mode = slot.delivery_mode;
+  const pick = (online: number | null, offline: number | null) => {
+    if (mode === "online") return { online, offline: null };
+    if (mode === "offline") return { online: null, offline };
+    if (mode === "hybrid") return { online, offline };
+    return { online: null, offline: offline ?? online };
+  };
+  const slotUnit = pick(
+    slot.hourly_fee_online !== null ? unitFromHourly(slot.hourly_fee_online, hours) : slot.unit_fee_online,
+    slot.hourly_fee_offline !== null ? unitFromHourly(slot.hourly_fee_offline, hours) : slot.unit_fee_offline
+  );
+  if (slotUnit.online !== slot.unit_fee_online || slotUnit.offline !== slot.unit_fee_offline) {
+    await supabase
+      .from("engagement_slots")
+      .update({ unit_fee_online: slotUnit.online, unit_fee_offline: slotUnit.offline })
+      .eq("id", slotId);
+  }
+  const { data: positions } = await supabase
+    .from("engagement_slot_positions")
+    .select("id, fee_custom, unit_fee_online, unit_fee_offline, hourly_fee_online, hourly_fee_offline, expected_fee, expected_fee_max")
+    .eq("slot_id", slotId)
+    .neq("status", "canceled");
+  for (const p of positions ?? []) {
+    const unit = p.fee_custom
+      ? pick(
+          p.hourly_fee_online !== null ? unitFromHourly(p.hourly_fee_online, hours) : p.unit_fee_online,
+          p.hourly_fee_offline !== null ? unitFromHourly(p.hourly_fee_offline, hours) : p.unit_fee_offline
+        )
+      : slotUnit;
+    // 단가가 하나도 없는 자리(레거시 1인 비용만)는 건드리지 않는다
+    if (unit.online === null && unit.offline === null) continue;
+    const total = computeFeeTotal(schedule, unit.online, unit.offline);
+    const expected = total ? total.min : null;
+    const expectedMax = total && total.max !== total.min ? total.max : null;
+    if (
+      unit.online === p.unit_fee_online &&
+      unit.offline === p.unit_fee_offline &&
+      expected === p.expected_fee &&
+      expectedMax === p.expected_fee_max
+    ) {
+      continue;
+    }
+    await supabase
+      .from("engagement_slot_positions")
+      .update({
+        unit_fee_online: unit.online,
+        unit_fee_offline: unit.offline,
+        expected_fee: expected,
+        expected_fee_max: expectedMax,
+      })
+      .eq("id", p.id);
+  }
 }
 
 /**

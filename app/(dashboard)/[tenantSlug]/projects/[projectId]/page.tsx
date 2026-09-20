@@ -348,6 +348,8 @@ export default async function ProjectDetailPage({
   let planSlotStates: Record<string, SlotPlanState> | null = null;
   /** 결재 승인 뒤 내용이 바뀐 세션 — 승인 목록·진행 현황에 주홍색 굵은 테두리 (기획 지시 2026-09-21) */
   const planChangedSlotIds = new Set<string>();
+  /** 세션 → 현재 섭외 테이블 소계(최소·최대) — 승인 목록에 '현재 금액'을 나란히 (기획 2026-09-21) */
+  const currentLineBySlot = new Map<string, { subtotal: number; subtotalMax: number }>();
   let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
   // 상급자 릴레이(27번) 상태 — 픽커의 '비워 두면' 안내를 실제 동작과 일치시킨다
   let planRelayOn = false;
@@ -419,6 +421,9 @@ export default async function ProjectDetailPage({
     };
     planSlotStates = gate.required ? gate.slotStates : null;
     if (gate.required) for (const id of gate.changedSlotIds) planChangedSlotIds.add(id);
+    for (const l of snapshot.lines) {
+      currentLineBySlot.set(l.slotId, { subtotal: l.subtotal, subtotalMax: l.subtotalMax ?? l.subtotal });
+    }
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
     // 결재라인 후보 (기획 개정 2026-08-30 — 30번): 상신자보다 **높은 직급**만.
@@ -1187,6 +1192,8 @@ export default async function ProjectDetailPage({
             locationName: l.location_name,
             requiredCount: l.required_count,
             subtotal: l.subtotal,
+            currentSubtotal: l.slot_id ? (currentLineBySlot.get(l.slot_id)?.subtotal ?? null) : null,
+            currentSubtotalMax: l.slot_id ? (currentLineBySlot.get(l.slot_id)?.subtotalMax ?? null) : null,
             experts: (matched?.candidates ?? [])
               .slice()
               .sort((a, b) => a.rank - b.rank)

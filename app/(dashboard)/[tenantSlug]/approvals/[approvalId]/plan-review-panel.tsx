@@ -52,6 +52,8 @@ export type ReviewSlotDetail = {
 
 export type ReviewSlot = {
   slotId: string;
+  /** 승인 뒤 세션 내용이 바뀜 — 붉은 굵은 테두리 (기획 2026-09-21) */
+  changed?: boolean;
   label: string; // 세션명 · 일정
   requiredCount: number;
   detail?: ReviewSlotDetail;
@@ -195,9 +197,22 @@ export function PlanReviewPanel({
           .map((id) => byId.get(id))
           .filter((c): c is ReviewCandidate => Boolean(c));
         return (
-          <div key={slot.slotId} className="rounded-md border bg-background p-3">
+          <div
+            key={slot.slotId}
+            className={
+              slot.changed
+                ? "rounded-md border-[3px] border-red-600 bg-background p-3"
+                : "rounded-md border bg-background p-3"
+            }
+            title={slot.changed ? "결재 승인 후 세션 내용이 변경됨 — 변경 품의(재승인) 필요" : undefined}
+          >
             <p className="mb-1.5 text-sm font-semibold">
               {slot.label}
+              {slot.changed && (
+                <span className="ml-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  승인 후 변경 · 재승인 필요
+                </span>
+              )}
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 필요 {slot.requiredCount}명 · 후보 {ordered.length}명
               </span>

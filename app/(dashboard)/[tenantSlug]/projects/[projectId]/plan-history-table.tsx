@@ -91,7 +91,7 @@ export function PlanHistoryTable({
             ? `전체 이력 ${plans.length}건 — 상신 시각순 (결재 중·반려·상신 취소·대체 포함)`
             : `최종 승인된 계획 ${approved.length}건`}
           {changedCount > 0 && (
-            <span className="ml-2 inline-flex items-center gap-1 font-semibold text-orange-700">
+            <span className="ml-2 inline-flex items-center gap-1 font-semibold text-red-700">
               <span
                 aria-hidden
                 className={cn("inline-block h-3 w-3 rounded-sm bg-white", CHANGED_SESSION_RING)}
@@ -197,8 +197,8 @@ export function PlanHistoryTable({
                                   <p className="font-semibold">
                                     {s.label}
                                     {s.changed && (
-                                      <span className="ml-1.5 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                                        승인 후 변경
+                                      <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                        승인 후 변경 · 재승인 필요
                                       </span>
                                     )}
                                   </p>
@@ -208,11 +208,21 @@ export function PlanHistoryTable({
                                       s.roleDescription,
                                       s.locationName,
                                       `필요 ${s.requiredCount}명`,
-                                      `소계 ${formatKrw(s.subtotal)}`,
+                                      `승인 소계 ${formatKrw(s.subtotal)}`,
                                     ]
                                       .filter(Boolean)
                                       .join(" · ")}
                                   </p>
+                                  {/* 승인 뒤 바뀐 세션 — 현재 섭외 테이블 금액을 나란히 (기획 2026-09-21) */}
+                                  {s.changed && s.currentSubtotal != null && (
+                                    <p className="mt-0.5 text-[11px] font-semibold text-red-700">
+                                      현재 소계{" "}
+                                      {s.currentSubtotalMax != null && s.currentSubtotalMax !== s.currentSubtotal
+                                        ? `${formatKrw(s.currentSubtotal)} ~ ${formatKrw(s.currentSubtotalMax)}`
+                                        : formatKrw(s.currentSubtotal)}{" "}
+                                      — 승인 소계와 다릅니다. 변경 품의(재승인)를 올려 주세요.
+                                    </p>
+                                  )}
                                   {s.experts.length > 0 ? (
                                     <ul className="mt-1 space-y-0.5">
                                       {s.experts.map((e) => (
