@@ -819,6 +819,7 @@ export default async function ProjectDetailPage({
         feeCustom: p.fee_custom,
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
+        expertId: p.expert_id,
         engagementId: p.engagement_id,
         completedAt: p.engagement_id
           ? (engagementCompletedById.get(p.engagement_id) ?? null)
@@ -1334,6 +1335,7 @@ export default async function ProjectDetailPage({
           planId: approvedPlanIdBySlot.get(slot.id) ?? null,
           completedAt: prior ? null : position.completedAt,
           slotCompletedAt: slot.completedAt,
+          expertId: prior ? null : position.expertId,
           sessionDetail:
             [
               describeSchedule(slot.schedule, { withYear: true }),
@@ -1348,6 +1350,32 @@ export default async function ProjectDetailPage({
     }
   }
 
+
+  // 섭외 확정 탭의 평가(5점)·등급(즐겨찾기/VIP) (기획 지시 2026-09-21) — 그 탭에서만 읽는다
+  const confirmedEvaluations: Record<string, { rating: number; opinion: string | null }> = {};
+  const confirmedTagByExpert: Record<string, { tag: string; note: string | null }> = {};
+  if (tab === "confirmed" && modules.experts) {
+    const expertIds = Array.from(
+      new Set(progressRows.map((r) => r.expertId).filter((v): v is string => Boolean(v)))
+    );
+    const [{ data: evalRows }, { data: tagRows }] = await Promise.all([
+      supabase
+        .from("expert_evaluations")
+        .select("expert_id, slot_id, score, memo")
+        .eq("project_id", project.id),
+      expertIds.length
+        ? supabase.from("expert_tenant_tags").select("expert_id, tag, note").in("expert_id", expertIds)
+        : Promise.resolve({ data: [] as { expert_id: string; tag: string; note: string | null }[] }),
+    ]);
+    for (const e of evalRows ?? []) {
+      // 10점 저장값 → 5점 표시 (평가 팝업이 ×2로 넣는다)
+      confirmedEvaluations[`${e.expert_id}:${e.slot_id ?? ""}`] = {
+        rating: Math.max(1, Math.min(5, Math.round(e.score / 2))),
+        opinion: e.memo,
+      };
+    }
+    for (const t of tagRows ?? []) confirmedTagByExpert[t.expert_id] = { tag: t.tag, note: t.note };
+  }
 
   // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
   // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
@@ -1959,10 +1987,14 @@ export default async function ProjectDetailPage({
         {tab === "confirmed" && modules.experts && (
           <EngagementConfirmed
             tenantSlug={params.tenantSlug}
+            projectId={project.id}
             canManage={canExecute}
             canCancel={exec.engagementCancel}
+            canEvaluate={canEvaluate}
             expertsLite={expertsLite}
             rows={progressRows}
+            evaluations={confirmedEvaluations}
+            tagByExpert={confirmedTagByExpert}
             sessions={slotRows
               .filter((s) => !modules.approvals || approvedPlanIdBySlot.has(s.id) || (planSlotStates?.[s.id] ?? "none") !== "none")
               .map((s) => ({

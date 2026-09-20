@@ -120,6 +120,8 @@ export type ProgressRow = {
   completedAt?: string | null;
   /** 세션별 종료 시각 */
   slotCompletedAt?: string | null;
+  /** 붙은 전문가 id — 섭외 확정 탭의 평가·즐겨찾기·VIP (기획 2026-09-21) */
+  expertId?: string | null;
 };
 
 /**

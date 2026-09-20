@@ -61,6 +61,8 @@ export type SlotPositionRow = {
   feeCustom: boolean;
   status: string;
   expertName: string | null;
+  /** 붙은 전문가 id (요청·확정) — 평가·등급 버튼용 (기획 2026-09-21) */
+  expertId: string | null;
   engagementId: string | null;
   canceledExpertName: string | null;
   /** 이 자리의 직전 결과(거절·만료) — engagementId는 결정 수정·이력용 */
