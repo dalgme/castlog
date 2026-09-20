@@ -125,7 +125,15 @@ export type ProgressRow = {
   slotCompletedAt?: string | null;
   /** 붙은 전문가 id — 섭외 확정 탭의 평가·즐겨찾기·VIP (기획 2026-09-21) */
   expertId?: string | null;
+  /** 이 세션의 변경 품의가 결재 중 — 파란 외곽선 (기획 지시 2026-09-21) */
+  changePending?: boolean;
+  /** 실제 내용이 바뀌어 변경 품의에 들어간 자리 — '변경품의 중'(파랑) / '변경 완료'(옐로 그린) */
+  changeMark?: "in_progress" | "done" | null;
 };
+
+/** 변경 품의 결재 중인 세션의 행 — 파란 굵은 외곽선 (기획 지시 2026-09-21) */
+export const CHANGE_PENDING_ROW =
+  "[&>td]:border-y-[3px] [&>td]:border-y-blue-600 [&>td:first-child]:border-l-[3px] [&>td:first-child]:border-l-blue-600 [&>td:last-child]:border-r-[3px] [&>td:last-child]:border-r-blue-600";
 
 /**
  * 승인 뒤 변경된 세션 표시 — 주홍색 굵은 테두리 (기획 지시 2026-09-21).
@@ -402,9 +410,16 @@ export function EngagementProgress({
                       key={r.positionId}
                       className={cn(
                         progressRowClass(r.stage),
-                        r.sessionChanged && CHANGED_SESSION_ROW
+                        r.sessionChanged && CHANGED_SESSION_ROW,
+                        !r.sessionChanged && r.changePending && CHANGE_PENDING_ROW
                       )}
-                      title={r.sessionChanged ? CHANGED_SESSION_HINT : undefined}
+                      title={
+                        r.sessionChanged
+                          ? CHANGED_SESSION_HINT
+                          : r.changePending
+                            ? "이 세션의 변경 품의가 결재 진행 중입니다"
+                            : undefined
+                      }
                     >
                       <TableCell className="min-w-[22rem] text-xs">
                         <span className="font-medium">{r.slotLabel}</span>
@@ -445,6 +460,23 @@ export function EngagementProgress({
                         {/* 섭외 확정 탭에서 종료된 전문가 — 보라색 (기획 2026-09-21) */}
                         {r.completedAt && ACCEPTANCE_STAGES.includes(r.stage) && (
                           <span className={cn("ml-1", COMPLETED_BADGE_CLASS)}>종료</span>
+                        )}
+                        {/* 실제 내용이 바뀌어 변경 품의에 들어간 자리 — 결재 중은 파랑, 승인되면 옐로 그린 (기획 지시 2026-09-21) */}
+                        {r.changeMark === "in_progress" && (
+                          <span
+                            className="mt-1 block w-fit rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+                            title="전문가·금액·일정·회차·방식·시간·단가 등이 바뀌어 변경 품의 결재가 진행 중입니다"
+                          >
+                            변경품의 중
+                          </span>
+                        )}
+                        {r.changeMark === "done" && (
+                          <span
+                            className="mt-1 block w-fit rounded-md bg-lime-400 px-2 py-0.5 text-[11px] font-semibold text-lime-950"
+                            title="변경 품의가 승인되어 바뀐 내용이 확정되었습니다"
+                          >
+                            변경 완료
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>

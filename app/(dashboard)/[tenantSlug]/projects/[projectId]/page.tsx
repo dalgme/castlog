@@ -46,8 +46,10 @@ import {
 } from "@/lib/integrations/engagement-stage";
 import {
   buildPlanSnapshot,
+  diffPlanSignatures,
   evaluatePlanGate,
   parsePlanSignatureCandidates,
+  type PlanChangeMark,
   type SlotPlanState,
   planLineKey,
   type PlanSignatureLine,
@@ -1090,6 +1092,10 @@ export default async function ProjectDetailPage({
   const progressRows: ProgressRow[] = [];
   /** 세션 → 그 세션이 담긴 승인 계획 (긴급 취소 뒤 재상신·긴급 진행 창구용, 기획 2026-09-21) */
   const approvedPlanIdBySlot = new Map<string, string>();
+  /** 변경 품의가 결재 중인 세션 — 진행 표 파란 외곽선 (기획 지시 2026-09-21) */
+  const changePendingSlotIds = new Set<string>();
+  /** `${slotId}:${code}` → 변경품의 중 / 변경 완료 — 실제 내용이 바뀐 자리만 */
+  const changeMarkByPosition = new Map<string, PlanChangeMark>();
   // 이 탭의 세션 표기는 한 가지로 — 진행 현황·승인 목록·세션별 송신 카드 공통
   const slotLabelById = new Map(
     slotRows.map((s) => [
@@ -1105,7 +1111,7 @@ export default async function ProjectDetailPage({
       const { data: planRows } = await supabase
         .from("engagement_plans")
         .select(
-          "id, revision, status, approval_id, slot_count, position_count, planned_amount, planned_amount_max, note, last_rejection_note, submitted_at, approved_at, flow, feedback_note, plan_signature"
+          "id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, planned_amount_max, note, last_rejection_note, submitted_at, approved_at, flow, feedback_note, plan_signature"
         )
         .eq("project_id", project.id)
         // 반려된 계획은 draft로 되돌아간다(재상신용) — 반려 사유가 있으면
@@ -1148,6 +1154,35 @@ export default async function ProjectDetailPage({
           approvedPlanIdBySlot.set(l.slot_id, l.plan_id);
         }
         slotIdsByPlan.set(l.plan_id, set);
+      }
+      // 변경 품의 표시 (기획 지시 2026-09-21): 부모 계획이 있는 리비전이 결재 중이면 그
+      // 세션은 '변경품의 중'(파란 외곽선), 승인됐으면 '변경 완료'. 자리 단위 배지는 부모
+      // 지문과 대조해 실제로 바뀐 자리에만 붙인다. 승인본을 먼저 적고 결재 중이 덮는다
+      {
+        const keyedLines = (planId: string) =>
+          (linesByPlan.get(planId) ?? []).map((l) => ({ slot_id: l.slot_id, key: planLineKey(l) }));
+        const changePlans = (planRows ?? []).filter(
+          (p) => p.parent_plan_id && (p.status === "approved" || p.status === "in_progress")
+        );
+        for (const status of ["approved", "in_progress"] as const) {
+          for (const p of changePlans.filter((c) => c.status === status)) {
+            const parent = (planRows ?? []).find((x) => x.id === p.parent_plan_id);
+            if (!parent) continue;
+            const { changedCodesBySlot } = diffPlanSignatures(
+              parent.plan_signature,
+              p.plan_signature,
+              keyedLines(parent.id),
+              keyedLines(p.id)
+            );
+            const mark: PlanChangeMark = status === "in_progress" ? "in_progress" : "done";
+            if (status === "in_progress") {
+              for (const id of Array.from(slotIdsByPlan.get(p.id) ?? [])) changePendingSlotIds.add(id);
+            }
+            for (const [slotId, codes] of Array.from(changedCodesBySlot.entries())) {
+              for (const code of Array.from(codes)) changeMarkByPosition.set(`${slotId}:${code}`, mark);
+            }
+          }
+        }
       }
       // 상신·승인 시점의 섭외 대상(코드·전문가·예정가)은 지문에 있다 —
       // 현재 배정이 아니라 결재된 금액을 보여 준다 (핫픽스 2026-09-05).
@@ -1355,6 +1390,8 @@ export default async function ProjectDetailPage({
           // 거절·만료·긴급 취소 자리는 비어 있고 같은 전문가가 배정돼 있다 — 문자보내기(재요청) 가능
           redispatchable: prior !== null && planSlotStates?.[slot.id] !== "none" && planSlotStates?.[slot.id] !== "rejected",
           sessionChanged: planChangedSlotIds.has(slot.id),
+          changePending: changePendingSlotIds.has(slot.id),
+          changeMark: changeMarkByPosition.get(`${slot.id}:${position.code}`) ?? null,
           slotId: slot.id,
           planId: approvedPlanIdBySlot.get(slot.id) ?? null,
           completedAt: prior ? null : position.completedAt,
