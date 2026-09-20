@@ -12,6 +12,8 @@ import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { explainActionError } from "@/lib/ux/action-errors";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
+import { loadSlotSchedule } from "@/lib/integrations/slot-schedule";
+import { computeFeeTotal } from "@/lib/sessions/fees";
 
 export type SlotResult = { ok: true } | { ok: false; error: string };
 
@@ -640,6 +642,7 @@ export async function adjustSlotCount(
       from + (targetCandidates - existing) - 1
     );
     if (err) return { ok: false, error: err };
+    await inheritSlotUnitFees(supabase, slotId);
   }
 
   const { error } = await supabase
@@ -721,6 +724,7 @@ export async function addCandidate(slotId: string): Promise<SlotResult> {
     no
   );
   if (err) return { ok: false, error: err };
+  await inheritSlotUnitFees(supabase, slotId);
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
@@ -843,6 +847,8 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
     await supabase.from("engagement_slots").delete().eq("id", created.id);
     return { ok: false, error: positionError };
   }
+  // 구성에 속하는 일괄 단가는 복사본 후보에도 물려준다 (실적이 아니라 설정값)
+  await inheritSlotUnitFees(supabase, created.id);
 
   // 복사본이 원본 바로 아래 오도록 전체 순서를 다시 매긴다 — sort_order+1
   // 단순 삽입은 다음 세션과 동률이 되어 정렬이 흔들린다 (리뷰 4).
@@ -1031,7 +1037,10 @@ export async function reorderCandidates(
   return { ok: true };
 }
 
-/** 후보별 예정가 저장 — 예정가이며 결재·정산 전까지 수정할 수 있다. */
+/**
+ * 후보별 총액 직접 저장 (회당 단가를 거치지 않는 예외 경로 — 결재권자 조정 등).
+ * 직접 적은 금액은 '개별 수정'으로 표시된다(코랄).
+ */
 export async function setCandidateFee(
   positionId: string,
   fee: string
@@ -1056,11 +1065,156 @@ export async function setCandidateFee(
   }
   const { error } = await supabase
     .from("engagement_slot_positions")
-    .update({ expected_fee: fee ? parseInt(fee, 10) : null })
+    .update({ expected_fee: fee ? parseInt(fee, 10) : null, expected_fee_max: null, fee_custom: fee !== "" })
     .eq("id", positionId);
   if (error) {
     return { ok: false, error: await explainActionError(error.message, "예정가 저장에 실패했습니다.") };
   }
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+const unitFeeInput = z.object({
+  online: z.string().regex(/^\d*$/, "단가는 숫자만 입력하세요.").optional(),
+  offline: z.string().regex(/^\d*$/, "단가는 숫자만 입력하세요.").optional(),
+});
+export type UnitFeeInput = z.input<typeof unitFeeInput>;
+
+const SLOT_FEE_COLUMNS =
+  "id, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline";
+
+/** 진행 방식에 맞는 단가만 남긴다 — 온라인 세션에 오프라인 단가가 들어오면 버린다 */
+function normalizeUnitFees(mode: string | null, input: z.output<typeof unitFeeInput>) {
+  const online = input.online ? parseInt(input.online, 10) : null;
+  const offline = input.offline ? parseInt(input.offline, 10) : null;
+  if (mode === "online") return { online, offline: null };
+  if (mode === "offline") return { online: null, offline };
+  if (mode === "hybrid") return { online, offline };
+  // 진행 방식 미지정 — 하나만 쓴다 (오프라인 칸)
+  return { online: null, offline: offline ?? online };
+}
+
+/**
+ * 세션 회당 단가 일괄 등록 (기획 지시 2026-09-21).
+ * 세션의 단가를 저장하고, 개별 수정하지 않은 후보 전원의 단가·총액을 그 값으로 맞춘다.
+ * 총액 = 회차 × 단가 (lib/sessions/fees — 화면과 같은 식).
+ */
+export async function applySlotUnitFees(slotId: string, input: UnitFeeInput): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  const parsed = unitFeeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+
+  const supabase = createClient();
+  const { data: slot } = await supabase.from("engagement_slots").select(SLOT_FEE_COLUMNS).eq("id", slotId).maybeSingle();
+  if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
+  const editable = await assertSlotEditable(slotId);
+  if (!editable.ok) return editable;
+
+  const fees = normalizeUnitFees(slot.delivery_mode, parsed.data);
+  const schedule = await loadSlotSchedule(supabase, slot);
+  const total = computeFeeTotal(schedule, fees.online, fees.offline);
+
+  const { error } = await supabase
+    .from("engagement_slots")
+    .update({ unit_fee_online: fees.online, unit_fee_offline: fees.offline })
+    .eq("id", slotId);
+  if (error) return { ok: false, error: await explainActionError(error.message, "회당 단가 저장에 실패했습니다.") };
+
+  // 개별 수정한 후보는 건드리지 않는다 — 그 금액은 사람이 정한 값이다
+  const { error: posError } = await supabase
+    .from("engagement_slot_positions")
+    .update({
+      unit_fee_online: fees.online,
+      unit_fee_offline: fees.offline,
+      expected_fee: total ? total.min : null,
+      expected_fee_max: total && total.max !== total.min ? total.max : null,
+    })
+    .eq("slot_id", slotId)
+    .eq("fee_custom", false)
+    .neq("status", "canceled");
+  if (posError) return { ok: false, error: await explainActionError(posError.message, "후보 단가 반영에 실패했습니다.") };
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.role,
+    action: "slot.unit_fee_apply",
+    resource_type: "engagement_slot",
+    resource_id: slotId,
+    after_data: { unit_fee_online: fees.online, unit_fee_offline: fees.offline, total },
+  });
+
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/**
+ * 나중에 발급된 후보 TO에 세션 일괄 단가를 물려준다 (기획 2026-09-21) — 일괄
+ * 등록 뒤 추가된 후보의 금액이 비어 품의 합계에서 빠지는 일을 막는다.
+ * 개별 수정(fee_custom)·이미 금액이 있는 후보는 건드리지 않는다.
+ */
+async function inheritSlotUnitFees(supabase: ReturnType<typeof createClient>, slotId: string) {
+  const { data: slot } = await supabase.from("engagement_slots").select(SLOT_FEE_COLUMNS).eq("id", slotId).maybeSingle();
+  if (!slot || (slot.unit_fee_online === null && slot.unit_fee_offline === null)) return;
+  const schedule = await loadSlotSchedule(supabase, slot);
+  const total = computeFeeTotal(schedule, slot.unit_fee_online, slot.unit_fee_offline);
+  await supabase
+    .from("engagement_slot_positions")
+    .update({
+      unit_fee_online: slot.unit_fee_online,
+      unit_fee_offline: slot.unit_fee_offline,
+      expected_fee: total ? total.min : null,
+      expected_fee_max: total && total.max !== total.min ? total.max : null,
+    })
+    .eq("slot_id", slotId)
+    .eq("fee_custom", false)
+    .is("expected_fee", null)
+    .neq("status", "canceled");
+}
+
+/**
+ * 후보 개별 회당 단가 — 일괄 단가와 다르면 '개별 수정'(코랄). 총액은 같은 식으로 다시 계산.
+ */
+export async function setCandidateUnitFees(positionId: string, input: UnitFeeInput): Promise<SlotResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireManager();
+  if (!auth.ok) return auth;
+  const parsed = unitFeeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+
+  const supabase = createClient();
+  const { data: position } = await supabase
+    .from("engagement_slot_positions")
+    .select("id, slot_id")
+    .eq("id", positionId)
+    .maybeSingle();
+  if (!position) return { ok: false, error: "대상 후보를 찾을 수 없습니다." };
+  const editable = await assertSlotEditable(position.slot_id);
+  if (!editable.ok) return editable;
+  const { data: slot } = await supabase.from("engagement_slots").select(SLOT_FEE_COLUMNS).eq("id", position.slot_id).maybeSingle();
+  if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
+
+  const fees = normalizeUnitFees(slot.delivery_mode, parsed.data);
+  const schedule = await loadSlotSchedule(supabase, slot);
+  const total = computeFeeTotal(schedule, fees.online, fees.offline);
+  const custom =
+    (fees.online ?? null) !== (slot.unit_fee_online ?? null) ||
+    (fees.offline ?? null) !== (slot.unit_fee_offline ?? null);
+
+  const { error } = await supabase
+    .from("engagement_slot_positions")
+    .update({
+      unit_fee_online: fees.online,
+      unit_fee_offline: fees.offline,
+      expected_fee: total ? total.min : null,
+      expected_fee_max: total && total.max !== total.min ? total.max : null,
+      fee_custom: custom,
+    })
+    .eq("id", positionId);
+  if (error) return { ok: false, error: await explainActionError(error.message, "단가 저장에 실패했습니다.") };
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };

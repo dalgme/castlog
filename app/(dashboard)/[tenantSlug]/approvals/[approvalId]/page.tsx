@@ -169,7 +169,7 @@ export default async function ApprovalDetailPage({
         ? await supabase
             .from("engagement_slot_positions")
             .select(
-              "id, slot_id, code, status, engagement_id, assigned_expert_id, rank, position_no, expected_fee"
+              "id, slot_id, code, status, engagement_id, assigned_expert_id, rank, position_no, expected_fee, expected_fee_max, fee_custom"
             )
             .in("slot_id", planSlotIds)
             .neq("status", "canceled")
@@ -230,6 +230,8 @@ export default async function ApprovalDetailPage({
               ? (expertNameById.get(c.assigned_expert_id) ?? null)
               : null,
             expectedFee: c.expected_fee,
+            expectedFeeMax: c.expected_fee_max,
+            feeCustom: c.fee_custom,
             editable:
               c.engagement_id === null &&
               (c.status === "open" || c.status === "assigned"),

@@ -10,6 +10,8 @@ import {
 import { formatKrw } from "@/lib/approvals/constants";
 import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
 import { durationLabel } from "@/lib/integrations/time-duration";
+import { describeSchedule } from "@/lib/sessions/schedule";
+import { UnitFeeBulkForm } from "@/components/sessions/unit-fee-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -96,13 +98,10 @@ export type UnlinkedEngagement = {
   stage: EngagementStage;
 };
 
+/** 세션 일정 요약 — 날짜 유형·회차·진행 방식까지 (기획 2026-09-21) */
 function scheduleLine(slot: SlotRow): string {
-  const time =
-    slot.startsTime && slot.endsTime
-      ? ` ${slot.startsTime.slice(0, 5)}~${slot.endsTime.slice(0, 5)}`
-      : "";
   const dur = durationLabel(slot.startsTime, slot.endsTime);
-  return `${slot.slotDate}${time}${dur ? ` (${dur})` : ""}`;
+  return `${describeSchedule(slot.schedule)}${dur && slot.schedule.dateKind === "individual" && slot.schedule.dates.length <= 1 ? ` (${dur})` : ""}`;
 }
 
 export function EngagementWorkbench({
@@ -469,7 +468,19 @@ export function EngagementWorkbench({
                   />
                 </div>
 
-                {/* 후보 순위 모델 — 드래그 순위·개별 예정가·후보 추가/삭제 */}
+                {/* 회당 단가 일괄 등록 (기획 2026-09-21) — 진행 방식에 맞는 칸만 */}
+                <div className="mt-1.5">
+                  <UnitFeeBulkForm
+                    key={`${slot.id}:${slot.unitFeeOnline ?? ""}:${slot.unitFeeOffline ?? ""}`}
+                    slotId={slot.id}
+                    deliveryMode={slot.schedule.deliveryMode}
+                    online={slot.unitFeeOnline}
+                    offline={slot.unitFeeOffline}
+                    editable={slotEditable && canInput}
+                  />
+                </div>
+
+                {/* 후보 순위 모델 — 드래그 순위·개별 단가·후보 추가/삭제 */}
                 <CandidateList
                   tenantSlug={tenantSlug}
                   projectId={projectId}
@@ -482,7 +493,9 @@ export function EngagementWorkbench({
                   canExecute={canManage}
                   expertsLite={expertsLite}
                   editable={slotEditable}
-                  sessionDuration={durationLabel(slot.startsTime, slot.endsTime)}
+                  schedule={slot.schedule}
+                  slotUnitOnline={slot.unitFeeOnline}
+                  slotUnitOffline={slot.unitFeeOffline}
                 />
               </li>
               );
