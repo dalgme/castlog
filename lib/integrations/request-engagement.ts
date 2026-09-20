@@ -22,7 +22,8 @@ import {
   scheduleSnapshotText,
   type SlotScheduleRow,
 } from "@/lib/integrations/slot-schedule";
-import { engagementTermsText } from "@/lib/sessions/fees";
+import { engagementFeeTerms, feeTermsToText } from "@/lib/sessions/fees";
+import { describeSchedule } from "@/lib/sessions/schedule";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
@@ -197,11 +198,12 @@ export async function requestEngagementForPositionCore(
   const slotSchedule = await loadSlotSchedule(supabase, slot);
   const scheduleText = scheduleSnapshotText(slotSchedule);
   // 섭외 조건 — 진행 방식·총 회차·회차당 시간·회차당 단가(병행은 온/오프 각각). 후보 개별 단가 우선 (기획 지시 2026-09-21)
-  const terms = engagementTermsText(
+  const feeTerms = engagementFeeTerms(
     slotSchedule,
     position.unit_fee_online ?? slot.unit_fee_online,
     position.unit_fee_offline ?? slot.unit_fee_offline
   );
+  const terms = feeTermsToText(feeTerms);
   const engagementRow = {
     tenant_id: tenantId,
     expert_id: input.expertId,
@@ -373,10 +375,11 @@ export async function requestEngagementForPositionCore(
       // 폴백은 중립 표기 — 캐스트로그 브랜드가 회사 자리에 나오면 §16 위반
       tenantName: tenant?.name ?? "기업",
       programName: input.programName?.trim() || null,
-      schedule,
-      terms,
+      // 문자의 일정 줄은 날짜만 — 진행 방식·회차는 조건 줄에 따로 싣는다 (중복 금지)
+      schedule: scheduleText ? describeSchedule(slotSchedule, { withYear: true, withMeta: false }) : schedule,
+      terms: feeTerms,
       locationName: slot.location_name,
-      // 총액은 후보별 예정가(결재받은 금액) — 세션 1인 비용은 레거시 폴백
+      // 총액은 후보별 예정가(결재받은 금액) — 회차당 단가가 있으면 문자에는 싣지 않는다
       feeAmount: position.expected_fee ?? slot.fee_amount,
       deadline: expiresAtIso,
       url,

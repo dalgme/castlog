@@ -13,7 +13,8 @@ import { buildPublicLink } from "@/lib/routing/links";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
-import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
+import { feeTermsLines, sendEngagementSms } from "@/lib/integrations/engagement-sms";
+import { loadEngagementFeeTerms } from "@/lib/integrations/engagement-terms";
 import {
   logEngagementEvent,
   staffActorLabel,
@@ -198,20 +199,31 @@ export async function remindEngagement(
     tenantId,
   });
 
+  // 재발송 문자도 섭외 요청 문자와 같은 조건(진행 방식·총 회차·회차당 시간·회차당 단가)을 싣는다
+  // (기획 지시 2026-09-21). 조회 실패는 조건 없이 보낸다 — 재안내를 죽이지 않는다
+  const termLines = feeTermsLines(
+    await loadEngagementFeeTerms(supabase, engagementId).catch(() => null)
+  );
+
   await sendEngagementSms({
     tenantId,
     senderUserId: user.id,
     expertId: engagement.expert_id,
     engagementIds: [engagementId],
-    body:
-      `[재안내] ${tenant?.name ?? "기업"} 섭외 요청에 아직 회신이 없어 다시 안내드립니다.\n` +
-      (engagement.bundle_id
-        ? `아래 링크로 회신해 주세요(앞서 받은 묶음 링크도 같은 마감까지 쓸 수 있습니다).\n`
-        : `아래 새 링크로 회신해 주세요(이전 링크는 사용할 수 없습니다).\n`) +
-      `${engagement.program_name ?? ""}${schedule ? `\n일정: ${schedule}` : ""}` +
-      `${engagement.location_name ? `\n장소: ${engagement.location_name}` : ""}\n` +
-      `회신 마감: ${deadline}\n` +
+    body: [
+      `[재안내] ${tenant?.name ?? "기업"} 섭외 요청에 아직 회신이 없어 다시 안내드립니다.`,
+      engagement.bundle_id
+        ? `아래 링크로 회신해 주세요(앞서 받은 묶음 링크도 같은 마감까지 쓸 수 있습니다).`
+        : `아래 새 링크로 회신해 주세요(이전 링크는 사용할 수 없습니다).`,
+      engagement.program_name ?? null,
+      schedule ? `일정: ${schedule}` : null,
+      ...termLines,
+      engagement.location_name ? `장소: ${engagement.location_name}` : null,
+      `회신 마감: ${deadline}`,
       buildPublicLink("engagementConsent", token),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
 
   await logAudit(supabase, user, {
