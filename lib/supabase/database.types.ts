@@ -1943,6 +1943,7 @@ export type Database = {
           submission_docs: string | null
           session_name: string | null
           position_code: string | null
+          schedule_text: string | null
 
           is_practice: boolean
         }
@@ -1993,6 +1994,7 @@ export type Database = {
           submission_docs?: string | null
           session_name?: string | null
           position_code?: string | null
+          schedule_text?: string | null
 
           is_practice?: boolean
         }
@@ -2043,6 +2045,7 @@ export type Database = {
           submission_docs?: string | null
           session_name?: string | null
           position_code?: string | null
+          schedule_text?: string | null
 
           is_practice?: boolean
         }
@@ -2306,6 +2309,7 @@ export type Database = {
           updated_at: string
           session_name: string | null
           position_code: string | null
+          schedule_text: string | null
         }
         Insert: {
           is_practice?: boolean
@@ -2337,6 +2341,7 @@ export type Database = {
           updated_at?: string
           session_name?: string | null
           position_code?: string | null
+          schedule_text?: string | null
         }
         Update: {
           is_practice?: boolean
@@ -2368,6 +2373,7 @@ export type Database = {
           updated_at?: string
           session_name?: string | null
           position_code?: string | null
+          schedule_text?: string | null
         }
         Relationships: [
           {

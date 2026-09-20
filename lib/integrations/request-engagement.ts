@@ -17,8 +17,11 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
-import { loadSlotSchedule, type SlotScheduleRow } from "@/lib/integrations/slot-schedule";
-import { describeSchedule } from "@/lib/sessions/schedule";
+import {
+  loadSlotSchedule,
+  scheduleSnapshotText,
+  type SlotScheduleRow,
+} from "@/lib/integrations/slot-schedule";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
@@ -186,36 +189,46 @@ export async function requestEngagementForPositionCore(
     ? new Date(input.responseDeadline)
     : new Date(Date.now() + ENGAGEMENT_EXPIRES_DAYS * 24 * 60 * 60 * 1000)
   ).toISOString();
-  const { data: engagement, error } = await supabase
+  // 날짜 유형·회차·진행 방식까지 실어 보낸다 (기획 2026-09-21) — 구행은 단일 날짜 표기로 폴백.
+  // 요청 시점 일정 문구를 섭외 건에 스냅샷해 수락서·재안내·포털이 같은 문장을 쓴다.
+  const slotSchedule = await loadSlotSchedule(supabase, slot);
+  const scheduleText = scheduleSnapshotText(slotSchedule);
+  const engagementRow = {
+    tenant_id: tenantId,
+    expert_id: input.expertId,
+    project_id: slot.project_id,
+    role_description:
+      slot.role_description || `${position.code} 섭외`,
+    role_type: slot.role_type,
+    session_name: slot.session_name,
+    position_code: position.code,
+    program_name: input.programName?.trim() || null,
+    message: input.message?.trim() || null,
+    // 결재받은 후보별 예정가가 곧 의뢰비용이다 — 세션 1인 비용은 레거시 폴백.
+    // 여기서 끊기면 문자·/e·수락서·지급 품의까지 금액이 비어 나간다 (E2E 검수 P1-2)
+    fee_amount: position.expected_fee ?? slot.fee_amount,
+    starts_on: slot.slot_date,
+    ends_on: slotEndsOn,
+    starts_time: slot.starts_time,
+    ends_time: slot.ends_time,
+    location_name: slot.location_name,
+    location_address: slot.location_address,
+    event_summary: input.eventSummary?.trim() || null,
+    special_notes: input.specialNotes?.trim() || null,
+    token_hash: hashLinkToken(token),
+    token_expires_at: expiresAtIso,
+    requested_by: user.id,
+  };
+  let inserted = await supabase
     .from("expert_engagements")
-    .insert({
-      tenant_id: tenantId,
-      expert_id: input.expertId,
-      project_id: slot.project_id,
-      role_description:
-        slot.role_description || `${position.code} 섭외`,
-      role_type: slot.role_type,
-      session_name: slot.session_name,
-      position_code: position.code,
-      program_name: input.programName?.trim() || null,
-      message: input.message?.trim() || null,
-      // 결재받은 후보별 예정가가 곧 의뢰비용이다 — 세션 1인 비용은 레거시 폴백.
-      // 여기서 끊기면 문자·/e·수락서·지급 품의까지 금액이 비어 나간다 (E2E 검수 P1-2)
-      fee_amount: position.expected_fee ?? slot.fee_amount,
-      starts_on: slot.slot_date,
-      ends_on: slotEndsOn,
-      starts_time: slot.starts_time,
-      ends_time: slot.ends_time,
-      location_name: slot.location_name,
-      location_address: slot.location_address,
-      event_summary: input.eventSummary?.trim() || null,
-      special_notes: input.specialNotes?.trim() || null,
-      token_hash: hashLinkToken(token),
-      token_expires_at: expiresAtIso,
-      requested_by: user.id,
-    })
+    .insert({ ...engagementRow, schedule_text: scheduleText })
     .select("id")
     .single();
+  if (inserted.error?.code === "42703") {
+    // schedule_text 열 미적용 DB (§14-10) — 문구 없이 생성, 화면은 옛 표기로 폴백
+    inserted = await supabase.from("expert_engagements").insert(engagementRow).select("id").single();
+  }
+  const { data: engagement, error } = inserted;
   if (error || !engagement) {
     return { ok: false, error: "섭외 요청 생성에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
   }
@@ -277,12 +290,13 @@ export async function requestEngagementForPositionCore(
     title: "새로운 섭외 요청이 도착했습니다",
     body: [
       input.programName?.trim() || null,
-      formatEventSchedule(
-        slot.slot_date,
-        slotEndsOn,
-        slot.starts_time,
-        slot.ends_time
-      ),
+      scheduleText ??
+        formatEventSchedule(
+          slot.slot_date,
+          slotEndsOn,
+          slot.starts_time,
+          slot.ends_time
+        ),
       slot.location_name,
     ]
       .filter(Boolean)
@@ -298,13 +312,9 @@ export async function requestEngagementForPositionCore(
     url = `/e/${token}`;
   }
 
-  // 업무연락 메일 — 동의 링크 전달
-  // 날짜 유형·회차·진행 방식까지 실어 보낸다 (기획 2026-09-21) — 구행은 단일 날짜 표기로 폴백
-  const slotSchedule = await loadSlotSchedule(supabase, slot);
+  // 업무연락 메일 — 동의 링크 전달. 일정은 섭외 건에 남긴 문구와 같은 것을 쓴다
   const schedule =
-    slotSchedule.dateKind === "individual" && slotSchedule.dates.length <= 1
-      ? formatEventSchedule(slot.slot_date, slotEndsOn, slot.starts_time, slot.ends_time)
-      : describeSchedule(slotSchedule, { withYear: true });
+    scheduleText ?? formatEventSchedule(slot.slot_date, slotEndsOn, slot.starts_time, slot.ends_time);
   const channel = input.channel ?? "both";
   const useEmail = !input.suppressSend && (channel === "email" || channel === "both");
   const useSms = !input.suppressSend && (channel === "sms" || channel === "both");

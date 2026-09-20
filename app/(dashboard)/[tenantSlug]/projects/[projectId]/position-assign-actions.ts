@@ -863,7 +863,7 @@ export async function dispatchProjectEngagements(input: {
     //    첫 건의 단건 안내로 대신하지 않고 실패로 알린다 (건은 이미 생성됨)
     const { data: itemRows } = await admin
       .from("expert_engagements")
-      .select("id, session_name, fee_amount, starts_on, ends_on, starts_time, ends_time, location_name")
+      .select("id, session_name, fee_amount, starts_on, ends_on, starts_time, ends_time, schedule_text, location_name")
       .in("id", createdIds);
     const items = itemRows ?? [];
     const feeValues = items.map((i) => i.fee_amount).filter((v): v is number => v !== null);
@@ -911,12 +911,15 @@ export async function dispatchProjectEngagements(input: {
 
     if (useEmail) {
       const lines = items.map((i) => {
-        const schedule = formatEventSchedule(
-          i.starts_on,
-          i.ends_on,
-          i.starts_time,
-          i.ends_time
-        );
+        // 요청 시점 일정 문구 스냅샷(여러 날·회차·진행 방식) 우선 (2026-09-21)
+        const schedule =
+          i.schedule_text ??
+          formatEventSchedule(
+            i.starts_on,
+            i.ends_on,
+            i.starts_time,
+            i.ends_time
+          );
         return `· ${[i.session_name, schedule, i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
       });
       await sendEngagementEmail({

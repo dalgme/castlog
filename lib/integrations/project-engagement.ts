@@ -6,6 +6,8 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { formatKrw } from "@/lib/approvals/constants";
 import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
 import { projectStage, type ProjectStage } from "@/lib/integrations/project-stage";
+import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
+import { describeSchedule } from "@/lib/sessions/schedule";
 
 /**
  * 프로젝트 단위 섭외 진행 — 상태 집계와 품의서 본문 구성.
@@ -236,13 +238,15 @@ export async function buildEngagementPlanDraft(
   const { data: slots } = await supabase
     .from("engagement_slots")
     .select(
-      "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count"
+      "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
     )
     .eq("project_id", projectId)
     .order("slot_date", { ascending: true })
     .order("starts_time", { ascending: true });
 
   const slotIds = (slots ?? []).map((s) => s.id);
+  // 품의서 본문 일정 — 날짜 유형·회차·진행 방식까지 (2026-09-21)
+  const slotDatesById = await loadSlotDates(supabase, slotIds);
   const { data: positions } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
@@ -270,10 +274,10 @@ export async function buildEngagementPlanDraft(
   const lines: PlanDraftLine[] = [];
   let amount = 0;
   for (const slot of slots ?? []) {
-    const time =
-      slot.starts_time && slot.ends_time
-        ? ` ${slot.starts_time.slice(0, 5)}~${slot.ends_time.slice(0, 5)}`
-        : "";
+    const scheduleText = describeSchedule(
+      scheduleFromRow(slot, slotDatesById.get(slot.id) ?? []),
+      { withYear: true }
+    );
     const candidates = (positions ?? [])
       .filter((p) => p.slot_id === slot.id && p.status !== "canceled")
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
@@ -289,12 +293,9 @@ export async function buildEngagementPlanDraft(
       lines.push({
         sessionName:
           slot.session_name ?? roleTypeLabel(slot.role_type) ?? slot.role_type,
-        // 컨설팅 세션(34번)은 수행기간으로 — 시작일만 적으면 결재권자가
-        // 하루짜리로 읽는다 (감사 P3-3)
-        schedule:
-          slot.period_end_date && slot.period_end_date !== slot.slot_date
-            ? `${slot.slot_date} ~ ${slot.period_end_date}`
-            : `${slot.slot_date}${time}`,
+        // 연속형은 기간, 개별선택형은 날짜마다 — 시작일만 적으면 결재권자가
+        // 하루짜리로 읽는다 (감사 P3-3, 개정 2026-09-21)
+        schedule: scheduleText,
         location:
           slot.location_name ?? (slot.period_end_date ? "(컨설팅 — 장소 별도 협의)" : "-"),
         role: slot.role_description ?? roleTypeLabel(slot.role_type) ?? "-",

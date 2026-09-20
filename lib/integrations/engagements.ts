@@ -40,6 +40,8 @@ export type EngagementLookupSummary = {
   endsOn: string | null;
   startsTime: string | null;
   endsTime: string | null;
+  /** 요청 시점 일정 문구 스냅샷 (여러 날·회차·진행 방식) — 없으면 날짜·시각으로 표기 */
+  scheduleText: string | null;
   locationName: string | null;
   feeAmount: number | null;
   /** 이미 응답한 경우 — 무엇으로 응답했는지 */
@@ -98,6 +100,7 @@ export async function lookupEngagementByToken(
     endsOn: engagement.ends_on,
     startsTime: engagement.starts_time,
     endsTime: engagement.ends_time,
+    scheduleText: engagement.schedule_text ?? null,
     locationName: engagement.location_name,
     feeAmount: engagement.fee_amount,
     expertId: engagement.expert_id ?? null,

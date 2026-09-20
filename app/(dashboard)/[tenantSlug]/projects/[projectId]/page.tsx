@@ -55,6 +55,7 @@ import {
   type PlanSignatureLine,
 } from "@/lib/integrations/engagement-plans";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import { describeSchedule } from "@/lib/sessions/schedule";
 import { isPlanRelayEnabled } from "@/lib/approvals/relay";
 import { PageHeader } from "@/components/layout/header";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -1119,8 +1120,9 @@ export default async function ProjectDetailPage({
         id
           ? (expertNameById.get(id) ?? signatureNameById.get(id) ?? "전문가")
           : "미배정";
-      const periodEndBySlot = new Map(
-        slotRows.map((s) => [s.id, s.periodEndDate])
+      // 현재 세션의 일정 문구(날짜 유형·회차·진행 방식) — 삭제된 세션은 계획 line의 날짜로
+      const scheduleBySlot = new Map(
+        slotRows.map((s) => [s.id, describeSchedule(s.schedule, { withYear: true })])
       );
       const sessionsOf = (planId: string): ApprovedPlanSession[] => {
         // 같은 열쇠의 line이 둘이면(같은 날·시간·역할·인원·소계) 순서대로 소비
@@ -1137,12 +1139,9 @@ export default async function ProjectDetailPage({
             label:
               (l.slot_id ? slotLabelById.get(l.slot_id) : null) ??
               `${l.slot_date} (삭제된 세션)`,
-            schedule: formatEventSchedule(
-              l.slot_date,
-              l.slot_id ? (periodEndBySlot.get(l.slot_id) ?? null) : null,
-              l.starts_time,
-              l.ends_time
-            ),
+            schedule:
+              (l.slot_id ? scheduleBySlot.get(l.slot_id) : null) ??
+              formatEventSchedule(l.slot_date, null, l.starts_time, l.ends_time),
             roleDescription: l.role_description,
             locationName: l.location_name,
             requiredCount: l.required_count,
@@ -1278,12 +1277,7 @@ export default async function ProjectDetailPage({
           engagementId: position.engagementId,
           sessionDetail:
             [
-              formatEventSchedule(
-                slot.slotDate,
-                slot.periodEndDate,
-                slot.startsTime,
-                slot.endsTime
-              ),
+              describeSchedule(slot.schedule, { withYear: true }),
               slot.roleDescription,
               slot.locationName,
             ]
@@ -1474,12 +1468,7 @@ export default async function ProjectDetailPage({
         label: slotLabelById.get(slot.id) ?? slot.slotDate,
         detail:
           [
-            formatEventSchedule(
-              slot.slotDate,
-              slot.periodEndDate,
-              slot.startsTime,
-              slot.endsTime
-            ),
+            describeSchedule(slot.schedule, { withYear: true }),
             slot.roleDescription,
             slot.locationName,
           ]

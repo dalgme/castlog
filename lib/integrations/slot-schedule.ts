@@ -1,13 +1,32 @@
 import "server-only";
 
-import type { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database } from "@/lib/supabase/database.types";
 import {
+  describeSchedule,
   isDateKind,
   isDeliveryMode,
   legacySchedule,
   type SessionDate,
   type SessionSchedule,
 } from "@/lib/sessions/schedule";
+
+/** RLS 클라이언트(server.ts)와 service_role 클라이언트(admin.ts) 둘 다 받는다 */
+type Db = SupabaseClient<Database>;
+
+/**
+ * 섭외 건·수락서에 남기는 일정 문구 스냅샷 (기획 2026-09-21 후속).
+ * 단일 날짜 세션은 null — 옛 표기(starts_on/ends_on 기반)를 그대로 써서
+ * 이미 나간 고객 화면이 바뀌지 않게 한다. 여러 날·회차·진행 방식이 있는
+ * 세션만 문장으로 남긴다.
+ */
+export function scheduleSnapshotText(s: SessionSchedule): string | null {
+  const singleDay =
+    s.dateKind === "individual" && s.dates.length <= 1 && s.deliveryMode === null && s.countMin === null;
+  if (singleDay) return null;
+  return describeSchedule(s, { withYear: true });
+}
 
 /**
  * engagement_slots 행 + engagement_slot_dates → SessionSchedule (서버 공용).
@@ -61,7 +80,7 @@ export function scheduleFromRow(row: SlotScheduleRow, dates: SessionDate[]): Ses
 
 /** 여러 세션의 개별 날짜를 한 번에 — 테이블 부재(42P01)면 빈 맵 */
 export async function loadSlotDates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   slotIds: string[]
 ): Promise<Map<string, SessionDate[]>> {
   const map = new Map<string, SessionDate[]>();
@@ -82,7 +101,7 @@ export async function loadSlotDates(
 
 /** 세션 하나의 일정 — 안내문자·결재 상세처럼 한 건만 보는 자리 */
 export async function loadSlotSchedule(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   slot: SlotScheduleRow & { id: string }
 ): Promise<SessionSchedule> {
   const dates = await loadSlotDates(supabase, [slot.id]);
