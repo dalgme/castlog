@@ -108,6 +108,20 @@ import {
 } from "@/lib/integrations/engagement-post-report";
 import { ClosingTab } from "./closing-tab";
 import { ProjectClosing } from "./project-closing";
+import {
+  ProjectReviewTab,
+  type ReviewAuto,
+  type ReviewExpertAuto,
+  type ReviewItemRow,
+  type ReviewSaved,
+} from "./project-review-tab";
+import {
+  isContributionSlotKey,
+  type ContributionSlotKey,
+  type ContributionSlotRow,
+} from "@/lib/integrations/contribution-slots";
+import { roleTypeLabel } from "@/lib/integrations/engagement-roles";
+import { formatKoreanDateFull } from "@/lib/checklists/dates";
 
 export const metadata = { title: "프로젝트 상세" };
 
@@ -251,7 +265,7 @@ export default async function ProjectDetailPage({
         .order("name", { ascending: true }),
       supabase
         .from("project_contributions")
-        .select("user_id, percentage")
+        .select("user_id, percentage, slot_key, role_label")
         .eq("project_id", project.id),
       // Phase A-1: 프로젝트 담당자 배정 (권한자 전용 표시)
       supabase
@@ -331,10 +345,6 @@ export default async function ProjectDetailPage({
   // 단계 23: 종료 기여도 + 종료 상태
   // 체크리스트 상단 '담당자(로그인 주체)' — 로그인한 사람의 이름
   const viewerName = (staffResult.data ?? []).find((u) => u.id === user?.id)?.name ?? "";
-  const staffOptions = (staffResult.data ?? []).map((u) => ({
-    id: u.id,
-    name: u.name,
-  }));
   // 레벨 1~3 — 예산·마감·스텝 등 결정 성격의 도구
   const canManage = role === "org_admin" || role === "manager";
   // 배정 계단 (기획 확정 2026-08-30): 대표·이사 → PL 이하 전부,
@@ -898,9 +908,19 @@ export default async function ProjectDetailPage({
     row.sessions = sessionsByExpert.get(row.expertId) ?? [];
   }
 
-  const contributionInitial: Record<string, number> = {};
-  for (const c of contributionsResult.data ?? []) {
-    contributionInitial[c.user_id] = c.percentage;
+  // 참여율 가로 표 (기획 지시 2026-09-21) — 열(slot_key) 단위. 컬럼 미적용 환경은
+  // 옛 행(user_id·percentage)만 읽어 기본 열에 맞춰 놓는다 (§14-10)
+  let contributionRecords = contributionsResult.data ?? [];
+  if (contributionsResult.error?.code === "42703") {
+    const { data: legacyContributions } = await supabase
+      .from("project_contributions")
+      .select("user_id, percentage")
+      .eq("project_id", project.id);
+    contributionRecords = (legacyContributions ?? []).map((c) => ({
+      ...c,
+      slot_key: null,
+      role_label: null,
+    }));
   }
   // 프로젝트에 연결되지 않은 섭외 건 — 있을 때만 '붙이기' 도구를 노출한다.
   // (프로젝트 없이 섭외해 온 테넌트가 프로젝트를 쓰기 시작할 때의 정리 경로)
@@ -1438,6 +1458,156 @@ export default async function ProjectDetailPage({
     for (const t of tagRows ?? []) confirmedTagByExpert[t.expert_id] = { tag: t.tag, note: t.note };
   }
 
+  // 참여율 배분 탭 (기획 지시 2026-09-21) — 열별 기본 사람 + 저장분 + 확정 잠금
+  const contributionDefaults: Partial<Record<ContributionSlotKey, string>> = {};
+  let contributionRows: ContributionSlotRow[] = [];
+  let contributionConfirmedAt: string | null = null;
+  let contributionConfirmedByName: string | null = null;
+  if (tab === "contrib") {
+    const activeStaff = (staffResult.data ?? []).filter((u) => u.is_active !== false);
+    const firstWithGrade = (g: string) => activeStaff.find((u) => u.grade === g)?.id;
+    const firstAssigned = (pick: (r: AssignmentRole) => boolean) =>
+      assignedMembers.find((m) => pick(m.assignmentRole))?.userId;
+    const defaultsList: [ContributionSlotKey, string | undefined][] = [
+      ["ceo", firstWithGrade("ceo")],
+      ["director", firstWithGrade("director")],
+      ["pl", firstAssigned((r) => isPlRole(r))],
+      ["pm", firstAssigned((r) => isPmRole(r))],
+      ["deputy_pm", firstAssigned((r) => r === "deputy_pm")],
+      ["member", firstAssigned((r) => r === "member")],
+    ];
+    for (const [key, id] of defaultsList) if (id) contributionDefaults[key] = id;
+
+    const keyed = contributionRecords.filter((c) => isContributionSlotKey(c.slot_key));
+    if (keyed.length > 0) {
+      contributionRows = keyed.map((c) => ({
+        slotKey: c.slot_key as ContributionSlotKey,
+        roleLabel: c.role_label,
+        userId: c.user_id,
+        percentage: c.percentage,
+      }));
+    } else {
+      // 가로 표 도입 전 저장분 — 기본 사람이 맞는 열에, 나머지는 빈칸 열에 놓는다
+      const used = new Set<ContributionSlotKey>();
+      const extras: ContributionSlotKey[] = ["extra1", "extra2"];
+      for (const c of contributionRecords) {
+        const match = (Object.entries(contributionDefaults) as [ContributionSlotKey, string][]).find(
+          ([key, id]) => id === c.user_id && !used.has(key)
+        );
+        const slot = match?.[0] ?? extras.find((k) => !used.has(k));
+        if (!slot) continue;
+        used.add(slot);
+        contributionRows.push({ slotKey: slot, roleLabel: null, userId: c.user_id, percentage: c.percentage });
+      }
+    }
+    // 확정 잠금 컬럼 — 미적용 환경은 '미확정'으로 (§14-10)
+    const { data: confirmRow } = await supabase
+      .from("projects")
+      .select("contribution_confirmed_at, contribution_confirmed_by")
+      .eq("id", project.id)
+      .maybeSingle();
+    contributionConfirmedAt = confirmRow?.contribution_confirmed_at ?? null;
+    contributionConfirmedByName = confirmRow?.contribution_confirmed_by
+      ? (staffNameById.get(confirmRow.contribution_confirmed_by) ?? null)
+      : null;
+  }
+
+  // 리뷰 탭 (기획 지시 2026-09-21) — HWP '프로젝트 리뷰' 양식. 자동값은 프로젝트·배정·
+  // 세션에서, 체크·수기 항목과 행은 project_reviews / project_review_items에서.
+  // 테이블 미적용 환경은 '등록 전'으로 보인다 (§14-10)
+  let reviewSaved: ReviewSaved | null = null;
+  let reviewItems: ReviewItemRow[] = [];
+  let reviewExperts: ReviewExpertAuto[] = [];
+  let reviewAuto: ReviewAuto | null = null;
+  if (tab === "review") {
+    const [reviewResult, itemsResult, evalResult] = await Promise.all([
+      supabase
+        .from("project_reviews")
+        .select(
+          "contract_type, recruit_done, recruit_note, deposit_done, form_transfer_done, form_transfer_note, client_contact, event_dates_text, venue_text"
+        )
+        .eq("project_id", project.id)
+        .maybeSingle(),
+      supabase
+        .from("project_review_items")
+        .select("id, section, sort_order, subject, expert_id, form, body")
+        .eq("project_id", project.id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      modules.experts
+        ? supabase.from("expert_evaluations").select("expert_id, memo").eq("project_id", project.id)
+        : Promise.resolve({ data: [] as { expert_id: string; memo: string | null }[] }),
+    ]);
+    const r = reviewResult.data;
+    reviewSaved = r
+      ? {
+          contractType: r.contract_type === "private" || r.contract_type === "bid" ? r.contract_type : null,
+          recruitDone: r.recruit_done,
+          recruitNote: r.recruit_note,
+          depositDone: r.deposit_done,
+          formTransferDone: r.form_transfer_done,
+          formTransferNote: r.form_transfer_note,
+          clientContact: r.client_contact,
+          eventDatesText: r.event_dates_text,
+          venueText: r.venue_text,
+        }
+      : null;
+    reviewItems = (itemsResult.data ?? []).map((i) => ({
+      id: i.id,
+      section: i.section === "expert" ? "expert" : "ops",
+      sortOrder: i.sort_order,
+      subject: i.subject,
+      expertId: i.expert_id,
+      form: i.form,
+      body: i.body,
+    }));
+    // 계약 성립 전문가의 참여 형태 — 배정된 세션의 역할 유형(강사·멘토링/컨설팅 등) + 세션명
+    const roleTypeBySlot = new Map(slotRecords.map((s) => [s.id, s.role_type]));
+    const hintByExpert = new Map<string, string>();
+    for (const e of evalResult.data ?? []) {
+      if (e.memo && !hintByExpert.has(e.expert_id)) hintByExpert.set(e.expert_id, e.memo);
+    }
+    reviewExperts = reviewTargets.map((t) => {
+      const roles = Array.from(
+        new Set(
+          (positionRecords ?? [])
+            .filter((p) => p.expert_id === t.expertId)
+            .map((p) => roleTypeLabel(roleTypeBySlot.get(p.slot_id) ?? null))
+            .filter((v): v is string => Boolean(v))
+        )
+      );
+      const head = roles.join(" & ");
+      const tail = t.sessions.length > 0 ? `(${t.sessions.join(", ")})` : "";
+      return {
+        expertId: t.expertId,
+        name: t.name,
+        form: [head, tail].filter(Boolean).join("\n"),
+        hint: hintByExpert.get(t.expertId) ?? null,
+      };
+    });
+    const eventDates = Array.from(
+      new Set(slotRows.map((s) => describeSchedule(s.schedule, { withYear: true, withMeta: false })))
+    ).join(", ");
+    const venue = Array.from(
+      new Set(slotRecords.map((s) => s.location_name?.trim()).filter((v): v is string => Boolean(v)))
+    ).join(" / ");
+    reviewAuto = {
+      code: project.code,
+      name: project.name,
+      clientName: project.client_name,
+      budgetAmount: project.budget_amount,
+      plName,
+      pmName,
+      deputyPmNames,
+      contractPeriod:
+        project.starts_on || project.ends_on
+          ? `${formatKoreanDateFull(project.starts_on) || "?"} ~ ${formatKoreanDateFull(project.ends_on) || "?"}`
+          : "",
+      eventDates: eventDates || (project.dday_date ? formatKoreanDateFull(project.dday_date) : ""),
+      venue,
+    };
+  }
+
   // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
   // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
   const settlementAttachments: Record<string, { id: string; fileName: string }> = {};
@@ -1827,11 +1997,17 @@ export default async function ProjectDetailPage({
               ) : (
                 <ProjectClosing
                   projectId={project.id}
-                  staff={staffOptions}
-                  initial={contributionInitial}
+                  staff={(staffResult.data ?? [])
+                    .filter((u) => u.is_active !== false)
+                    .map((u) => ({ id: u.id, name: u.name }))}
+                  initialRows={contributionRows}
+                  defaults={contributionDefaults}
+                  confirmedAt={contributionConfirmedAt}
+                  confirmedByName={contributionConfirmedByName}
                   closingInProgress={closingInProgress}
                   approvalsActive={modules.approvals}
                   contributionsOnly={modules.experts}
+                  canEdit={canManage}
                 />
               )}
               {!isClosed && (
@@ -1843,6 +2019,22 @@ export default async function ProjectDetailPage({
               )}
             </CardContent>
           </Card>
+        )}
+        {/* 리뷰 (기획 지시 2026-09-21) — 요약표·전문가 평가·운영 특이사항 */}
+        {tab === "review" && reviewAuto && (
+          <ProjectReviewTab
+            projectId={project.id}
+            auto={reviewAuto}
+            saved={reviewSaved}
+            items={reviewItems}
+            experts={reviewExperts}
+            hasExperts={modules.experts}
+            canEdit={
+              canViewAllProjects(grade) ||
+              myAssignmentRole !== null ||
+              project.created_by === user?.id
+            }
+          />
         )}
         {tab === "closing" && (
           <ClosingTab

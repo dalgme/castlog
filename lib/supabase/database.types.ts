@@ -14,6 +14,111 @@ export type Database = {
   }
   public: {
     Tables: {
+      project_reviews: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          contract_type: string | null
+          recruit_done: boolean | null
+          recruit_note: string | null
+          deposit_done: boolean
+          form_transfer_done: boolean
+          form_transfer_note: string | null
+          client_contact: string | null
+          event_dates_text: string | null
+          venue_text: string | null
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          contract_type?: string | null
+          recruit_done?: boolean | null
+          recruit_note?: string | null
+          deposit_done?: boolean
+          form_transfer_done?: boolean
+          form_transfer_note?: string | null
+          client_contact?: string | null
+          event_dates_text?: string | null
+          venue_text?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          contract_type?: string | null
+          recruit_done?: boolean | null
+          recruit_note?: string | null
+          deposit_done?: boolean
+          form_transfer_done?: boolean
+          form_transfer_note?: string | null
+          client_contact?: string | null
+          event_dates_text?: string | null
+          venue_text?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_review_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          section: string
+          sort_order: number
+          subject: string
+          expert_id: string | null
+          form: string | null
+          body: string
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          section: string
+          sort_order?: number
+          subject?: string
+          expert_id?: string | null
+          form?: string | null
+          body?: string
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          section?: string
+          sort_order?: number
+          subject?: string
+          expert_id?: string | null
+          form?: string | null
+          body?: string
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_quotes: {
         Row: {
           id: string
@@ -4370,6 +4475,8 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string
+          slot_key: string | null
+          role_label: string | null
         }
         Insert: {
           created_at?: string
@@ -4381,6 +4488,8 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           user_id: string
+          slot_key?: string | null
+          role_label?: string | null
         }
         Update: {
           created_at?: string
@@ -4392,6 +4501,8 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string
+          slot_key?: string | null
+          role_label?: string | null
         }
         Relationships: [
           {
@@ -4630,6 +4741,8 @@ export type Database = {
           settlement_reviewed_by: string | null
           settlement_reviewed_at: string | null
           settlement_note: string | null
+          contribution_confirmed_at: string | null
+          contribution_confirmed_by: string | null
         }
         Insert: {
           host_org?: string | null
@@ -4667,6 +4780,8 @@ export type Database = {
           settlement_reviewed_by?: string | null
           settlement_reviewed_at?: string | null
           settlement_note?: string | null
+          contribution_confirmed_at?: string | null
+          contribution_confirmed_by?: string | null
         }
         Update: {
           host_org?: string | null
@@ -4704,6 +4819,8 @@ export type Database = {
           settlement_reviewed_by?: string | null
           settlement_reviewed_at?: string | null
           settlement_note?: string | null
+          contribution_confirmed_at?: string | null
+          contribution_confirmed_by?: string | null
         }
         Relationships: [
           {

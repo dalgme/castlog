@@ -10,3 +10,13 @@ export function isMissingColumnError(
 ): boolean {
   return error?.code === "42703" || error?.code === "PGRST204";
 }
+
+/**
+ * "테이블이 아직 없다" 판정 — PostgreSQL 42P01, PostgREST 스키마 캐시는 PGRST205.
+ * 새 테이블을 읽는 화면은 이걸로 빈 상태 폴백을 낸다 (§14-10).
+ */
+export function isMissingTableError(
+  error: { code?: string | null } | null | undefined
+): boolean {
+  return error?.code === "42P01" || error?.code === "PGRST205";
+}
