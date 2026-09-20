@@ -38,7 +38,7 @@ import {
   SmsHistoryCell,
   type SmsSummary,
 } from "./sms-resend";
-import { EngagementDecisionButtons } from "./engagement-decision";
+import { EngagementDecisionButtons, EngagementReviseButton } from "./engagement-decision";
 
 /**
  * 승인 목록 및 섭외 진행 탭 (기획 확정 2026-08-30 — 37번).
@@ -108,6 +108,8 @@ export type ProgressRow = {
   sms?: SmsSummary | null;
   /** 결재 승인 뒤 이 세션의 정보가 바뀌었는가 — 행 테두리를 주홍색 굵은 선으로 (기획 지시 2026-09-21) */
   sessionChanged?: boolean;
+  /** 거절·만료로 빈 자리에 같은 전문가가 그대로 배정돼 있어 '문자보내기'로 다시 요청할 수 있는가 */
+  redispatchable?: boolean;
 };
 
 /**
@@ -128,9 +130,13 @@ const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
   "confirmed",
 ];
 
-/** 행 배경 (기획 지시 2026-09-21): 거절·만료·취소 = 회색 전체, 승인 이후 = 노란색 */
+/**
+ * 행 배경 (기획 지시 2026-09-21): 거절(담당자·전문가 불문) = 중간 짙은 회색,
+ * 만료·취소 = 옅은 회색, 승인 이후 = 노란색
+ */
 function progressRowClass(stage: EngagementStage): string {
-  if (stage === "declined" || stage === "expired" || stage === "canceled") return "bg-neutral-200 text-neutral-600";
+  if (stage === "declined") return "bg-neutral-300 text-neutral-800";
+  if (stage === "expired" || stage === "canceled") return "bg-neutral-200 text-neutral-600";
   if (ACCEPTANCE_STAGES.includes(stage)) return "bg-yellow-100";
   return "";
 }
@@ -423,7 +429,10 @@ export function EngagementProgress({
                         {/* 후보별 문자보내기 → 발송 뒤 재발송 (기획 지시 2026-09-21) + 발송 이력 */}
                         <div className="flex flex-col items-start gap-1">
                           <SmsHistoryCell sms={r.sms ?? null} expertName={r.expertName} />
-                          {canManage && r.stage === "plan_approved" && (
+                          {/* 거절·만료된 자리도 같은 전문가에게 다시 보낼 수 있다 (기획 지시 2026-09-21) */}
+                          {canManage &&
+                            (r.stage === "plan_approved" ||
+                              ((r.stage === "declined" || r.stage === "expired") && r.redispatchable)) && (
                             <DispatchDialog
                               projectId={projectId}
                               projectName={projectName}
@@ -456,7 +465,8 @@ export function EngagementProgress({
                         </div>
                       </TableCell>
                       <TableCell>
-                        {/* 승인·거절 — 회신 대기 건만 (기획 지시 2026-09-21). 승인 행은 노랑, 거절 행은 회색 */}
+                        {/* 승인·거절 — 회신 대기 건은 결정, 이미 내려진 결정은 수정 (기획 지시 2026-09-21).
+                            승인 행은 노랑, 거절 행은 회색 */}
                         {canManage && r.engagementId && r.stage === "requested" ? (
                           <EngagementDecisionButtons
                             engagementId={r.engagementId}
@@ -465,14 +475,35 @@ export function EngagementProgress({
                             expertsLite={expertsLite}
                           />
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                             {r.stage === "declined"
                               ? "거절됨"
                               : r.stage === "expired"
                                 ? "만료됨"
-                                : ACCEPTANCE_STAGES.includes(r.stage)
-                                  ? "승인됨"
-                                  : "-"}
+                                : r.stage === "confirmed"
+                                  ? "승인됨 · 확정"
+                                  : ACCEPTANCE_STAGES.includes(r.stage)
+                                    ? "승인됨"
+                                    : "-"}
+                            {canManage && r.engagementId && r.stage === "declined" && (
+                              <EngagementReviseButton
+                                engagementId={r.engagementId}
+                                projectId={projectId}
+                                expertName={r.expertName}
+                                to="accepted"
+                              />
+                            )}
+                            {canManage &&
+                              r.engagementId &&
+                              ACCEPTANCE_STAGES.includes(r.stage) &&
+                              r.stage !== "confirmed" && (
+                                <EngagementReviseButton
+                                  engagementId={r.engagementId}
+                                  projectId={projectId}
+                                  expertName={r.expertName}
+                                  to="declined"
+                                />
+                              )}
                           </span>
                         )}
                       </TableCell>

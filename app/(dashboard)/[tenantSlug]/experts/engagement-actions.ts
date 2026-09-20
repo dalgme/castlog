@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
@@ -745,6 +746,207 @@ export async function manualDeclineEngagement(
     { userId: user.id, role, name: actorName }
   );
   if (!result.ok) return result;
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  revalidatePath("/[tenantSlug]/experts", "page");
+  return { ok: true };
+}
+
+/**
+ * 승인·거절 결정 수정 (기획 지시 2026-09-21) — 담당자가 이미 내려진(또는 전문가가
+ * 링크로 내린) 결정을 바꾼다.
+ *  - 거절 → 승인: 그 자리가 아직 비어 있고(open/assigned) 같은 전문가가 배정돼 있으면
+ *    섭외 건을 '회신 대기'로 되살려 자리에 다시 붙인 뒤 수동 승인과 같은 경로로
+ *    계약 성립(수락서 자동 생성) 처리한다.
+ *  - 승인 → 거절: 수락서가 아직 발송되지 않은(issued) 건만. 발송·서명·확정된 건은
+ *    긴급 취소 경로(규칙)로 안내한다. 자동 생성된 수락서는 지운다(발송 전 문서라
+ *    보존 의무가 없다).
+ * 권한 축·부PM 게이트는 수동 승인과 같다. 모든 처리는 담당자 이름으로 이력에 남는다.
+ */
+export async function reviseEngagementDecision(
+  engagementId: string,
+  to: "accepted" | "declined",
+  note?: string
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; needsPmApproval?: true; projectId?: string | null }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("engagementRequest", user))) {
+    return { ok: false, error: await deniedExec("engagementRequest") };
+  }
+  const { data: engagement } = await supabase
+    .from("expert_engagements")
+    .select("id, status, project_id, expert_id, position_code, is_practice")
+    .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!engagement) return { ok: false, error: "섭외 건을 찾을 수 없습니다." };
+  if (engagement.project_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId: engagement.project_id,
+      actionType: "engagement.manual_accept",
+      targetId: engagement.id,
+    });
+    if (!deputyGate.ok) {
+      return {
+        ok: false,
+        error: deputyGate.error,
+        ...(deputyGate.needsPmApproval
+          ? { needsPmApproval: true as const, projectId: engagement.project_id }
+          : {}),
+      };
+    }
+  }
+  const actorName = await staffActorLabel(user.id);
+  const admin = createAdminClient();
+  const trimmed = note?.trim() ?? "";
+
+  if (to === "accepted") {
+    if (engagement.status !== "declined") {
+      return {
+        ok: false,
+        error: "거절된 건만 승인으로 바꿀 수 있습니다 (상태 미충족). 새로고침 후 상태를 확인해 주세요.",
+      };
+    }
+    // 자리가 아직 비어 있고 같은 전문가가 배정돼 있어야 되살릴 수 있다
+    const { data: position } = engagement.position_code
+      ? await supabase
+          .from("engagement_slot_positions")
+          .select("id, status, engagement_id, assigned_expert_id")
+          .eq("tenant_id", tenantId)
+          .eq("code", engagement.position_code)
+          .maybeSingle()
+      : { data: null };
+    if (
+      !position ||
+      position.engagement_id ||
+      (position.status !== "open" && position.status !== "assigned") ||
+      position.assigned_expert_id !== engagement.expert_id
+    ) {
+      return {
+        ok: false,
+        error:
+          "이 자리는 이미 다른 후보에게 넘어갔거나 요청이 진행 중이라 되돌릴 수 없습니다 (상태 미충족). 자리를 비운 뒤 '문자보내기'로 다시 요청해 주세요.",
+      };
+    }
+    const { data: revived } = await admin
+      .from("expert_engagements")
+      .update({ status: "requested", responded_at: null, response_note: null })
+      .eq("id", engagementId)
+      .eq("tenant_id", tenantId)
+      .eq("status", "declined")
+      .select("id")
+      .maybeSingle();
+    if (!revived) {
+      return { ok: false, error: "그 사이 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요." };
+    }
+    const { data: relinked } = await admin
+      .from("engagement_slot_positions")
+      .update({ status: "requested", engagement_id: engagementId, expert_id: engagement.expert_id })
+      .eq("id", position.id)
+      .is("engagement_id", null)
+      .select("id")
+      .maybeSingle();
+    if (!relinked) {
+      await admin
+        .from("expert_engagements")
+        .update({ status: "declined" })
+        .eq("id", engagementId)
+        .eq("status", "requested");
+      return { ok: false, error: "자리를 다시 연결하지 못했습니다 (시스템 결함). 새로고침 후 다시 시도해 주세요." };
+    }
+    const result = await applyEngagementResponse(
+      engagementId,
+      "accepted",
+      trimmed ? `[결정 수정 — 거절→승인] ${trimmed}` : "[결정 수정 — 거절→승인]",
+      null,
+      { userId: user.id, role, name: actorName }
+    );
+    if (!result.ok) return result;
+  } else {
+    if (engagement.status !== "accepted") {
+      return {
+        ok: false,
+        error: "승인(수락)된 건만 거절로 바꿀 수 있습니다 (상태 미충족). 새로고침 후 상태를 확인해 주세요.",
+      };
+    }
+    const { data: acceptance } = await supabase
+      .from("engagement_acceptances")
+      .select("id, status")
+      .eq("engagement_id", engagementId)
+      .maybeSingle();
+    if (acceptance && acceptance.status !== "issued") {
+      return {
+        ok: false,
+        error:
+          "수락서가 이미 송부·서명·확정된 건은 거절로 바꿀 수 없습니다 (규칙). 계약이 성립한 건이므로 '긴급 취소'로 처리해 주세요.",
+      };
+    }
+    const { data: flipped } = await admin
+      .from("expert_engagements")
+      .update({
+        status: "declined",
+        responded_at: new Date().toISOString(),
+        response_note: trimmed ? `[결정 수정 — 승인→거절] ${trimmed}` : "[결정 수정 — 승인→거절]",
+      })
+      .eq("id", engagementId)
+      .eq("tenant_id", tenantId)
+      .eq("status", "accepted")
+      .select("id")
+      .maybeSingle();
+    if (!flipped) {
+      return { ok: false, error: "그 사이 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요." };
+    }
+    if (acceptance) {
+      // 발송 전 자동 생성 문서 — 남겨 두면 수락서 목록에 유령으로 남는다
+      await admin.from("engagement_acceptances").delete().eq("id", acceptance.id).eq("status", "issued");
+    }
+    await admin
+      .from("engagement_slot_positions")
+      .update({ status: "open", engagement_id: null, expert_id: null })
+      .eq("engagement_id", engagementId);
+    if (engagement.project_id) {
+      try {
+        await refreshProjectEngagementStage(engagement.project_id);
+      } catch {
+        // 단계 갱신 실패가 결정 수정을 막지 않는다
+      }
+    }
+    await supabase.from("audit_logs").insert({
+      tenant_id: tenantId,
+      actor_auth_user_id: user.id,
+      actor_role: role,
+      action: "engagement.decline",
+      resource_type: "expert_engagement",
+      resource_id: engagementId,
+      after_data: { project_id: engagement.project_id, manual: true, revised_from: "accepted" },
+    });
+    await logEngagementEvent({
+      tenantId,
+      engagementId,
+      type: "declined",
+      actorKind: "staff",
+      actorLabel: actorName,
+      note: trimmed ? `결정 수정(승인→거절) — ${trimmed}` : "결정 수정(승인→거절)",
+      isPractice: engagement.is_practice ?? false,
+    });
+  }
+
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/experts", "page");
   return { ok: true };

@@ -803,7 +803,7 @@ export default async function ProjectDetailPage({
         priorOutcome: (() => {
           const prior = priorOutcomeFor(p);
           return prior
-            ? { expertName: prior.expertName, outcome: prior.outcome }
+            ? { engagementId: prior.engagementId, expertName: prior.expertName, outcome: prior.outcome }
             : null;
         })(),
         assignedExpertName: p.assigned_expert_id
@@ -1293,7 +1293,10 @@ export default async function ProjectDetailPage({
           expertName: name,
           // 미배정 TO는 위에서 걸렀다 — 이름은 늘 있다
           stage: prior ? prior.outcome : (stageByPosition[position.id] ?? "assigned"),
-          engagementId: position.engagementId,
+          // 거절·만료 행은 그 결과를 낸 섭외 건 — 결정 수정(거절→승인)·이력에 쓴다
+          engagementId: position.engagementId ?? prior?.engagementId ?? null,
+          // 거절·만료 자리는 비어 있고 같은 전문가가 배정돼 있다 — 문자보내기(재요청) 가능
+          redispatchable: prior !== null && planSlotStates?.[slot.id] !== "none" && planSlotStates?.[slot.id] !== "rejected",
           sessionChanged: planChangedSlotIds.has(slot.id),
           sessionDetail:
             [

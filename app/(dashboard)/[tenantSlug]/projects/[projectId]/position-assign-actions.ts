@@ -675,9 +675,15 @@ export async function dispatchProjectEngagements(input: {
       .filter((p) => p.slot_id === slot.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
     // 후보 단위 발송은 순위·필요인원 규칙을 타지 않는다 — 담당자가 그 사람에게 보내기로 정한 것이다.
-    // 배정된(assigned) 자리만 나간다 — 이미 요청·확정된 자리는 재발송 버튼이 따로 있다.
+    // 배정된(assigned) 자리와, 거절·만료로 다시 빈(open) 자리에 그대로 배정된 후보가 나간다
+    // (기획 지시 2026-09-21: 거절 행에서도 문자보내기). 요청·확정된 자리는 재발송 버튼이 따로 있다.
     const slotTargets = onlyPositions
-      ? sorted.filter((p) => onlyPositions.has(p.id) && p.status === "assigned" && p.assigned_expert_id)
+      ? sorted.filter(
+          (p) =>
+            onlyPositions.has(p.id) &&
+            (p.status === "assigned" || p.status === "open") &&
+            p.assigned_expert_id
+        )
       : pickDispatchTargets(sorted, slot.required_count, redispatch);
     if (onlyPositions && slotTargets.length === 0) continue;
     const slotState = slotStates ? (slotStates[slot.id] ?? "none") : "approved";
