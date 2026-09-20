@@ -683,7 +683,7 @@ function ChecklistCard({
                 {columns.map((c) => (
                   <th key={c.key} className={cn("py-1 pr-2 font-medium", c.width)}>{c.label}</th>
                 ))}
-                <th className="w-20" />
+                <th className="w-32" />
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -756,6 +756,7 @@ function ChecklistCard({
                           onPatch={(k, v) => patch(item, k, v)}
                           onPlannedDue={(v) => changePlannedDue(item, v)}
                           onAddAfter={() => run(() => addChecklistItem(checklist.id, item.id, "새 항목"))}
+                          onDuplicate={() => run(() => duplicateChecklistItems(checklist.id, [item.id], "item"), "항목을 복제했습니다.")}
                           onDelete={() => {
                             if (window.confirm(`'${item.title}' 항목을 삭제할까요?`)) run(() => deleteChecklistItem(item.id));
                           }}
@@ -853,7 +854,7 @@ function GroupBlock({
 function ItemRows({
   idx, item, columns, groupFields, groupLabels, tone, auto, hasDday, shade, assigneeOptions, defaultYear, canEdit,
   myUserId, pending, dragging, memoOpen, classifyOpen, onToggleMemo, onToggleClassify, onDragStart, onDragEnd,
-  onDrop, onPatch, onPlannedDue, onAddAfter, onDelete, onReason,
+  onDrop, onPatch, onPlannedDue, onAddAfter, onDuplicate, onDelete, onReason,
 }: {
   idx: number;
   item: ProjectChecklistItemView;
@@ -880,6 +881,7 @@ function ItemRows({
   onPatch: (key: string, value: string | null) => void;
   onPlannedDue: (value: string | null) => void;
   onAddAfter: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
   onReason: (changeId: string, reason: string) => void;
 }) {
@@ -1035,7 +1037,8 @@ function ItemRows({
             </td>
           );
         })}
-        <td className="py-0.5 text-right">
+        {/* 행 단추는 한 줄에 — 메모 · 분류 · 추가 · 복제 · 삭제 (기획 지시 2026-09-21) */}
+        <td className="whitespace-nowrap py-0.5 text-right">
           <button
             type="button"
             title={item.memo ? "메모 보기" : "메모"}
@@ -1058,6 +1061,9 @@ function ItemRows({
             <>
               <button type="button" title="아래에 항목 추가" className="rounded p-1 text-muted-foreground hover:text-brand" disabled={pending} onClick={onAddAfter}>
                 <Plus className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <button type="button" title="이 항목을 복제해 바로 아래에 붙입니다" className="rounded p-1 text-muted-foreground hover:text-brand" disabled={pending} onClick={onDuplicate}>
+                <Copy className="h-3.5 w-3.5" aria-hidden />
               </button>
               <button type="button" title="항목 삭제" className="rounded p-1 text-muted-foreground hover:text-red-600" disabled={pending} onClick={onDelete}>
                 <Trash2 className="h-3.5 w-3.5" aria-hidden />
