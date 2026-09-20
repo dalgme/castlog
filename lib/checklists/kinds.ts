@@ -215,6 +215,7 @@ export const CHECKLIST_LOG_ACTION_LABELS: Record<string, string> = {
   "item.move": "분류 이동",
   "group.rename": "분류 이름 변경",
   "item.import": "항목 불러오기",
+  "item.duplicate": "항목 복제",
   "group.duplicate": "영역 복제",
   "group.delete": "영역 삭제",
   "category.duplicate": "행사(구분) 복제",

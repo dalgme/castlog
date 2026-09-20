@@ -516,7 +516,7 @@ const DUP_COLUMNS =
 export async function duplicateChecklistItems(
   checklistId: string,
   itemIds: string[],
-  label: "group" | "category"
+  label: "group" | "category" | "item"
 ): Promise<{ ok: true; added: number } | { ok: false; error: string }> {
   if (!uuid.safeParse(checklistId).success || !z.array(uuid).min(1).max(500).safeParse(itemIds).success) {
     return { ok: false, error: "대상을 확인할 수 없습니다." };
@@ -558,9 +558,12 @@ export async function duplicateChecklistItems(
     ? (first.category ?? "(미분류)")
     : [first.phase, first.category, first.subcategory].filter(Boolean).join(" › ") || "(미분류)";
   await logChecklist(gate.actor, {
-    scope: "project", action: label === "category" ? "category.duplicate" : "group.duplicate",
-    checklistId, projectId: c.project_id, itemTitle: `${source.length}개 항목`, field: where,
-    after: `${where} 복제 · ${inserted.length}개 추가`,
+    scope: "project",
+    action: label === "category" ? "category.duplicate" : label === "item" ? "item.duplicate" : "group.duplicate",
+    checklistId, projectId: c.project_id,
+    itemId: label === "item" ? first.id : null,
+    itemTitle: label === "item" ? first.title : `${source.length}개 항목`, field: where,
+    after: label === "item" ? `'${first.title}' 복제` : `${where} 복제 · ${inserted.length}개 추가`,
   });
   revalidate();
   return { ok: true, added: inserted.length };
