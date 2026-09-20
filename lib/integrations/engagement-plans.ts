@@ -57,6 +57,11 @@ export type PlanLine = {
    * 뒤 '세션의 모든 정보' 변경을 잡아야 한다. 저장 대상 아님
    */
   detailSignature?: string;
+  /**
+   * 지문용 — 필요인원 밖의 배정 후보(예비, 코드:전문가). 승인 뒤 '+후보 추가'·배정도
+   * 변경 품의를 다시 타야 한다 (기획 지시 2026-09-21). 저장 대상 아님
+   */
+  backupSignature?: string;
 };
 
 export type PlanSnapshot = {
@@ -202,6 +207,9 @@ export async function buildPlanSnapshot(
         .map((d) => `${d.date}@${d.startsTime ?? ""}-${d.endsTime ?? ""}`)
         .join("+"),
     ].join(",");
+    const backups = candidates
+      .filter((c) => c.assigned_expert_id)
+      .slice(slot.required_count);
     return {
       slotId: slot.id,
       slotDate: slot.slot_date,
@@ -214,6 +222,7 @@ export async function buildPlanSnapshot(
       locationName: slot.location_name,
       subtotal,
       subtotalMax,
+      backupSignature: backups.map((c) => `${c.code}:${c.assigned_expert_id ?? ""}`).join(","),
       candidateSignature: selected
         .map(
           (c) =>
@@ -241,12 +250,19 @@ function signatureText(value: string | null | undefined): string {
   return (value ?? "").replace(/[|;:,+\s]+/g, " ").trim();
 }
 
-/** 옛 지문(2026-09-21 이전)의 필드 수 — 일자|시작|종료|역할|인원|소계|후보 */
-const LEGACY_SIGNATURE_FIELDS = 7;
+/**
+ * 지문 line의 현재 필드 수. 형식은 뒤에 필드를 덧붙이는 방식으로만 자란다:
+ *   7 = 일자|시작|종료|역할|인원|소계|후보 (원형)
+ *   8 = + 세션 세부 (2026-09-21)
+ *   9 = + 예비 후보(필요인원 밖 배정, 2026-09-21)
+ * 옛 형식으로 저장된 계획은 그 필드 수까지만 비교한다 — 필드를 늘렸다고 승인된
+ * 계획이 전부 '변경됨'으로 뒤집히면 안 된다.
+ */
+const CURRENT_SIGNATURE_FIELDS = 9;
 
 /**
  * 계획 line 한 줄의 지문. 앞 7필드는 옛 형식 그대로(파서·열쇠 호환), 8번째에
- * 세션 세부 지문이 붙는다.
+ * 세션 세부 지문, 9번째에 예비 후보가 붙는다.
  */
 export function planSignatureLine(l: PlanLine): string {
   return [
@@ -258,35 +274,42 @@ export function planSignatureLine(l: PlanLine): string {
     l.subtotal,
     l.candidateSignature ?? "",
     l.detailSignature ?? "",
+    l.backupSignature ?? "",
   ].join("|");
 }
 
-/** 저장된 지문이 세부 지문이 없던 옛 형식인가 */
-export function isLegacyPlanSignature(stored: string): boolean {
-  return !stored
+/** 저장된 지문의 필드 수 (line 중 최대). 빈 지문은 0 */
+function signatureFieldCount(stored: string): number {
+  return stored
     .split(";")
-    .some((line) => line.split("|").length > LEGACY_SIGNATURE_FIELDS);
+    .filter(Boolean)
+    .reduce((max, line) => Math.max(max, line.split("|").length), 0);
 }
 
-function legacyLine(line: string): string {
-  return line.split("|").slice(0, LEGACY_SIGNATURE_FIELDS).join("|");
+/** 저장된 지문이 현재 형식보다 오래된 형식인가 (필드가 모자란가) */
+export function isLegacyPlanSignature(stored: string): boolean {
+  return signatureFieldCount(stored) < CURRENT_SIGNATURE_FIELDS;
+}
+
+function truncateLine(line: string, fields: number): string {
+  return line.split("|").slice(0, fields).join("|");
 }
 
 /**
- * 저장된 지문과 현재 지문이 같은가. 옛 형식으로 저장된 계획은 옛 필드만
- * 비교한다 — 세부 지문을 붙였다고 승인된 계획이 전부 '변경됨'으로 뒤집히면
- * 안 된다 (승인 시점의 세부는 알 수 없다).
+ * 저장된 지문과 현재 지문이 같은가. 옛 형식으로 저장된 계획은 그 형식의 필드까지만
+ * 비교한다 (승인 시점에 없던 정보는 알 수 없다).
  */
 export function planSignatureMatches(stored: string, current: string): boolean {
   if (stored === current) return true;
-  if (!isLegacyPlanSignature(stored)) return false;
-  const currentLegacy = current
+  const fields = signatureFieldCount(stored);
+  if (fields >= CURRENT_SIGNATURE_FIELDS) return false;
+  const currentTruncated = current
     .split(";")
     .filter(Boolean)
-    .map(legacyLine)
+    .map((line) => truncateLine(line, fields))
     .sort()
     .join(";");
-  return currentLegacy === stored;
+  return currentTruncated === stored;
 }
 
 /**
@@ -296,7 +319,7 @@ export function planSignatureMatches(stored: string, current: string): boolean {
  * 그 세션이 잡힌다. 계획에서 지워진 세션은 현재 line이 없으므로 여기 없다.
  */
 export function changedSlotIdsAgainst(stored: string, snapshot: PlanSnapshot): string[] {
-  const legacy = isLegacyPlanSignature(stored);
+  const fields = signatureFieldCount(stored);
   const pool = new Map<string, number>();
   for (const line of stored.split(";")) {
     if (!line) continue;
@@ -305,7 +328,7 @@ export function changedSlotIdsAgainst(stored: string, snapshot: PlanSnapshot): s
   const changed: string[] = [];
   for (const l of snapshot.lines) {
     const full = planSignatureLine(l);
-    const key = legacy ? legacyLine(full) : full;
+    const key = fields < CURRENT_SIGNATURE_FIELDS ? truncateLine(full, fields) : full;
     const left = pool.get(key) ?? 0;
     if (left > 0) {
       pool.set(key, left - 1);
@@ -337,6 +360,8 @@ export type PlanSignatureLine = {
   candidates: PlanSignatureCandidate[];
   /** 세션 세부 지문(회차·시간·방식·단가·일정 등, 2026-09-21~). 옛 지문은 빈 문자열 */
   detail: string;
+  /** 예비 후보(필요인원 밖 배정) — code:expertId[,…]. 옛 지문은 빈 문자열 */
+  backups: { code: string; expertId: string | null }[];
 };
 
 /** engagement_plan_lines 한 행의 열쇠 — 지문 line의 앞 6필드와 같은 형식 */
@@ -379,7 +404,13 @@ export function parsePlanSignatureCandidates(
         rank: Number(rank) || 0,
       });
     }
-    out.push({ key, candidates, detail: fields[7] ?? "" });
+    const backups: PlanSignatureLine["backups"] = [];
+    for (const b of (fields[8] ?? "").split(",")) {
+      if (!b) continue;
+      const [code, expertId] = b.split(":");
+      if (code) backups.push({ code, expertId: expertId || null });
+    }
+    out.push({ key, candidates, detail: fields[7] ?? "", backups });
   }
   return out;
 }
@@ -434,6 +465,12 @@ export function diffPlanSignatures(
           (p) => p.code === c.code && p.expertId === c.expertId && p.fee === c.fee
         );
       if (!same) codes.add(c.code);
+    }
+    // 예비 후보(필요인원 밖 배정)도 새로 붙었거나 사람이 바뀌었으면 변경 (기획 2026-09-21)
+    for (const b of child.backups) {
+      const same =
+        !wholeSlot && parent!.backups.some((p) => p.code === b.code && p.expertId === b.expertId);
+      if (!same) codes.add(b.code);
     }
     if (codes.size > 0) changedCodesBySlot.set(l.slot_id, codes);
   }
@@ -914,17 +951,15 @@ export async function assertSlotEditable(
   const gate = await evaluatePlanGate(slot.project_id, modules.approvals);
   if (!gate.required) return { ok: true };
   const state = gate.slotStates[slotId] ?? "none";
-  // 'changed'(승인 뒤 내용이 바뀜)는 어차피 변경 품의를 다시 타야 하므로 편집을 연다 —
-  // 거절로 변경·긴급 취소로 빈 자리에 새 후보를 넣고 변경 상신하는 경로 (기획 지시 2026-09-21).
-  // 결재 중(in_progress)과 승인 그대로(approved)인 세션만 잠근다
-  if (state === "in_progress" || state === "approved") {
+  // 승인 뒤에도 언제든 후보를 추가·배정할 수 있다 (기획 지시 2026-09-21) — 바뀌면 지문이
+  // 달라져 '변경 품의 필요'가 되고 변경 품의를 다시 올려야 한다. 결재 중(in_progress)만
+  // 잠근다 — 결재권자가 보고 있는 명단이 바뀌면 승인한 것과 실제가 어긋난다
+  if (state === "in_progress") {
     return {
       ok: false,
       error:
         `이 세션은 섭외계획이 '${SLOT_PLAN_STATE_LABELS[state]}' 상태라 후보·순위·예정가·필요인원을 편집할 수 없습니다 (규칙). ` +
-        (state === "in_progress"
-          ? "결재가 끝나거나 결재건을 상신 취소한 뒤 조정하세요."
-          : "조정이 필요하면 승인 목록 및 섭외 진행 탭에서 해당 후보를 '거절로 변경'하거나 세션 내용을 수정한 뒤(승인 후 변경 상태) 후보를 조정하고 변경 품의를 올리세요."),
+        "결재가 끝나거나 결재건을 상신 취소한 뒤 조정하세요.",
     };
   }
   return { ok: true };
