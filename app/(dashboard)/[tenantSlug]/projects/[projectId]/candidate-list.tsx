@@ -29,7 +29,11 @@ import {
   removeCandidate,
   reorderCandidates,
   setCandidateFee,
+  setCandidateUnitFees,
 } from "./slot-actions";
+import { countLabel, hybridCountLabel, type SessionSchedule } from "@/lib/sessions/schedule";
+import { computeFeeTotal, formatFeeTotal } from "@/lib/sessions/fees";
+import { unitFeeFields } from "@/components/sessions/unit-fee-form";
 
 /**
  * 세션별 섭외 후보 목록 (기획 확정 2026-08-22 — 후보 순위 모델)
@@ -50,8 +54,10 @@ export function CandidateList({
   canWithdraw,
   canExecute,
   expertsLite = false,
-  sessionDuration,
   editable,
+  schedule,
+  slotUnitOnline,
+  slotUnitOffline,
 }: {
   tenantSlug: string;
   projectId: string;
@@ -66,11 +72,16 @@ export function CandidateList({
   canExecute: boolean;
   /** 라이트 모드 — 수동 완료 시 '수락서 확인까지 한 번에' 옵션 노출 */
   expertsLite?: boolean;
-  /** 세션 진행 시간 (예: "3시간") — 예정가 옆 참고 표시 */
-  sessionDuration?: string | null;
   /** 순위·예정가·후보 편집 가능 여부 — 품의 상신 전(assigning)만 */
   editable: boolean;
+  /** 회차·진행 방식 — 총액 = 회차 × 회당 단가 (기획 2026-09-21) */
+  schedule: SessionSchedule;
+  /** 세션 일괄 단가 — 이와 다르면 '개별 수정'(코랄) */
+  slotUnitOnline: number | null;
+  slotUnitOffline: number | null;
 }) {
+  const feeFields = unitFeeFields(schedule.deliveryMode);
+  const countText = hybridCountLabel(schedule) ?? countLabel(schedule);
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -202,64 +213,84 @@ export function CandidateList({
                 {ENGAGEMENT_STAGE_LABELS[stage]}
               </span>
 
-              {/* 후보별 예정가 — 결재·정산 금액의 근거. 전문가를 올려야
-                  금액 칸이 활성화된다 (기획 2026-08-30 — 빈 자리에 금액부터
-                  적는 역순 입력 방지). 결재권자는 품의 결재 화면에서 수정 가능 */}
-              {editable &&
-              canManage &&
-              (p.expertName ?? p.assignedExpertName) === null ? (
-                p.expectedFee !== null ? (
-                  // 배정 해제 등으로 남은 금액 — 숨기면 보이지 않는 값이 품의
-                  // 합계에 흘러간다 (리뷰 6). 표시 + 비우기만 허용
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    예정가 {formatKrw(p.expectedFee)} (미배정 잔존)
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => run(() => setCandidateFee(p.id, ""), "예정가를 비웠습니다.")}
-                      className="underline underline-offset-2 hover:text-red-600"
-                    >
-                      비우기
-                    </button>
-                  </span>
-                ) : (
-                  <span
-                    className="text-xs text-muted-foreground/70"
-                    title="후보 전문가를 먼저 배정하면 예정가를 입력할 수 있습니다"
-                  >
-                    예정가 — 후보 배정 후 입력
-                  </span>
-                )
-              ) : editable && canManage ? (
-                <span className="inline-flex items-center gap-1 text-xs">
-                  <Input
-                    inputMode="numeric"
-                    defaultValue={formatComma(p.expectedFee)}
-                    onInput={commaInputHandler}
-                    placeholder="예정가(원)"
-                    className="h-7 w-28 text-xs tabular-nums"
-                    onBlur={(e) => {
-                      const v = e.target.value.replace(/\D/g, "");
-                      if (v !== String(p.expectedFee ?? "")) {
-                        run(() => setCandidateFee(p.id, v));
-                      }
-                    }}
-                  />
-                  원
-                  {sessionDuration && (
-                    <span className="text-muted-foreground">
-                      · {sessionDuration}
+              {/* 회당 단가 → 총액 (기획 2026-09-21). 전문가를 올려야 금액 칸이
+                  활성화된다 (기획 2026-08-30 — 역순 입력 방지). 일괄 단가와 다르면
+                  코랄로 표시되어 상신자·결재자가 알아본다 */}
+              {(() => {
+                const total =
+                  p.feeCustom && p.unitFeeOnline === null && p.unitFeeOffline === null && p.expectedFee !== null
+                    ? { min: p.expectedFee, max: p.expectedFeeMax ?? p.expectedFee, note: null }
+                    : computeFeeTotal(
+                        schedule,
+                        p.unitFeeOnline ?? slotUnitOnline,
+                        p.unitFeeOffline ?? slotUnitOffline
+                      );
+                const totalText = total ? formatFeeTotal(total) : p.expectedFee !== null ? formatKrw(p.expectedFee) : null;
+                const customCls = p.feeCustom ? "text-coral font-semibold" : "";
+                const unassigned = (p.expertName ?? p.assignedExpertName) === null;
+                if (editable && canManage && unassigned) {
+                  return p.expectedFee !== null ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      총액 {totalText} (미배정 잔존)
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => run(() => setCandidateFee(p.id, ""), "금액을 비웠습니다.")}
+                        className="underline underline-offset-2 hover:text-red-600"
+                      >
+                        비우기
+                      </button>
                     </span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  {p.expectedFee !== null
-                    ? `예정가 ${formatKrw(p.expectedFee)}`
-                    : "예정가 미정"}
-                  {sessionDuration ? ` · ${sessionDuration}` : ""}
-                </span>
-              )}
+                  ) : (
+                    <span className="text-xs text-muted-foreground/70" title="후보 전문가를 먼저 배정하면 단가를 입력할 수 있습니다">
+                      단가 — 후보 배정 후 입력 (세션 일괄등록 시 자동 반영)
+                    </span>
+                  );
+                }
+                if (editable && canManage) {
+                  return (
+                    <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+                      {feeFields.map((f) => (
+                        <label key={f.key} className="inline-flex items-center gap-1">
+                          <span className="text-muted-foreground">{f.label.replace(" 회당 단가", "").replace("회당 단가", "회당")}</span>
+                          <Input
+                            inputMode="numeric"
+                            defaultValue={formatComma(f.key === "online" ? p.unitFeeOnline : p.unitFeeOffline)}
+                            onInput={commaInputHandler}
+                            placeholder={formatComma(f.key === "online" ? slotUnitOnline : slotUnitOffline) || "회당(원)"}
+                            className={cn("h-7 w-24 text-xs tabular-nums", p.feeCustom && "border-coral text-coral")}
+                            onBlur={(e) => {
+                              const v = e.target.value.replace(/\D/g, "");
+                              const cur = f.key === "online" ? p.unitFeeOnline : p.unitFeeOffline;
+                              if (v !== String(cur ?? "")) {
+                                const other = f.key === "online" ? p.unitFeeOffline : p.unitFeeOnline;
+                                run(() =>
+                                  setCandidateUnitFees(p.id, {
+                                    online: f.key === "online" ? v : String(other ?? ""),
+                                    offline: f.key === "offline" ? v : String(other ?? ""),
+                                  })
+                                );
+                              }
+                            }}
+                          />
+                        </label>
+                      ))}
+                      <span className={cn("text-muted-foreground", customCls)} title={total?.note ?? undefined}>
+                        {countText ? `× ${countText} = ` : ""}
+                        {totalText ? `총액 ${totalText}` : "총액 —"}
+                        {p.feeCustom && " (개별 수정)"}
+                      </span>
+                    </span>
+                  );
+                }
+                return (
+                  <span className={cn("text-xs text-muted-foreground", customCls)} title={total?.note ?? undefined}>
+                    {totalText ? `총액 ${totalText}` : "금액 미정"}
+                    {countText ? ` · ${countText}` : ""}
+                    {p.feeCustom && " (개별 수정)"}
+                  </span>
+                );
+              })()}
 
               <span className="ml-auto flex items-center gap-1.5">
                 {isOpen && canManage && (

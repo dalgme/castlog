@@ -21,8 +21,18 @@ export type ReviewCandidate = {
   code: string;
   expertName: string | null;
   expectedFee: number | null;
+  /** 총액 최대 (회차·병행 범위) — 기획 2026-09-21 */
+  expectedFeeMax?: number | null;
+  /** 일괄 단가에서 개별 수정한 금액 — 코랄 표시 */
+  feeCustom?: boolean;
   editable: boolean; // 섭외 미진행(open/assigned)만 삭제 가능
 };
+
+function feeText(c: ReviewCandidate): string {
+  if (c.expectedFee === null) return "예정가 미정";
+  const max = c.expectedFeeMax ?? null;
+  return max !== null && max !== c.expectedFee ? `${formatKrw(c.expectedFee)} ~ ${formatKrw(max)}` : formatKrw(c.expectedFee);
+}
 
 /** 결재권자가 세션 화면을 열지 않고도 판단할 수 있게 — 진행일자·시간·시수·세부역할·장소·비고 */
 export type ReviewSlotDetail = {
@@ -250,13 +260,18 @@ export function PlanReviewPanel({
                       {c.expertName ?? "(미배정)"}
                     </span>
                     {canEdit ? (
-                      <span className="inline-flex items-center gap-1 text-xs">
+                      <span className={cn("inline-flex items-center gap-1 text-xs", c.feeCustom && "text-coral font-semibold")}>
+                        {c.expectedFeeMax !== null && c.expectedFeeMax !== undefined && c.expectedFeeMax !== c.expectedFee && (
+                          <span className="text-muted-foreground" title="회차·병행 범위 총액 — 아래 칸에 적으면 확정 금액으로 바뀝니다">
+                            {feeText(c)} →
+                          </span>
+                        )}
                         <Input
                           inputMode="numeric"
                           defaultValue={formatComma(c.expectedFee)}
                           onInput={commaInputHandler}
                           placeholder="예정가(원)"
-                          className="h-7 w-28 text-xs tabular-nums"
+                          className={cn("h-7 w-28 text-xs tabular-nums", c.feeCustom && "border-coral text-coral")}
                           onBlur={(e) => {
                             const v = e.target.value.replace(/\D/g, "");
                             if (v !== String(c.expectedFee ?? "")) {
@@ -268,13 +283,12 @@ export function PlanReviewPanel({
                             }
                           }}
                         />
-                        원
+                        원{c.feeCustom && <span className="text-[10px]">(개별 수정)</span>}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {c.expectedFee !== null
-                          ? formatKrw(c.expectedFee)
-                          : "예정가 미정"}
+                      <span className={cn("text-xs text-muted-foreground", c.feeCustom && "text-coral font-semibold")}>
+                        {feeText(c)}
+                        {c.feeCustom && " (개별 수정)"}
                       </span>
                     )}
                     {canEdit && c.editable && (

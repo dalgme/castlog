@@ -315,9 +315,10 @@ export async function reviewerSetCandidateFee(
   if (!position) return { ok: false, error: "대상 후보를 찾을 수 없습니다." };
 
   const nextFee = fee ? parseInt(fee, 10) : null;
+  // 결재권자가 직접 적은 금액 = 확정 총액 (범위 해제) + 개별 수정 표시 (기획 2026-09-21)
   const { error } = await supabase
     .from("engagement_slot_positions")
-    .update({ expected_fee: nextFee })
+    .update({ expected_fee: nextFee, expected_fee_max: null, fee_custom: nextFee !== null })
     .eq("id", positionId);
   if (error) return { ok: false, error: "예정가 저장에 실패했습니다." };
 
