@@ -269,17 +269,22 @@ export async function updateChecklistDday(checklistId: string, dday: string | nu
 export async function addChecklistItem(
   checklistId: string,
   afterItemId: string | null,
-  title: string
+  title: string,
+  /** newGroup: 바로 아래에 **새 영역**(가장 안쪽 분류가 '새 영역')으로 시작 — 영역 머리행의 + (기획 지시 2026-09-21) */
+  opts?: { newGroup?: boolean }
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (!uuid.safeParse(checklistId).success) return { ok: false, error: "대상을 확인할 수 없습니다." };
   const t = title.trim();
   if (!t || t.length > 500) return { ok: false, error: "내용을 1~500자로 입력하세요." };
   const supabase = createClient();
   const { data: c } = await supabase
-    .from("project_checklists").select("id, project_id").eq("id", checklistId).maybeSingle();
+    .from("project_checklists").select("id, project_id, kind").eq("id", checklistId).maybeSingle();
   if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
   const gate = await requireProjectTeam(c.project_id);
   if (!gate.ok) return gate;
+  // 새 영역 — 종류별 묶음 열 중 가장 안쪽(세부 분류·구분)에 '새 영역'을 넣으면 바로 아래에 새 묶음이 생긴다
+  const groupFields = isChecklistKind(c.kind) ? GROUP_FIELDS[c.kind] : [];
+  const innermost = opts?.newGroup ? groupFields[groupFields.length - 1] : undefined;
   // 새 항목은 바로 위 항목의 시기·분류·권장(D±)·담당을 이어받는다 (기획 지시 2026-09-20 —
   // 담당자가 임의로 추가한 항목은 위 항목의 권장일자를 복사). 맨 끝에 추가하면 마지막 항목이 '위'다.
   const prevQuery = supabase
@@ -295,13 +300,18 @@ export async function addChecklistItem(
     .from("project_checklist_items")
     .insert({
       tenant_id: gate.actor.tenantId, checklist_id: checklistId, project_id: c.project_id, sort_order: sortOrder,
-      phase: prev?.phase ?? null, category: prev?.category ?? null, subcategory: prev?.subcategory ?? null,
+      phase: innermost === "phase" ? "새 영역" : (prev?.phase ?? null),
+      category: innermost === "category" ? "새 영역" : (prev?.category ?? null),
+      subcategory: innermost === "subcategory" ? "새 영역" : (prev?.subcategory ?? null),
       offset_days: prev?.offset_days ?? null, assignee_user_id: assignee,
       title: t, created_by: gate.actor.userId, updated_by: gate.actor.userId,
     })
     .select("id").single();
   if (error || !data) return { ok: false, error: SYSTEM_FAIL };
-  await logChecklist(gate.actor, { scope: "project", action: "item.add", checklistId, projectId: c.project_id, itemId: data.id, itemTitle: t, after: t });
+  await logChecklist(gate.actor, {
+    scope: "project", action: innermost ? "group.add" : "item.add", checklistId, projectId: c.project_id,
+    itemId: data.id, itemTitle: t, after: innermost ? `새 영역 · ${t}` : t,
+  });
   revalidate();
   return { ok: true, id: data.id };
 }

@@ -728,7 +728,13 @@ function ChecklistCard({
                     onRename={(field, value) =>
                       run(() => renameChecklistGroup(checklist.id, g.ids, field, value), "분류 이름을 바꿨습니다.")
                     }
-                    onAdd={() => run(() => addChecklistItem(checklist.id, g.ids[g.ids.length - 1] ?? null, "새 항목"))}
+                    // 영역 머리행의 + = 이 영역 마지막 항목 아래에 **새 영역** 시작 (기획 지시 2026-09-21)
+                    onAdd={() =>
+                      run(
+                        () => addChecklistItem(checklist.id, g.ids[g.ids.length - 1] ?? null, "새 항목", { newGroup: true }),
+                        "아래에 새 영역을 만들었습니다 — 머리행에서 이름을 바꾸세요."
+                      )
+                    }
                     onDuplicate={() =>
                       run(() => duplicateChecklistItems(checklist.id, g.ids, "group"), `영역을 복제했습니다 (${g.ids.length}개 항목).`)
                     }
