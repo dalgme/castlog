@@ -64,7 +64,13 @@ export type SlotPositionRow = {
   engagementId: string | null;
   canceledExpertName: string | null;
   /** 이 자리의 직전 결과(거절·만료) — engagementId는 결정 수정·이력용 */
-  priorOutcome: { engagementId: string; expertName: string; outcome: "declined" | "expired" } | null;
+  priorOutcome: {
+    engagementId: string;
+    expertName: string;
+    outcome: "declined" | "expired" | "canceled";
+  } | null;
+  /** 전문가별 종료 시각 (기획 2026-09-21) — 계약 성립 건에만 의미 */
+  completedAt: string | null;
   assignedExpertName: string | null;
 };
 
@@ -98,6 +104,8 @@ export type SlotRow = {
   mentees: MenteeView[];
   positions: SlotPositionRow[];
   notice: SlotNoticeData;
+  /** 세션별 종료 시각 (기획 2026-09-21) */
+  completedAt: string | null;
 };
 
 /** 세션 한 줄 요약 — 세션 목록·섭외후보·안내문자 라벨 공용 */

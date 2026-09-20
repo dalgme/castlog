@@ -20,6 +20,7 @@ export const PROJECT_TAB_KEYS = [
   "sessions",
   "experts",
   "engage",
+  "confirmed",
   "contrib",
   "closing",
 ] as const;
@@ -92,6 +93,15 @@ const TAB_DEFS: readonly {
     activeClass: "border-fuchsia-600 bg-fuchsia-600 text-white shadow-sm",
     idleClass:
       "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100",
+  },
+  {
+    // 섭외 확정 (기획 지시 2026-09-21) — 계약이 성립한 전문가 명단. 계획 인원이
+    // 전원 승인되면 목표 달성으로 표시하고, 긴급 취소·세션별/전문가별 종료를 여기서 한다
+    key: "confirmed",
+    label: "섭외 확정",
+    needsExperts: true,
+    activeClass: "border-lime-600 bg-lime-600 text-white shadow-sm",
+    idleClass: "border-lime-200 bg-lime-50 text-lime-800 hover:bg-lime-100",
   },
   {
     // 참여율 배분 — 종료 탭에서 분리 (기획 확정 2026-08-30). 공통 기반이라

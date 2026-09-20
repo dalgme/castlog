@@ -558,13 +558,25 @@ export async function submitEngagementPlanChange(
    * 변경할 승인 계획 (다중 계획, 2026-09-05). 미지정이면 승인 계획이 정확히
    * 1건일 때만 그 계획으로 간주한다 — 여럿이면 화면이 골라 넘겨야 한다.
    */
-  planId?: string | null
+  planId?: string | null,
+  /**
+   * 긴급 진행(전결) (기획 지시 2026-09-21): 결재선을 거치지 않고 즉시 확정한다.
+   * 사후보고 문서가 상급자에게 간다. 팀장 이상(manager·org_admin)만.
+   */
+  options?: { urgent?: boolean }
 ): Promise<PlanActionResult> {
   const auth = await requirePlanSession();
   if (!auth.ok) return auth;
 
   if (!reason.trim()) {
     return { ok: false, error: "변경 사유를 입력하세요." };
+  }
+  const urgent = options?.urgent === true;
+  if (urgent && auth.role !== "org_admin" && auth.role !== "manager") {
+    return {
+      ok: false,
+      error: "긴급 진행(전결)은 팀장 이상만 할 수 있습니다 (규칙). 변경 품의를 상신하거나 상급자에게 요청해 주세요.",
+    };
   }
 
   const gate = await evaluatePlanGate(projectId, true);
@@ -680,18 +692,21 @@ export async function submitEngagementPlanChange(
     return { ok: false, error: "계획 명세 저장에 실패했습니다." };
   }
 
-  // 변경·보완도 같은 판정 (38번) — 추가 세션을 합산한 금액으로 상한을 다시 본다
-  const flow = await decidePlanFlow({
-    amount: snapshot.plannedAmount,
-    requesterGrade: auth.grade,
-  });
+  // 변경·보완도 같은 판정 (38번) — 추가 세션을 합산한 금액으로 상한을 다시 본다.
+  // 긴급 진행(전결)은 판정 없이 즉시 확정 — 상급자에게는 사후보고 문서가 간다
+  const flow: PlanFlow = urgent
+    ? { mode: "post_report" }
+    : await decidePlanFlow({
+        amount: snapshot.plannedAmount,
+        requesterGrade: auth.grade,
+      });
   const isReport = flow.mode === "post_report";
 
   const diff = snapshot.plannedAmount - current.plannedAmount;
   const approval = await createApprovalWithSteps({
     tenantId: auth.tenantId,
     requesterUserId: auth.userId,
-    title: `${isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${newRevision}] ${project.name} · 세션 ${snapshot.slotCount}건`,
+    title: `${urgent ? "[섭외계획 긴급 변경(전결)" : isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${newRevision}] ${project.name} · 세션 ${snapshot.slotCount}건`,
     body:
       `인원 ${current.positionCount}명 → ${snapshot.positionCount}명\n` +
       `계획 섭외비 ${formatWonRange(current.plannedAmount, current.plannedAmountMax)} → ` +
@@ -734,7 +749,11 @@ export async function submitEngagementPlanChange(
     tenant_id: auth.tenantId,
     actor_auth_user_id: auth.userId,
     actor_role: auth.role,
-    action: isReport ? "engagement_plan.post_report" : "engagement_plan.change_submit",
+    action: urgent
+      ? "engagement_plan.urgent_change"
+      : isReport
+        ? "engagement_plan.post_report"
+        : "engagement_plan.change_submit",
     resource_type: "engagement_plan",
     resource_id: created.id,
     before_data: {

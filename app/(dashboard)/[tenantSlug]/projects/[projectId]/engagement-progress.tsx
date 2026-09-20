@@ -39,6 +39,8 @@ import {
   type SmsSummary,
 } from "./sms-resend";
 import { EngagementDecisionButtons, EngagementReviseButton } from "./engagement-decision";
+import { PlanRevisionQuick } from "./plan-revision-quick";
+import { COMPLETED_BADGE_CLASS } from "./completion-buttons";
 
 /**
  * 승인 목록 및 섭외 진행 탭 (기획 확정 2026-08-30 — 37번).
@@ -110,6 +112,14 @@ export type ProgressRow = {
   sessionChanged?: boolean;
   /** 거절·만료로 빈 자리에 같은 전문가가 그대로 배정돼 있어 '문자보내기'로 다시 요청할 수 있는가 */
   redispatchable?: boolean;
+  /** 세션 id — 섭외 확정 탭의 세션 묶음·세션별 종료 (기획 2026-09-21) */
+  slotId?: string;
+  /** 이 세션이 담긴 승인 계획 — 긴급 취소 뒤 재상신·긴급 진행 창구 */
+  planId?: string | null;
+  /** 전문가별 종료 시각 — 보라색 '종료' 표시 */
+  completedAt?: string | null;
+  /** 세션별 종료 시각 */
+  slotCompletedAt?: string | null;
 };
 
 /**
@@ -149,6 +159,7 @@ export function EngagementProgress({
   canManage,
   canInput,
   canCancel = false,
+  canUrgent = false,
   expertsLite,
   approvalsEnabled,
   projectState,
@@ -164,6 +175,8 @@ export function EngagementProgress({
   projectDescription?: string | null;
   /** 실행(발송·수락서 송부) — 레벨 4부터 */
   canManage: boolean;
+  /** 긴급 진행(전결) — 팀장 이상 (기획 2026-09-21) */
+  canUrgent?: boolean;
   /** 입력(첨부) — 레벨 5부터 */
   canInput: boolean;
   /** 확정 후 긴급 취소 — 레벨 3부터. 후보 등록 화면에서 이 탭으로 옮김 (2026-09-05) */
@@ -424,6 +437,10 @@ export function EngagementProgress({
                         >
                           {ENGAGEMENT_STAGE_LABELS[r.stage]}
                         </span>
+                        {/* 섭외 확정 탭에서 종료된 전문가 — 보라색 (기획 2026-09-21) */}
+                        {r.completedAt && ACCEPTANCE_STAGES.includes(r.stage) && (
+                          <span className={cn("ml-1", COMPLETED_BADGE_CLASS)}>종료</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {/* 후보별 문자보내기 → 발송 뒤 재발송 (기획 지시 2026-09-21) + 발송 이력 */}
@@ -432,7 +449,8 @@ export function EngagementProgress({
                           {/* 거절·만료된 자리도 같은 전문가에게 다시 보낼 수 있다 (기획 지시 2026-09-21) */}
                           {canManage &&
                             (r.stage === "plan_approved" ||
-                              ((r.stage === "declined" || r.stage === "expired") && r.redispatchable)) && (
+                              ((r.stage === "declined" || r.stage === "expired" || r.stage === "canceled") &&
+                                r.redispatchable)) && (
                             <DispatchDialog
                               projectId={projectId}
                               projectName={projectName}
@@ -486,7 +504,9 @@ export function EngagementProgress({
                                   )
                               : r.stage === "expired"
                                 ? "만료됨"
-                                : r.stage === "confirmed"
+                                : r.stage === "canceled"
+                                  ? "긴급 취소됨"
+                                  : r.stage === "confirmed"
                                   ? "승인됨 · 확정"
                                   : ACCEPTANCE_STAGES.includes(r.stage)
                                     ? "승인됨"
@@ -510,6 +530,14 @@ export function EngagementProgress({
                                   to="declined"
                                 />
                               )}
+                            {/* 긴급 취소된 자리 — 후보를 바꾼 뒤 변경 품의 재상신 또는 긴급 진행(전결) (기획 2026-09-21) */}
+                            {canManage && approvalsEnabled && r.stage === "canceled" && (
+                              <PlanRevisionQuick
+                                projectId={projectId}
+                                planId={r.planId ?? null}
+                                canUrgent={canUrgent}
+                              />
+                            )}
                           </span>
                         )}
                       </TableCell>
