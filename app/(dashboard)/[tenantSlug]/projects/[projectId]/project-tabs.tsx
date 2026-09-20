@@ -17,7 +17,6 @@ export const PROJECT_TAB_KEYS = [
   "basic",
   "checklist",
   "quote",
-  "sessions",
   "experts",
   "engage",
   "confirmed",
@@ -68,14 +67,8 @@ const TAB_DEFS: readonly {
     activeClass: "border-rose-600 bg-rose-600 text-white shadow-sm",
     idleClass: "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
   },
-  {
-    key: "sessions",
-    // 명칭 개정 2026-08-30 (37번): 등록은 기본설정 캘린더에서, 여기는 확인·수정
-    label: "세션 확인",
-    activeClass: "border-violet-600 bg-violet-600 text-white shadow-sm",
-    idleClass:
-      "border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100",
-  },
+  // '세션 확인' 탭은 삭제 (기획 지시 2026-09-21) — 세션은 기본설정 캘린더·섭외후보 등록에서,
+  // 안내문자는 섭외 확정 탭에서 전문가별로. 옛 링크(?tab=sessions)는 첫 탭으로 돌아간다
   {
     key: "experts",
     label: "섭외후보 등록",

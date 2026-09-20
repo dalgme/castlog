@@ -385,16 +385,15 @@ export function EngagementProgress({
           ) : (
             <div className="overflow-x-auto">
               <Table>
+                {/* 세션 칸을 넓게 — 전문가 칸은 코드넘버 폭, 처리 버튼은 한 칸에 세로로 (기획 지시 2026-09-21) */}
                 <TableHeader>
                   <TableRow>
-                    <TableHead>세션</TableHead>
-                    <TableHead className="w-32">코드넘버</TableHead>
+                    <TableHead className="min-w-[22rem]">세션</TableHead>
                     <TableHead className="w-32">전문가</TableHead>
-                    <TableHead className="w-28 text-right">예정가</TableHead>
-                    <TableHead className="w-28">단계</TableHead>
-                    <TableHead className="w-56">문자 발송</TableHead>
-                    <TableHead className="w-36">회신 처리</TableHead>
-                    <TableHead className="w-44 text-right">수락서</TableHead>
+                    <TableHead className="w-24 text-right">예정가</TableHead>
+                    <TableHead className="w-24">단계</TableHead>
+                    <TableHead className="w-44">문자 발송</TableHead>
+                    <TableHead className="w-40">처리</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -407,8 +406,8 @@ export function EngagementProgress({
                       )}
                       title={r.sessionChanged ? CHANGED_SESSION_HINT : undefined}
                     >
-                      <TableCell className="text-xs">
-                        {r.slotLabel}
+                      <TableCell className="min-w-[22rem] text-xs">
+                        <span className="font-medium">{r.slotLabel}</span>
                         {r.sessionChanged && (
                           <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                             승인 후 변경 · 재승인 필요
@@ -420,15 +419,16 @@ export function EngagementProgress({
                           </span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-32">
+                        {/* 이름 아래 (코드넘버) — 코드넘버 폭만 쓴다 */}
+                        <span className="block text-sm font-medium">{r.expertName}</span>
                         <Link
                           href={`/${tenantSlug}/projects/${projectId}/positions/${r.positionId}`}
-                          className="font-mono text-xs text-brand underline-offset-4 hover:underline"
+                          className="block font-mono text-[11px] text-brand underline-offset-4 hover:underline"
                         >
-                          {r.code}
+                          ({r.code})
                         </Link>
                       </TableCell>
-                      <TableCell className="text-sm">{r.expertName}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
                         {r.fee !== null ? formatKrw(r.fee) : "미정"}
                       </TableCell>
@@ -487,9 +487,10 @@ export function EngagementProgress({
                             )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {/* 승인·거절 — 회신 대기 건은 결정, 이미 내려진 결정은 수정 (기획 지시 2026-09-21).
-                            승인 행은 노랑, 거절 행은 회색 */}
+                      <TableCell className="w-40">
+                        {/* 처리 — 회신 처리(승인·거절/결정 수정) · 수락서 확인 · 긴급 취소를 한 칸에
+                            세로로 쌓아 세션 칸의 가로 폭을 확보한다 (기획 지시 2026-09-21) */}
+                        <div className="flex flex-col items-start gap-1">
                         {canManage && r.engagementId && r.stage === "requested" ? (
                           <EngagementDecisionButtons
                             engagementId={r.engagementId}
@@ -545,40 +546,36 @@ export function EngagementProgress({
                             )}
                           </span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="inline-flex items-center gap-1">
-                          {r.engagementId && ACCEPTANCE_STAGES.includes(r.stage) ? (
-                            <Button asChild size="sm" variant="outline">
-                              <Link
-                                href={`/${tenantSlug}/experts/acceptances/${r.engagementId}`}
-                              >
-                                <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden />
-                                수락서 확인
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Badge variant="outline" className="font-normal">
-                              {r.stage === "requested" ? "회신 대기" : "-"}
-                            </Badge>
-                          )}
-                          {r.engagementId && (
-                            <EngagementHistoryDialog
+                        {r.engagementId && ACCEPTANCE_STAGES.includes(r.stage) && (
+                          <Button asChild size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+                            <Link href={`/${tenantSlug}/experts/acceptances/${r.engagementId}`}>
+                              <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden />
+                              수락서 확인
+                            </Link>
+                          </Button>
+                        )}
+                        {r.stage === "requested" && (
+                          <Badge variant="outline" className="font-normal">
+                            회신 대기
+                          </Badge>
+                        )}
+                        {/* 확정 후 긴급 취소 — 계약이 성립한 건만 (기획 지시 2026-09-05,
+                            후보 등록 화면에서 이동) */}
+                        {canCancel &&
+                          r.engagementId &&
+                          ACCEPTANCE_STAGES.includes(r.stage) && (
+                            <EngagementUrgentCancel
                               engagementId={r.engagementId}
                               expertName={r.expertName}
                             />
                           )}
-                          {/* 확정 후 긴급 취소 — 계약이 성립한 건만 (기획 지시 2026-09-05,
-                              후보 등록 화면에서 이동) */}
-                          {canCancel &&
-                            r.engagementId &&
-                            ACCEPTANCE_STAGES.includes(r.stage) && (
-                              <EngagementUrgentCancel
-                                engagementId={r.engagementId}
-                                expertName={r.expertName}
-                              />
-                            )}
-                        </span>
+                        {r.engagementId && (
+                          <EngagementHistoryDialog
+                            engagementId={r.engagementId}
+                            expertName={r.expertName}
+                          />
+                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

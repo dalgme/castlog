@@ -320,7 +320,7 @@ export function ProjectCalendarWidget({
                       return (
                         <li key={`${s.id}:${c.iso}`}>
                           <Link
-                            href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
+                            href={`/${tenantSlug}/projects/${s.projectId}?tab=basic`}
                             className={`flex min-h-11 items-center gap-2 rounded border-l-4 px-2 py-1.5 text-sm ${
                               colorByProject.get(s.projectId) ?? PALETTE[0]
                             }`}
@@ -409,7 +409,7 @@ export function ProjectCalendarWidget({
                         return (
                           <Link
                             key={`${s.id}:${cell.iso}`}
-                            href={`/${tenantSlug}/projects/${s.projectId}?tab=sessions`}
+                            href={`/${tenantSlug}/projects/${s.projectId}?tab=basic`}
                             title={`${s.projectName} · ${s.name ?? ""} · ${
                               spanning
                                 ? `${s.date} ~ ${s.endDate} (캘린더에는 ${MAX_SPAN_DAYS}일까지 표시)`

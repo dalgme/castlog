@@ -564,7 +564,7 @@ export function ProjectCalendar({
                           ) : (
                             <Link
                               key={it.key}
-                              href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${it.s.id}` : `/${tenantSlug}/projects/${projectId}?tab=sessions`}
+                              href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${it.s.id}` : `/${tenantSlug}/projects/${projectId}?tab=basic`}
                               title={title}
                               className={cls}
                             >
@@ -620,7 +620,7 @@ export function ProjectCalendar({
                     ) : (
                       <Link
                         key={b.id}
-                        href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${b.id}` : `/${tenantSlug}/projects/${projectId}?tab=sessions`}
+                        href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${b.id}` : `/${tenantSlug}/projects/${projectId}?tab=basic`}
                         title={text}
                         className={cls}
                         style={style}
@@ -766,7 +766,7 @@ export function ProjectCalendar({
                         ) : (
                           <Link
                             key={`${s.id}:${b.o.date}`}
-                            href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}` : `/${tenantSlug}/projects/${projectId}?tab=sessions`}
+                            href={expertsEnabled ? `/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}` : `/${tenantSlug}/projects/${projectId}?tab=basic`}
                             title={info}
                             className={blockClass}
                             style={blockStyle}

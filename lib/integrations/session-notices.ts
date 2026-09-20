@@ -220,12 +220,35 @@ export async function dispatchSessionNotice(
 ): Promise<DispatchResult> {
   const admin = createAdminClient();
 
-  // 경합 방지 — scheduled 상태일 때만 집어간다
-  const { data: notice } = await admin
-    .from("session_notices")
-    .select("id, tenant_id, slot_id, body_template, status, created_by")
-    .eq("id", noticeId)
-    .maybeSingle();
+  // 경합 방지 — scheduled 상태일 때만 집어간다.
+  // expert_ids(전문가별 발송, 2026-09-21)는 42703 한정 폴백 (§14-10)
+  type NoticeRow = {
+    id: string;
+    tenant_id: string;
+    slot_id: string;
+    body_template: string;
+    status: string;
+    created_by: string | null;
+    expert_ids?: string[] | null;
+  };
+  let notice: NoticeRow | null = null;
+  {
+    const full = await admin
+      .from("session_notices")
+      .select("id, tenant_id, slot_id, body_template, status, created_by, expert_ids")
+      .eq("id", noticeId)
+      .maybeSingle();
+    if (full.error?.code === "42703") {
+      const { data: legacy } = await admin
+        .from("session_notices")
+        .select("id, tenant_id, slot_id, body_template, status, created_by")
+        .eq("id", noticeId)
+        .maybeSingle();
+      notice = legacy;
+    } else {
+      notice = full.data;
+    }
+  }
   if (!notice) return { ok: false, error: "안내문자 건을 찾을 수 없습니다." };
   if (notice.status !== "scheduled") {
     return { ok: false, error: "이미 처리된 안내문자입니다." };
@@ -245,14 +268,19 @@ export async function dispatchSessionNotice(
     return { ok: false, error: "라이트 모드에서는 안내문자를 발송하지 않습니다." };
   }
 
-  const context = await getSessionNoticeContext(notice.slot_id);
-  if (!context) {
+  const loaded = await getSessionNoticeContext(notice.slot_id);
+  if (!loaded) {
     await admin
       .from("session_notices")
       .update({ status: "failed", last_error: "세션을 찾을 수 없습니다." })
       .eq("id", noticeId);
     return { ok: false, error: "세션을 찾을 수 없습니다." };
   }
+  // 전문가별 발송(섭외 확정 탭) — 지정된 전문가에게만 (기획 2026-09-21)
+  const only = notice.expert_ids ?? null;
+  const context: SessionNoticeContext = only
+    ? { ...loaded, recipients: loaded.recipients.filter((r) => only.includes(r.expertId)) }
+    : loaded;
 
   if (context.recipients.length === 0) {
     await admin
