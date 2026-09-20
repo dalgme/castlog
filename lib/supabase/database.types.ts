@@ -4811,8 +4811,10 @@ export type Database = {
           canceled_at: string | null
           created_at: string
           updated_at: string
+          expert_ids: string[] | null
         }
         Insert: {
+          expert_ids?: string[] | null
           id?: string
           tenant_id: string
           project_id: string
@@ -4834,6 +4836,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          expert_ids?: string[] | null
           id?: string
           tenant_id?: string
           project_id?: string

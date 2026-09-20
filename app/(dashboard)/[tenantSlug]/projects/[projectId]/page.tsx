@@ -75,7 +75,7 @@ import {
 } from "./action-request-panel";
 import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
-import { SlotTable, type SlotRow } from "./slot-table";
+import type { SlotRow } from "./slot-table";
 import { ProjectCalendar } from "./project-calendar";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { BudgetPanel } from "./budget-panel";
@@ -657,10 +657,26 @@ export default async function ProjectDetailPage({
           ? supabase
               .from("session_notices")
               .select(
-                "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error"
+                "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error, expert_ids"
               )
               .in("slot_id", slotIds)
               .order("created_at", { ascending: false })
+              .then(async (res) =>
+                // expert_ids(전문가별 발송) 미적용 DB — 컬럼 없이 다시 읽는다 (§14-10)
+                res.error?.code === "42703"
+                  ? {
+                      data: (
+                        await supabase
+                          .from("session_notices")
+                          .select(
+                            "id, slot_id, status, scheduled_at, sent_at, recipient_count, sent_count, failed_count, last_error"
+                          )
+                          .in("slot_id", slotIds)
+                          .order("created_at", { ascending: false })
+                      ).data?.map((n) => ({ ...n, expert_ids: null as string[] | null })) ?? null,
+                    }
+                  : { data: res.data }
+              )
           : Promise.resolve({ data: null }),
       ])
     : [{ data: null }, { data: null }];
@@ -860,6 +876,7 @@ export default async function ProjectDetailPage({
           sentCount: n.sent_count,
           failedCount: n.failed_count,
           lastError: n.last_error,
+          expertIds: n.expert_ids ?? null,
         })),
     },
   }));
@@ -1673,27 +1690,8 @@ export default async function ProjectDetailPage({
             }
           />
         )}
-        {tab === "sessions" && (
-        <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">세션 · 전문가 코드넘버</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <SlotTable
-                projectId={project.id}
-                tenantSlug={params.tenantSlug}
-                slots={slotRows}
-                canManage={canInput}
-                canNotice={exec.sessionNotice}
-                expertsLite={expertsLite}
-                expertsEnabled={modules.experts}
-                noticeTemplates={noticeTemplates}
-                defaultNoticeBody={DEFAULT_NOTICE_BODY}
-                fieldOptions={sessionFieldOptions}
-              />
-            </CardContent>
-        </Card>
-        )}
+        {/* '세션 확인' 탭은 삭제 (기획 지시 2026-09-21) — 세션 등록·수정은 기본설정 캘린더와
+            섭외후보 등록에서, 안내문자는 섭외 확정 탭에서 전문가별로 */}
         {tab === "overview" && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 text-sm">
@@ -1998,10 +1996,14 @@ export default async function ProjectDetailPage({
             canManage={canExecute}
             canCancel={exec.engagementCancel}
             canEvaluate={canEvaluate}
+            canNotice={exec.sessionNotice}
             expertsLite={expertsLite}
             rows={progressRows}
             evaluations={confirmedEvaluations}
             tagByExpert={confirmedTagByExpert}
+            noticeTemplates={noticeTemplates}
+            defaultNoticeBody={DEFAULT_NOTICE_BODY}
+            noticesBySlot={Object.fromEntries(slotRows.map((s) => [s.id, s.notice]))}
             sessions={slotRows
               .filter((s) => !modules.approvals || approvedPlanIdBySlot.has(s.id) || (planSlotStates?.[s.id] ?? "none") !== "none")
               .map((s) => ({

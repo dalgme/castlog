@@ -248,11 +248,6 @@ export function EngagementWorkbench({
             </Button>
           )}
           {headerActions}
-          <Button asChild variant="ghost" size="sm">
-            <Link href={`/${tenantSlug}/projects/${projectId}?tab=sessions`}>
-              세션 확인
-            </Link>
-          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

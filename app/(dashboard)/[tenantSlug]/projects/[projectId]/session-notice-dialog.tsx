@@ -45,6 +45,8 @@ export type SessionNoticeRow = {
   sentCount: number;
   failedCount: number;
   lastError: string | null;
+  /** 전문가별 발송이면 대상 전문가 id 목록, 세션 전원이면 null (2026-09-21) */
+  expertIds?: string[] | null;
 };
 
 export type NoticeTargetPreview = {
@@ -70,8 +72,10 @@ export function SessionNoticeDialog({
   slotLabel,
   templates,
   defaultBody,
-  targets,
-  notices,
+  targets: allTargets,
+  notices: allNotices,
+  singleTarget = null,
+  size = "sm",
 }: {
   slotId: string;
   slotLabel: string;
@@ -79,7 +83,15 @@ export function SessionNoticeDialog({
   defaultBody: string;
   targets: { name: string; code: string }[];
   notices: SessionNoticeRow[];
+  /** 전문가 한 명에게만 (섭외 확정 탭, 기획 2026-09-21) — 대상·내역을 그 사람으로 좁힌다 */
+  singleTarget?: { expertId: string; name: string; code: string } | null;
+  size?: "sm" | "xs";
 }) {
+  const targets = singleTarget ? [{ name: singleTarget.name, code: singleTarget.code }] : allTargets;
+  // 전문가별 내역 = 그 사람 지정 발송 + 세션 전원 발송(그 사람도 받았다)
+  const notices = singleTarget
+    ? allNotices.filter((n) => !n.expertIds || n.expertIds.includes(singleTarget.expertId))
+    : allNotices;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState(defaultBody);
@@ -131,6 +143,7 @@ export function SessionNoticeDialog({
           body,
           templateId: templateId || undefined,
           scheduledAt: schedule ? scheduledAt : undefined,
+          expertIds: singleTarget ? [singleTarget.expertId] : undefined,
         }),
       schedule ? "예약했습니다." : "발송했습니다."
     );
@@ -148,16 +161,19 @@ export function SessionNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <MessageSquare className="mr-1 h-3.5 w-3.5" />
+        <Button size="sm" variant="outline" className={size === "xs" ? "h-6 px-1.5 text-[10px]" : undefined}>
+          <MessageSquare className={size === "xs" ? "mr-0.5 h-3 w-3" : "mr-1 h-3.5 w-3.5"} />
           안내문자
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>세션 안내문자</DialogTitle>
+          <DialogTitle>{singleTarget ? `${singleTarget.name} — 안내문자` : "세션 안내문자"}</DialogTitle>
           <DialogDescription>
-            {slotLabel} · 섭외가 확정된 전문가 {targets.length}명에게 보냅니다.
+            {slotLabel} ·{" "}
+            {singleTarget
+              ? `${singleTarget.name} 전문가(${singleTarget.code})에게만 보냅니다.`
+              : `섭외가 확정된 전문가 ${targets.length}명에게 보냅니다.`}{" "}
             업무연락으로 발송되며 광고성으로는 보낼 수 없습니다.
           </DialogDescription>
         </DialogHeader>

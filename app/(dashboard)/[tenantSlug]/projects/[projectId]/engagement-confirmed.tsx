@@ -26,6 +26,11 @@ import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { COMPLETED_BADGE_CLASS, CompletionButton } from "./completion-buttons";
 import { ExpertEvaluateDialog, RatingStars } from "./expert-evaluate-dialog";
 import { ExpertQuickTag } from "../../experts/expert-quick-tag";
+import {
+  SessionNoticeDialog,
+  type NoticeTemplateOption,
+  type SessionNoticeRow,
+} from "./session-notice-dialog";
 import type { ProgressRow } from "./engagement-progress";
 
 /**
@@ -61,11 +66,15 @@ export function EngagementConfirmed({
   canManage,
   canCancel,
   canEvaluate,
+  canNotice,
   expertsLite,
   rows,
   sessions,
   evaluations,
   tagByExpert,
+  noticeTemplates,
+  defaultNoticeBody,
+  noticesBySlot,
 }: {
   tenantSlug: string;
   projectId: string;
@@ -73,6 +82,8 @@ export function EngagementConfirmed({
   canCancel: boolean;
   /** 평가·등급(즐겨찾기/VIP) — expertRecord 축 */
   canEvaluate: boolean;
+  /** 안내문자 발송 — sessionNotice 축 (세션 확인 탭에서 이동, 기획 2026-09-21) */
+  canNotice: boolean;
   expertsLite: boolean;
   rows: ProgressRow[];
   /** 계획에 담긴(또는 결재 없이 진행하는) 세션 — 목표 산정 기준 */
@@ -81,6 +92,10 @@ export function EngagementConfirmed({
   evaluations: Record<string, { rating: number; opinion: string | null }>;
   /** 전문가 id → 자사 등급 (즐겨찾기/VIP/주의) */
   tagByExpert: Record<string, { tag: string; note: string | null }>;
+  noticeTemplates: NoticeTemplateOption[];
+  defaultNoticeBody: string;
+  /** 세션 id → 안내문자 대상·발송 내역 */
+  noticesBySlot: Record<string, { targets: { name: string; code: string }[]; notices: SessionNoticeRow[] }>;
 }) {
   const confirmed = rows.filter((r) => CONFIRMED_STAGES.includes(r.stage));
   const required = sessions.reduce((n, s) => n + s.requiredCount, 0);
@@ -192,6 +207,7 @@ export function EngagementConfirmed({
                           <TableHead>전문가</TableHead>
                           <TableHead className="w-28 text-right">예정가</TableHead>
                           <TableHead className="w-28">단계</TableHead>
+                          <TableHead className="w-28">안내문자</TableHead>
                           <TableHead className="w-44">평가</TableHead>
                           <TableHead className="w-32">등급</TableHead>
                           <TableHead className="w-24">종료</TableHead>
@@ -223,6 +239,23 @@ export function EngagementConfirmed({
                                 >
                                   {ENGAGEMENT_STAGE_LABELS[r.stage]}
                                 </span>
+                              </TableCell>
+                              <TableCell>
+                                {/* 안내문자 — 전문가별 (세션 확인 탭에서 이동, 기획 2026-09-21) */}
+                                {canNotice && !expertsLite && r.expertId && r.slotId ? (
+                                  <SessionNoticeDialog
+                                    slotId={r.slotId}
+                                    slotLabel={label}
+                                    templates={noticeTemplates}
+                                    defaultBody={defaultNoticeBody}
+                                    targets={noticesBySlot[r.slotId]?.targets ?? []}
+                                    notices={noticesBySlot[r.slotId]?.notices ?? []}
+                                    singleTarget={{ expertId: r.expertId, name: r.expertName, code: r.code }}
+                                    size="xs"
+                                  />
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground">-</span>
+                                )}
                               </TableCell>
                               <TableCell>
                                 {/* 평가 — 5점 만점·1점 단위 + 의견, 완료 시 종료 처리 (기획 2026-09-21) */}

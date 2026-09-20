@@ -67,6 +67,8 @@ export async function createSessionNotice(input: {
   body: string;
   scheduledAt?: string;
   templateId?: string;
+  /** 전문가별 발송 (섭외 확정 탭, 기획 2026-09-21) — 지정하면 그 전문가에게만 */
+  expertIds?: string[];
 }): Promise<NoticeResult> {
   const auth = await requireNoticeSession();
   if (!auth.ok) return auth;
@@ -85,15 +87,20 @@ export async function createSessionNotice(input: {
     return { ok: false, error: "안내 문구는 2000자 이내로 입력하세요." };
   }
 
-  const context = await getSessionNoticeContext(input.slotId);
-  if (!context || context.tenantId !== auth.tenantId) {
+  const loaded = await getSessionNoticeContext(input.slotId);
+  if (!loaded || loaded.tenantId !== auth.tenantId) {
     return { ok: false, error: "세션을 찾을 수 없습니다." };
   }
+  const expertIds = input.expertIds && input.expertIds.length > 0 ? input.expertIds : null;
+  const context = expertIds
+    ? { ...loaded, recipients: loaded.recipients.filter((r) => expertIds.includes(r.expertId)) }
+    : loaded;
   if (context.recipients.length === 0) {
     return {
       ok: false,
-      error:
-        "발송 대상이 없습니다. 섭외가 확정된 전문가가 있어야 하며, 휴대폰 번호가 등록되어 있어야 합니다.",
+      error: expertIds
+        ? "이 전문가는 발송 대상이 아닙니다 (상태 미충족). 섭외가 확정돼 있고 휴대폰 번호가 등록돼 있어야 합니다."
+        : "발송 대상이 없습니다. 섭외가 확정된 전문가가 있어야 하며, 휴대폰 번호가 등록되어 있어야 합니다.",
     };
   }
 
@@ -130,21 +137,32 @@ export async function createSessionNotice(input: {
   }
 
   const supabase = createClient();
-  const { data: created, error } = await supabase
-    .from("session_notices")
-    .insert({
-      tenant_id: auth.tenantId,
-      project_id: context.projectId,
-      slot_id: context.slotId,
-      template_id: input.templateId || null,
-      body_template: body,
-      status: "scheduled",
-      scheduled_at: scheduledAt,
-      recipient_count: context.recipients.length,
-      created_by: auth.userId,
-    })
-    .select("id")
-    .single();
+  const noticeRow = {
+    tenant_id: auth.tenantId,
+    project_id: context.projectId,
+    slot_id: context.slotId,
+    template_id: input.templateId || null,
+    body_template: body,
+    status: "scheduled",
+    scheduled_at: scheduledAt,
+    recipient_count: context.recipients.length,
+    created_by: auth.userId,
+  };
+  // 전문가별 발송은 expert_ids 컬럼이 있어야 안전하다 — 컬럼 없는 DB(SQL 먼저)에서
+  // 전원 발송으로 새면 안 되므로 규칙 문구로 막는다 (§14-10)
+  const { data: created, error } = expertIds
+    ? await supabase
+        .from("session_notices")
+        .insert({ ...noticeRow, expert_ids: expertIds })
+        .select("id")
+        .single()
+    : await supabase.from("session_notices").insert(noticeRow).select("id").single();
+  if (error?.code === "42703" && expertIds) {
+    return {
+      ok: false,
+      error: "전문가별 안내문자는 아직 이 서버에 준비되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션 적용을 요청해 주세요.",
+    };
+  }
   if (error || !created) return { ok: false, error: "등록에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요." };
 
   await supabase.from("audit_logs").insert({
@@ -158,6 +176,7 @@ export async function createSessionNotice(input: {
       slot_id: context.slotId,
       recipients: context.recipients.length,
       scheduled_at: scheduledAt,
+      expert_ids: expertIds,
     },
   });
 
