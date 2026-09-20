@@ -90,6 +90,7 @@ import { ProjectTabs, resolveProjectTab } from "./project-tabs";
 import { ChecklistTab } from "./checklist-tab";
 import { QuoteTab } from "./quote-tab";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
+import { getAutoSettlementStatus } from "@/lib/integrations/settlement-auto";
 import {
   EngagementWorkbench,
   type UnlinkedEngagement,
@@ -318,18 +319,11 @@ export default async function ProjectDetailPage({
     (s) => s.status === "completed" || s.status === "skipped"
   ).length;
 
-  // 정성 후기 — 이 프로젝트 건만 (전문가별 전체 이력은 전문가 화면에서 본다)
-  const { data: reviewRows } = modules.experts
-    ? await supabase
-        .from("expert_reviews")
-        .select("id, expert_id, body, created_at, author_user_id")
-        .eq("project_id", project.id)
-        .order("created_at", { ascending: false })
-    : { data: null };
   const staffNameById = new Map(
     (staffResult.data ?? []).map((u) => [u.id, u.name])
   );
-  // 후기 대상 — 수락(계약 성립)된 섭외의 전문가. 사람 단위로 한 번씩 (중복 제거)
+  // 계약 성립(수락)된 섭외의 전문가 — 사람 단위로 한 번씩 (중복 제거). 리뷰 탭의 전문가
+  // 평가 행이 쓴다. (마감 탭의 '전문가 정성 후기' 절은 삭제 — 기획 지시 2026-09-21)
   const seenExpert = new Set<string>();
   const reviewTargets: ExpertReviewTarget[] = [];
   for (const engagement of engagements) {
@@ -341,16 +335,7 @@ export default async function ProjectDetailPage({
       name: engagement.experts?.name ?? "-",
       // 참여 세션은 슬롯을 읽은 뒤에 채운다 (아래 sessionsByExpert)
       sessions: [],
-      reviews: (reviewRows ?? [])
-        .filter((r) => r.expert_id === engagement.expert_id)
-        .map((r) => ({
-          id: r.id,
-          body: r.body,
-          createdAt: r.created_at,
-          authorName: r.author_user_id
-            ? (staffNameById.get(r.author_user_id) ?? null)
-            : null,
-        })),
+      reviews: [],
     });
   }
 
@@ -1626,6 +1611,10 @@ export default async function ProjectDetailPage({
     };
   }
 
+  // 지급 품의서 자동 생성 조건의 현재 상태 (기획 2026-09-21) — 마감 탭에서 보여 준다
+  const autoSettlementStatus =
+    tab === "closing" && modules.experts ? await getAutoSettlementStatus(project.id) : null;
+
   // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
   // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
   const settlementAttachments: Record<string, { id: string; fileName: string }> = {};
@@ -2078,7 +2067,7 @@ export default async function ProjectDetailPage({
             canReviewSettlement={canReviewSettlementDoc}
             isClosed={isClosed}
             closedAt={project.closed_at}
-            reviewTargets={reviewTargets}
+            autoStatus={autoSettlementStatus}
             expertsLite={expertsLite}
           />
         )}

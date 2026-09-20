@@ -25,6 +25,11 @@ export type StaffOption = { id: string; name: string };
 
 type Cell = { userId: string; percentage: string; roleLabel: string };
 
+/** 사람을 고르지 않는 열 — 설정의 대표·이사 직급에서 자동으로 온다 (기획 2026-09-21) */
+function isFixedSlot(key: ContributionSlotKey): boolean {
+  return key === "ceo" || key === "director";
+}
+
 const SELECT_CLASS =
   "h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -73,7 +78,8 @@ export function ProjectClosing({
       const row = stored.get(key);
       out[key] = row
         ? {
-            userId: row.userId,
+            // 대표이사·상무이사 열은 직급에서 오는 고정 사람 — 저장분보다 설정이 우선
+            userId: isFixedSlot(key) ? (defaults[key] ?? "") : row.userId,
             percentage: row.percentage > 0 ? String(row.percentage) : "",
             roleLabel: row.roleLabel ?? "",
           }
@@ -225,7 +231,8 @@ export function ProjectClosing({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        열마다 사람을 고르고 아랫줄에 %를 넣으세요. 합계가{" "}
+        대표이사·상무이사는 설정의 대표·이사 직급에서 자동으로 오는 고정 열이고(0%도 가능),
+        나머지 열은 사람을 고르고 아랫줄에 %를 넣으세요. 합계가{" "}
         <strong>정확히 100%</strong>가 되면 「확정」 버튼이 나타납니다. 확정하면 표가 잠기고,
         「수정」을 누르면 다시 고칠 수 있습니다.{" "}
         {contributionsOnly
@@ -303,7 +310,18 @@ export function ProjectClosing({
               </td>
               {CONTRIBUTION_SLOT_KEYS.map((key) => (
                 <td key={key} className="border px-1 py-1">
-                  {editable ? (
+                  {isFixedSlot(key) ? (
+                    <div
+                      className="px-1 text-center text-xs"
+                      title="설정의 대표·이사 직급에서 자동으로 채워지는 고정 열입니다. 참여율은 0%로 둘 수 있습니다."
+                    >
+                      {staff.find((s) => s.id === cells[key].userId)?.name ?? (
+                        <span className="text-muted-foreground">
+                          {key === "ceo" ? "대표 직급 미설정" : "이사 직급 미설정"}
+                        </span>
+                      )}
+                    </div>
+                  ) : editable ? (
                     <select
                       className={SELECT_CLASS}
                       value={cells[key].userId}
@@ -337,7 +355,7 @@ export function ProjectClosing({
                       value={cells[key].percentage}
                       onChange={(e) => setPercent(key, e.target.value)}
                       placeholder="0"
-                      disabled={!editable}
+                      disabled={!editable || (isFixedSlot(key) && !cells[key].userId)}
                       aria-label={`${columnLabel(key)} 참여율`}
                     />
                     <span className="text-xs text-muted-foreground">%</span>
