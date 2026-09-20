@@ -191,10 +191,14 @@ export function EngagementWorkbench({
       ).length,
     0
   );
-  // 다중 계획 (2026-09-05): 계획 품의는 수락서 송부 전까지 언제든 올릴 수 있다 —
-  // 결재 중·승인된 세션은 잠기고 나머지 세션만 담긴다
-  const submittableStage = (
-    ["assigning", "plan_review", "plan_approved", "requesting", "accepted_all"] as const
+  // 다중 계획 (2026-09-05): 세션마다 따로 품의를 올리므로 편집·상신 가능 여부는
+  // 세션별 계획 상태로 판정한다. 프로젝트 단계는 마감 구간(종료 진행·지급 품의
+  // 검토·종료 완료)에서만 잠근다 — 한 세션의 수락서가 나갔다고(letters_sent·confirmed)
+  // 나중에 추가한 세션의 후보·단가 입력과 품의 상신까지 막히면 안 된다
+  // (렛츠 장애 2026-09-21: 수락서 송부 뒤 추가한 세션이 진행 불가). 서버 상신 액션에는
+  // 프로젝트 단계 제한이 없어 화면 판정만 맞춘다.
+  const submittableStage = !(
+    ["closing", "settlement_review", "settled"] as const
   ).includes(projectState.stage as never);
   const slotState = (slotId: string): SlotPlanState =>
     slotPlanStates ? (slotPlanStates[slotId] ?? "none") : "none";
