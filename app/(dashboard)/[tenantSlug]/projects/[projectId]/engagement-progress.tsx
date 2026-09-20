@@ -477,7 +477,13 @@ export function EngagementProgress({
                         ) : (
                           <span className="inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                             {r.stage === "declined"
-                              ? "거절됨"
+                              ? canManage && r.engagementId
+                                ? null // 붉은 '거절' 버튼이 상태를 말한다
+                                : (
+                                    <span className="rounded-md bg-red-600 px-2 py-0.5 font-semibold text-white">
+                                      거절
+                                    </span>
+                                  )
                               : r.stage === "expired"
                                 ? "만료됨"
                                 : r.stage === "confirmed"

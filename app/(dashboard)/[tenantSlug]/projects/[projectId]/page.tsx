@@ -753,7 +753,10 @@ export default async function ProjectDetailPage({
     if (p.engagement_id) return null;
     const prior = priorOutcomeByCode[p.code];
     if (!prior) return null;
-    if (p.status === "open") return prior;
+    // 빈 자리라도 다른 전문가가 새로 배정돼 있으면 이전 결과는 그 사람 것이 아니다
+    if (p.status === "open") {
+      return p.assigned_expert_id === null || p.assigned_expert_id === prior.expertId ? prior : null;
+    }
     if (p.status === "assigned" && p.assigned_expert_id === prior.expertId) {
       return prior;
     }
@@ -1278,10 +1281,11 @@ export default async function ProjectDetailPage({
     for (const slot of slotRows) {
       for (const position of slot.positions) {
         // 전문가가 붙은 자리만 — 빈 TO는 진행 현황이 아니다. 거절·만료로 다시 빈 자리는
-        // 그 결과(누가 거절했나)를 회색 행으로 남긴다 (기획 지시 2026-09-21)
-        const attachedName = position.expertName ?? position.assignedExpertName;
-        const prior = attachedName ? null : position.priorOutcome;
-        const name = attachedName ?? prior?.expertName ?? null;
+        // 그 결과(누가 거절했나)를 회색 행으로 남긴다 (기획 지시 2026-09-21).
+        // 거절돼도 배정(assigned_expert_id)은 그대로 남으므로, 직전 결과가 있으면
+        // 배정 이름보다 그 결과가 먼저다 — 아니면 거절 행이 '발송 가능'으로 둔갑한다
+        const prior = position.expertName ? null : position.priorOutcome;
+        const name = position.expertName ?? prior?.expertName ?? position.assignedExpertName;
         if (!name || position.status === "canceled") continue;
         progressRows.push({
           sms: position.engagementId
