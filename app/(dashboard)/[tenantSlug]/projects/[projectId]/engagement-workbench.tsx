@@ -198,18 +198,21 @@ export function EngagementWorkbench({
   ).includes(projectState.stage as never);
   const slotState = (slotId: string): SlotPlanState =>
     slotPlanStates ? (slotPlanStates[slotId] ?? "none") : "none";
-  // 'changed'(승인 뒤 내용이 바뀜)는 어차피 변경 품의를 다시 타므로 편집을 연다 —
-  // 거절로 변경·긴급 취소로 빈 자리에 새 후보를 넣고 변경 상신하는 경로 (기획 지시 2026-09-21).
+  // 편집 잠금: 결재 중(in_progress)만 (기획 지시 2026-09-21). 승인 뒤에도 '+후보 추가'·배정을
+  // 언제든 할 수 있고, 바뀌면 '변경 품의 필요'가 되어 변경 품의를 다시 올린다.
   // 서버 가드(assertSlotEditable)와 같은 기준
-  const slotLocked = (slotId: string) => {
+  const slotLocked = (slotId: string) => slotState(slotId) === "in_progress";
+  // 새 품의 상신 제외: 살아 있는 계획(결재 중·승인·변경 필요)에 담긴 세션 — 같은 세션을 두
+  // 계획이 담을 수 없다(DB 트리거). 이 세션들의 변경은 변경 품의로만 간다
+  const slotInLivePlan = (slotId: string) => {
     const st = slotState(slotId);
-    return st === "in_progress" || st === "approved";
+    return st === "in_progress" || st === "approved" || st === "changed";
   };
   const lockedSlots: Record<string, string> = {};
   for (const s of slots) {
-    if (slotLocked(s.id)) lockedSlots[s.id] = SLOT_PLAN_STATE_LABELS[slotState(s.id)];
+    if (slotInLivePlan(s.id)) lockedSlots[s.id] = SLOT_PLAN_STATE_LABELS[slotState(s.id)];
   }
-  const submittableCount = slots.filter((s) => !slotLocked(s.id)).length;
+  const submittableCount = slots.filter((s) => !slotInLivePlan(s.id)).length;
 
   return (
     <Card>
@@ -447,11 +450,15 @@ export function EngagementWorkbench({
                               ? "이 세션의 품의가 결재 진행 중입니다. 승인되면 섭외 문자를 보낼 수 있습니다."
                               : st === "changed"
                                 ? "승인 뒤 내용이 바뀌었습니다. 아래 섭외계획 패널에서 변경 품의를 올리세요."
-                                : "승인된 세션입니다. '승인 목록 및 섭외 진행' 탭에서 섭외 문자를 보냅니다."
+                                : "승인된 세션입니다. '승인 목록 및 섭외 진행' 탭에서 섭외 문자를 보냅니다. 후보를 추가·배정하면 변경 품의를 다시 올려야 합니다."
                       }
                     >
                       {SLOT_PLAN_STATE_LABELS[st]}
-                      {!locked && submittableStage ? " · 편집 가능" : ""}
+                      {!locked && submittableStage
+                        ? st === "approved"
+                          ? " · 편집 가능 (바꾸면 변경 품의 재상신)"
+                          : " · 편집 가능"
+                        : ""}
                     </span>
                   )}
                   {/* 필요인원 인라인 수정 + 코랄 표기 (기획 2026-08-30 — 28번) */}
