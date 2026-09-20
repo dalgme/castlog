@@ -1,6 +1,6 @@
 "use client";
 
-import { GripVertical, Plus } from "lucide-react";
+import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { type GroupField, type GroupValues, type Shade } from "@/lib/checklists/groups";
@@ -27,6 +27,8 @@ export function GroupHeaderRow({
   onDrop,
   onRename,
   onAdd,
+  onDuplicate,
+  onDelete,
 }: {
   fields: GroupField[];
   labels: Record<GroupField, string>;
@@ -42,6 +44,9 @@ export function GroupHeaderRow({
   onDrop: () => void;
   onRename: (field: GroupField, value: string | null) => void;
   onAdd: () => void;
+  /** 영역 복제·삭제 (기획 지시 2026-09-20) — 표준시트에서는 넘기지 않는다 */
+  onDuplicate?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <tr
@@ -93,6 +98,28 @@ export function GroupHeaderRow({
               onClick={onAdd}
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+          {canEdit && onDuplicate && (
+            <button
+              type="button"
+              title="이 영역(같은 색 묶음)을 통째로 복제해 바로 아래에 붙입니다"
+              className="rounded p-0.5 text-muted-foreground hover:text-brand"
+              disabled={pending}
+              onClick={onDuplicate}
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+          {canEdit && onDelete && (
+            <button
+              type="button"
+              title="이 영역의 항목을 모두 삭제합니다"
+              className="rounded p-0.5 text-muted-foreground hover:text-red-600"
+              disabled={pending}
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
             </button>
           )}
         </div>

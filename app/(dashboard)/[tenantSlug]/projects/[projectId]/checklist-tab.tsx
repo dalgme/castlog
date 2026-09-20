@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { ensureTenantTemplates } from "@/lib/checklists/server";
 import { isChecklistKind, kstToday, type ChecklistKind } from "@/lib/checklists/kinds";
+import { assignmentRoleRank, isAssignmentRole } from "@/lib/integrations/assignment-roles";
 import { EmptyState } from "@/components/layout/empty-state";
 
 import {
@@ -44,7 +45,12 @@ export async function ChecklistTab({
   await ensureTenantTemplates(tenantId);
   const supabase = createClient();
 
-  const [{ data: templateRows, error: templateError }, { data: checklistRows }, { data: userRows }] =
+  const [
+    { data: templateRows, error: templateError },
+    { data: checklistRows },
+    { data: userRows },
+    { data: assignmentRows },
+  ] =
     await Promise.all([
       supabase
         .from("checklist_templates")
@@ -62,6 +68,11 @@ export async function ChecklistTab({
         .select("id, name, grade")
         .eq("is_active", true)
         .order("name", { ascending: true }),
+      // 이 프로젝트 팀 — 담당 드롭다운에서 역할(PL·PM·부PM·담당)을 이름 앞에 붙인다
+      supabase
+        .from("project_assignments")
+        .select("user_id, assignment_role")
+        .eq("project_id", project.id),
     ]);
 
   if (templateError && templateError.code === "42P01") {
@@ -181,6 +192,14 @@ export async function ChecklistTab({
     viewerName,
   };
 
+  const team = (assignmentRows ?? [])
+    .filter((a) => isAssignmentRole(a.assignment_role))
+    .sort((a, b) => assignmentRoleRank(a.assignment_role) - assignmentRoleRank(b.assignment_role))
+    .map((a) => ({ userId: a.user_id, role: a.assignment_role }));
+  // 월/일만 쳤을 때 붙는 연도 — 프로젝트 D-Day의 해, 없으면 사업 시작일의 해, 그도 없으면 올해
+  const defaultYear =
+    Number((project.dday_date ?? project.starts_on ?? kstToday()).slice(0, 4)) || Number(kstToday().slice(0, 4));
+
   return (
     <ProjectChecklistPanel
       tenantSlug={tenantSlug}
@@ -188,6 +207,8 @@ export async function ChecklistTab({
       header={header}
       checklists={checklists}
       users={(userRows ?? []).map((u) => ({ id: u.id, name: u.name, grade: u.grade }))}
+      team={team}
+      defaultYear={defaultYear}
       templates={templates}
       typedSubcategories={typedSubcategories}
       canEdit={canEdit}

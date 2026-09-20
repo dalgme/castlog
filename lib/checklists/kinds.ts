@@ -67,15 +67,16 @@ export type ChecklistColumn = {
   width?: string;
 };
 
+// 권장(D±)과 자동 마감일은 한 칸 — 프로젝트에서는 단추를 누르고 있을 때만 날짜가
+// 보인다 (기획 지시 2026-09-20). 표준시트에서는 같은 열이 D± 입력 칸이다.
 const SCHEDULE_COLUMNS: ChecklistColumn[] = [
   { key: "phase", label: "시기", template: true, width: "w-16" },
   { key: "subcategory", label: "세부 분류", template: true, width: "w-24" },
   { key: "title", label: "업무 내용", template: true },
-  { key: "assignee", label: "담당", width: "w-28" },
-  { key: "offsetDays", label: "권장(D±)", template: true, width: "w-16" },
-  { key: "autoDue", label: "마감일 자동", width: "w-24" },
-  { key: "plannedDue", label: "마감일 계획", width: "w-32" },
-  { key: "completedOn", label: "완료일", width: "w-32" },
+  { key: "assignee", label: "담당", width: "w-36" },
+  { key: "offsetDays", label: "권장", template: true, width: "w-14" },
+  { key: "plannedDue", label: "마감일 계획", width: "w-44" },
+  { key: "completedOn", label: "완료일", width: "w-44" },
   { key: "note", label: "참고사항", template: true },
 ];
 
@@ -86,11 +87,10 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "category", label: "구분", template: true, width: "w-24" },
     { key: "subcategory", label: "세부 분류", template: true, width: "w-24" },
     { key: "title", label: "업무 내용", template: true },
-    { key: "assignee", label: "담당", width: "w-28" },
-    { key: "offsetDays", label: "권장(D±)", template: true, width: "w-16" },
-    { key: "autoDue", label: "마감일 자동", width: "w-24" },
-    { key: "plannedDue", label: "마감일 계획", width: "w-32" },
-    { key: "completedOn", label: "완료일", width: "w-32" },
+    { key: "assignee", label: "담당", width: "w-36" },
+    { key: "offsetDays", label: "권장", template: true, width: "w-14" },
+    { key: "plannedDue", label: "마감일 계획", width: "w-44" },
+    { key: "completedOn", label: "완료일", width: "w-44" },
     { key: "note", label: "참고사항", template: true },
   ],
   kickoff: [
@@ -98,14 +98,14 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "title", label: "확인 내용", template: true },
     { key: "applicable", label: "해당사항", width: "w-24" },
     { key: "decision", label: "결정사항" },
-    { key: "assignee", label: "담당", width: "w-28" },
+    { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "참고사항", template: true },
   ],
   deadline: [
     { key: "title", label: "진행 내용", template: true },
-    { key: "plannedDue", label: "마감일", width: "w-32" },
-    { key: "completedOn", label: "완료일", width: "w-32" },
-    { key: "assignee", label: "담당", width: "w-28" },
+    { key: "plannedDue", label: "마감일", width: "w-44" },
+    { key: "completedOn", label: "완료일", width: "w-44" },
+    { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "진행 내용(메모)", template: true },
     { key: "check1", label: "발주기관 특이사항" },
     { key: "check2", label: "운영기관 특이사항" },
@@ -116,7 +116,7 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "check1", label: "1차 확인 (D-25)", width: "w-24" },
     { key: "check2", label: "최종 확인 (D-10)", width: "w-24" },
     { key: "decision", label: "최종 점검 사항" },
-    { key: "assignee", label: "담당", width: "w-28" },
+    { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "비고", template: true },
   ],
   supplies: [
@@ -126,7 +126,7 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "check1", label: "1차 확인 (D-25)", width: "w-24" },
     { key: "check2", label: "최종 확인 (D-2)", width: "w-24" },
     { key: "decision", label: "최종 점검 사항" },
-    { key: "assignee", label: "담당", width: "w-28" },
+    { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "비고", template: true },
   ],
 };
@@ -215,6 +215,9 @@ export const CHECKLIST_LOG_ACTION_LABELS: Record<string, string> = {
   "item.move": "분류 이동",
   "group.rename": "분류 이름 변경",
   "item.import": "항목 불러오기",
+  "group.duplicate": "영역 복제",
+  "group.delete": "영역 삭제",
+  "category.duplicate": "행사(구분) 복제",
   "due.change": "마감일 변경(사유)",
   "due.reason_update": "변경 사유 수정",
   "dday.update": "D-Day 변경",
