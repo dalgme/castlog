@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 
 /**
  * 표 안에서 바로 고치는 칸 — 포커스를 잃거나 Enter를 누르면 저장한다.
@@ -99,29 +100,19 @@ export function DateCell({
   className?: string;
   ariaLabel?: string;
 }) {
-  const [draft, setDraft] = useState(value ?? "");
-  useEffect(() => {
-    setDraft(value ?? "");
-  }, [value]);
+  // 공통 날짜 입력(월/일 직접 입력 + 달력 단추, 기획 지시 2026-09-21)으로 통일 — 완성된 값만 저장한다
   return (
-    <input
-      type="date"
-      value={draft}
+    <KoreanDateInput
+      value={value ?? ""}
       disabled={disabled}
-      aria-label={ariaLabel}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        const next = draft || null;
-        if (next !== (value ?? null)) onCommit(next);
+      ariaLabel={ariaLabel}
+      size="sm"
+      onChange={(next) => {
+        const iso = next || null;
+        if (iso !== (value ?? null)) onCommit(iso);
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        if (e.key === "Escape") setDraft(value ?? "");
-      }}
-      className={cn(
-        "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand disabled:opacity-100",
-        className
-      )}
+      className={cn("max-w-[14rem]", className)}
+      inputClassName="border-transparent bg-transparent hover:border-input"
     />
   );
 }

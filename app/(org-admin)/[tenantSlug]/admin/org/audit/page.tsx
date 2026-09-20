@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import {
   ACTION_CATEGORIES,
   auditActionLabel,
@@ -130,13 +131,13 @@ export default async function AuditLogPage({
                 <label className="text-xs font-medium text-muted-foreground">
                   시작일
                 </label>
-                <Input type="date" name="from" defaultValue={from} className="h-9 w-40" />
+                <KoreanDateInput name="from" defaultValue={from} className="w-56" ariaLabel="시작일" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">
                   종료일
                 </label>
-                <Input type="date" name="to" defaultValue={to} className="h-9 w-40" />
+                <KoreanDateInput name="to" defaultValue={to} className="w-56" ariaLabel="종료일" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">

@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -1411,7 +1411,7 @@ function DueChangeDialog({
           </p>
           <label className="block text-xs">
             변경 일자
-            <Input type="date" value={changedOn} onChange={(e) => setChangedOn(e.target.value)} />
+            <KoreanDateInput value={changedOn} onChange={setChangedOn} ariaLabel="변경 일자" />
           </label>
           <label className="block text-xs">
             변경 사유

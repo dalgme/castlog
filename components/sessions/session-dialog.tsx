@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Time24Input } from "@/components/ui/datetime24";
 import { useToast } from "@/hooks/use-toast";
@@ -332,14 +333,14 @@ function SessionForm({
             <div className="space-y-1.5">
               {d.dates.map((row, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-1.5">
-                  <Input
-                    type="date"
+                  <KoreanDateInput
                     value={row.date}
-                    onChange={(e) =>
-                      set("dates", d.dates.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))
+                    onChange={(next) =>
+                      set("dates", d.dates.map((x, j) => (j === i ? { ...x, date: next } : x)))
                     }
-                    className={cn(inputCls, "w-40")}
-                    aria-label={`날짜 ${i + 1}`}
+                    size="sm"
+                    className="w-52"
+                    ariaLabel={`날짜 ${i + 1}`}
                   />
                   <Time24Input
                     value={row.startsTime}
@@ -578,7 +579,7 @@ function DayRow({
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="w-12 text-muted-foreground">{label}</span>
-      <Input type="date" value={date} onChange={(e) => onDate(e.target.value)} className={cn(inputCls, "w-40")} aria-label={label} />
+      <KoreanDateInput value={date} onChange={onDate} size="sm" className="w-52" ariaLabel={label} />
       <Time24Input value={starts} onChange={onStarts} ariaLabel={`${label} 시작 시각`} />
       <span className="text-muted-foreground">~</span>
       <Time24Input value={ends} onChange={onEnds} ariaLabel={`${label} 종료 시각`} />
