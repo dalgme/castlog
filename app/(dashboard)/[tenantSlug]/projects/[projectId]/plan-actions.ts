@@ -23,6 +23,7 @@ import {
   buildPlanSnapshot,
   evaluatePlanGate,
   findUnreadySlots,
+  planSignatureMatches,
   type LivePlanView,
   type PlanSnapshot,
 } from "@/lib/integrations/engagement-plans";
@@ -610,7 +611,7 @@ export async function submitEngagementPlanChange(
     projectId,
     effectiveSlotIds.length > 0 ? effectiveSlotIds : undefined
   );
-  if (snapshot.signature === current.planSignature) {
+  if (planSignatureMatches(current.planSignature, snapshot.signature)) {
     return { ok: false, error: "승인된 계획과 달라진 내용이 없습니다." };
   }
 

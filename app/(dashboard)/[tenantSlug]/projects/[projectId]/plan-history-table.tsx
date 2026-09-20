@@ -15,7 +15,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import type { ApprovedPlanRow } from "./engagement-progress";
+import {
+  CHANGED_SESSION_HINT,
+  CHANGED_SESSION_RING,
+  type ApprovedPlanRow,
+} from "./engagement-progress";
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
   draft: "작성 중",
@@ -73,6 +77,11 @@ export function PlanHistoryTable({
         )
     : approved;
   const hiddenCount = plans.length - approved.length;
+  // 승인 뒤 바뀐 세션이 하나라도 있으면 범례를 띄운다 (기획 지시 2026-09-21)
+  const changedCount = approved.reduce(
+    (n, p) => n + p.sessionLabels.filter((s) => s.changed).length,
+    0
+  );
 
   return (
     <div className="space-y-2">
@@ -81,6 +90,15 @@ export function PlanHistoryTable({
           {showAll
             ? `전체 이력 ${plans.length}건 — 상신 시각순 (결재 중·반려·상신 취소·대체 포함)`
             : `최종 승인된 계획 ${approved.length}건`}
+          {changedCount > 0 && (
+            <span className="ml-2 inline-flex items-center gap-1 font-semibold text-orange-700">
+              <span
+                aria-hidden
+                className={cn("inline-block h-3 w-3 rounded-sm bg-white", CHANGED_SESSION_RING)}
+              />
+              {CHANGED_SESSION_HINT} ({changedCount}개 세션)
+            </span>
+          )}
         </p>
         {hiddenCount > 0 && (
           <Button
@@ -140,9 +158,25 @@ export function PlanHistoryTable({
                         )}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {p.sessionLabels.length === 0
-                          ? `세션 ${p.slotCount}건 (세션 구분 없음)`
-                          : p.sessionLabels.join(" · ")}
+                        {p.sessionLabels.length === 0 ? (
+                          `세션 ${p.slotCount}건 (세션 구분 없음)`
+                        ) : (
+                          <span className="flex flex-wrap gap-1">
+                            {p.sessionLabels.map((s) => (
+                              <span
+                                key={`${p.id}-${s.slotId}`}
+                                title={s.changed ? CHANGED_SESSION_HINT : undefined}
+                                className={cn(
+                                  "rounded-md border border-transparent px-1 py-0.5",
+                                  // 결재 승인 뒤 바뀐 세션 = 주홍색 굵은 테두리 (기획 지시 2026-09-21)
+                                  s.changed && cn(CHANGED_SESSION_RING, "font-semibold")
+                                )}
+                              >
+                                {s.label}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                         {/* 세션 세부 + 결재된 전문가별 예정가 — 접어 두고
                             필요할 때 편다 (모바일 조회 대응) */}
                         {p.sessions.length > 0 && (
@@ -154,9 +188,20 @@ export function PlanHistoryTable({
                               {p.sessions.map((s, i) => (
                                 <li
                                   key={`${p.id}-${s.slotId ?? i}`}
-                                  className="rounded-md border bg-secondary/30 p-2"
+                                  title={s.changed ? CHANGED_SESSION_HINT : undefined}
+                                  className={cn(
+                                    "rounded-md border bg-secondary/30 p-2",
+                                    s.changed && CHANGED_SESSION_RING
+                                  )}
                                 >
-                                  <p className="font-semibold">{s.label}</p>
+                                  <p className="font-semibold">
+                                    {s.label}
+                                    {s.changed && (
+                                      <span className="ml-1.5 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                        승인 후 변경
+                                      </span>
+                                    )}
+                                  </p>
                                   <p className="text-[11px] text-muted-foreground">
                                     {[
                                       s.schedule,

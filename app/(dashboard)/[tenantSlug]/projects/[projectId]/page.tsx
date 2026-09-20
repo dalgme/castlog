@@ -334,6 +334,8 @@ export default async function ProjectDetailPage({
   let planPanel: PlanPanelState | null = null;
   /** 세션 → 계획 상태 (다중 계획). null = 게이트 없음(모듈 꺼짐) */
   let planSlotStates: Record<string, SlotPlanState> | null = null;
+  /** 결재 승인 뒤 내용이 바뀐 세션 — 승인 목록·진행 현황에 주홍색 굵은 테두리 (기획 지시 2026-09-21) */
+  const planChangedSlotIds = new Set<string>();
   let planApprovers: { id: string; name: string; gradeLabel: string }[] = [];
   // 상급자 릴레이(27번) 상태 — 픽커의 '비워 두면' 안내를 실제 동작과 일치시킨다
   let planRelayOn = false;
@@ -404,6 +406,7 @@ export default async function ProjectDetailPage({
       currentSlotCount: snapshot.slotCount,
     };
     planSlotStates = gate.required ? gate.slotStates : null;
+    if (gate.required) for (const id of gate.changedSlotIds) planChangedSlotIds.add(id);
 
     // 전결규정이 없을 때 직접 지정할 결재자 후보 (본인 제외 활성 직원)
     // 결재라인 후보 (기획 개정 2026-08-30 — 30번): 상신자보다 **높은 직급**만.
@@ -1141,6 +1144,7 @@ export default async function ProjectDetailPage({
           const matched = pool.get(planLineKey(l))?.shift();
           return {
             slotId: l.slot_id,
+            changed: Boolean(l.slot_id && planChangedSlotIds.has(l.slot_id)),
             label:
               (l.slot_id ? slotLabelById.get(l.slot_id) : null) ??
               `${l.slot_date} (삭제된 세션)`,
@@ -1198,10 +1202,16 @@ export default async function ProjectDetailPage({
           (p.status === "draft" || p.status === "rejected") && p.last_rejection_note
             ? `반려 사유: ${p.last_rejection_note}${p.note ? ` — ${p.note}` : ""}`
             : p.note,
-        sessionLabels: Array.from(slotIdsByPlan.get(p.id) ?? []).map(
-          (id) => slotLabelById.get(id) ?? "(삭제된 세션)"
-        ),
-        sessions: sessionsOf(p.id),
+        sessionLabels: Array.from(slotIdsByPlan.get(p.id) ?? []).map((id) => ({
+          slotId: id,
+          label: slotLabelById.get(id) ?? "(삭제된 세션)",
+          // 승인 계획에서만 의미 — 대체·반려된 옛 리비전에는 표시하지 않는다
+          changed: p.status === "approved" && planChangedSlotIds.has(id),
+        })),
+        sessions: sessionsOf(p.id).map((s) => ({
+          ...s,
+          changed: p.status === "approved" && s.changed,
+        })),
         postReport: p.flow === "post_report",
         reportStatus:
           p.flow === "post_report" && p.approval_id
@@ -1284,6 +1294,7 @@ export default async function ProjectDetailPage({
           // 미배정 TO는 위에서 걸렀다 — 이름은 늘 있다
           stage: prior ? prior.outcome : (stageByPosition[position.id] ?? "assigned"),
           engagementId: position.engagementId,
+          sessionChanged: planChangedSlotIds.has(slot.id),
           sessionDetail:
             [
               describeSchedule(slot.schedule, { withYear: true }),

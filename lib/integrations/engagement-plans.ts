@@ -4,6 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { getTenantModules } from "@/lib/modules/server";
+import {
+  SLOT_SCHEDULE_COLUMNS,
+  loadSlotDates,
+  scheduleFromRow,
+  type SlotScheduleRow,
+} from "@/lib/integrations/slot-schedule";
 
 /**
  * 섭외계획 품의 (operations ↔ approvals — CLAUDE.md 1-2-6)
@@ -45,6 +51,12 @@ export type PlanLine = {
   subtotalMax?: number;
   /** 지문용 — 상위 후보(코드:전문가:예정가:순위) 목록. 저장 대상 아님 */
   candidateSignature?: string;
+  /**
+   * 지문용 — 세션의 나머지 정보(날짜 유형·기간·회차·회차당 시간·진행 방식·
+   * 개별 날짜·단가·장소·역할 설명·총액 최대). 기획 지시 2026-09-21: 결재 승인
+   * 뒤 '세션의 모든 정보' 변경을 잡아야 한다. 저장 대상 아님
+   */
+  detailSignature?: string;
 };
 
 export type PlanSnapshot = {
@@ -79,18 +91,46 @@ export async function buildPlanSnapshot(
   onlySlotIds?: string[]
 ): Promise<PlanSnapshot> {
   const supabase = createClient();
-  const { data: allSlots } = await supabase
-    .from("engagement_slots")
-    .select(
-      "id, slot_date, starts_time, ends_time, role_type, role_description, required_count, fee_amount, location_name"
-    )
-    .eq("project_id", projectId)
-    .order("slot_date", { ascending: true })
-    .order("starts_time", { ascending: true });
+  type SlotRow = SlotScheduleRow & {
+    id: string;
+    role_type: string;
+    role_description: string | null;
+    required_count: number;
+    fee_amount: number | null;
+    location_name: string | null;
+    unit_fee_online?: number | null;
+    unit_fee_offline?: number | null;
+  };
+  const BASE_COLUMNS =
+    "id, slot_date, period_end_date, starts_time, ends_time, role_type, role_description, required_count, fee_amount, location_name";
+  const loadSlots = async (): Promise<SlotRow[]> => {
+    const full = await supabase
+      .from("engagement_slots")
+      .select(`${BASE_COLUMNS}, ${SLOT_SCHEDULE_COLUMNS}`)
+      .eq("project_id", projectId)
+      .order("slot_date", { ascending: true })
+      .order("starts_time", { ascending: true });
+    if (!full.error) return (full.data ?? []) as SlotRow[];
+    // 일정·단가 컬럼 미적용 환경(SQL 먼저, §14-10) — 기본 컬럼만으로 폴백
+    if (!isMissingColumnError(full.error)) return [];
+    const base = await supabase
+      .from("engagement_slots")
+      .select(BASE_COLUMNS)
+      .eq("project_id", projectId)
+      .order("slot_date", { ascending: true })
+      .order("starts_time", { ascending: true });
+    return (base.data ?? []) as SlotRow[];
+  };
+  const allSlots = await loadSlots();
   const slots =
     onlySlotIds && onlySlotIds.length > 0
-      ? (allSlots ?? []).filter((s) => onlySlotIds.includes(s.id))
+      ? allSlots.filter((s) => onlySlotIds.includes(s.id))
       : allSlots;
+  // 개별선택형 세션의 날짜 목록 — 날짜 하나가 바뀌어도 지문이 달라져야 한다
+  const datesBySlot = await loadSlotDates(
+    supabase,
+    slots.map((s) => s.id)
+  );
 
   type CandidateRow = {
     id: string;
@@ -139,6 +179,29 @@ export async function buildPlanSnapshot(
       (sum, c) => sum + (c.expected_fee_max ?? c.expected_fee ?? legacyFee),
       0
     );
+    const schedule = scheduleFromRow(slot, datesBySlot.get(slot.id) ?? []);
+    const detailSignature = [
+      schedule.dateKind,
+      schedule.endDate ?? "",
+      schedule.endStartsTime ?? "",
+      schedule.endEndsTime ?? "",
+      schedule.countMin ?? "",
+      schedule.countMax ?? "",
+      schedule.onlineCount ?? "",
+      schedule.offlineCount ?? "",
+      schedule.deliveryMode ?? "",
+      schedule.hoursPerSession ?? "",
+      slot.unit_fee_online ?? "",
+      slot.unit_fee_offline ?? "",
+      subtotalMax,
+      // 후보별 총액 최대 — 최소만 보는 후보 지문을 보완한다
+      selected.map((c) => c.expected_fee_max ?? "").join("+"),
+      signatureText(slot.role_description),
+      signatureText(slot.location_name),
+      schedule.dates
+        .map((d) => `${d.date}@${d.startsTime ?? ""}-${d.endsTime ?? ""}`)
+        .join("+"),
+    ].join(",");
     return {
       slotId: slot.id,
       slotDate: slot.slot_date,
@@ -157,23 +220,11 @@ export async function buildPlanSnapshot(
             `${c.code}:${c.assigned_expert_id ?? ""}:${c.expected_fee ?? legacyFee}:${c.rank ?? c.position_no}`
         )
         .join(","),
+      detailSignature,
     };
   });
 
-  const signature = lines
-    .map((l) =>
-      [
-        l.slotDate,
-        l.startsTime ?? "",
-        l.endsTime ?? "",
-        l.roleType,
-        l.requiredCount,
-        l.subtotal,
-        l.candidateSignature,
-      ].join("|")
-    )
-    .sort()
-    .join(";");
+  const signature = lines.map(planSignatureLine).sort().join(";");
 
   return {
     lines,
@@ -183,6 +234,86 @@ export async function buildPlanSnapshot(
     plannedAmountMax: lines.reduce((sum, l) => sum + (l.subtotalMax ?? l.subtotal), 0),
     signature,
   };
+}
+
+/** 지문 안에 들어가는 자유 문구 — 구분자(| ; : , +)를 지운다 */
+function signatureText(value: string | null | undefined): string {
+  return (value ?? "").replace(/[|;:,+\s]+/g, " ").trim();
+}
+
+/** 옛 지문(2026-09-21 이전)의 필드 수 — 일자|시작|종료|역할|인원|소계|후보 */
+const LEGACY_SIGNATURE_FIELDS = 7;
+
+/**
+ * 계획 line 한 줄의 지문. 앞 7필드는 옛 형식 그대로(파서·열쇠 호환), 8번째에
+ * 세션 세부 지문이 붙는다.
+ */
+export function planSignatureLine(l: PlanLine): string {
+  return [
+    l.slotDate,
+    l.startsTime ?? "",
+    l.endsTime ?? "",
+    l.roleType,
+    l.requiredCount,
+    l.subtotal,
+    l.candidateSignature ?? "",
+    l.detailSignature ?? "",
+  ].join("|");
+}
+
+/** 저장된 지문이 세부 지문이 없던 옛 형식인가 */
+export function isLegacyPlanSignature(stored: string): boolean {
+  return !stored
+    .split(";")
+    .some((line) => line.split("|").length > LEGACY_SIGNATURE_FIELDS);
+}
+
+function legacyLine(line: string): string {
+  return line.split("|").slice(0, LEGACY_SIGNATURE_FIELDS).join("|");
+}
+
+/**
+ * 저장된 지문과 현재 지문이 같은가. 옛 형식으로 저장된 계획은 옛 필드만
+ * 비교한다 — 세부 지문을 붙였다고 승인된 계획이 전부 '변경됨'으로 뒤집히면
+ * 안 된다 (승인 시점의 세부는 알 수 없다).
+ */
+export function planSignatureMatches(stored: string, current: string): boolean {
+  if (stored === current) return true;
+  if (!isLegacyPlanSignature(stored)) return false;
+  const currentLegacy = current
+    .split(";")
+    .filter(Boolean)
+    .map(legacyLine)
+    .sort()
+    .join(";");
+  return currentLegacy === stored;
+}
+
+/**
+ * 승인 뒤 어느 세션이 바뀌었는가 — 저장된 지문의 line 다중집합에서 현재
+ * line을 하나씩 지워 보고, 짝이 없는 현재 line의 세션을 돌려준다.
+ * 같은 세션의 후보·예정가·인원·일정·회차·방식·단가·장소 무엇이 바뀌어도
+ * 그 세션이 잡힌다. 계획에서 지워진 세션은 현재 line이 없으므로 여기 없다.
+ */
+export function changedSlotIdsAgainst(stored: string, snapshot: PlanSnapshot): string[] {
+  const legacy = isLegacyPlanSignature(stored);
+  const pool = new Map<string, number>();
+  for (const line of stored.split(";")) {
+    if (!line) continue;
+    pool.set(line, (pool.get(line) ?? 0) + 1);
+  }
+  const changed: string[] = [];
+  for (const l of snapshot.lines) {
+    const full = planSignatureLine(l);
+    const key = legacy ? legacyLine(full) : full;
+    const left = pool.get(key) ?? 0;
+    if (left > 0) {
+      pool.set(key, left - 1);
+    } else {
+      changed.push(l.slotId);
+    }
+  }
+  return changed;
 }
 
 export type PlanSignatureCandidate = {
@@ -195,8 +326,9 @@ export type PlanSignatureCandidate = {
 /**
  * 계획 지문(plan_signature)에서 상신·승인 시점의 섭외 대상(코드·전문가·예정가·
  * 순위)을 되읽는다. 지문은 buildPlanSnapshot이 만든 형식 그대로다:
- *   line := date|starts|ends|roleType|required|subtotal|cands
+ *   line := date|starts|ends|roleType|required|subtotal|cands[|detail]
  *   cands := code:expertId:fee:rank[,…]   lines는 ';'로 이어진다.
+ *   detail(2026-09-21~) := 세션 세부 지문 — 여기서는 읽지 않는다.
  * 결재된 금액을 화면에 보여 주는 근거 — 현재 예정가는 그 뒤 바뀌었을 수 있다.
  */
 export type PlanSignatureLine = {
@@ -502,6 +634,11 @@ export type LivePlanView = {
   /** 계획이 덮는 세션 — null = 전체(세션 구분 없는 옛 계획) */
   coveredSlotIds: string[] | null;
   message: string;
+  /**
+   * 승인 뒤 내용이 바뀐 세션 (state=changed일 때만 채워진다). 화면은 이
+   * 세션들을 주홍색 굵은 테두리로 표시한다 (기획 지시 2026-09-21)
+   */
+  changedSlotIds: string[];
 };
 
 export type PlanGate =
@@ -534,6 +671,8 @@ export type PlanGate =
       slotStates: Record<string, SlotPlanState>;
       /** 어느 살아 있는 계획에도 없는 세션 — 새 품의로 상신할 수 있다 */
       uncoveredSlotIds: string[];
+      /** 승인된 계획과 현재 내용이 다른 세션 전부 (계획 불문 합집합) */
+      changedSlotIds: string[];
     };
 
 /**
@@ -566,6 +705,7 @@ export async function evaluatePlanGate(
         state: "in_progress",
         coveredSlotIds,
         message: `리비전 ${plan.revision} — 결재 진행중입니다. 승인 후 담긴 세션의 섭외요청을 보낼 수 있습니다.`,
+        changedSlotIds: [],
       });
       continue;
     }
@@ -577,18 +717,20 @@ export async function evaluatePlanGate(
         message: plan.lastRejectionNote
           ? `리비전 ${plan.revision} — 반려되었습니다. 사유: ${plan.lastRejectionNote}`
           : `리비전 ${plan.revision} — 상신되지 않은 임시 계획입니다.`,
+        changedSlotIds: [],
       });
       continue;
     }
     // approved — 승인 이후 '계획에 담긴 세션'이 바뀌었는지 대조.
     // 계획 밖 세션의 추가·수정은 변경으로 치지 않는다.
     const snapshot = await buildPlanSnapshot(projectId, coveredSlotIds ?? undefined);
-    if (plan.planSignature !== snapshot.signature) {
+    if (!planSignatureMatches(plan.planSignature, snapshot.signature)) {
       views.push({
         plan,
         state: "changed",
         coveredSlotIds,
-        message: `리비전 ${plan.revision} — 승인된 계획과 현재 섭외 테이블이 다릅니다(인원·비용·일정 변경). 변경 품의를 올린 뒤 진행해 주세요.`,
+        message: `리비전 ${plan.revision} — 승인된 계획과 현재 섭외 테이블이 다릅니다(인원·비용·일정·회차·진행 방식 변경). 변경 품의를 올린 뒤 진행해 주세요.`,
+        changedSlotIds: changedSlotIdsAgainst(plan.planSignature, snapshot),
       });
     } else {
       views.push({
@@ -596,7 +738,21 @@ export async function evaluatePlanGate(
         state: "approved",
         coveredSlotIds,
         message: `리비전 ${plan.revision} — 승인 완료. 담긴 세션의 섭외요청을 보낼 수 있습니다.`,
+        changedSlotIds: [],
       });
+      // 옛 형식 지문으로 승인된 계획이 아직 그대로라면 세부 지문까지 붙여
+      // 저장한다 — 이때부터 회차·시간·방식 변경도 잡힌다. 실패해도 판정은 그대로
+      if (isLegacyPlanSignature(plan.planSignature)) {
+        try {
+          await createAdminClient()
+            .from("engagement_plans")
+            .update({ plan_signature: snapshot.signature })
+            .eq("id", plan.id)
+            .eq("plan_signature", plan.planSignature);
+        } catch {
+          // 다음 판정 때 다시 시도한다
+        }
+      }
     }
   }
 
@@ -676,6 +832,7 @@ export async function evaluatePlanGate(
     plans: views,
     slotStates,
     uncoveredSlotIds,
+    changedSlotIds: Array.from(new Set(views.flatMap((v) => v.changedSlotIds))),
   };
 }
 
