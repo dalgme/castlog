@@ -16,7 +16,12 @@ import { explainActionError } from "@/lib/ux/action-errors";
 
 export type FieldResult = { ok: true } | { ok: false; error: string };
 
-export async function addSessionField(name: string): Promise<FieldResult> {
+/** 추가 결과 — 세션 입력 화면에서 화면 전환 없이 곧바로 선택지에 넣기 위해 새 행을 돌려준다 */
+export type AddFieldResult =
+  | { ok: true; field: { id: string; name: string } }
+  | { ok: false; error: string };
+
+export async function addSessionField(name: string): Promise<AddFieldResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const supabase = createClient();
   const {
@@ -33,19 +38,23 @@ export async function addSessionField(name: string): Promise<FieldResult> {
     return { ok: false, error: "분야 이름은 50자 이내로 입력하세요." };
   }
 
-  const { error } = await supabase.from("tenant_session_fields").insert({
-    tenant_id: tenantId,
-    name: trimmed,
-    created_by: user.id,
-  });
-  if (error) {
+  const { data: inserted, error } = await supabase
+    .from("tenant_session_fields")
+    .insert({
+      tenant_id: tenantId,
+      name: trimmed,
+      created_by: user.id,
+    })
+    .select("id, name")
+    .single();
+  if (error || !inserted) {
     // unique(tenant_id, name) 충돌 = 이미 있는 분야 (규칙)
     if (error.code === "23505") {
       return { ok: false, error: `'${trimmed}' 분야는 이미 등록되어 있습니다.` };
     }
     return {
       ok: false,
-      error: await explainActionError(error.message, "분야 추가에 실패했습니다."),
+      error: await explainActionError(error?.message ?? "", "분야 추가에 실패했습니다."),
     };
   }
 
@@ -59,7 +68,9 @@ export async function addSessionField(name: string): Promise<FieldResult> {
   });
 
   revalidatePath("/[tenantSlug]/settings/me", "page");
-  return { ok: true };
+  // 프로젝트 세션 입력 화면(행사·컨설팅·캘린더)에서도 추가한다 — 같은 마스터라 자동 반영
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, field: inserted };
 }
 
 /** 분야 비활성화 — 설정 스코프 (기존 세션의 연결은 유지된다) */
@@ -86,5 +97,6 @@ export async function deactivateSessionField(id: string): Promise<FieldResult> {
   }
 
   revalidatePath("/[tenantSlug]/settings/me", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }

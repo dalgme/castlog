@@ -27,6 +27,11 @@ import {
 } from "@/components/ui/select";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { PositionRequestDialog } from "./position-request-dialog";
+import {
+  mergeFieldOptions,
+  SessionFieldDialog,
+  type SessionFieldOption,
+} from "@/components/sessions/session-field-dialog";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
 
 import {
@@ -140,6 +145,10 @@ export function SlotTable({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 팝업에서 방금 추가·숨긴 분야 — 새로고침 전에도 선택지에 바로 반영
+  const [addedFields, setAddedFields] = useState<SessionFieldOption[]>([]);
+  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
+  const fields = mergeFieldOptions(fieldOptions, addedFields, hiddenFieldIds);
   const [adding, setAdding] = useState(false);
   const [d, setD] = useState({ ...emptyDraft });
   // 다중 일정 세트 (기획 확정 2026-08-23) — 첫 세트는 d, 추가 세트는 여기
@@ -748,27 +757,35 @@ export function SlotTable({
                   onChange={(e) => set("roleDescription", e.target.value)}
                   placeholder="세부 역할 (예: IR 멘토링)"
                 />
-                {/* 세션분야 — 캘린더 팝업에만 있던 선택지를 여기에도 (감사 UX M1) */}
-                {fieldOptions.length > 0 ? (
+                {/* 세션분야 — 옆의 '분야 설정'으로 화면 전환 없이 추가 (기획 2026-09-20) */}
+                <div className="flex items-center gap-1.5">
                   <select
                     value={d.fieldId}
                     onChange={(e) => set("fieldId", e.target.value)}
                     aria-label="세션분야"
                     className="h-9 w-full rounded-md border bg-background px-2 text-sm"
                   >
-                    <option value="">세션분야 선택 (선택)</option>
-                    {fieldOptions.map((f) => (
+                    <option value="">
+                      {fields.length > 0 ? "세션분야 선택 (선택)" : "세션분야 없음 — 오른쪽에서 추가"}
+                    </option>
+                    {fields.map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    세션분야 목록이 없습니다 — 설정 &gt; 내 설정 &gt; 세션분야에서
-                    추가하면 여기서 고를 수 있습니다.
-                  </p>
-                )}
+                  <SessionFieldDialog
+                    fields={fields}
+                    onAdded={(f) => {
+                      setAddedFields((p) => [...p, f]);
+                      set("fieldId", f.id);
+                    }}
+                    onRemoved={(id) => {
+                      setHiddenFieldIds((p) => [...p, id]);
+                      if (d.fieldId === id) set("fieldId", "");
+                    }}
+                  />
+                </div>
                 <Input
                   value={d.locationName}
                   onChange={(e) => set("locationName", e.target.value)}

@@ -10,6 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import {
+  mergeFieldOptions,
+  SessionFieldDialog,
+  type SessionFieldOption,
+} from "@/components/sessions/session-field-dialog";
 
 import {
   createConsultingSlot,
@@ -69,6 +74,10 @@ export function ConsultingPanel({
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 팝업에서 방금 추가·숨긴 분야 — 새로고침 전에도 선택지에 바로 반영
+  const [addedFields, setAddedFields] = useState<SessionFieldOption[]>([]);
+  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
+  const fields = mergeFieldOptions(fieldOptions, addedFields, hiddenFieldIds);
 
   const [draft, setDraft] = useState({
     startsOn: "",
@@ -170,19 +179,34 @@ export function ConsultingPanel({
           </div>
           <div>
             <label className="text-[11px] text-muted-foreground">세션분야</label>
-            <select
-              value={draft.fieldId}
-              onChange={(e) => setDraft((p) => ({ ...p, fieldId: e.target.value }))}
-              className="block h-8 w-44 rounded-md border bg-background px-2 text-sm"
-              aria-label="컨설팅 분야"
-            >
-              <option value="">분야 선택</option>
-              {fieldOptions.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                value={draft.fieldId}
+                onChange={(e) => setDraft((p) => ({ ...p, fieldId: e.target.value }))}
+                className="block h-8 w-44 rounded-md border bg-background px-2 text-sm"
+                aria-label="컨설팅 분야"
+              >
+                <option value="">{fields.length > 0 ? "분야 선택" : "분야 없음 — 오른쪽에서 추가"}</option>
+                {fields.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              {/* 분야 직접 추가 — 설정 > 내 설정 > 분야에 자동 반영 (기획 2026-09-20) */}
+              <SessionFieldDialog
+                compact
+                fields={fields}
+                onAdded={(f) => {
+                  setAddedFields((p) => [...p, f]);
+                  setDraft((p) => ({ ...p, fieldId: f.id }));
+                }}
+                onRemoved={(id) => {
+                  setHiddenFieldIds((p) => [...p, id]);
+                  setDraft((p) => (p.fieldId === id ? { ...p, fieldId: "" } : p));
+                }}
+              />
+            </div>
           </div>
           <div>
             <label className="text-[11px] text-muted-foreground">필요인원</label>
@@ -212,16 +236,10 @@ export function ConsultingPanel({
             <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
             컨설팅 세션 만들기
           </Button>
-          {fieldOptions.length === 0 && (
+          {fields.length === 0 && (
             <p className="w-full text-xs text-muted-foreground">
-              분야가 아직 없습니다 —{" "}
-              <Link
-                href={`/${tenantSlug}/settings/me`}
-                className="text-brand underline underline-offset-2"
-              >
-                설정 &gt; 내 설정 &gt; 분야
-              </Link>
-              에서 누구나 추가할 수 있습니다.
+              분야가 아직 없습니다 — 세션분야 옆 톱니 버튼으로 바로 추가할 수 있습니다
+              (설정 &gt; 내 설정 &gt; 분야에 자동 반영).
             </p>
           )}
         </div>
@@ -261,7 +279,7 @@ export function ConsultingPanel({
                             startsOn: s.startsOn,
                             endsOn: s.endsOn ?? "",
                             fieldId:
-                              fieldOptions.find((f) => f.name === s.fieldName)
+                              fields.find((f) => f.name === s.fieldName)
                                 ?.id ?? "",
                           });
                         }}
@@ -334,7 +352,7 @@ export function ConsultingPanel({
                     aria-label="세션분야"
                   >
                     <option value="">분야 선택</option>
-                    {fieldOptions.map((f) => (
+                    {fields.map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>
