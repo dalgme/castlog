@@ -51,6 +51,8 @@ import { EngagementDecisionButtons } from "./engagement-decision";
 
 export type ApprovedPlanSession = {
   slotId: string | null;
+  /** 결재 승인 뒤 세션 정보(회차·시간·비용·방식·일정 등)가 바뀌었는가 — 주홍색 굵은 테두리 */
+  changed: boolean;
   label: string;
   schedule: string | null;
   roleDescription: string | null;
@@ -74,8 +76,8 @@ export type ApprovedPlanRow = {
   submittedAt: string | null;
   approvedAt: string | null;
   note: string | null;
-  /** 계획에 담긴 세션 라벨 (부분 상신·보완 상신 확인용) */
-  sessionLabels: string[];
+  /** 계획에 담긴 세션 (부분 상신·보완 상신 확인용). changed = 승인 뒤 변경된 세션 */
+  sessionLabels: { slotId: string; label: string; changed: boolean }[];
   /**
    * 세션별 세부 + 상신·승인 시점의 전문가별 예정가 (핫픽스 2026-09-05,
    * 렛츠 보고 — 승인 목록에 세션 정보와 승인 금액이 없었다)
@@ -103,7 +105,19 @@ export type ProgressRow = {
   fee: number | null;
   /** 이 섭외 건으로 나간 문자 발송 이력 (기획 지시 2026-09-05) */
   sms?: SmsSummary | null;
+  /** 결재 승인 뒤 이 세션의 정보가 바뀌었는가 — 행 테두리를 주홍색 굵은 선으로 (기획 지시 2026-09-21) */
+  sessionChanged?: boolean;
 };
+
+/**
+ * 승인 뒤 변경된 세션 표시 — 주홍색 굵은 테두리 (기획 지시 2026-09-21).
+ * 표 행은 border-collapse 아래서 tr 테두리가 칸에 가려지므로 칸마다 그린다.
+ */
+export const CHANGED_SESSION_RING =
+  "border-[3px] border-orange-600";
+export const CHANGED_SESSION_ROW =
+  "[&>td]:border-y-[3px] [&>td]:border-y-orange-600 [&>td:first-child]:border-l-[3px] [&>td:first-child]:border-l-orange-600 [&>td:last-child]:border-r-[3px] [&>td:last-child]:border-r-orange-600";
+export const CHANGED_SESSION_HINT = "결재 승인 후 세션 정보가 변경됨 — 변경 품의 필요";
 
 /** 수락서가 존재하는 단계 — 이때만 '수락서 확인' 버튼이 의미 있다 */
 const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
@@ -355,9 +369,21 @@ export function EngagementProgress({
                 </TableHeader>
                 <TableBody>
                   {rows.map((r) => (
-                    <TableRow key={r.positionId} className={progressRowClass(r.stage)}>
+                    <TableRow
+                      key={r.positionId}
+                      className={cn(
+                        progressRowClass(r.stage),
+                        r.sessionChanged && CHANGED_SESSION_ROW
+                      )}
+                      title={r.sessionChanged ? CHANGED_SESSION_HINT : undefined}
+                    >
                       <TableCell className="text-xs">
                         {r.slotLabel}
+                        {r.sessionChanged && (
+                          <span className="ml-1.5 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            승인 후 변경
+                          </span>
+                        )}
                         {r.sessionDetail && (
                           <span className="block text-[11px] text-muted-foreground">
                             {r.sessionDetail}
