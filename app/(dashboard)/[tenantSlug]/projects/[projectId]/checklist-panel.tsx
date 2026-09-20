@@ -675,7 +675,7 @@ function ChecklistCard({
           </p>
         )}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-xs">
+          <table className="w-full min-w-[1120px] text-xs">
             <thead className="text-left text-muted-foreground">
               <tr>
                 <th className="w-6" />
@@ -956,6 +956,8 @@ function ItemRows({
                   defaultYear={defaultYear}
                   disabled={!canEdit}
                   ariaLabel={`${item.title} 마감일 계획`}
+                  column="plannedDue"
+                  rowIndex={idx}
                   onCommit={onPlannedDue}
                 />
               </td>
@@ -969,9 +971,12 @@ function ItemRows({
                   defaultYear={defaultYear}
                   disabled={!canEdit}
                   ariaLabel={`${item.title} 완료일`}
+                  column="completedOn"
+                  rowIndex={idx}
                   onCommit={(v) => onPatch("completedOn", v)}
                   className={cn(
-                    (tone === "overdue" || tone === "urgent" || tone === "soon") && "text-white [&_button]:text-white"
+                    (tone === "overdue" || tone === "urgent" || tone === "soon") &&
+                      "text-white [&_input]:text-white [&_input]:placeholder:text-white/70 [&_input:focus]:text-black"
                   )}
                 />
               </td>
