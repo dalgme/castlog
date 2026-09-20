@@ -98,6 +98,7 @@ import {
   type ApprovedPlanSession,
   type ProgressRow,
 } from "./engagement-progress";
+import { EngagementConfirmed } from "./engagement-confirmed";
 import type { SmsSummary } from "./sms-resend";
 import {
   decidePlanFlow,
@@ -230,11 +231,11 @@ export default async function ProjectDetailPage({
         ? supabase
             .from("expert_engagements")
             .select(
-              "id, expert_id, role_description, fee_amount, status, created_at, position_code, experts (name)"
+              "id, expert_id, role_description, fee_amount, status, created_at, position_code, completed_at, experts (name)"
             )
             .eq("project_id", project.id)
             .order("created_at", { ascending: false })
-        : Promise.resolve({ data: null }),
+        : Promise.resolve({ data: null, error: null }),
       modules.experts
         ? supabase
             .from("expert_tenant_links")
@@ -260,7 +261,7 @@ export default async function ProjectDetailPage({
       supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order, field_id, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session, hourly_fee_online, hourly_fee_offline"
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order, field_id, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session, hourly_fee_online, hourly_fee_offline, completed_at"
         )
         .eq("project_id", project.id)
         .order("sort_order", { ascending: true, nullsFirst: false })
@@ -269,7 +270,18 @@ export default async function ProjectDetailPage({
     ]);
 
   const stepRows = steps ?? [];
-  const engagements = engagementsResult.data ?? [];
+  // 종료 컬럼(completed_at, 기획 2026-09-21) 미적용 환경 — 컬럼 없이 다시 읽는다 (§14-10)
+  let engagements = engagementsResult.data ?? [];
+  if (modules.experts && engagementsResult.error?.code === "42703") {
+    const { data: legacyEngagements } = await supabase
+      .from("expert_engagements")
+      .select(
+        "id, expert_id, role_description, fee_amount, status, created_at, position_code, experts (name)"
+      )
+      .eq("project_id", project.id)
+      .order("created_at", { ascending: false });
+    engagements = (legacyEngagements ?? []).map((e) => ({ ...e, completed_at: null }));
+  }
   const connectedExperts = (expertsResult.data ?? [])
     .map((l) => l.experts)
     .filter((e): e is NonNullable<typeof e> => e !== null)
@@ -600,6 +612,7 @@ export default async function ProjectDetailPage({
       hourly_fee_online: null,
       hourly_fee_offline: null,
       unit_fee_offline: null,
+      completed_at: null,
     }));
   }
   const slotIds = slotRecords.map((s) => s.id);
@@ -728,11 +741,12 @@ export default async function ProjectDetailPage({
       engagementId: string;
       expertId: string;
       expertName: string;
-      outcome: "declined" | "expired";
+      outcome: "declined" | "expired" | "canceled";
     }
   > = {};
   for (const e of engagements) {
-    if (e.status !== "declined" && e.status !== "expired") continue;
+    // 긴급 취소(canceled)도 자리 행에 남긴다 — 진행 탭에서 재상신·긴급 진행 창구가 붙는다 (기획 2026-09-21)
+    if (e.status !== "declined" && e.status !== "expired" && e.status !== "canceled") continue;
     if (!e.position_code || priorOutcomeByCode[e.position_code]) continue; // 최신순 — 가장 최근만
     priorOutcomeByCode[e.position_code] = {
       engagementId: e.id,
@@ -741,6 +755,10 @@ export default async function ProjectDetailPage({
       outcome: e.status,
     };
   }
+  // 전문가별 종료 시각 (기획 2026-09-21) — 섭외 건 id → completed_at
+  const engagementCompletedById = new Map(
+    engagements.map((e) => [e.id, e.completed_at ?? null] as const)
+  );
   // 자리 행에 붙는 조건: 새 요청이 아직 없고(engagement_id 없음), 자리가 비었거나
   // 그 전문가가 그대로 배정돼 있을 때. 다른 전문가가 새로 배정됐으면 이전
   // 거절 표시는 오해만 낳는다 (리뷰 M3)
@@ -783,6 +801,7 @@ export default async function ProjectDetailPage({
     hourlyFeeOffline: s.hourly_fee_offline,
     unitFeeOffline: s.unit_fee_offline,
     mentees: menteesBySlot.get(s.id) ?? [],
+    completedAt: s.completed_at ?? null,
     positions: (positionRecords ?? [])
       .filter((p) => p.slot_id === s.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
@@ -801,6 +820,9 @@ export default async function ProjectDetailPage({
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
         engagementId: p.engagement_id,
+        completedAt: p.engagement_id
+          ? (engagementCompletedById.get(p.engagement_id) ?? null)
+          : null,
         canceledExpertName:
           p.status === "open" ? (canceledByCode[p.code] ?? null) : null,
         priorOutcome: (() => {
@@ -1043,6 +1065,8 @@ export default async function ProjectDetailPage({
   // 그 탭에서만 쓰므로 그때만 읽는다.
   let approvedPlans: ApprovedPlanRow[] = [];
   const progressRows: ProgressRow[] = [];
+  /** 세션 → 그 세션이 담긴 승인 계획 (긴급 취소 뒤 재상신·긴급 진행 창구용, 기획 2026-09-21) */
+  const approvedPlanIdBySlot = new Map<string, string>();
   // 이 탭의 세션 표기는 한 가지로 — 진행 현황·승인 목록·세션별 송신 카드 공통
   const slotLabelById = new Map(
     slotRows.map((s) => [
@@ -1052,7 +1076,8 @@ export default async function ProjectDetailPage({
       }`,
     ])
   );
-  if (tab === "engage" && modules.experts) {
+  // 섭외 확정 탭(기획 2026-09-21)도 같은 행 데이터를 쓴다
+  if ((tab === "engage" || tab === "confirmed") && modules.experts) {
     if (modules.approvals) {
       const { data: planRows } = await supabase
         .from("engagement_plans")
@@ -1096,6 +1121,9 @@ export default async function ProjectDetailPage({
         if (!l.slot_id) continue;
         const set = slotIdsByPlan.get(l.plan_id) ?? new Set<string>();
         set.add(l.slot_id);
+        if ((planRows ?? []).find((p) => p.id === l.plan_id)?.status === "approved") {
+          approvedPlanIdBySlot.set(l.slot_id, l.plan_id);
+        }
         slotIdsByPlan.set(l.plan_id, set);
       }
       // 상신·승인 시점의 섭외 대상(코드·전문가·예정가)은 지문에 있다 —
@@ -1299,9 +1327,13 @@ export default async function ProjectDetailPage({
           stage: prior ? prior.outcome : (stageByPosition[position.id] ?? "assigned"),
           // 거절·만료 행은 그 결과를 낸 섭외 건 — 결정 수정(거절→승인)·이력에 쓴다
           engagementId: position.engagementId ?? prior?.engagementId ?? null,
-          // 거절·만료 자리는 비어 있고 같은 전문가가 배정돼 있다 — 문자보내기(재요청) 가능
+          // 거절·만료·긴급 취소 자리는 비어 있고 같은 전문가가 배정돼 있다 — 문자보내기(재요청) 가능
           redispatchable: prior !== null && planSlotStates?.[slot.id] !== "none" && planSlotStates?.[slot.id] !== "rejected",
           sessionChanged: planChangedSlotIds.has(slot.id),
+          slotId: slot.id,
+          planId: approvedPlanIdBySlot.get(slot.id) ?? null,
+          completedAt: prior ? null : position.completedAt,
+          slotCompletedAt: slot.completedAt,
           sessionDetail:
             [
               describeSchedule(slot.schedule, { withYear: true }),
@@ -1865,6 +1897,7 @@ export default async function ProjectDetailPage({
             canManage={canExecute}
             canInput={canInput}
             canCancel={exec.engagementCancel}
+            canUrgent={role === "org_admin" || role === "manager"}
             expertsLite={expertsLite}
             approvalsEnabled={modules.approvals}
             projectState={{
@@ -1919,6 +1952,30 @@ export default async function ProjectDetailPage({
                   }))}
               />
             }
+          />
+        )}
+
+        {/* 섭외 확정 (기획 지시 2026-09-21) — 계약 성립 명단 · 목표 달성 · 긴급 취소 · 세션별/전문가별 종료 */}
+        {tab === "confirmed" && modules.experts && (
+          <EngagementConfirmed
+            tenantSlug={params.tenantSlug}
+            canManage={canExecute}
+            canCancel={exec.engagementCancel}
+            expertsLite={expertsLite}
+            rows={progressRows}
+            sessions={slotRows
+              .filter((s) => !modules.approvals || approvedPlanIdBySlot.has(s.id) || (planSlotStates?.[s.id] ?? "none") !== "none")
+              .map((s) => ({
+                slotId: s.id,
+                label: slotLabelById.get(s.id) ?? s.slotDate,
+                detail:
+                  [describeSchedule(s.schedule, { withYear: true }), s.roleDescription, s.locationName]
+                    .filter(Boolean)
+                    .join(" · ") || null,
+                requiredCount: s.requiredCount,
+                filledCount: s.positions.filter((p) => p.status === "filled").length,
+                completedAt: s.completedAt,
+              }))}
           />
         )}
 

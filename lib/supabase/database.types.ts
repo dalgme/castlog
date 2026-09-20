@@ -1683,8 +1683,12 @@ export type Database = {
           hours_per_session: number | null
           hourly_fee_online: number | null
           hourly_fee_offline: number | null
+          completed_at: string | null
+          completed_by: string | null
         }
         Insert: {
+          completed_at?: string | null
+          completed_by?: string | null
           date_kind?: string
           hours_per_session?: number | null
           end_starts_time?: string | null
@@ -1720,6 +1724,8 @@ export type Database = {
           session_name?: string | null
         }
         Update: {
+          completed_at?: string | null
+          completed_by?: string | null
           date_kind?: string
           hours_per_session?: number | null
           end_starts_time?: string | null
@@ -2331,8 +2337,12 @@ export type Database = {
           session_name: string | null
           position_code: string | null
           schedule_text: string | null
+          completed_at: string | null
+          completed_by: string | null
         }
         Insert: {
+          completed_at?: string | null
+          completed_by?: string | null
           is_practice?: boolean
           bundle_id?: string | null
           created_at?: string
@@ -2365,6 +2375,8 @@ export type Database = {
           schedule_text?: string | null
         }
         Update: {
+          completed_at?: string | null
+          completed_by?: string | null
           is_practice?: boolean
           bundle_id?: string | null
           created_at?: string
