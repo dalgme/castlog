@@ -17,34 +17,73 @@ export const DELIVERY_TERMS_LABELS: Record<DeliveryMode, string> = {
 };
 
 /**
- * 섭외 조건 한 줄 — "온라인/오프라인 병행 · 총 5회 · 회차당 2시간 · 회차당 단가 온라인 200,000원/오프라인 300,000원".
- * 섭외 문자·메일·후보 화면이 같은 문장을 쓴다. 아무 정보도 없으면 null.
+ * 섭외 조건 — 문자·메일·후보 화면이 같은 조각을 쓴다 (기획 지시 2026-09-21, 보완 2026-09-21).
+ *  - mode:    "온라인 멘토링" | "오프라인 멘토링" | "온라인/오프라인 병행"
+ *  - count:   "총 5회" | "총 5~8회"
+ *  - hours:   "회차당 2시간"
+ *  - unitFee: "회차당 120,000원" | "온라인 회차당 120,000원 / 오프라인 회차당 200,000원"
+ * 컨설팅(멘토링) 유형(진행 방식이 있는 세션)의 섭외 문자는 총액 대신 unitFee만 싣는다.
+ */
+export type EngagementFeeTerms = {
+  mode: string | null;
+  count: string | null;
+  hours: string | null;
+  unitFee: string | null;
+};
+
+export function engagementFeeTerms(
+  s: SessionSchedule,
+  unitOnline: number | null,
+  unitOffline: number | null
+): EngagementFeeTerms {
+  const countRange = sessionCount(s);
+  const mode = s.deliveryMode ?? (unitOffline !== null ? "offline" : unitOnline !== null ? "online" : null);
+  let unitFee: string | null = null;
+  if (mode === "hybrid") {
+    if (unitOnline !== null || unitOffline !== null) {
+      unitFee = `온라인 회차당 ${unitOnline !== null ? formatWon(unitOnline) : "미정"} / 오프라인 회차당 ${
+        unitOffline !== null ? formatWon(unitOffline) : "미정"
+      }`;
+    }
+  } else if (mode === "online" && unitOnline !== null) {
+    unitFee = `회차당 ${formatWon(unitOnline)}`;
+  } else if (mode === "offline" && unitOffline !== null) {
+    unitFee = `회차당 ${formatWon(unitOffline)}`;
+  }
+  return {
+    mode: s.deliveryMode ? DELIVERY_TERMS_LABELS[s.deliveryMode] : null,
+    count: countRange
+      ? countRange.min === countRange.max
+        ? `총 ${countRange.min}회`
+        : `총 ${countRange.min}~${countRange.max}회`
+      : null,
+    hours: s.hoursPerSession ? `회차당 ${fmtHours(s.hoursPerSession)}시간` : null,
+    unitFee,
+  };
+}
+
+/** 조건 조각을 한 줄로 — "온라인/오프라인 병행 · 총 5회 · 회차당 2시간 · 온라인 회차당 120,000원 / 오프라인 회차당 200,000원" */
+export function feeTermsToText(t: EngagementFeeTerms | null | undefined): string | null {
+  if (!t) return null;
+  const parts = [t.mode, t.count, t.hours, t.unitFee].filter((v): v is string => Boolean(v));
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** 조건 조각이 모두 같은가 (묶음 문자에서 한 줄로 합칠 수 있는지) */
+export function sameFeeTerms(a: EngagementFeeTerms | null, b: EngagementFeeTerms | null): boolean {
+  if (!a || !b) return a === b;
+  return a.mode === b.mode && a.count === b.count && a.hours === b.hours && a.unitFee === b.unitFee;
+}
+
+/**
+ * 섭외 조건 한 줄 — 메일·후보 화면용. 아무 정보도 없으면 null.
  */
 export function engagementTermsText(
   s: SessionSchedule,
   unitOnline: number | null,
   unitOffline: number | null
 ): string | null {
-  const parts: string[] = [];
-  if (s.deliveryMode) parts.push(DELIVERY_TERMS_LABELS[s.deliveryMode]);
-  const count = sessionCount(s);
-  if (count) parts.push(count.min === count.max ? `총 ${count.min}회` : `총 ${count.min}~${count.max}회`);
-  if (s.hoursPerSession) parts.push(`회차당 ${fmtHours(s.hoursPerSession)}시간`);
-  const mode = s.deliveryMode ?? (unitOffline !== null ? "offline" : unitOnline !== null ? "online" : null);
-  if (mode === "hybrid") {
-    if (unitOnline !== null || unitOffline !== null) {
-      parts.push(
-        `회차당 단가 온라인 ${unitOnline !== null ? formatWon(unitOnline) : "미정"}/오프라인 ${
-          unitOffline !== null ? formatWon(unitOffline) : "미정"
-        }`
-      );
-    }
-  } else if (mode === "online" && unitOnline !== null) {
-    parts.push(`회차당 단가 ${formatWon(unitOnline)}`);
-  } else if (mode === "offline" && unitOffline !== null) {
-    parts.push(`회차당 단가 ${formatWon(unitOffline)}`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return feeTermsToText(engagementFeeTerms(s, unitOnline, unitOffline));
 }
 
 /** "300,000원" 또는 "300,000원 ~ 500,000원" */

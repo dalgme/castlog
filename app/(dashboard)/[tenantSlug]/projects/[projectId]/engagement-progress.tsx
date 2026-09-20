@@ -15,6 +15,7 @@ import {
   PROJECT_STAGE_LABELS,
   type ProjectStage,
 } from "@/lib/integrations/project-stage";
+import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -346,6 +347,11 @@ export function EngagementProgress({
             <Send className="h-4 w-4" aria-hidden />
             섭외 진행 현황 · 수락서 확인
           </CardTitle>
+          {/* 전문가가 문자 링크에서 수락/거절하면 이 표가 스스로 따라온다 (기획 지시 2026-09-21) */}
+          <AutoRefresh />
+          <p className="text-[11px] text-muted-foreground">
+            전문가가 섭외 문자 링크에서 수락·거절하면 자동으로 반영됩니다 (20초 간격 · 창을 다시 열 때 즉시).
+          </p>
         </CardHeader>
         <CardContent>
           {rows.length === 0 ? (

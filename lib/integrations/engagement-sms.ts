@@ -4,6 +4,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantSms } from "@/lib/sms/send";
+import { sameFeeTerms, type EngagementFeeTerms } from "@/lib/sessions/fees";
+
+/**
+ * 섭외 조건 줄 (기획 지시 2026-09-21): 진행 방식(온라인 멘토링/오프라인 멘토링/
+ * 온라인/오프라인 병행) · 총 회차 · 회차당 시간 · 회차당 단가(병행은 온/오프 각각).
+ * 컨설팅(멘토링) 유형 — 회차당 단가가 있으면 **총액을 싣지 않는다**.
+ */
+export function feeTermsLines(t: EngagementFeeTerms | null | undefined): string[] {
+  if (!t) return [];
+  const countLine = [t.count, t.hours].filter(Boolean).join(" · ");
+  return [
+    t.mode ? `진행 방식: ${t.mode}` : null,
+    countLine || null,
+    t.unitFee,
+  ].filter((v): v is string => Boolean(v));
+}
+
+function wonLabel(n: number): string {
+  return `${n.toLocaleString("ko-KR")}원`;
+}
 
 /**
  * 섭외 워크플로우 업무연락 문자.
@@ -72,17 +92,32 @@ export function buildEngagementBundleSms(params: {
   tenantName: string;
   programName: string | null;
   itemCount: number;
-  /** 건별 의뢰비용 합계(원) — null이면 표기 생략 */
+  /** 건별 의뢰비용 합계(원) — null이면 표기 생략. 모든 건에 회차당 단가가 있으면 싣지 않는다 */
   totalFee: number | null;
-  /** 섭외 조건(진행 방식·총 회차·회차당 시간·회차당 단가) — 모든 건이 같을 때만 한 줄로 (2026-09-21) */
-  terms?: string | null;
+  /**
+   * 건별 섭외 조건 (기획 지시 2026-09-21). 모든 건이 같으면 한 번만, 다르면
+   * 세션별 한 줄씩 싣는다. 건에 조건이 없으면 terms=null
+   */
+  items?: { name: string | null; terms: EngagementFeeTerms | null }[];
   deadline?: string | null;
   url: string;
 }): string {
-  const fee =
-    params.totalFee !== null
-      ? `의뢰비용 합계 ${params.totalFee.toLocaleString("ko-KR")}원`
-      : null;
+  const items = params.items ?? [];
+  const allSame =
+    items.length > 0 && items.every((i) => i.terms !== null && sameFeeTerms(i.terms, items[0]!.terms));
+  const termLines = allSame
+    ? feeTermsLines(items[0]!.terms)
+    : items
+        .filter((i) => i.terms !== null)
+        .map((i) => {
+          const t = i.terms!;
+          const body = [t.mode, t.count, t.hours, t.unitFee].filter(Boolean).join(" · ");
+          return body ? `· ${i.name ?? "세션"}: ${body}` : null;
+        })
+        .filter((v): v is string => Boolean(v));
+  // 컨설팅(멘토링) 유형: 회차당 단가가 전부 있으면 총액(합계)을 싣지 않는다
+  const unitEverywhere = items.length > 0 && items.every((i) => Boolean(i.terms?.unitFee));
+  const fee = params.totalFee !== null && !unitEverywhere ? `의뢰비용 합계 ${wonLabel(params.totalFee)}` : null;
   const due = params.deadline
     ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
         timeZone: "Asia/Seoul",
@@ -93,7 +128,7 @@ export function buildEngagementBundleSms(params: {
   return [
     `[${params.tenantName}] 섭외 요청 ${params.itemCount}건`,
     params.programName,
-    params.terms ?? null,
+    ...termLines,
     fee,
     due,
     `각 건 확인·수락/거절: ${params.url}`,
@@ -106,19 +141,24 @@ export function buildEngagementBundleSms(params: {
 export function buildEngagementRequestSms(params: {
   tenantName: string;
   programName: string | null;
+  /** 일정 — 진행 방식·회차는 조건 줄에 따로 싣는다(중복 금지) */
   schedule: string | null;
   /** 섭외 조건 — 진행 방식(온라인/오프라인/병행)·총 회차·회차당 시간·회차당 단가(병행은 온/오프) (기획 지시 2026-09-21) */
-  terms?: string | null;
+  terms?: EngagementFeeTerms | null;
   locationName: string | null;
-  /** 의뢰비용(원) — 전문가는 링크를 열기 전에 '얼마'를 알아야 한다 (검수 C4) */
+  /**
+   * 의뢰비용 총액(원) — 전문가는 링크를 열기 전에 '얼마'를 알아야 한다 (검수 C4).
+   * 컨설팅(멘토링) 유형(회차당 단가가 있는 세션)은 총액을 싣지 않고 회차당 단가만 싣는다
+   */
   feeAmount?: number | null;
   /** 회신 마감 (ISO) — '언제까지 답해야 하는지'도 본문에 (검수 C4) */
   deadline?: string | null;
   url: string;
 }): string {
+  const termLines = feeTermsLines(params.terms);
   const fee =
-    params.feeAmount !== null && params.feeAmount !== undefined
-      ? `의뢰비용 ${params.feeAmount.toLocaleString("ko-KR")}원`
+    !params.terms?.unitFee && params.feeAmount !== null && params.feeAmount !== undefined
+      ? `의뢰비용 ${wonLabel(params.feeAmount)}`
       : null;
   const due = params.deadline
     ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
@@ -130,9 +170,9 @@ export function buildEngagementRequestSms(params: {
   return [
     `[${params.tenantName}] 섭외 요청`,
     params.programName,
-    params.schedule,
-    params.terms ?? null,
-    params.locationName,
+    params.schedule ? `일정: ${params.schedule}` : null,
+    ...termLines,
+    params.locationName ? `장소: ${params.locationName}` : null,
     fee,
     due,
     `수락/거절: ${params.url}`,

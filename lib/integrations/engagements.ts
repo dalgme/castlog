@@ -330,10 +330,12 @@ export async function applyEngagementResponse(
   await logEngagementEvent({
     tenantId: updated.tenant_id,
     engagementId: updated.id,
-    type: manualActor
-      ? "manual_accepted"
-      : decision === "accepted"
-        ? "accepted"
+    // 수동 거절은 'declined'로 남긴다 — 담당자 이름(actorKind=staff)이 수동 처리를 말해 준다
+    type:
+      decision === "accepted"
+        ? manualActor
+          ? "manual_accepted"
+          : "accepted"
         : "declined",
     actorKind: manualActor ? "staff" : "expert",
     actorLabel: manualActor

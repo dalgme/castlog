@@ -46,7 +46,7 @@ import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
-import { engagementTermsText } from "@/lib/sessions/fees";
+import { engagementFeeTerms, feeTermsToText, type EngagementFeeTerms } from "@/lib/sessions/fees";
 import { requestEngagementForPositionCore } from "@/lib/integrations/request-engagement";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 
@@ -883,7 +883,7 @@ export async function dispatchProjectEngagements(input: {
     const feeValues = items.map((i) => i.fee_amount).filter((v): v is number => v !== null);
     const totalFee = feeValues.length > 0 ? feeValues.reduce((a, b) => a + b, 0) : null;
     // 건별 섭외 조건(진행 방식·총 회차·회차당 시간·회차당 단가) — 후보 자리와 세션에서 읽는다 (기획 지시 2026-09-21)
-    const termsByEngagement = new Map<string, string>();
+    const termsByEngagement = new Map<string, EngagementFeeTerms>();
     try {
       const { data: termPositions } = await admin
         .from("engagement_slot_positions")
@@ -903,20 +903,16 @@ export async function dispatchProjectEngagements(input: {
       for (const p of termPositions ?? []) {
         const s = p.engagement_id ? slotById.get(p.slot_id) : undefined;
         if (!s || !p.engagement_id) continue;
-        const text = engagementTermsText(
+        const feeTerms = engagementFeeTerms(
           scheduleFromRow(s, termDates.get(s.id) ?? []),
           p.unit_fee_online ?? s.unit_fee_online,
           p.unit_fee_offline ?? s.unit_fee_offline
         );
-        if (text) termsByEngagement.set(p.engagement_id, text);
+        if (feeTermsToText(feeTerms)) termsByEngagement.set(p.engagement_id, feeTerms);
       }
     } catch {
       // 조건 문구가 없어도 발송은 나간다 — 링크에서 상세를 본다
     }
-    // 문자에는 모든 건의 조건이 같을 때만 한 줄로 싣는다 (다르면 링크·메일에서 건별로)
-    const termsList = createdIds.map((id) => termsByEngagement.get(id) ?? null);
-    const commonTerms =
-      termsList.length > 0 && termsList.every((t) => t !== null && t === termsList[0]) ? termsList[0] : null;
 
     let bundleUrl: string;
     try {
@@ -969,7 +965,7 @@ export async function dispatchProjectEngagements(input: {
             i.starts_time,
             i.ends_time
           );
-        return `· ${[i.session_name, schedule, termsByEngagement.get(i.id) ?? null, i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
+        return `· ${[i.session_name, schedule, feeTermsToText(termsByEngagement.get(i.id)), i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
       });
       await sendEngagementEmail({
         tenantId: auth.session.tenantId,
@@ -1001,7 +997,11 @@ export async function dispatchProjectEngagements(input: {
           programName: input.programName?.trim() || null,
           itemCount: createdIds.length,
           totalFee,
-          terms: commonTerms,
+          // 건별 조건 — 같으면 한 번, 다르면 세션별 한 줄 (기획 지시 2026-09-21)
+          items: items.map((i) => ({
+            name: i.session_name,
+            terms: termsByEngagement.get(i.id) ?? null,
+          })),
           deadline: expiresAtIso,
           url: bundleUrl,
         }),
