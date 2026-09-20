@@ -24,6 +24,8 @@ import { EngagementUrgentCancel } from "@/components/integrations/engagement-urg
 
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { COMPLETED_BADGE_CLASS, CompletionButton } from "./completion-buttons";
+import { ExpertEvaluateDialog, RatingStars } from "./expert-evaluate-dialog";
+import { ExpertQuickTag } from "../../experts/expert-quick-tag";
 import type { ProgressRow } from "./engagement-progress";
 
 /**
@@ -55,19 +57,30 @@ export type ConfirmedSession = {
 
 export function EngagementConfirmed({
   tenantSlug,
+  projectId,
   canManage,
   canCancel,
+  canEvaluate,
   expertsLite,
   rows,
   sessions,
+  evaluations,
+  tagByExpert,
 }: {
   tenantSlug: string;
+  projectId: string;
   canManage: boolean;
   canCancel: boolean;
+  /** 평가·등급(즐겨찾기/VIP) — expertRecord 축 */
+  canEvaluate: boolean;
   expertsLite: boolean;
   rows: ProgressRow[];
   /** 계획에 담긴(또는 결재 없이 진행하는) 세션 — 목표 산정 기준 */
   sessions: ConfirmedSession[];
+  /** `${expertId}:${slotId}` → 저장된 평가 (5점 환산) */
+  evaluations: Record<string, { rating: number; opinion: string | null }>;
+  /** 전문가 id → 자사 등급 (즐겨찾기/VIP/주의) */
+  tagByExpert: Record<string, { tag: string; note: string | null }>;
 }) {
   const confirmed = rows.filter((r) => CONFIRMED_STAGES.includes(r.stage));
   const required = sessions.reduce((n, s) => n + s.requiredCount, 0);
@@ -179,6 +192,8 @@ export function EngagementConfirmed({
                           <TableHead>전문가</TableHead>
                           <TableHead className="w-28 text-right">예정가</TableHead>
                           <TableHead className="w-28">단계</TableHead>
+                          <TableHead className="w-44">평가</TableHead>
+                          <TableHead className="w-32">등급</TableHead>
                           <TableHead className="w-24">종료</TableHead>
                           <TableHead className="w-64 text-right">수락서 · 긴급 취소</TableHead>
                         </TableRow>
@@ -186,6 +201,10 @@ export function EngagementConfirmed({
                       <TableBody>
                         {list.map((r) => {
                           const done = r.completedAt ?? null;
+                          const evaluation = r.expertId
+                            ? (evaluations[`${r.expertId}:${r.slotId ?? ""}`] ?? null)
+                            : null;
+                          const tag = r.expertId ? (tagByExpert[r.expertId] ?? null) : null;
                           return (
                             <TableRow key={r.positionId} className={done ? "bg-violet-50 text-violet-950" : "bg-yellow-50"}>
                               <TableCell>
@@ -204,6 +223,50 @@ export function EngagementConfirmed({
                                 >
                                   {ENGAGEMENT_STAGE_LABELS[r.stage]}
                                 </span>
+                              </TableCell>
+                              <TableCell>
+                                {/* 평가 — 5점 만점·1점 단위 + 의견, 완료 시 종료 처리 (기획 2026-09-21) */}
+                                <span className="inline-flex flex-wrap items-center gap-1.5">
+                                  {evaluation && <RatingStars rating={evaluation.rating} />}
+                                  {canEvaluate && r.engagementId && r.expertId ? (
+                                    <ExpertEvaluateDialog
+                                      projectId={projectId}
+                                      expertId={r.expertId}
+                                      engagementId={r.engagementId}
+                                      slotId={r.slotId ?? null}
+                                      expertName={r.expertName}
+                                      initialRating={evaluation?.rating ?? null}
+                                      initialOpinion={evaluation?.opinion ?? null}
+                                    />
+                                  ) : !evaluation ? (
+                                    <span className="text-[11px] text-muted-foreground">-</span>
+                                  ) : null}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {/* 즐겨찾기 · VIP — 자사 등급, 전문가 본인 비노출 (§4) */}
+                                {r.expertId ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <ExpertQuickTag
+                                      expertId={r.expertId}
+                                      expertName={r.expertName}
+                                      tag={tag?.tag ?? null}
+                                      tagNote={tag?.note ?? null}
+                                      target="favorite"
+                                      canManage={canEvaluate}
+                                    />
+                                    <ExpertQuickTag
+                                      expertId={r.expertId}
+                                      expertName={r.expertName}
+                                      tag={tag?.tag ?? null}
+                                      tagNote={tag?.note ?? null}
+                                      target="vip"
+                                      canManage={canEvaluate}
+                                    />
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground">-</span>
+                                )}
                               </TableCell>
                               <TableCell>
                                 {canManage && r.engagementId ? (
