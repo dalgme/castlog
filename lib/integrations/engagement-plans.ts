@@ -335,6 +335,8 @@ export type PlanSignatureLine = {
   /** 세션 명세와 맞추는 열쇠 — date|starts|ends|roleType|required|subtotal */
   key: string;
   candidates: PlanSignatureCandidate[];
+  /** 세션 세부 지문(회차·시간·방식·단가·일정 등, 2026-09-21~). 옛 지문은 빈 문자열 */
+  detail: string;
 };
 
 /** engagement_plan_lines 한 행의 열쇠 — 지문 line의 앞 6필드와 같은 형식 */
@@ -377,9 +379,65 @@ export function parsePlanSignatureCandidates(
         rank: Number(rank) || 0,
       });
     }
-    out.push({ key, candidates });
+    out.push({ key, candidates, detail: fields[7] ?? "" });
   }
   return out;
+}
+
+/** 변경 품의(부모 계획이 있는 리비전)에서 어느 자리(코드)가 실제로 바뀌었는가 — 진행 표 배지용 */
+export type PlanChangeMark = "in_progress" | "done";
+
+/**
+ * 부모(승인) 계획과 자식(변경) 계획의 지문을 세션별로 대조해 실제로 바뀐 자리의
+ * 코드를 돌려준다 (기획 지시 2026-09-21).
+ *  - 세션 줄의 열쇠(일자·시간·역할·인원·소계)나 세부 지문(회차·시간·방식·단가·일정)이
+ *    다르면 그 세션의 모든 자리가 바뀐 것이다.
+ *  - 같으면 후보(코드·전문가·예정가) 단위로 부모에 없는 것만 바뀐 것이다.
+ * lines는 각 계획의 engagement_plan_lines(slot_id + 열쇠) — 지문에는 slot_id가 없어
+ * 명세로 세션을 잇는다.
+ */
+export function diffPlanSignatures(
+  parentSignature: string,
+  childSignature: string,
+  parentLines: { slot_id: string | null; key: string }[],
+  childLines: { slot_id: string | null; key: string }[]
+): { changedCodesBySlot: Map<string, Set<string>> } {
+  const pool = (lines: PlanSignatureLine[]) => {
+    const m = new Map<string, PlanSignatureLine[]>();
+    for (const l of lines) {
+      const list = m.get(l.key) ?? [];
+      list.push(l);
+      m.set(l.key, list);
+    }
+    return m;
+  };
+  const parentPool = pool(parsePlanSignatureCandidates(parentSignature));
+  const childPool = pool(parsePlanSignatureCandidates(childSignature));
+  const parentBySlot = new Map<string, PlanSignatureLine>();
+  for (const l of parentLines) {
+    if (!l.slot_id) continue;
+    const line = parentPool.get(l.key)?.shift();
+    if (line) parentBySlot.set(l.slot_id, line);
+  }
+  const changedCodesBySlot = new Map<string, Set<string>>();
+  for (const l of childLines) {
+    if (!l.slot_id) continue;
+    const child = childPool.get(l.key)?.shift();
+    if (!child) continue;
+    const parent = parentBySlot.get(l.slot_id) ?? null;
+    const codes = new Set<string>();
+    const wholeSlot = !parent || parent.key !== child.key || parent.detail !== child.detail;
+    for (const c of child.candidates) {
+      const same =
+        !wholeSlot &&
+        parent!.candidates.some(
+          (p) => p.code === c.code && p.expertId === c.expertId && p.fee === c.fee
+        );
+      if (!same) codes.add(c.code);
+    }
+    if (codes.size > 0) changedCodesBySlot.set(l.slot_id, codes);
+  }
+  return { changedCodesBySlot };
 }
 
 /**
