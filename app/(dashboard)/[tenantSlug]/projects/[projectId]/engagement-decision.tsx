@@ -78,7 +78,7 @@ export function EngagementReviseButton({
             ? "h-7 bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700"
             : "h-6 px-1.5 text-[10px] text-muted-foreground hover:bg-neutral-200"
         }
-        title={toAccept ? "거절됨 — 누르면 승인(수락)으로 바꿀 수 있습니다" : "승인을 거절로 바꿉니다 (수락서 발송 전만)"}
+        title={toAccept ? "거절됨 — 누르면 승인(수락)으로 바꿀 수 있습니다" : "승인을 거절로 바꿉니다 (확정 단계도 가능) — 자리를 비워 후보 재등록·변경 상신"}
         onClick={() => setOpen(true)}
       >
         <X className="mr-0.5 h-3 w-3" aria-hidden />
@@ -93,7 +93,7 @@ export function EngagementReviseButton({
             <DialogDescription>
               {toAccept
                 ? "이 자리에 같은 전문가가 그대로 배정돼 있을 때만 됩니다. 섭외 건이 되살아나 계약이 성립하고 수락서가 자동 생성됩니다. 이력에는 담당자 결정 수정으로 남습니다."
-                : "수락서를 아직 송부하지 않은 건만 됩니다(송부·서명·확정된 건은 긴급 취소). 자동 생성된 수락서는 지워지고 자리는 다시 비어 다른 후보에게 요청할 수 있습니다."}
+                : "확정(수락서 송부·서명·확정) 단계여도 됩니다. 자리는 다시 비어 섭외후보 등록 탭에서 후보를 다시 넣고 변경 품의(또는 긴급 진행)를 올릴 수 있습니다. 발송 전 수락서는 지워지고, 이미 송부·서명·확정된 수락서는 기록으로 남으며 전문가에게 포털 알림이 갑니다."}
             </DialogDescription>
           </DialogHeader>
           {error && !needsPmApproval && (

@@ -198,9 +198,12 @@ export function EngagementWorkbench({
   ).includes(projectState.stage as never);
   const slotState = (slotId: string): SlotPlanState =>
     slotPlanStates ? (slotPlanStates[slotId] ?? "none") : "none";
+  // 'changed'(승인 뒤 내용이 바뀜)는 어차피 변경 품의를 다시 타므로 편집을 연다 —
+  // 거절로 변경·긴급 취소로 빈 자리에 새 후보를 넣고 변경 상신하는 경로 (기획 지시 2026-09-21).
+  // 서버 가드(assertSlotEditable)와 같은 기준
   const slotLocked = (slotId: string) => {
     const st = slotState(slotId);
-    return st === "in_progress" || st === "approved" || st === "changed";
+    return st === "in_progress" || st === "approved";
   };
   const lockedSlots: Record<string, string> = {};
   for (const s of slots) {
