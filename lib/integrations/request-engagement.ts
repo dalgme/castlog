@@ -17,6 +17,8 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import { loadSlotSchedule, type SlotScheduleRow } from "@/lib/integrations/slot-schedule";
+import { describeSchedule } from "@/lib/sessions/schedule";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
@@ -96,11 +98,20 @@ export async function requestEngagementForPositionCore(
   const slotResult = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
-  let slot = slotResult.data;
+  let slot: SlotScheduleRow & {
+    id: string;
+    project_id: string;
+    role_type: string;
+    session_name: string | null;
+    role_description: string | null;
+    fee_amount: number | null;
+    location_name: string | null;
+    location_address: string | null;
+  } | null = slotResult.data;
   if (slotResult.error?.code === "42703") {
     const { data: legacySlot } = await supabase
       .from("engagement_slots")
@@ -288,12 +299,12 @@ export async function requestEngagementForPositionCore(
   }
 
   // 업무연락 메일 — 동의 링크 전달
-  const schedule = formatEventSchedule(
-    slot.slot_date,
-    slotEndsOn,
-    slot.starts_time,
-    slot.ends_time
-  );
+  // 날짜 유형·회차·진행 방식까지 실어 보낸다 (기획 2026-09-21) — 구행은 단일 날짜 표기로 폴백
+  const slotSchedule = await loadSlotSchedule(supabase, slot);
+  const schedule =
+    slotSchedule.dateKind === "individual" && slotSchedule.dates.length <= 1
+      ? formatEventSchedule(slot.slot_date, slotEndsOn, slot.starts_time, slot.ends_time)
+      : describeSchedule(slotSchedule, { withYear: true });
   const channel = input.channel ?? "both";
   const useEmail = !input.suppressSend && (channel === "email" || channel === "both");
   const useSms = !input.suppressSend && (channel === "sms" || channel === "both");

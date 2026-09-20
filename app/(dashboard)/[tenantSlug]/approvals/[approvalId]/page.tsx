@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { getPlanCoveredSlotIds } from "@/lib/integrations/engagement-plans";
+import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
+import { countLabel, DELIVERY_LABELS, hybridCountLabel, scheduleLines } from "@/lib/sessions/schedule";
 import { ActPanel } from "./act-panel";
 import { PlanReviewPanel, type ReviewSlot } from "./plan-review-panel";
 
@@ -154,7 +156,7 @@ export default async function ApprovalDetailPage({
       const { data: allPlanSlots } = await supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, location_name, notes, required_count, field_id"
+          "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, location_name, notes, required_count, field_id, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
         )
         .eq("project_id", plan.project_id)
         .order("slot_date", { ascending: true })
@@ -196,23 +198,28 @@ export default async function ApprovalDetailPage({
         ? await supabase.from("tenant_session_fields").select("id, name").in("id", fieldIds)
         : { data: [] as never[] };
       const fieldNameById = new Map((fieldRows ?? []).map((f) => [f.id, f.name]));
+      // 날짜 유형·회차·진행 방식 (기획 2026-09-21) — 개별선택형 날짜까지 결재권자에게
+      const planDates = await loadSlotDates(supabase, planSlots.map((s) => s.id));
 
-      reviewSlots = planSlots.map((slot) => ({
-        slotId: slot.id,
-        label: `${slot.session_name ?? slot.role_type} · ${slot.slot_date}${
-          slot.starts_time ? ` ${slot.starts_time.slice(0, 5)}` : ""
-        }`,
-        requiredCount: slot.required_count,
-        detail: {
-          date: slot.slot_date,
-          periodEnd: slot.period_end_date,
-          startsTime: slot.starts_time,
-          endsTime: slot.ends_time,
-          roleDescription: slot.role_description,
-          fieldName: slot.field_id ? (fieldNameById.get(slot.field_id) ?? null) : null,
-          locationName: slot.location_name,
-          notes: slot.notes,
-        },
+      reviewSlots = planSlots.map((slot) => {
+        const sc = scheduleFromRow(slot, planDates.get(slot.id) ?? []);
+        return {
+          slotId: slot.id,
+          label: `${slot.session_name ?? slot.role_type} · ${scheduleLines(sc)[0] ?? slot.slot_date}`,
+          requiredCount: slot.required_count,
+          detail: {
+            date: slot.slot_date,
+            periodEnd: slot.period_end_date,
+            startsTime: slot.starts_time,
+            endsTime: slot.ends_time,
+            scheduleText: scheduleLines(sc).join("\n"),
+            countText: hybridCountLabel(sc) ?? countLabel(sc),
+            deliveryText: sc.deliveryMode ? DELIVERY_LABELS[sc.deliveryMode] : null,
+            roleDescription: slot.role_description,
+            fieldName: slot.field_id ? (fieldNameById.get(slot.field_id) ?? null) : null,
+            locationName: slot.location_name,
+            notes: slot.notes,
+          },
         candidates: (candidates ?? [])
           .filter((c) => c.slot_id === slot.id)
           .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
@@ -227,7 +234,8 @@ export default async function ApprovalDetailPage({
               c.engagement_id === null &&
               (c.status === "open" || c.status === "assigned"),
           })),
-      }));
+        };
+      });
 
       const { data: changeRows } = await supabase
         .from("plan_review_changes")
