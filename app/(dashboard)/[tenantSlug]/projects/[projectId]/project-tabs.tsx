@@ -34,6 +34,8 @@ const TAB_DEFS: readonly {
   needsExperts?: boolean;
   /** quotes(견적·정산) 모듈이 있어야 의미가 있는 탭 */
   needsQuotes?: boolean;
+  /** 대표(ceo)·그 프로젝트 PM만 보는 탭 (기획 2026-09-21 — 참여율 배분) */
+  execOnly?: boolean;
   /** 탭 고유색 (기획 확정 2026-08-22) — Tailwind는 리터럴 클래스만 인식한다 */
   activeClass: string;
   idleClass: string;
@@ -111,13 +113,15 @@ const TAB_DEFS: readonly {
     // 모듈 게이트 없음
     key: "contrib",
     label: "참여율 배분",
+    execOnly: true,
     activeClass: "border-rose-600 bg-rose-600 text-white shadow-sm",
     idleClass:
       "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
   },
   {
+    // 지급 품의 (기획 지시 2026-09-21) — 세션 단위 지급 품의·결재 상태·지급 완료·프로젝트 종료
     key: "closing",
-    label: "프로젝트 종료 및 지급 품의",
+    label: "지급 품의",
     activeClass: "border-emerald-600 bg-emerald-600 text-white shadow-sm",
     idleClass:
       "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
@@ -128,12 +132,15 @@ const TAB_DEFS: readonly {
 export function resolveProjectTab(
   raw: string | undefined,
   hasExperts: boolean,
-  hasQuotes = true
+  hasQuotes = true,
+  /** 대표·PM 전용 탭(참여율 배분)을 볼 수 있는가 — 아니면 첫 탭으로 */
+  canSeeExecOnly = true
 ): ProjectTabKey {
   const found = TAB_DEFS.find((t) => t.key === raw);
   if (!found) return "overview";
   if (found.needsExperts && !hasExperts) return "overview";
   if (found.needsQuotes && !hasQuotes) return "overview";
+  if (found.execOnly && !canSeeExecOnly) return "overview";
   return found.key;
 }
 
@@ -143,15 +150,21 @@ export function ProjectTabs({
   active,
   hasExperts,
   hasQuotes = true,
+  canSeeExecOnly = true,
 }: {
   tenantSlug: string;
   projectId: string;
   active: ProjectTabKey;
   hasExperts: boolean;
   hasQuotes?: boolean;
+  /** 참여율 배분 탭 — 대표(ceo)와 그 프로젝트 PM만 (기획 2026-09-21). 아니면 탭 자체를 숨긴다 */
+  canSeeExecOnly?: boolean;
 }) {
   const tabs = TAB_DEFS.filter(
-    (t) => (!t.needsExperts || hasExperts) && (!t.needsQuotes || hasQuotes)
+    (t) =>
+      (!t.needsExperts || hasExperts) &&
+      (!t.needsQuotes || hasQuotes) &&
+      (!t.execOnly || canSeeExecOnly)
   );
 
   return (

@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
+import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules, isExpertsLite } from "@/lib/modules/server";
 import { requirePaymentsAccess } from "@/lib/auth/admin-scopes";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
@@ -212,8 +215,24 @@ export async function createPaymentBatch(
       error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
     };
   }
-  const data = parsed.data;
+  return createBatchCore(session, parsed.data, {});
+}
+
+/**
+ * 지급 건 생성 공통부 — 비용·지급 화면(지급 권한자)과 프로젝트 '지급 품의' 탭(프로젝트 팀)이
+ * 같은 검증·스냅샷·상신 절차를 쓴다. 게이트는 호출한 쪽이 이미 통과했다.
+ * options.feeFallback: 섭외 건의 의뢰비용(fee_amount)이 비어 있을 때 대신 쓸 금액
+ * (코드넘버 자리의 예정가 — 지급 품의 탭에서 넘긴다).
+ */
+async function createBatchCore(
+  session: Session,
+  data: BatchCreateInput,
+  options: { feeFallback?: Map<string, number> }
+): Promise<CreateBatchResult> {
   const projectId = data.projectId || null;
+  const feeFallback = options.feeFallback ?? new Map<string, number>();
+  const grossOf = (e: { id: string; fee_amount: number | null }) =>
+    e.fee_amount ?? feeFallback.get(e.id) ?? null;
 
   const supabase = createClient();
 
@@ -230,7 +249,7 @@ export async function createPaymentBatch(
     if (engagement.status !== "accepted") {
       return { ok: false, error: "수락(계약 성립)된 섭외만 지급 대상입니다." };
     }
-    if (engagement.fee_amount === null) {
+    if (grossOf(engagement) === null) {
       return {
         ok: false,
         error: `${engagement.experts?.name ?? "일부"} 전문가의 의뢰비용이 설정되지 않았습니다.`,
@@ -310,7 +329,7 @@ export async function createPaymentBatch(
     if (!isPaymentType(paymentType)) {
       throw new Error("unreachable — isPaymentType filtered above");
     }
-    const calc = calculateWithholding(paymentType, engagement.fee_amount ?? 0);
+    const calc = calculateWithholding(paymentType, grossOf(engagement) ?? 0);
     return { engagement, paymentType, calc };
   });
   const totals = lines.reduce(
@@ -402,7 +421,182 @@ export async function createPaymentBatch(
   }
 
   revalidatePath("/[tenantSlug]/payments", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true, batchId: batch.id, submitted, warning };
+}
+
+// ---------------------------------------------------------------------------
+// 프로젝트 '지급 품의' 탭 — 세션 단위 지급 품의 (기획 지시 2026-09-21)
+// ---------------------------------------------------------------------------
+
+/**
+ * 지급 품의 탭의 상신 주체 — 지급 권한자(대표·이사·finance 위임) 또는 그 프로젝트의
+ * PL·PM·부PM. RLS(마이그레이션 0009)도 자기 프로젝트 팀에게만 지급 건 생성을 연다.
+ * 부PM은 기존 실행 승인(gateDeputyAction)을 그대로 거친다.
+ */
+async function requireSessionPaymentSession(projectId: string): Promise<
+  { ok: true; session: Session } | { ok: false; error: string }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  if (await isExpertsLite()) {
+    return {
+      ok: false,
+      error: "라이트 모드에서는 지급 기능을 사용하지 않습니다. 설정 > 기업관리에서 라이트 모드를 끄면 열립니다.",
+    };
+  }
+  const access = await requirePaymentsAccess();
+  if (access.ok) {
+    return { ok: true, session: { userId: access.userId, tenantId: access.tenantId, role: access.role } };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || role === "expert") {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  const { data: mine } = await supabase
+    .from("project_assignments")
+    .select("assignment_role")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const teamRole = mine?.assignment_role ?? null;
+  if (teamRole === "pl" || teamRole === "pl_pm" || teamRole === "pm" || teamRole === "deputy_pm") {
+    return { ok: true, session: { userId: user.id, tenantId, role } };
+  }
+  return {
+    ok: false,
+    error: "지급 품의는 이 프로젝트의 PL·PM·부PM 또는 지급 권한자(대표·이사·지급 위임자)만 올릴 수 있습니다 (권한 규칙).",
+  };
+}
+
+const sessionBatchSchema = z.object({
+  projectId: z.string().uuid(),
+  slotIds: z.array(z.string().uuid()).min(1, "지급 품의할 세션을 1개 이상 고르세요.").max(50),
+});
+
+/**
+ * 고른 세션(1개 또는 여러 개)의 계약 성립 건을 한 지급 건으로 묶어 지급 품의를 올린다.
+ * 조건: 세션의 모든 계약 성립 건이 종료(completed_at)·평가(expert_evaluations) 완료,
+ * 아직 살아 있는 지급 건에 담기지 않음. 의뢰비용이 비어 있으면 코드넘버 자리의 예정가로 대신한다.
+ */
+export async function createSessionPaymentBatch(input: {
+  projectId: string;
+  slotIds: string[];
+}): Promise<CreateBatchResult> {
+  const parsed = sessionBatchSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
+  }
+  const { projectId, slotIds } = parsed.data;
+  const auth = await requireSessionPaymentSession(projectId);
+  if (!auth.ok) return auth;
+  const { session } = auth;
+
+  const supabase = createClient();
+  const [{ data: project }, { data: slots }, { data: positions }] = await Promise.all([
+    supabase.from("projects").select("id, name").eq("id", projectId).maybeSingle(),
+    supabase
+      .from("engagement_slots")
+      .select("id, slot_date, session_name, role_description")
+      .eq("project_id", projectId)
+      .in("id", slotIds),
+    supabase
+      .from("engagement_slot_positions")
+      .select("slot_id, engagement_id, expected_fee")
+      .in("slot_id", slotIds)
+      .not("engagement_id", "is", null),
+  ]);
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (!slots || slots.length !== slotIds.length) {
+    return { ok: false, error: "고른 세션을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요." };
+  }
+  const engagementIds = Array.from(
+    new Set((positions ?? []).map((p) => p.engagement_id).filter((v): v is string => Boolean(v)))
+  );
+  if (engagementIds.length === 0) {
+    return { ok: false, error: "고른 세션에 계약 성립(승인)된 전문가가 없습니다 (상태 미충족)." };
+  }
+  const engagementsResult = await supabase
+    .from("expert_engagements")
+    .select("id, status, completed_at, experts (name)")
+    .in("id", engagementIds);
+  if (isMissingColumnError(engagementsResult.error)) {
+    return {
+      ok: false,
+      error: "종료 기능이 아직 이 서버에 준비되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션(0005) 적용을 요청해 주세요.",
+    };
+  }
+  const accepted = (engagementsResult.data ?? []).filter((e) => e.status === "accepted");
+  if (accepted.length === 0) {
+    return { ok: false, error: "고른 세션에 계약 성립(승인)된 전문가가 없습니다 (상태 미충족)." };
+  }
+  const notCompleted = accepted.filter((e) => !e.completed_at);
+  if (notCompleted.length > 0) {
+    const names = Array.from(new Set(notCompleted.map((e) => e.experts?.name ?? "전문가"))).join(", ");
+    return {
+      ok: false,
+      error: `아직 종료(평가·완료) 처리되지 않은 전문가가 있습니다: ${names}. 섭외 확정 탭에서 종료한 뒤 올려 주세요 (상태 미충족).`,
+    };
+  }
+
+  // 예정가 폴백 — 의뢰비용(fee_amount)이 비어 있는 건
+  const feeFallback = new Map<string, number>();
+  for (const p of positions ?? []) {
+    if (p.engagement_id && p.expected_fee !== null && p.expected_fee !== undefined) {
+      feeFallback.set(p.engagement_id, p.expected_fee);
+    }
+  }
+
+  const labels = slots
+    .sort((a, b) => a.slot_date.localeCompare(b.slot_date))
+    .map((s) => `${s.slot_date} ${s.session_name ?? s.role_description ?? "세션"}`);
+  const title = `${project.name} — ${labels.length <= 2 ? labels.join(", ") : `${labels[0]} 외 ${labels.length - 1}개 세션`}`;
+
+  return createBatchCore(
+    session,
+    { projectId, title: title.slice(0, 120), engagementIds: accepted.map((e) => e.id) },
+    { feeFallback }
+  );
+}
+
+/** 지급 품의 탭 — 반려돼 대기로 돌아온 지급 건 재상신 (프로젝트 팀·지급 권한자) */
+export async function resubmitSessionBatch(input: {
+  projectId: string;
+  batchId: string;
+}): Promise<BatchActionResult> {
+  if (!z.string().uuid().safeParse(input.batchId).success || !z.string().uuid().safeParse(input.projectId).success) {
+    return { ok: false, error: "대상을 확인할 수 없습니다 (시스템 결함). 새로고침 후 다시 시도해 주세요." };
+  }
+  const auth = await requireSessionPaymentSession(input.projectId);
+  if (!auth.ok) return auth;
+  const modules = await getTenantModules();
+  if (!modules.approvals) {
+    return { ok: false, error: "전자결재 모듈이 비활성 상태입니다. 비용·지급 화면에서 단순 확정을 사용하세요." };
+  }
+  const supabase = createClient();
+  const { data: batch } = await supabase
+    .from("expert_payment_batches")
+    .select("id, project_id")
+    .eq("id", input.batchId)
+    .maybeSingle();
+  if (!batch || batch.project_id !== input.projectId) {
+    return { ok: false, error: "이 프로젝트의 지급 건이 아닙니다." };
+  }
+  const result = await submitBatchApprovalInternal(auth.session, input.batchId);
+  if (!result.ok) return result;
+  revalidatePath("/[tenantSlug]/payments", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
 }
 
 export type BatchActionResult = { ok: true } | { ok: false; error: string };
@@ -497,6 +691,7 @@ export async function markBatchPaid(batchId: string): Promise<BatchActionResult>
   });
 
   revalidatePath("/[tenantSlug]/payments", "page");
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
 
