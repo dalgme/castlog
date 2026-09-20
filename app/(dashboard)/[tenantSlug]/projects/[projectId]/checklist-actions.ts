@@ -58,6 +58,20 @@ async function projectDday(supabase: ReturnType<typeof createClient>, projectId:
   return slot?.slot_date ?? p.starts_on ?? null;
 }
 
+/**
+ * 이 프로젝트의 PM — 새 항목의 담당 기본값 (기획 지시 2026-09-20).
+ * PL·PM 겸임이면 그 사람. 없으면 null(담당 비움).
+ */
+async function projectPmUserId(supabase: ReturnType<typeof createClient>, projectId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("project_assignments")
+    .select("user_id, assignment_role")
+    .eq("project_id", projectId)
+    .in("assignment_role", ["pm", "pl_pm"]);
+  const pm = (data ?? []).find((a) => a.assignment_role === "pm") ?? (data ?? [])[0];
+  return pm?.user_id ?? null;
+}
+
 type TemplateItemRow = {
   phase: string | null; category: string | null; subcategory: string | null; title: string;
   offset_days: number | null; quantity: string | null; note: string | null; sort_order: number;
@@ -72,6 +86,8 @@ async function insertItemsFromTemplate(
   startOrder: number,
   userId: string
 ) {
+  // 담당은 PM으로 미리 채운다 — 대부분의 항목이 PM 몫이고, 아닌 것만 바꾸면 된다
+  const pmId = await projectPmUserId(supabase, projectId);
   const rows = items.map((it, i) => ({
     tenant_id: tenantId,
     checklist_id: checklistId,
@@ -84,6 +100,7 @@ async function insertItemsFromTemplate(
     offset_days: it.offset_days,
     quantity: it.quantity,
     note: it.note,
+    assignee_user_id: pmId,
     created_by: userId,
     updated_by: userId,
   }));
@@ -263,16 +280,23 @@ export async function addChecklistItem(
   if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
   const gate = await requireProjectTeam(c.project_id);
   if (!gate.ok) return gate;
-  // 새 항목은 앞 항목의 시기·분류를 이어받는다 — 표 중간에 끼워 넣는 게 대부분이다
+  // 새 항목은 바로 위 항목의 시기·분류·권장(D±)·담당을 이어받는다 (기획 지시 2026-09-20 —
+  // 담당자가 임의로 추가한 항목은 위 항목의 권장일자를 복사). 맨 끝에 추가하면 마지막 항목이 '위'다.
+  const prevQuery = supabase
+    .from("project_checklist_items")
+    .select("phase, category, subcategory, offset_days, assignee_user_id")
+    .eq("checklist_id", checklistId);
   const { data: prev } = afterItemId
-    ? await supabase.from("project_checklist_items").select("phase, category, subcategory").eq("id", afterItemId).maybeSingle()
-    : { data: null };
+    ? await prevQuery.eq("id", afterItemId).maybeSingle()
+    : await prevQuery.order("sort_order", { ascending: false }).limit(1).maybeSingle();
+  const assignee = prev?.assignee_user_id ?? (await projectPmUserId(supabase, c.project_id));
   const sortOrder = await nextSortOrder(supabase, "project_checklist_items", "checklist_id", checklistId, afterItemId);
   const { data, error } = await supabase
     .from("project_checklist_items")
     .insert({
       tenant_id: gate.actor.tenantId, checklist_id: checklistId, project_id: c.project_id, sort_order: sortOrder,
       phase: prev?.phase ?? null, category: prev?.category ?? null, subcategory: prev?.subcategory ?? null,
+      offset_days: prev?.offset_days ?? null, assignee_user_id: assignee,
       title: t, created_by: gate.actor.userId, updated_by: gate.actor.userId,
     })
     .select("id").single();
@@ -479,6 +503,99 @@ export async function renameChecklistGroup(
   });
   revalidate();
   return { ok: true };
+}
+
+const DUP_COLUMNS =
+  "id, sort_order, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, check1, check2, decision, applicable";
+
+/**
+ * 영역(분류 묶음) 또는 행사(구분) 복제 (기획 지시 2026-09-20).
+ * 같은 분류·내용·권장·담당·참고를 가진 사본을 원본 구간 바로 뒤에 붙인다.
+ * 마감일 계획·완료일·메모·변경 이력은 복사하지 않는다 — 새 회차의 일정은 새로 잡는다.
+ */
+export async function duplicateChecklistItems(
+  checklistId: string,
+  itemIds: string[],
+  label: "group" | "category"
+): Promise<{ ok: true; added: number } | { ok: false; error: string }> {
+  if (!uuid.safeParse(checklistId).success || !z.array(uuid).min(1).max(500).safeParse(itemIds).success) {
+    return { ok: false, error: "대상을 확인할 수 없습니다." };
+  }
+  const supabase = createClient();
+  const { data: c } = await supabase
+    .from("project_checklists").select("id, project_id").eq("id", checklistId).maybeSingle();
+  if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
+  const gate = await requireProjectTeam(c.project_id);
+  if (!gate.ok) return gate;
+  const { data: all } = await supabase
+    .from("project_checklist_items").select(DUP_COLUMNS).eq("checklist_id", checklistId)
+    .order("sort_order", { ascending: true });
+  const wanted = new Set(itemIds);
+  const source = (all ?? []).filter((r) => wanted.has(r.id));
+  if (source.length === 0) return { ok: false, error: "복제할 항목을 찾을 수 없습니다 — 새로고침 후 다시 시도하세요." };
+  const maxOrder = (all ?? []).reduce((m, r) => Math.max(m, r.sort_order), 0);
+  const rows = source.map((r, i) => ({
+    tenant_id: gate.actor.tenantId, checklist_id: checklistId, project_id: c.project_id,
+    sort_order: maxOrder + (i + 1) * 10,
+    phase: r.phase, category: r.category, subcategory: r.subcategory, title: r.title,
+    offset_days: r.offset_days, quantity: r.quantity, note: r.note, assignee_user_id: r.assignee_user_id,
+    check1: r.check1, check2: r.check2, decision: r.decision, applicable: r.applicable,
+    created_by: gate.actor.userId, updated_by: gate.actor.userId,
+  }));
+  const { data: inserted, error } = await supabase
+    .from("project_checklist_items").insert(rows).select("id, sort_order").order("sort_order", { ascending: true });
+  if (error || !inserted) return { ok: false, error: SYSTEM_FAIL };
+  // 사본을 원본 구간의 마지막 항목 바로 뒤에 끼운다
+  const lastSourceId = source[source.length - 1]!.id;
+  const ordered: string[] = [];
+  for (const r of all ?? []) {
+    ordered.push(r.id);
+    if (r.id === lastSourceId) ordered.push(...inserted.map((n) => n.id));
+  }
+  await applyOrder(supabase, "project_checklist_items", "checklist_id", checklistId, ordered, gate.actor.userId);
+  const first = source[0]!;
+  const where = label === "category"
+    ? (first.category ?? "(미분류)")
+    : [first.phase, first.category, first.subcategory].filter(Boolean).join(" › ") || "(미분류)";
+  await logChecklist(gate.actor, {
+    scope: "project", action: label === "category" ? "category.duplicate" : "group.duplicate",
+    checklistId, projectId: c.project_id, itemTitle: `${source.length}개 항목`, field: where,
+    after: `${where} 복제 · ${inserted.length}개 추가`,
+  });
+  revalidate();
+  return { ok: true, added: inserted.length };
+}
+
+/** 영역(분류 묶음) 삭제 — 묶음의 항목을 한 번에 지운다 (기획 지시 2026-09-20) */
+export async function deleteChecklistItems(
+  checklistId: string,
+  itemIds: string[]
+): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {
+  if (!uuid.safeParse(checklistId).success || !z.array(uuid).min(1).max(500).safeParse(itemIds).success) {
+    return { ok: false, error: "대상을 확인할 수 없습니다." };
+  }
+  const supabase = createClient();
+  const { data: c } = await supabase
+    .from("project_checklists").select("id, project_id").eq("id", checklistId).maybeSingle();
+  if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
+  const gate = await requireProjectTeam(c.project_id);
+  if (!gate.ok) return gate;
+  const { data: rows } = await supabase
+    .from("project_checklist_items").select("id, title, phase, category, subcategory")
+    .in("id", itemIds).eq("checklist_id", checklistId);
+  if (!rows || rows.length === 0) return { ok: false, error: "삭제할 항목을 찾을 수 없습니다 — 새로고침 후 다시 시도하세요." };
+  const { error } = await supabase
+    .from("project_checklist_items").delete().in("id", rows.map((r) => r.id)).eq("checklist_id", checklistId);
+  if (error) return { ok: false, error: SYSTEM_FAIL };
+  const first = rows[0]!;
+  const where = [first.phase, first.category, first.subcategory].filter(Boolean).join(" › ") || "(미분류)";
+  await logChecklist(gate.actor, {
+    scope: "project", action: "group.delete", checklistId, projectId: c.project_id,
+    itemTitle: `${rows.length}개 항목`, field: where,
+    before: rows.map((r) => r.title).join(" / ").slice(0, 1000),
+  });
+  revalidate();
+  return { ok: true, removed: rows.length };
 }
 
 export type PlannedDueResult =

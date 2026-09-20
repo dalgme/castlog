@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
+import { Copy, Download, GripVertical, MessageSquare, Plus, Tag, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -43,9 +43,12 @@ import {
   type ItemGroup,
   type Shade,
 } from "@/lib/checklists/groups";
+import { assignmentRoleLabel } from "@/lib/integrations/assignment-roles";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
 import { DateCell, EditableText } from "@/components/checklists/editable-cell";
 import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
+import { KoreanDateCell } from "@/components/checklists/korean-date-cell";
+import { RecommendButton } from "@/components/checklists/recommend-button";
 import { TemplateSettingsDialog } from "@/components/checklists/template-settings-dialog";
 import type React from "react";
 
@@ -54,7 +57,9 @@ import {
   addChecklistItem,
   createChecklistFromTemplate,
   deleteChecklistItem,
+  deleteChecklistItems,
   deleteProjectChecklist,
+  duplicateChecklistItems,
   getProjectAllChecklistLogs,
   getProjectChecklistLogs,
   importCommonChecklist,
@@ -122,6 +127,30 @@ export type ChecklistHeader = {
 
 export type TemplateOption = { id: string; kind: ChecklistKind; name: string; itemCount: number };
 
+/** 이 프로젝트 팀 — 담당 드롭다운에서 역할을 이름 앞에 붙인다 (기획 지시 2026-09-20) */
+export type TeamMember = { userId: string; role: string };
+
+type AssigneeOptions = {
+  team: { id: string; label: string }[];
+  others: { id: string; label: string }[];
+};
+
+function buildAssigneeOptions(users: { id: string; name: string }[], team: TeamMember[]): AssigneeOptions {
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  const teamIds = new Set<string>();
+  const teamOpts: { id: string; label: string }[] = [];
+  for (const m of team) {
+    const name = nameById.get(m.userId);
+    if (!name || teamIds.has(m.userId)) continue;
+    teamIds.add(m.userId);
+    teamOpts.push({ id: m.userId, label: `${assignmentRoleLabel(m.role)} ${name}` });
+  }
+  return {
+    team: teamOpts,
+    others: users.filter((u) => !teamIds.has(u.id)).map((u) => ({ id: u.id, label: u.name })),
+  };
+}
+
 /**
  * 프로젝트 체크리스트 탭 (기획 지시 2026-09-05).
  * 상단은 프로젝트 정보 자동 채움(09), 표는 팀이 바로 고친다(02~04·08), 마감일
@@ -134,6 +163,8 @@ export function ProjectChecklistPanel({
   header,
   checklists,
   users,
+  team,
+  defaultYear,
   templates,
   typedSubcategories,
   canEdit,
@@ -145,6 +176,9 @@ export function ProjectChecklistPanel({
   header: ChecklistHeader;
   checklists: ProjectChecklistView[];
   users: { id: string; name: string; grade: string }[];
+  team: TeamMember[];
+  /** 월/일만 쳤을 때 붙는 연도 (프로젝트 D-Day의 해) */
+  defaultYear: number;
   templates: TemplateOption[];
   /** 유형별 표준시트의 구분 → 세부 카테고리 목록 */
   typedSubcategories: { category: string; subcategories: string[] }[];
@@ -337,6 +371,8 @@ export function ProjectChecklistPanel({
           key={selected.id}
           checklist={selected}
           users={users}
+          team={team}
+          defaultYear={defaultYear}
           canEdit={canEdit}
           myUserId={myUserId}
           today={today}
@@ -443,6 +479,8 @@ function TypedImportDialog({
 function ChecklistCard({
   checklist,
   users,
+  team,
+  defaultYear,
   canEdit,
   myUserId,
   today,
@@ -451,6 +489,8 @@ function ChecklistCard({
 }: {
   checklist: ProjectChecklistView;
   users: { id: string; name: string; grade: string }[];
+  team: TeamMember[];
+  defaultYear: number;
   canEdit: boolean;
   myUserId: string;
   today: string;
@@ -486,6 +526,16 @@ function ChecklistCard({
   const groups = buildGroups(ids, byId, groupFields);
   const hasSchedule = columns.some((c) => c.key === "plannedDue");
   const span = columns.length + 3;
+  const assigneeOptions = buildAssigneeOptions(users, team);
+  // 시트의 D-Day 해가 있으면 그 해를, 없으면 프로젝트 기준 — 월/일 입력에 붙는 연도
+  const yearForInput = checklist.dday ? Number(checklist.dday.slice(0, 4)) || defaultYear : defaultYear;
+  // 행사(구분) 단위 복제 후보 — 이 시트에 담긴 구분 값별 항목 수
+  const categoryCounts = new Map<string, number>();
+  for (const it of checklist.items) {
+    const key = it.category?.trim();
+    if (key) categoryCounts.set(key, (categoryCounts.get(key) ?? 0) + 1);
+  }
+  const categories = Array.from(categoryCounts.entries()).map(([name, count]) => ({ name, count }));
 
   function commitOrder(next: string[], adopt: { itemIds: string[]; values: GroupValues } | null) {
     setDrag(null);
@@ -588,6 +638,16 @@ function ChecklistCard({
             </label>
           )}
           <ChecklistLogsDialog title={checklist.name} load={() => getProjectChecklistLogs(checklist.id)} />
+          {canEdit && categories.length > 0 && (
+            <CategoryDuplicateDialog
+              categories={categories}
+              disabled={pending}
+              onDuplicate={(name) => {
+                const targetIds = checklist.items.filter((i) => i.category?.trim() === name).map((i) => i.id);
+                run(() => duplicateChecklistItems(checklist.id, targetIds, "category"), `'${name}' 행사 항목을 복제했습니다.`);
+              }}
+            />
+          )}
           {canEdit && (
             <Button
               type="button"
@@ -646,6 +706,15 @@ function ChecklistCard({
                       run(() => renameChecklistGroup(checklist.id, g.ids, field, value), "분류 이름을 바꿨습니다.")
                     }
                     onAdd={() => run(() => addChecklistItem(checklist.id, g.ids[g.ids.length - 1] ?? null, "새 항목"))}
+                    onDuplicate={() =>
+                      run(() => duplicateChecklistItems(checklist.id, g.ids, "group"), `영역을 복제했습니다 (${g.ids.length}개 항목).`)
+                    }
+                    onDelete={() => {
+                      const where = groupFields.map((f) => g.values[f] ?? "(미분류)").join(" › ");
+                      if (window.confirm(`'${where}' 영역의 ${g.ids.length}개 항목을 모두 삭제할까요? 변경 로그에는 남습니다.`)) {
+                        run(() => deleteChecklistItems(checklist.id, g.ids), "영역을 삭제했습니다.");
+                      }
+                    }}
                   >
                     {g.ids.map((id) => {
                       const item = byId.get(id);
@@ -666,8 +735,10 @@ function ChecklistCard({
                           groupLabels={groupLabels}
                           tone={tone}
                           auto={auto}
+                          hasDday={Boolean(checklist.dday)}
                           shade={g.shade}
-                          users={users}
+                          assigneeOptions={assigneeOptions}
+                          defaultYear={yearForInput}
                           canEdit={canEdit}
                           myUserId={myUserId}
                           pending={pending}
@@ -733,7 +804,8 @@ type Drag = { kind: "item"; id: string } | { kind: "group"; key: string; ids: st
 
 /** 묶음 머리행 + 그 묶음의 항목 행들. 묶음 열이 없는 종류(마감일)는 머리행 없이 항목만 */
 function GroupBlock({
-  group, fields, labels, span, canEdit, pending, dragging, onDragStart, onDragEnd, onDrop, onRename, onAdd, children,
+  group, fields, labels, span, canEdit, pending, dragging, onDragStart, onDragEnd, onDrop, onRename, onAdd,
+  onDuplicate, onDelete, children,
 }: {
   group: ItemGroup;
   fields: GroupField[];
@@ -747,6 +819,8 @@ function GroupBlock({
   onDrop: () => void;
   onRename: (field: GroupField, value: string | null) => void;
   onAdd: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -767,6 +841,8 @@ function GroupBlock({
           onDrop={onDrop}
           onRename={onRename}
           onAdd={onAdd}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
         />
       )}
       {children}
@@ -775,9 +851,9 @@ function GroupBlock({
 }
 
 function ItemRows({
-  idx, item, columns, groupFields, groupLabels, tone, auto, shade, users, canEdit, myUserId, pending, dragging,
-  memoOpen, classifyOpen, onToggleMemo, onToggleClassify, onDragStart, onDragEnd, onDrop, onPatch, onPlannedDue,
-  onAddAfter, onDelete, onReason,
+  idx, item, columns, groupFields, groupLabels, tone, auto, hasDday, shade, assigneeOptions, defaultYear, canEdit,
+  myUserId, pending, dragging, memoOpen, classifyOpen, onToggleMemo, onToggleClassify, onDragStart, onDragEnd,
+  onDrop, onPatch, onPlannedDue, onAddAfter, onDelete, onReason,
 }: {
   idx: number;
   item: ProjectChecklistItemView;
@@ -786,8 +862,10 @@ function ItemRows({
   groupLabels: Record<GroupField, string>;
   tone: ReturnType<typeof dueTone>;
   auto: string | null;
+  hasDday: boolean;
   shade: Shade;
-  users: { id: string; name: string }[];
+  assigneeOptions: AssigneeOptions;
+  defaultYear: number;
   canEdit: boolean;
   myUserId: string;
   pending: boolean;
@@ -835,6 +913,7 @@ function ItemRows({
           if (c.key === "assignee") {
             return (
               <td key={c.key} className="py-0.5 pr-2">
+                {/* 이 프로젝트 팀은 역할을 이름 앞에 — "PM 홍길동" (기획 지시 2026-09-20) */}
                 <select
                   value={item.assigneeUserId ?? ""}
                   disabled={!canEdit}
@@ -843,21 +922,38 @@ function ItemRows({
                   className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-input focus:border-brand"
                 >
                   <option value="">-</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
+                  {assigneeOptions.team.length > 0 && (
+                    <optgroup label="이 프로젝트">
+                      {assigneeOptions.team.map((u) => (
+                        <option key={u.id} value={u.id}>{u.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {assigneeOptions.others.length > 0 && (
+                    <optgroup label="그 외 임직원">
+                      {assigneeOptions.others.map((u) => (
+                        <option key={u.id} value={u.id}>{u.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </td>
             );
           }
-          if (c.key === "autoDue") {
-            return <td key={c.key} className="py-1 pr-2 tabular-nums text-muted-foreground">{auto ?? "-"}</td>;
+          if (c.key === "offsetDays") {
+            // 권장(D±)은 프로젝트에서 조정하지 않는다 — 누르고 있으면 자동 마감일이 보인다
+            return (
+              <td key={c.key} className="py-0.5 pr-2">
+                <RecommendButton offsetDays={item.offsetDays} autoDue={auto} hasDday={hasDday} />
+              </td>
+            );
           }
           if (c.key === "plannedDue") {
             return (
               <td key={c.key} className="py-0.5 pr-2">
-                <DateCell
+                <KoreanDateCell
                   value={item.plannedDue}
+                  defaultYear={defaultYear}
                   disabled={!canEdit}
                   ariaLabel={`${item.title} 마감일 계획`}
                   onCommit={onPlannedDue}
@@ -868,13 +964,14 @@ function ItemRows({
           if (c.key === "completedOn") {
             return (
               <td key={c.key} className={cn("py-0.5 pr-2", DUE_TONE_CLASS[tone])} title={DUE_TONE_LABELS[tone] || undefined}>
-                <DateCell
+                <KoreanDateCell
                   value={item.completedOn}
+                  defaultYear={defaultYear}
                   disabled={!canEdit}
                   ariaLabel={`${item.title} 완료일`}
                   onCommit={(v) => onPatch("completedOn", v)}
                   className={cn(
-                    (tone === "overdue" || tone === "urgent" || tone === "soon") && "text-white [color-scheme:dark]"
+                    (tone === "overdue" || tone === "urgent" || tone === "soon") && "text-white [&_button]:text-white"
                   )}
                 />
               </td>
@@ -999,6 +1096,61 @@ function ItemRows({
         </tr>
       )}
     </>
+  );
+}
+
+/**
+ * 행사(구분) 단위 복제 (기획 지시 2026-09-20 — 개별행사별 복제).
+ * 같은 행사가 한 프로젝트에 두 번 열리면(캠프 2회차 등) 그 구분의 항목을 통째로 한 벌 더 만든다.
+ */
+function CategoryDuplicateDialog({
+  categories,
+  disabled,
+  onDuplicate,
+}: {
+  categories: { name: string; count: number }[];
+  disabled: boolean;
+  onDuplicate: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" disabled={disabled}>
+          <Copy className="mr-1 h-3.5 w-3.5" aria-hidden /> 행사 복제
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>행사(구분) 단위 복제</DialogTitle>
+          <DialogDescription>
+            고른 구분의 항목 전부를 한 벌 더 만들어 그 구간 바로 뒤에 붙입니다. 내용·권장·담당·참고사항은
+            복사되고, 마감일 계획·완료일·메모는 비워집니다. 같은 색 영역 하나만 복제하려면 영역 머리행의 복제 단추를
+            쓰세요.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="divide-y rounded-md border">
+          {categories.map((c) => (
+            <li key={c.name} className="flex items-center justify-between px-3 py-2 text-sm">
+              <span>
+                {c.name} <span className="text-xs text-muted-foreground">· {c.count}개 항목</span>
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  onDuplicate(c.name);
+                  setOpen(false);
+                }}
+              >
+                복제
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
   );
 }
 
