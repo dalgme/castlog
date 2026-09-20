@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      session_payment_attachments: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string | null
+          file_size_bytes: number | null
+          uploaded_by: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          slot_id: string
+          file_name: string
+          storage_path: string
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          uploaded_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          slot_id?: string
+          file_name?: string
+          storage_path?: string
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          uploaded_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       project_reviews: {
         Row: {
           id: string
