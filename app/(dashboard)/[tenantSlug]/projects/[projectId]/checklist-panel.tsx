@@ -566,7 +566,12 @@ function ProjectImportDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="outline" disabled={disabled}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={disabled}
+          className="bg-coral text-white hover:bg-coral-dark"
+        >
           <FolderInput className="mr-1 h-4 w-4" aria-hidden /> 체크리스트 불러오기
         </Button>
       </DialogTrigger>
