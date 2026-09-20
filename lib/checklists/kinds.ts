@@ -75,8 +75,8 @@ const SCHEDULE_COLUMNS: ChecklistColumn[] = [
   { key: "title", label: "업무 내용", template: true },
   { key: "assignee", label: "담당", width: "w-36" },
   { key: "offsetDays", label: "권장", template: true, width: "w-14" },
-  { key: "plannedDue", label: "마감일 계획", width: "w-44" },
-  { key: "completedOn", label: "완료일", width: "w-44" },
+  { key: "plannedDue", label: "마감일 계획", width: "w-56" },
+  { key: "completedOn", label: "완료일", width: "w-56" },
   { key: "note", label: "참고사항", template: true },
 ];
 
@@ -89,8 +89,8 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "title", label: "업무 내용", template: true },
     { key: "assignee", label: "담당", width: "w-36" },
     { key: "offsetDays", label: "권장", template: true, width: "w-14" },
-    { key: "plannedDue", label: "마감일 계획", width: "w-44" },
-    { key: "completedOn", label: "완료일", width: "w-44" },
+    { key: "plannedDue", label: "마감일 계획", width: "w-56" },
+    { key: "completedOn", label: "완료일", width: "w-56" },
     { key: "note", label: "참고사항", template: true },
   ],
   kickoff: [
@@ -103,8 +103,8 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
   ],
   deadline: [
     { key: "title", label: "진행 내용", template: true },
-    { key: "plannedDue", label: "마감일", width: "w-44" },
-    { key: "completedOn", label: "완료일", width: "w-44" },
+    { key: "plannedDue", label: "마감일", width: "w-56" },
+    { key: "completedOn", label: "완료일", width: "w-56" },
     { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "진행 내용(메모)", template: true },
     { key: "check1", label: "발주기관 특이사항" },
