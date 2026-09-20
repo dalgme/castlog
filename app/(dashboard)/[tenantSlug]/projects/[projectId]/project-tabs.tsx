@@ -20,6 +20,7 @@ export const PROJECT_TAB_KEYS = [
   "experts",
   "engage",
   "confirmed",
+  "review",
   "contrib",
   "closing",
 ] as const;
@@ -95,6 +96,15 @@ const TAB_DEFS: readonly {
     needsExperts: true,
     activeClass: "border-lime-600 bg-lime-600 text-white shadow-sm",
     idleClass: "border-lime-200 bg-lime-50 text-lime-800 hover:bg-lime-100",
+  },
+  {
+    // 리뷰 (기획 지시 2026-09-21) — 완료 사업 결과 요약·전문가 평가·운영 특이사항.
+    // 회사 내부 기록이라 공통 기반, 모듈 게이트 없음 (전문가 평가 절만 experts에서 의미)
+    key: "review",
+    label: "리뷰",
+    activeClass: "border-indigo-600 bg-indigo-600 text-white shadow-sm",
+    idleClass:
+      "border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100",
   },
   {
     // 참여율 배분 — 종료 탭에서 분리 (기획 확정 2026-08-30). 공통 기반이라

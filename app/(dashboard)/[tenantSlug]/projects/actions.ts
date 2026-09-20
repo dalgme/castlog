@@ -33,6 +33,8 @@ import {
 } from "@/lib/operations/schemas";
 import { DEFAULT_LIFECYCLE_STEPS } from "@/lib/operations/steps";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
+import { isMissingColumnError } from "@/lib/supabase/errors";
+import { CONTRIBUTION_SLOT_KEYS, isExtraSlot } from "@/lib/integrations/contribution-slots";
 
 export type CreateProjectResult =
   | { ok: true; projectId: string }
@@ -424,27 +426,37 @@ async function requireProjectManager(): Promise<
 
 const contributionsSchema = z.object({
   projectId: z.string().uuid("프로젝트를 확인하세요."),
+  // 가로 표의 열 (기획 지시 2026-09-21) — 열마다 사람 한 명 + %
   rows: z
     .array(
       z.object({
+        slotKey: z.enum(CONTRIBUTION_SLOT_KEYS),
+        roleLabel: z.string().trim().max(30, "열 이름은 30자 이내로 적어 주세요.").nullable(),
         userId: z.string().uuid(),
         percentage: z
           .number({ invalid_type_error: "기여도는 숫자여야 합니다." })
           .int("기여도는 정수여야 합니다.")
           .min(0, "기여도는 0 이상이어야 합니다.")
           .max(100, "기여도는 100 이하여야 합니다."),
-        note: z.string().max(200, "메모는 200자 이내로 입력하세요.").optional(),
       })
     )
-    .max(100),
+    .max(CONTRIBUTION_SLOT_KEYS.length),
 });
 export type ContributionsInput = z.infer<typeof contributionsSchema>;
 
 export type ProjectActionResult = { ok: true } | { ok: false; error: string };
 
-/** 종료 기여도 저장 (관리자 이상). 자사 직원만, 완료/취소 프로젝트는 불가. */
+const CONTRIBUTION_COLUMN_MISSING =
+  "참여율 가로 표가 아직 이 서버에 준비되지 않았습니다 (시스템 설정). 관리자에게 마이그레이션(0007) 적용을 요청해 주세요.";
+
+/**
+ * 참여율(기여도) 저장 — 가로 표의 열 단위 (관리자 이상). 자사 직원만, 완료/취소 프로젝트는 불가.
+ * 확정된 뒤에는 '수정' 버튼으로 잠금을 풀기 전까지 저장을 거부한다 (규칙).
+ * options.confirm = 저장과 함께 확정(합계 100%일 때만).
+ */
 export async function saveProjectContributions(
-  input: ContributionsInput
+  input: ContributionsInput,
+  options?: { confirm?: boolean }
 ): Promise<ProjectActionResult> {
   const auth = await requireProjectManager();
   if (!auth.ok) return auth;
@@ -455,16 +467,37 @@ export async function saveProjectContributions(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
   }
   const data = parsed.data;
+  const seenSlots = new Set<string>();
+  for (const r of data.rows) {
+    if (seenSlots.has(r.slotKey)) {
+      return { ok: false, error: "같은 열이 두 번 들어왔습니다 (시스템 결함). 새로고침 후 다시 시도해 주세요." };
+    }
+    seenSlots.add(r.slotKey);
+  }
   const supabase = createClient();
 
-  const { data: project } = await supabase
+  const projectResult = await supabase
     .from("projects")
-    .select("id, status")
+    .select("id, status, contribution_confirmed_at")
     .eq("id", data.projectId)
     .maybeSingle();
+  if (isMissingColumnError(projectResult.error)) {
+    return { ok: false, error: CONTRIBUTION_COLUMN_MISSING };
+  }
+  const project = projectResult.data;
   if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
   if (project.status === "completed" || project.status === "cancelled") {
     return { ok: false, error: "이미 종료·취소된 프로젝트는 기여도를 수정할 수 없습니다." };
+  }
+  if (project.contribution_confirmed_at) {
+    return {
+      ok: false,
+      error: "참여율이 확정되어 있습니다 (규칙). 표 오른쪽 '수정' 버튼으로 잠금을 푼 뒤 고쳐 주세요.",
+    };
+  }
+  const total = data.rows.reduce((s, r) => s + r.percentage, 0);
+  if (options?.confirm && total !== 100) {
+    return { ok: false, error: `합계가 정확히 100%여야 확정할 수 있습니다 (현재 ${total}%, 상태 미충족).` };
   }
 
   // 자사 직원 검증 (RLS로 자사 사용자만 조회됨)
@@ -484,42 +517,104 @@ export async function saveProjectContributions(
         data.rows.map((r) => ({
           tenant_id: session.tenantId,
           project_id: data.projectId,
+          slot_key: r.slotKey,
+          role_label: isExtraSlot(r.slotKey) ? r.roleLabel?.trim() || null : null,
           user_id: r.userId,
           percentage: r.percentage,
-          note: r.note?.trim() || null,
           created_by: session.userId,
         })),
-        { onConflict: "project_id,user_id" }
+        { onConflict: "project_id,slot_key" }
       );
     if (upsertError) {
-      return { ok: false, error: "기여도 저장에 실패했습니다. 다시 시도해 주세요." };
+      return {
+        ok: false,
+        error: isMissingColumnError(upsertError)
+          ? CONTRIBUTION_COLUMN_MISSING
+          : await explainActionError(upsertError.message, "기여도 저장에 실패했습니다. 다시 시도해 주세요."),
+      };
     }
   }
 
-  // 목록에서 빠진 직원의 기여도는 제거
+  // 표에서 빠진 열(과 가로 표 도입 전의 옛 행)은 제거
+  const keptKeys = data.rows.map((r) => r.slotKey);
   let removeQuery = supabase
     .from("project_contributions")
     .delete()
     .eq("project_id", data.projectId);
-  if (userIds.length > 0) {
-    removeQuery = removeQuery.not(
-      "user_id",
-      "in",
-      `(${userIds.join(",")})`
-    );
-  }
+  removeQuery =
+    keptKeys.length > 0
+      ? removeQuery.or(`slot_key.is.null,slot_key.not.in.(${keptKeys.join(",")})`)
+      : removeQuery;
   await removeQuery;
+
+  if (options?.confirm) {
+    const { error: confirmError } = await supabase
+      .from("projects")
+      .update({
+        contribution_confirmed_at: new Date().toISOString(),
+        contribution_confirmed_by: session.userId,
+      })
+      .eq("id", data.projectId);
+    if (confirmError) {
+      return {
+        ok: false,
+        error: await explainActionError(confirmError.message, "참여율은 저장됐지만 확정 표시에 실패했습니다. 다시 시도해 주세요."),
+      };
+    }
+  }
 
   await supabase.from("audit_logs").insert({
     tenant_id: session.tenantId,
     actor_auth_user_id: session.userId,
     actor_role: session.role,
-    action: "project_contributions.save",
+    action: options?.confirm ? "project_contributions.confirm" : "project_contributions.save",
     resource_type: "project",
     resource_id: data.projectId,
-    after_data: { count: data.rows.length },
+    after_data: { count: data.rows.length, total },
   });
 
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true };
+}
+
+/** 참여율 확정 잠금 해제 — '수정' 버튼 (관리자 이상). 값은 그대로 두고 잠금만 푼다. */
+export async function unlockProjectContributions(projectId: string): Promise<ProjectActionResult> {
+  const auth = await requireProjectManager();
+  if (!auth.ok) return auth;
+  const { session } = auth;
+  if (!z.string().uuid().safeParse(projectId).success) {
+    return { ok: false, error: "프로젝트를 확인하세요." };
+  }
+  const supabase = createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, status")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
+  if (project.status === "completed" || project.status === "cancelled") {
+    return { ok: false, error: "이미 종료·취소된 프로젝트는 참여율을 수정할 수 없습니다 (상태 미충족)." };
+  }
+  const { error } = await supabase
+    .from("projects")
+    .update({ contribution_confirmed_at: null, contribution_confirmed_by: null })
+    .eq("id", projectId);
+  if (error) {
+    return {
+      ok: false,
+      error: isMissingColumnError(error)
+        ? CONTRIBUTION_COLUMN_MISSING
+        : await explainActionError(error.message, "잠금 해제에 실패했습니다. 다시 시도해 주세요."),
+    };
+  }
+  await supabase.from("audit_logs").insert({
+    tenant_id: session.tenantId,
+    actor_auth_user_id: session.userId,
+    actor_role: session.role,
+    action: "project_contributions.unlock",
+    resource_type: "project",
+    resource_id: projectId,
+  });
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
