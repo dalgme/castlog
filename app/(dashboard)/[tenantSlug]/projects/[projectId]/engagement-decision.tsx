@@ -19,7 +19,115 @@ import { DeputyRequestInline } from "@/components/integrations/deputy-request-in
 import {
   manualAcceptEngagement,
   manualDeclineEngagement,
+  reviseEngagementDecision,
 } from "../../experts/engagement-actions";
+
+/**
+ * 이미 내려진 결정 수정 (기획 지시 2026-09-21) — 거절 행의 '승인으로 변경',
+ * 승인 행(수락서 발송 전)의 '거절로 변경'. 담당자가 눌렀든 전문가가 링크로 눌렀든 같다.
+ */
+export function EngagementReviseButton({
+  engagementId,
+  projectId,
+  expertName,
+  to,
+}: {
+  engagementId: string;
+  projectId: string;
+  expertName: string;
+  to: "accepted" | "declined";
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [needsPmApproval, setNeedsPmApproval] = useState(false);
+  const toAccept = to === "accepted";
+
+  function close() {
+    setOpen(false);
+    setNote("");
+    setError(null);
+    setNeedsPmApproval(false);
+  }
+
+  function submit() {
+    setError(null);
+    startTransition(async () => {
+      const r = await reviseEngagementDecision(engagementId, to, note);
+      if (!r.ok) {
+        setError(r.error);
+        setNeedsPmApproval(Boolean(r.needsPmApproval));
+        return;
+      }
+      close();
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant={toAccept ? "default" : "outline"}
+        className={
+          toAccept
+            ? "h-6 bg-yellow-400 px-1.5 text-[10px] text-yellow-950 hover:bg-yellow-500"
+            : "h-6 px-1.5 text-[10px] text-muted-foreground hover:bg-neutral-200"
+        }
+        title={toAccept ? "거절을 승인(수락)으로 바꿉니다" : "승인을 거절로 바꿉니다 (수락서 발송 전만)"}
+        onClick={() => setOpen(true)}
+      >
+        {toAccept ? <Check className="mr-0.5 h-3 w-3" aria-hidden /> : <X className="mr-0.5 h-3 w-3" aria-hidden />}
+        {toAccept ? "승인으로 변경" : "거절로 변경"}
+      </Button>
+      <Dialog open={open} onOpenChange={(v) => !v && close()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {toAccept ? `${expertName} — 거절을 승인으로 바꿀까요?` : `${expertName} — 승인을 거절로 바꿀까요?`}
+            </DialogTitle>
+            <DialogDescription>
+              {toAccept
+                ? "이 자리에 같은 전문가가 그대로 배정돼 있을 때만 됩니다. 섭외 건이 되살아나 계약이 성립하고 수락서가 자동 생성됩니다. 이력에는 담당자 결정 수정으로 남습니다."
+                : "수락서를 아직 송부하지 않은 건만 됩니다(송부·서명·확정된 건은 긴급 취소). 자동 생성된 수락서는 지워지고 자리는 다시 비어 다른 후보에게 요청할 수 있습니다."}
+            </DialogDescription>
+          </DialogHeader>
+          {error && !needsPmApproval && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {needsPmApproval && (
+            <DeputyRequestInline projectId={projectId} actionType="engagement.manual_accept" targetId={engagementId} />
+          )}
+          <Textarea
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="수정 사유·메모 (선택) — 예: 9/21 전화로 다시 확인"
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={close} disabled={pending}>
+              닫기
+            </Button>
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={pending}
+              className={toAccept ? "bg-yellow-400 text-yellow-950 hover:bg-yellow-500" : undefined}
+              variant={toAccept ? "default" : "destructive"}
+            >
+              {pending ? "처리 중…" : toAccept ? "승인으로 변경" : "거절로 변경"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 /**
  * 후보별 승인·거절 (기획 지시 2026-09-21) — 섭외 진행 현황 표의 회신 대기 행.

@@ -63,7 +63,8 @@ export type SlotPositionRow = {
   expertName: string | null;
   engagementId: string | null;
   canceledExpertName: string | null;
-  priorOutcome: { expertName: string; outcome: "declined" | "expired" } | null;
+  /** 이 자리의 직전 결과(거절·만료) — engagementId는 결정 수정·이력용 */
+  priorOutcome: { engagementId: string; expertName: string; outcome: "declined" | "expired" } | null;
   assignedExpertName: string | null;
 };
 
