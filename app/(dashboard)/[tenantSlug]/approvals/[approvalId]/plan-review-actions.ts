@@ -118,6 +118,7 @@ async function resyncPlan(approvalId: string, planId: string, projectId: string)
     .from("engagement_plans")
     .update({
       planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
       position_count: snapshot.positionCount,
       slot_count: snapshot.slotCount,
       plan_signature: snapshot.signature,

@@ -32,35 +32,57 @@ export const GROUP_FIELDS: Record<ChecklistKind, GroupField[]> = {
 };
 
 export type GroupValues = Record<GroupField, string | null>;
-export type GroupableItem = { id: string } & GroupValues;
+export type GroupableItem = { id: string; color?: string | null } & GroupValues;
 
 export type Shade = { row: string; header: string };
 
 /**
- * 묶음 음영 — 마지막 분류(세부 분류·구분) 값으로 정해진다. 같은 값이면 시트
- * 어디에 있어도 같은 색이라 눈으로 바로 찾는다. 값이 없으면 회색.
+ * 영역 색상 팔레트 (기획 지시 2026-09-21) — 머리행은 진한 색, 그 영역의 항목 행은
+ * 같은 계열의 연하고 밝은 색. 머리행의 색상 단추에서 고르며 항목 행 색은 자동이다.
+ * Tailwind JIT가 문자열을 그대로 읽으므로 클래스는 여기 리터럴로 둔다.
  */
-const SHADES: Shade[] = [
-  { row: "bg-sky-50", header: "bg-sky-100" },
-  { row: "bg-amber-50", header: "bg-amber-100" },
-  { row: "bg-emerald-50", header: "bg-emerald-100" },
-  { row: "bg-violet-50", header: "bg-violet-100" },
-  { row: "bg-rose-50", header: "bg-rose-100" },
-  { row: "bg-teal-50", header: "bg-teal-100" },
-  { row: "bg-orange-50", header: "bg-orange-100" },
-  { row: "bg-indigo-50", header: "bg-indigo-100" },
-  { row: "bg-lime-50", header: "bg-lime-100" },
-  { row: "bg-fuchsia-50", header: "bg-fuchsia-100" },
-];
-const NO_SHADE: Shade = { row: "", header: "bg-slate-100" };
-const UNTAGGED_SHADE: Shade = { row: "bg-slate-50", header: "bg-slate-200" };
+export const GROUP_COLORS = [
+  { key: "sky", label: "하늘", header: "bg-sky-300", row: "bg-sky-50", swatch: "bg-sky-400" },
+  { key: "blue", label: "파랑", header: "bg-blue-300", row: "bg-blue-50", swatch: "bg-blue-500" },
+  { key: "indigo", label: "남색", header: "bg-indigo-300", row: "bg-indigo-50", swatch: "bg-indigo-500" },
+  { key: "violet", label: "보라", header: "bg-violet-300", row: "bg-violet-50", swatch: "bg-violet-500" },
+  { key: "fuchsia", label: "자주", header: "bg-fuchsia-300", row: "bg-fuchsia-50", swatch: "bg-fuchsia-500" },
+  { key: "rose", label: "장미", header: "bg-rose-300", row: "bg-rose-50", swatch: "bg-rose-500" },
+  { key: "orange", label: "주황", header: "bg-orange-300", row: "bg-orange-50", swatch: "bg-orange-500" },
+  { key: "amber", label: "호박", header: "bg-amber-300", row: "bg-amber-50", swatch: "bg-amber-500" },
+  { key: "lime", label: "연두", header: "bg-lime-300", row: "bg-lime-50", swatch: "bg-lime-500" },
+  { key: "emerald", label: "초록", header: "bg-emerald-300", row: "bg-emerald-50", swatch: "bg-emerald-500" },
+  { key: "teal", label: "청록", header: "bg-teal-300", row: "bg-teal-50", swatch: "bg-teal-500" },
+  { key: "slate", label: "회색", header: "bg-slate-300", row: "bg-slate-50", swatch: "bg-slate-500" },
+] as const;
 
-export function shadeFor(label: string | null | undefined, fields: GroupField[]): Shade {
+export type GroupColorKey = (typeof GROUP_COLORS)[number]["key"];
+
+export function isGroupColorKey(v: unknown): v is GroupColorKey {
+  return typeof v === "string" && GROUP_COLORS.some((c) => c.key === v);
+}
+
+export function shadeForColor(key: GroupColorKey): Shade {
+  const c = GROUP_COLORS.find((x) => x.key === key) ?? GROUP_COLORS[0];
+  return { row: c.row, header: c.header };
+}
+
+/**
+ * 자동 음영 — 색을 고르지 않은 영역은 마지막 분류(세부 분류·구분) 값으로 정해진다.
+ * 같은 값이면 시트 어디에 있어도 같은 색이라 눈으로 바로 찾는다. 값이 없으면 회색.
+ * (개정 2026-09-21: 머리행을 더 진하게 — 항목 행과 확실히 구분된다)
+ */
+const AUTO_KEYS: GroupColorKey[] = ["sky", "amber", "emerald", "violet", "rose", "teal", "orange", "indigo", "lime", "fuchsia"];
+const NO_SHADE: Shade = { row: "", header: "bg-slate-200" };
+const UNTAGGED_SHADE: Shade = { row: "bg-slate-50", header: "bg-slate-300" };
+
+export function shadeFor(label: string | null | undefined, fields: GroupField[], color?: string | null): Shade {
+  if (isGroupColorKey(color)) return shadeForColor(color);
   if (fields.length === 0) return NO_SHADE;
   if (!label) return UNTAGGED_SHADE;
   let h = 5381;
   for (let i = 0; i < label.length; i += 1) h = ((h << 5) + h + label.charCodeAt(i)) | 0;
-  return SHADES[Math.abs(h) % SHADES.length]!;
+  return shadeForColor(AUTO_KEYS[Math.abs(h) % AUTO_KEYS.length]!);
 }
 
 export function groupValuesOf(item: GroupValues, fields: GroupField[]): GroupValues {
@@ -87,6 +109,8 @@ export type ItemGroup = {
   values: GroupValues;
   ids: string[];
   shade: Shade;
+  /** 사람이 고른 색상 키 — null이면 자동 음영 */
+  color: GroupColorKey | null;
 };
 
 /** 정렬 순서를 보존한 채 같은 분류가 이어지는 구간을 묶는다 */
@@ -110,7 +134,9 @@ export function buildGroups<T extends GroupableItem>(
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const shadeLabel = fields.length ? values[fields[fields.length - 1]!] : null;
-    groups.push({ key: `${base}#${n}`, anchorId: id, values, ids: [id], shade: shadeFor(shadeLabel, fields) });
+    // 영역 색은 첫 항목의 값이 대표한다 — 영역의 모든 항목이 같은 값을 갖는다(서버가 함께 저장)
+    const color = isGroupColorKey(item.color) ? item.color : null;
+    groups.push({ key: `${base}#${n}`, anchorId: id, values, ids: [id], shade: shadeFor(shadeLabel, fields, color), color });
   }
   return groups;
 }

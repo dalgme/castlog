@@ -51,13 +51,21 @@ export function DispatchDialog({
   expertsLite = false,
   triggerLabel = "섭외 진행",
   slotIds,
+  positionIds,
+  expertName = null,
   sessionLabel = null,
   size = "sm",
+  variant = "default",
 }: {
   projectId: string;
   projectName: string;
   /** 세션 단위 발송 — 지정하면 그 세션만 (2026-09-05) */
   slotIds?: string[];
+  /** 후보 단위 발송 (기획 지시 2026-09-21) — 진행 현황의 '문자보내기' */
+  positionIds?: string[];
+  /** 후보 단위일 때 대화상자 제목에 적는 전문가 이름 */
+  expertName?: string | null;
+  variant?: "default" | "outline";
   /** 세션 라벨 — 대화상자 제목에 표기 */
   sessionLabel?: string | null;
   size?: "sm" | "xs";
@@ -101,6 +109,7 @@ export function DispatchDialog({
         eventSummary,
         memo,
         slotIds,
+        positionIds,
       });
       if (!res.ok) {
         setError(res.error);
@@ -140,7 +149,7 @@ export function DispatchDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" className={size === "xs" ? "h-8 px-2.5 text-xs" : undefined}>
+        <Button size="sm" variant={variant} className={size === "xs" ? "h-7 px-2 text-[11px]" : undefined}>
           <Send className="mr-1.5 h-3.5 w-3.5" />
           {triggerLabel}
         </Button>
@@ -148,7 +157,11 @@ export function DispatchDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {sessionLabel
+            {expertName
+              ? expertsLite
+                ? `${expertName} — 섭외 요청을 기록할까요?`
+                : `${expertName}에게 섭외 요청 문자를 보낼까요?`
+              : sessionLabel
               ? expertsLite
                 ? `${sessionLabel} — 섭외 요청을 기록할까요?`
                 : `${sessionLabel} — 이 세션의 전문가에게 섭외 요청을 보낼까요?`

@@ -548,6 +548,7 @@ export type Database = {
           check2: string | null
           decision: string | null
           applicable: string | null
+          color: string | null
           is_practice: boolean
           created_by: string | null
           updated_by: string | null
@@ -577,6 +578,7 @@ export type Database = {
           check2?: string | null
           decision?: string | null
           applicable?: string | null
+          color?: string | null
           is_practice?: boolean
           created_by?: string | null
           updated_by?: string | null
@@ -606,6 +608,7 @@ export type Database = {
           check2?: string | null
           decision?: string | null
           applicable?: string | null
+          color?: string | null
           is_practice?: boolean
           created_by?: string | null
           updated_by?: string | null
@@ -1534,6 +1537,7 @@ export type Database = {
           slot_count: number
           position_count: number
           planned_amount: number
+          planned_amount_max: number | null
           plan_signature: string
           note: string | null
           last_rejection_note: string | null
@@ -1556,6 +1560,7 @@ export type Database = {
           slot_count?: number
           position_count?: number
           planned_amount?: number
+          planned_amount_max?: number | null
           plan_signature: string
           note?: string | null
           last_rejection_note?: string | null
@@ -1578,6 +1583,7 @@ export type Database = {
           slot_count?: number
           position_count?: number
           planned_amount?: number
+          planned_amount_max?: number | null
           plan_signature?: string
           note?: string | null
           last_rejection_note?: string | null
@@ -1674,9 +1680,13 @@ export type Database = {
           delivery_mode: string | null
           unit_fee_online: number | null
           unit_fee_offline: number | null
+          hours_per_session: number | null
+          hourly_fee_online: number | null
+          hourly_fee_offline: number | null
         }
         Insert: {
           date_kind?: string
+          hours_per_session?: number | null
           end_starts_time?: string | null
           end_ends_time?: string | null
           session_count_min?: number | null
@@ -1686,6 +1696,8 @@ export type Database = {
           delivery_mode?: string | null
           unit_fee_online?: number | null
           unit_fee_offline?: number | null
+          hourly_fee_online?: number | null
+          hourly_fee_offline?: number | null
           field_id?: string | null
           period_end_date?: string | null
           sort_order?: number | null
@@ -1709,6 +1721,7 @@ export type Database = {
         }
         Update: {
           date_kind?: string
+          hours_per_session?: number | null
           end_starts_time?: string | null
           end_ends_time?: string | null
           session_count_min?: number | null
@@ -1718,6 +1731,8 @@ export type Database = {
           delivery_mode?: string | null
           unit_fee_online?: number | null
           unit_fee_offline?: number | null
+          hourly_fee_online?: number | null
+          hourly_fee_offline?: number | null
           field_id?: string | null
           period_end_date?: string | null
           sort_order?: number | null
@@ -1796,6 +1811,8 @@ export type Database = {
           expected_fee_max: number | null
           unit_fee_online: number | null
           unit_fee_offline: number | null
+          hourly_fee_online: number | null
+          hourly_fee_offline: number | null
           fee_custom: boolean
           position_no: number
           rank: number | null
@@ -1811,6 +1828,8 @@ export type Database = {
           expected_fee_max?: number | null
           unit_fee_online?: number | null
           unit_fee_offline?: number | null
+          hourly_fee_online?: number | null
+          hourly_fee_offline?: number | null
           fee_custom?: boolean
           code: string
           created_at?: string
@@ -1832,6 +1851,8 @@ export type Database = {
           expected_fee_max?: number | null
           unit_fee_online?: number | null
           unit_fee_offline?: number | null
+          hourly_fee_online?: number | null
+          hourly_fee_offline?: number | null
           fee_custom?: boolean
           code?: string
           created_at?: string

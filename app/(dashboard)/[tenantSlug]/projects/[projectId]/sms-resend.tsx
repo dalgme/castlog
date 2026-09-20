@@ -170,7 +170,7 @@ export function ResendSmsButton({
           title="섭외 요청 문자를 다시 보냅니다"
         >
           <RefreshCw className="mr-1 h-3 w-3" aria-hidden />
-          문자 재발송
+          재발송
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

@@ -22,6 +22,7 @@ import {
   scheduleSnapshotText,
   type SlotScheduleRow,
 } from "@/lib/integrations/slot-schedule";
+import { engagementTermsText } from "@/lib/sessions/fees";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
@@ -86,7 +87,7 @@ export async function requestEngagementForPositionCore(
 
   const { data: position } = await supabase
     .from("engagement_slot_positions")
-    .select("id, slot_id, status, code, expected_fee")
+    .select("id, slot_id, status, code, expected_fee, unit_fee_online, unit_fee_offline")
     .eq("id", input.positionId)
     .maybeSingle();
   if (!position) return { ok: false, error: "대상을 찾을 수 없습니다." };
@@ -101,7 +102,7 @@ export async function requestEngagementForPositionCore(
   const slotResult = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
@@ -114,6 +115,8 @@ export async function requestEngagementForPositionCore(
     fee_amount: number | null;
     location_name: string | null;
     location_address: string | null;
+    unit_fee_online: number | null;
+    unit_fee_offline: number | null;
   } | null = slotResult.data;
   if (slotResult.error?.code === "42703") {
     const { data: legacySlot } = await supabase
@@ -123,7 +126,7 @@ export async function requestEngagementForPositionCore(
       )
       .eq("id", position.slot_id)
       .maybeSingle();
-    slot = legacySlot ? { ...legacySlot, period_end_date: null } : null;
+    slot = legacySlot ? { ...legacySlot, period_end_date: null, unit_fee_online: null, unit_fee_offline: null } : null;
   }
   if (!slot) return { ok: false, error: "슬롯을 찾을 수 없습니다." };
   // 컨설팅 세션은 수행기간(시작~종료)이 계약 기간이다 (리뷰 P2-1) —
@@ -193,6 +196,12 @@ export async function requestEngagementForPositionCore(
   // 요청 시점 일정 문구를 섭외 건에 스냅샷해 수락서·재안내·포털이 같은 문장을 쓴다.
   const slotSchedule = await loadSlotSchedule(supabase, slot);
   const scheduleText = scheduleSnapshotText(slotSchedule);
+  // 섭외 조건 — 진행 방식·총 회차·회차당 시간·회차당 단가(병행은 온/오프 각각). 후보 개별 단가 우선 (기획 지시 2026-09-21)
+  const terms = engagementTermsText(
+    slotSchedule,
+    position.unit_fee_online ?? slot.unit_fee_online,
+    position.unit_fee_offline ?? slot.unit_fee_offline
+  );
   const engagementRow = {
     tenant_id: tenantId,
     expert_id: input.expertId,
@@ -331,13 +340,14 @@ export async function requestEngagementForPositionCore(
         input.programName?.trim() ? `· 사업명: ${input.programName.trim()}` : null,
         slot.role_description ? `· 역할: ${slot.role_description}` : null,
         schedule ? `· 일정: ${schedule}` : null,
+        terms ? `· 조건: ${terms}` : null,
         slot.location_name
           ? `· 장소: ${slot.location_name}${
               slot.location_address ? ` (${slot.location_address})` : ""
             }`
           : null,
-        slot.fee_amount
-          ? `· 의뢰비용: ${slot.fee_amount.toLocaleString("ko-KR")}원`
+        (position.expected_fee ?? slot.fee_amount)
+          ? `· 의뢰비용: ${(position.expected_fee ?? slot.fee_amount ?? 0).toLocaleString("ko-KR")}원`
           : null,
         `· 회신 마감: ${new Date(expiresAtIso).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}까지`,
       ]
@@ -364,8 +374,10 @@ export async function requestEngagementForPositionCore(
       tenantName: tenant?.name ?? "기업",
       programName: input.programName?.trim() || null,
       schedule,
+      terms,
       locationName: slot.location_name,
-      feeAmount: slot.fee_amount,
+      // 총액은 후보별 예정가(결재받은 금액) — 세션 1인 비용은 레거시 폴백
+      feeAmount: position.expected_fee ?? slot.fee_amount,
       deadline: expiresAtIso,
       url,
     }),

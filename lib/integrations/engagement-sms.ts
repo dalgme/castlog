@@ -74,6 +74,8 @@ export function buildEngagementBundleSms(params: {
   itemCount: number;
   /** 건별 의뢰비용 합계(원) — null이면 표기 생략 */
   totalFee: number | null;
+  /** 섭외 조건(진행 방식·총 회차·회차당 시간·회차당 단가) — 모든 건이 같을 때만 한 줄로 (2026-09-21) */
+  terms?: string | null;
   deadline?: string | null;
   url: string;
 }): string {
@@ -91,6 +93,7 @@ export function buildEngagementBundleSms(params: {
   return [
     `[${params.tenantName}] 섭외 요청 ${params.itemCount}건`,
     params.programName,
+    params.terms ?? null,
     fee,
     due,
     `각 건 확인·수락/거절: ${params.url}`,
@@ -104,6 +107,8 @@ export function buildEngagementRequestSms(params: {
   tenantName: string;
   programName: string | null;
   schedule: string | null;
+  /** 섭외 조건 — 진행 방식(온라인/오프라인/병행)·총 회차·회차당 시간·회차당 단가(병행은 온/오프) (기획 지시 2026-09-21) */
+  terms?: string | null;
   locationName: string | null;
   /** 의뢰비용(원) — 전문가는 링크를 열기 전에 '얼마'를 알아야 한다 (검수 C4) */
   feeAmount?: number | null;
@@ -126,6 +131,7 @@ export function buildEngagementRequestSms(params: {
     `[${params.tenantName}] 섭외 요청`,
     params.programName,
     params.schedule,
+    params.terms ?? null,
     params.locationName,
     fee,
     due,

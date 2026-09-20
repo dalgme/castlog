@@ -41,6 +41,8 @@ export type PlanLine = {
   feeAmount: number;
   locationName: string | null;
   subtotal: number;
+  /** 소계 최대 — 회차·병행 범위 총액의 최대 합 (기획 2026-09-21). 범위가 없으면 subtotal과 같다 */
+  subtotalMax?: number;
   /** 지문용 — 상위 후보(코드:전문가:예정가:순위) 목록. 저장 대상 아님 */
   candidateSignature?: string;
 };
@@ -49,7 +51,10 @@ export type PlanSnapshot = {
   lines: PlanLine[];
   slotCount: number;
   positionCount: number;
+  /** 계획 섭외비 최소 */
   plannedAmount: number;
+  /** 계획 섭외비 최대 — 범위가 없으면 plannedAmount와 같다 */
+  plannedAmountMax: number;
   signature: string;
 };
 
@@ -94,6 +99,7 @@ export async function buildPlanSnapshot(
     position_no: number;
     rank: number | null;
     expected_fee: number | null;
+    expected_fee_max: number | null;
     status: string;
     assigned_expert_id: string | null;
   };
@@ -102,7 +108,7 @@ export async function buildPlanSnapshot(
     ? await supabase
         .from("engagement_slot_positions")
         .select(
-          "id, slot_id, code, position_no, rank, expected_fee, status, assigned_expert_id"
+          "id, slot_id, code, position_no, rank, expected_fee, expected_fee_max, status, assigned_expert_id"
         )
         .in("slot_id", slotIds)
         .neq("status", "canceled")
@@ -128,6 +134,11 @@ export async function buildPlanSnapshot(
       (sum, c) => sum + (c.expected_fee ?? legacyFee),
       0
     );
+    // 최대 — 후보별 총액 범위(expected_fee_max)가 있으면 그 값, 없으면 최소와 같다
+    const subtotalMax = selected.reduce(
+      (sum, c) => sum + (c.expected_fee_max ?? c.expected_fee ?? legacyFee),
+      0
+    );
     return {
       slotId: slot.id,
       slotDate: slot.slot_date,
@@ -139,6 +150,7 @@ export async function buildPlanSnapshot(
       feeAmount: legacyFee,
       locationName: slot.location_name,
       subtotal,
+      subtotalMax,
       candidateSignature: selected
         .map(
           (c) =>
@@ -168,6 +180,7 @@ export async function buildPlanSnapshot(
     slotCount: lines.length,
     positionCount: lines.reduce((sum, l) => sum + l.requiredCount, 0),
     plannedAmount: lines.reduce((sum, l) => sum + l.subtotal, 0),
+    plannedAmountMax: lines.reduce((sum, l) => sum + (l.subtotalMax ?? l.subtotal), 0),
     signature,
   };
 }
@@ -332,6 +345,8 @@ export type ActivePlan = {
   slotCount: number;
   positionCount: number;
   plannedAmount: number;
+  /** 계획 섭외비 최대 — null이면 단일 금액 (기획 2026-09-21) */
+  plannedAmountMax: number | null;
   planSignature: string;
   note: string | null;
   lastRejectionNote: string | null;
@@ -342,7 +357,7 @@ export type ActivePlan = {
 };
 
 const ACTIVE_PLAN_COLUMNS =
-  "id, tenant_id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, plan_signature, note, last_rejection_note, submitted_at, approved_at";
+  "id, tenant_id, revision, status, approval_id, parent_plan_id, slot_count, position_count, planned_amount, planned_amount_max, plan_signature, note, last_rejection_note, submitted_at, approved_at";
 
 type ActivePlanRow = {
   id: string;
@@ -354,6 +369,7 @@ type ActivePlanRow = {
   slot_count: number;
   position_count: number;
   planned_amount: number;
+  planned_amount_max?: number | null;
   plan_signature: string;
   note: string | null;
   last_rejection_note: string | null;
@@ -372,6 +388,7 @@ function toActivePlan(row: ActivePlanRow): ActivePlan {
     slotCount: row.slot_count,
     positionCount: row.position_count,
     plannedAmount: row.planned_amount,
+    plannedAmountMax: row.planned_amount_max ?? null,
     planSignature: row.plan_signature,
     note: row.note,
     lastRejectionNote: row.last_rejection_note,

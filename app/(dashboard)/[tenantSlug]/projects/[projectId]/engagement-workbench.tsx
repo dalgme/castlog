@@ -471,11 +471,14 @@ export function EngagementWorkbench({
                 {/* 회당 단가 일괄 등록 (기획 2026-09-21) — 진행 방식에 맞는 칸만 */}
                 <div className="mt-1.5">
                   <UnitFeeBulkForm
-                    key={`${slot.id}:${slot.unitFeeOnline ?? ""}:${slot.unitFeeOffline ?? ""}`}
+                    key={`${slot.id}:${slot.hourlyFeeOnline ?? ""}:${slot.hourlyFeeOffline ?? ""}:${slot.unitFeeOnline ?? ""}:${slot.unitFeeOffline ?? ""}:${slot.schedule.hoursPerSession ?? ""}`}
                     slotId={slot.id}
                     deliveryMode={slot.schedule.deliveryMode}
+                    hours={slot.schedule.hoursPerSession}
                     online={slot.unitFeeOnline}
                     offline={slot.unitFeeOffline}
+                    hourlyOnline={slot.hourlyFeeOnline}
+                    hourlyOffline={slot.hourlyFeeOffline}
                     editable={slotEditable && canInput}
                   />
                 </div>
@@ -496,6 +499,8 @@ export function EngagementWorkbench({
                   schedule={slot.schedule}
                   slotUnitOnline={slot.unitFeeOnline}
                   slotUnitOffline={slot.unitFeeOffline}
+                  slotHourlyOnline={slot.hourlyFeeOnline}
+                  slotHourlyOffline={slot.hourlyFeeOffline}
                 />
               </li>
               );

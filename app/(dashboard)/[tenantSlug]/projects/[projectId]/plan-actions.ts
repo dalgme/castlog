@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isMissingColumnError } from "@/lib/supabase/errors";
+import { formatWonRange } from "@/lib/sessions/fees";
 import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { gradeFromUser, roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
@@ -438,6 +439,7 @@ export async function submitEngagementPlan(
         slot_count: snapshot.slotCount,
         position_count: snapshot.positionCount,
         planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
         plan_signature: snapshot.signature,
         note: note.trim() || null,
       })
@@ -454,6 +456,7 @@ export async function submitEngagementPlan(
         slot_count: snapshot.slotCount,
         position_count: snapshot.positionCount,
         planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
         plan_signature: snapshot.signature,
         note: note.trim() || null,
       })
@@ -485,7 +488,7 @@ export async function submitEngagementPlan(
     title: `${isReport ? "[섭외 사후보고]" : "[섭외계획]"} ${project.name} · 세션 ${snapshot.slotCount}건`,
     body:
       `섭외 인원 ${snapshot.positionCount}명 / 타임테이블 ${snapshot.slotCount}건\n` +
-      `계획 섭외비 ${snapshot.plannedAmount.toLocaleString("ko-KR")}원\n\n` +
+      `계획 섭외비 ${formatWonRange(snapshot.plannedAmount, snapshot.plannedAmountMax)}\n\n` +
       (note.trim() || "") +
       menteeSection +
       (manualApproverIds.length > 0 ? MANUAL_LINE_NOTE : "") +
@@ -526,6 +529,7 @@ export async function submitEngagementPlan(
       project_id: projectId,
       approval_id: approval.approvalId,
       planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
       position_count: snapshot.positionCount,
       flow: flow.mode,
     },
@@ -658,6 +662,7 @@ export async function submitEngagementPlanChange(
       slot_count: snapshot.slotCount,
       position_count: snapshot.positionCount,
       planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
       plan_signature: snapshot.signature,
       note: reason.trim(),
     })
@@ -688,8 +693,8 @@ export async function submitEngagementPlanChange(
     title: `${isReport ? "[섭외 사후보고 변경" : "[섭외계획 변경"} R${newRevision}] ${project.name} · 세션 ${snapshot.slotCount}건`,
     body:
       `인원 ${current.positionCount}명 → ${snapshot.positionCount}명\n` +
-      `계획 섭외비 ${current.plannedAmount.toLocaleString("ko-KR")}원 → ` +
-      `${snapshot.plannedAmount.toLocaleString("ko-KR")}원 ` +
+      `계획 섭외비 ${formatWonRange(current.plannedAmount, current.plannedAmountMax)} → ` +
+      `${formatWonRange(snapshot.plannedAmount, snapshot.plannedAmountMax)} ` +
       `(${diff >= 0 ? "+" : ""}${diff.toLocaleString("ko-KR")}원)\n\n` +
       `변경 사유: ${reason.trim()}` +
       (await buildMenteeSection(snapshot.lines.map((l) => l.slotId))) +
@@ -734,11 +739,13 @@ export async function submitEngagementPlanChange(
     before_data: {
       revision: current.revision,
       planned_amount: current.plannedAmount,
+      planned_amount_max: current.plannedAmountMax,
       position_count: current.positionCount,
     },
     after_data: {
       revision: newRevision,
       planned_amount: snapshot.plannedAmount,
+      planned_amount_max: snapshot.plannedAmountMax,
       position_count: snapshot.positionCount,
       approval_id: approval.approvalId,
       flow: flow.mode,

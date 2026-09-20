@@ -45,6 +45,8 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
+import { engagementTermsText } from "@/lib/sessions/fees";
 import { requestEngagementForPositionCore } from "@/lib/integrations/request-engagement";
 import { gateDeputyAction } from "@/lib/integrations/deputy-approvals";
 
@@ -577,6 +579,8 @@ export async function dispatchProjectEngagements(input: {
   memo?: string;
   /** 세션 단위 발송 (2026-09-05) — 지정하면 그 세션들만. 비우면 프로젝트 전체 */
   slotIds?: string[];
+  /** 후보(자리) 단위 발송 (기획 지시 2026-09-21) — 진행 현황의 '문자보내기'. 지정하면 그 자리만 */
+  positionIds?: string[];
 }): Promise<DispatchResult> {
   const auth = await requireManager("engagementRequest");
   if (!auth.ok) return auth;
@@ -587,6 +591,13 @@ export async function dispatchProjectEngagements(input: {
         "세션 지정이 올바르지 않습니다 (시스템 결함). 화면을 새로고침한 뒤 다시 시도해 주세요.",
     };
   }
+  if (input.positionIds && !dispatchSlotIdsSchema.safeParse(input.positionIds).success) {
+    return {
+      ok: false,
+      error: "후보 지정이 올바르지 않습니다 (시스템 결함). 화면을 새로고침한 뒤 다시 시도해 주세요.",
+    };
+  }
+  const onlyPositions = input.positionIds && input.positionIds.length > 0 ? new Set(input.positionIds) : null;
 
   const state = await getProjectEngagementState(input.projectId);
   if (!state) return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
@@ -663,11 +674,12 @@ export async function dispatchProjectEngagements(input: {
     const sorted = (positions ?? [])
       .filter((p) => p.slot_id === slot.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no));
-    const slotTargets = pickDispatchTargets(
-      sorted,
-      slot.required_count,
-      redispatch
-    );
+    // 후보 단위 발송은 순위·필요인원 규칙을 타지 않는다 — 담당자가 그 사람에게 보내기로 정한 것이다.
+    // 배정된(assigned) 자리만 나간다 — 이미 요청·확정된 자리는 재발송 버튼이 따로 있다.
+    const slotTargets = onlyPositions
+      ? sorted.filter((p) => onlyPositions.has(p.id) && p.status === "assigned" && p.assigned_expert_id)
+      : pickDispatchTargets(sorted, slot.required_count, redispatch);
+    if (onlyPositions && slotTargets.length === 0) continue;
     const slotState = slotStates ? (slotStates[slot.id] ?? "none") : "approved";
     if (slotState !== "approved") {
       for (const p of slotTargets) {
@@ -687,7 +699,9 @@ export async function dispatchProjectEngagements(input: {
       error:
         failed.length > 0
           ? `발송 가능한 건이 없습니다. (${failed[0]?.reason ?? ""})`
-          : redispatch
+          : onlyPositions
+            ? "이 후보는 지금 보낼 수 있는 상태가 아닙니다 (배정된 자리만 발송). 새로고침 후 상태를 확인해 주세요."
+            : redispatch
             ? "일괄 발송 대상이 없습니다 — 이미 요청이 나간 세션의 빈 자리(거절·만료)는 코드넘버별 개별 요청으로 채워 주세요 (규칙)."
             : "발송할 배정 건이 없습니다 — 세션마다 필요인원만큼 이미 요청·확정되었습니다.",
     };
@@ -868,6 +882,41 @@ export async function dispatchProjectEngagements(input: {
     const items = itemRows ?? [];
     const feeValues = items.map((i) => i.fee_amount).filter((v): v is number => v !== null);
     const totalFee = feeValues.length > 0 ? feeValues.reduce((a, b) => a + b, 0) : null;
+    // 건별 섭외 조건(진행 방식·총 회차·회차당 시간·회차당 단가) — 후보 자리와 세션에서 읽는다 (기획 지시 2026-09-21)
+    const termsByEngagement = new Map<string, string>();
+    try {
+      const { data: termPositions } = await admin
+        .from("engagement_slot_positions")
+        .select("engagement_id, slot_id, unit_fee_online, unit_fee_offline")
+        .in("id", createdPositions.map((p) => p.id));
+      const termSlotIds = Array.from(new Set((termPositions ?? []).map((p) => p.slot_id)));
+      const { data: termSlots } = termSlotIds.length
+        ? await admin
+            .from("engagement_slots")
+            .select(
+              "id, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session"
+            )
+            .in("id", termSlotIds)
+        : { data: [] };
+      const termDates = await loadSlotDates(admin, termSlotIds);
+      const slotById = new Map((termSlots ?? []).map((s) => [s.id, s]));
+      for (const p of termPositions ?? []) {
+        const s = p.engagement_id ? slotById.get(p.slot_id) : undefined;
+        if (!s || !p.engagement_id) continue;
+        const text = engagementTermsText(
+          scheduleFromRow(s, termDates.get(s.id) ?? []),
+          p.unit_fee_online ?? s.unit_fee_online,
+          p.unit_fee_offline ?? s.unit_fee_offline
+        );
+        if (text) termsByEngagement.set(p.engagement_id, text);
+      }
+    } catch {
+      // 조건 문구가 없어도 발송은 나간다 — 링크에서 상세를 본다
+    }
+    // 문자에는 모든 건의 조건이 같을 때만 한 줄로 싣는다 (다르면 링크·메일에서 건별로)
+    const termsList = createdIds.map((id) => termsByEngagement.get(id) ?? null);
+    const commonTerms =
+      termsList.length > 0 && termsList.every((t) => t !== null && t === termsList[0]) ? termsList[0] : null;
 
     let bundleUrl: string;
     try {
@@ -920,7 +969,7 @@ export async function dispatchProjectEngagements(input: {
             i.starts_time,
             i.ends_time
           );
-        return `· ${[i.session_name, schedule, i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
+        return `· ${[i.session_name, schedule, termsByEngagement.get(i.id) ?? null, i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
       });
       await sendEngagementEmail({
         tenantId: auth.session.tenantId,
@@ -952,6 +1001,7 @@ export async function dispatchProjectEngagements(input: {
           programName: input.programName?.trim() || null,
           itemCount: createdIds.length,
           totalFee,
+          terms: commonTerms,
           deadline: expiresAtIso,
           url: bundleUrl,
         }),

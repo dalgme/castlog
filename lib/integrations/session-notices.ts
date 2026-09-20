@@ -61,7 +61,7 @@ export async function getSessionNoticeContext(
   const slotResult = await admin
     .from("engagement_slots")
     .select(
-      "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
+      "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, hours_per_session"
     )
     .eq("id", slotId)
     .maybeSingle();

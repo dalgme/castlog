@@ -51,9 +51,12 @@ export type SlotPositionRow = {
   expectedFee: number | null;
   /** 총액 최대 — 회차·병행 범위일 때만 (기획 2026-09-21) */
   expectedFeeMax: number | null;
-  /** 회당 단가 (온라인/오프라인) */
+  /** 회당 단가 (온라인/오프라인) = 시간당 비용 × 회차당 시간 */
   unitFeeOnline: number | null;
   unitFeeOffline: number | null;
+  /** 시간당 비용 (온라인/오프라인) — 입력값 (기획 지시 2026-09-21) */
+  hourlyFeeOnline: number | null;
+  hourlyFeeOffline: number | null;
   /** 일괄 등록 단가에서 개별 수정한 금액 — 코랄 표시 */
   feeCustom: boolean;
   status: string;
@@ -85,9 +88,12 @@ export type SlotRow = {
   notes: string | null;
   /** 날짜 유형·회차·진행 방식 (기획 2026-09-21) */
   schedule: SessionSchedule;
-  /** 세션 일괄 단가 (온라인/오프라인) */
+  /** 세션 일괄 단가 (온라인/오프라인) = 시간당 비용 × 회차당 시간 */
   unitFeeOnline: number | null;
   unitFeeOffline: number | null;
+  /** 세션 일괄 시간당 비용 (입력값, 기획 지시 2026-09-21) */
+  hourlyFeeOnline: number | null;
+  hourlyFeeOffline: number | null;
   mentees: MenteeView[];
   positions: SlotPositionRow[];
   notice: SlotNoticeData;

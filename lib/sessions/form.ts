@@ -14,6 +14,8 @@ export type SessionFormValue = {
   countMax: string;
   onlineCount: string;
   offlineCount: string;
+  /** 회차당 시간 (예: "2", "1.5") */
+  hoursPerSession: string;
   deliveryMode: DeliveryMode | "";
   sessionName: string;
   roleType: string;
@@ -38,6 +40,7 @@ export function emptySessionForm(over: Partial<SessionFormValue> = {}): SessionF
     countMax: "",
     onlineCount: "",
     offlineCount: "",
+    hoursPerSession: "",
     deliveryMode: "",
     sessionName: "",
     roleType: "lecturer",
@@ -81,6 +84,7 @@ export function formFromSchedule(
     countMax: n(s.countMax),
     onlineCount: n(s.onlineCount),
     offlineCount: n(s.offlineCount),
+    hoursPerSession: s.hoursPerSession === null ? "" : String(s.hoursPerSession),
     deliveryMode: s.deliveryMode ?? "",
     sessionName: extra.sessionName ?? "",
     roleType: extra.roleType,

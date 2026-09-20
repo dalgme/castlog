@@ -33,11 +33,11 @@ import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { EngagementUrgentCancel } from "@/components/integrations/engagement-urgent-cancel";
 import { PlanHistoryTable } from "./plan-history-table";
 import {
-  ResendSlotButton,
   ResendSmsButton,
   SmsHistoryCell,
   type SmsSummary,
 } from "./sms-resend";
+import { EngagementDecisionButtons } from "./engagement-decision";
 
 /**
  * 승인 목록 및 섭외 진행 탭 (기획 확정 2026-08-30 — 37번).
@@ -69,6 +69,8 @@ export type ApprovedPlanRow = {
   slotCount: number;
   positionCount: number;
   plannedAmount: number;
+  /** 계획 섭외비 최대 — null이면 단일 금액 */
+  plannedAmountMax: number | null;
   submittedAt: string | null;
   approvedAt: string | null;
   note: string | null;
@@ -103,38 +105,6 @@ export type ProgressRow = {
   sms?: SmsSummary | null;
 };
 
-/**
- * 승인된 세션별 섭외 문자 송신 현황 (기획 지시 2026-09-05).
- * 세션 단위로 보내고, 세션 단위로 "몇 명 나갔고 누가 왜 안 나갔나"를 본다.
- */
-export type SessionDispatchRow = {
-  slotId: string;
-  label: string;
-  detail: string | null;
-  requiredCount: number;
-  /** 지금 보내면 요청이 나갈 자리 수 (순위 상위 필요인원 중 미요청) */
-  dispatchable: number;
-  /** 요청이 나간 자리(회신 대기 + 수락) */
-  sent: number;
-  /** 수락(확정)된 자리 */
-  accepted: number;
-  /** 요청·거절·만료 흔적이 있는 세션인가 — 재발송 모드에서 일괄 대상에서 빠진다 */
-  hasHistory: boolean;
-  /** 최초 발송 이후(재발송 모드)인가 */
-  redispatch: boolean;
-  /** 프로젝트 단계가 발송을 막으면 그 사유 (서버와 같은 문구) */
-  blockedReason: string | null;
-  /** 회신 대기(requested) 건 수 — 세션 단위 재발송 대상 */
-  waitingCount: number;
-  /** 자리별 최근 실패 사유 — error: 실패 / info: 테스트 모드 등 안내 */
-  failures: {
-    code: string;
-    expertName: string | null;
-    reason: string;
-    kind: "error" | "info";
-  }[];
-};
-
 /** 수락서가 존재하는 단계 — 이때만 '수락서 확인' 버튼이 의미 있다 */
 const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
   "accepted",
@@ -142,6 +112,13 @@ const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
   "letter_sent",
   "confirmed",
 ];
+
+/** 행 배경 (기획 지시 2026-09-21): 거절·만료·취소 = 회색 전체, 승인 이후 = 노란색 */
+function progressRowClass(stage: EngagementStage): string {
+  if (stage === "declined" || stage === "expired" || stage === "canceled") return "bg-neutral-200 text-neutral-600";
+  if (ACCEPTANCE_STAGES.includes(stage)) return "bg-yellow-100";
+  return "";
+}
 
 export function EngagementProgress({
   tenantSlug,
@@ -157,7 +134,6 @@ export function EngagementProgress({
   planGate,
   plans,
   rows,
-  sessionDispatch = [],
   attachmentPanel,
   acceptanceAttachmentPanel,
 }: {
@@ -183,8 +159,6 @@ export function EngagementProgress({
   planGate: { blocked: boolean; message: string };
   plans: ApprovedPlanRow[];
   rows: ProgressRow[];
-  /** 승인된 세션별 송신 버튼·현황 — 승인된 세션이 없으면 빈 배열 */
-  sessionDispatch?: SessionDispatchRow[];
   attachmentPanel?: React.ReactNode;
   acceptanceAttachmentPanel?: React.ReactNode;
 }) {
@@ -331,119 +305,6 @@ export function EngagementProgress({
         </CardContent>
       </Card>
 
-      {/* ── 세션별 섭외 문자 송신 (기획 지시 2026-09-05) ─────────────── */}
-      {sessionDispatch.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Send className="h-4 w-4" aria-hidden />
-              세션별 섭외 문자 송신 · 현황
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y">
-              {sessionDispatch.map((r) => {
-                const waiting = r.sent - r.accepted;
-                const remaining = Math.max(0, r.requiredCount - r.sent);
-                return (
-                  <li
-                    key={r.slotId}
-                    className="flex flex-wrap items-start justify-between gap-3 py-3"
-                  >
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-sm font-semibold">{r.label}</p>
-                      {r.detail && (
-                        <p className="text-xs text-muted-foreground">{r.detail}</p>
-                      )}
-                      <p className="text-xs tabular-nums">
-                        <span
-                          className={cn(
-                            "font-semibold",
-                            r.sent > 0 ? "text-emerald-700" : "text-muted-foreground"
-                          )}
-                        >
-                          {r.sent}명 송신 완료
-                        </span>
-                        {" · "}필요 {r.requiredCount}명
-                        {waiting > 0 && ` · 회신 대기 ${waiting}명`}
-                        {r.accepted > 0 && ` · 수락 ${r.accepted}명`}
-                        {remaining > 0 && r.dispatchable === 0 && !r.blockedReason && (
-                          <span className="text-amber-800">
-                            {r.redispatch && r.hasHistory
-                              ? " · 남은 자리는 개별 요청으로"
-                              : " · 보낼 배정 후보 없음"}
-                          </span>
-                        )}
-                      </p>
-                      {r.failures.some((f) => f.kind === "error") && (
-                        <ul className="space-y-0.5 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
-                          {r.failures
-                            .filter((f) => f.kind === "error")
-                            .map((f) => (
-                              <li key={f.code}>
-                                <span className="font-mono">{f.code}</span>
-                                {f.expertName ? ` ${f.expertName}` : ""} — 송신 실패:{" "}
-                                {f.reason}
-                              </li>
-                            ))}
-                        </ul>
-                      )}
-                      {r.failures.some((f) => f.kind === "info") && (
-                        <ul className="space-y-0.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-                          {r.failures
-                            .filter((f) => f.kind === "info")
-                            .map((f) => (
-                              <li key={f.code}>
-                                <span className="font-mono">{f.code}</span>
-                                {f.expertName ? ` ${f.expertName}` : ""} — {f.reason}
-                              </li>
-                            ))}
-                        </ul>
-                      )}
-                    </div>
-                    {canManage && (
-                      <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {r.waitingCount > 0 && !expertsLite && (
-                        <ResendSlotButton
-                          projectId={projectId}
-                          slotId={r.slotId}
-                          sessionLabel={r.label}
-                          waitingCount={r.waitingCount}
-                        />
-                      )}
-                      <DispatchDialog
-                        projectId={projectId}
-                        projectName={projectName}
-                        defaultSummary={projectDescription}
-                        targetCount={r.dispatchable}
-                        expertsLite={expertsLite}
-                        disabled={r.blockedReason !== null || r.dispatchable === 0}
-                        disabledReason={
-                          r.blockedReason ??
-                          (r.sent >= r.requiredCount
-                            ? "필요인원만큼 이미 요청·확정되었습니다."
-                            : r.redispatch && r.hasHistory
-                              ? "이미 요청이 나간 세션은 일괄 발송 대상이 아닙니다 (규칙) — 남은 자리는 코드넘버별 개별 요청으로 채웁니다."
-                              : "보낼 배정 후보가 없습니다 — 세션 확인 탭에서 후보를 배정한 뒤 보내세요.")
-                        }
-                        triggerLabel={
-                          expertsLite
-                            ? "섭외 요청 기록"
-                            : `섭외 문자 송신 (${r.dispatchable}명)`
-                        }
-                        slotIds={[r.slotId]}
-                        sessionLabel={r.label}
-                        size="xs"
-                      />
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ── 승인 목록 ─────────────────────────────────────────── */}
       <Card>
@@ -487,13 +348,14 @@ export function EngagementProgress({
                     <TableHead className="w-32">전문가</TableHead>
                     <TableHead className="w-28 text-right">예정가</TableHead>
                     <TableHead className="w-28">단계</TableHead>
-                    <TableHead className="w-48">문자 발송</TableHead>
+                    <TableHead className="w-56">문자 발송</TableHead>
+                    <TableHead className="w-36">회신 처리</TableHead>
                     <TableHead className="w-44 text-right">수락서</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r) => (
-                    <TableRow key={r.positionId}>
+                    <TableRow key={r.positionId} className={progressRowClass(r.stage)}>
                       <TableCell className="text-xs">
                         {r.slotLabel}
                         {r.sessionDetail && (
@@ -526,9 +388,29 @@ export function EngagementProgress({
                         </span>
                       </TableCell>
                       <TableCell>
-                        {/* 멘토별 문자 발송 상황·이력 + 재발송 (기획 지시 2026-09-05) */}
+                        {/* 후보별 문자보내기 → 발송 뒤 재발송 (기획 지시 2026-09-21) + 발송 이력 */}
                         <div className="flex flex-col items-start gap-1">
                           <SmsHistoryCell sms={r.sms ?? null} expertName={r.expertName} />
+                          {canManage && r.stage === "plan_approved" && (
+                            <DispatchDialog
+                              projectId={projectId}
+                              projectName={projectName}
+                              defaultSummary={projectDescription}
+                              targetCount={1}
+                              expertsLite={expertsLite}
+                              disabled={planGate.blocked}
+                              disabledReason={planGate.message}
+                              triggerLabel={expertsLite ? "요청 기록" : "문자보내기"}
+                              positionIds={[r.positionId]}
+                              expertName={r.expertName}
+                              size="xs"
+                            />
+                          )}
+                          {canManage && (r.stage === "assigned" || r.stage === "plan_review") && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {r.stage === "plan_review" ? "품의 승인 후 보낼 수 있습니다" : "섭외 품의 승인 전"}
+                            </span>
+                          )}
                           {canManage &&
                             !expertsLite &&
                             r.engagementId &&
@@ -540,6 +422,27 @@ export function EngagementProgress({
                               />
                             )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {/* 승인·거절 — 회신 대기 건만 (기획 지시 2026-09-21). 승인 행은 노랑, 거절 행은 회색 */}
+                        {canManage && r.engagementId && r.stage === "requested" ? (
+                          <EngagementDecisionButtons
+                            engagementId={r.engagementId}
+                            projectId={projectId}
+                            expertName={r.expertName}
+                            expertsLite={expertsLite}
+                          />
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">
+                            {r.stage === "declined"
+                              ? "거절됨"
+                              : r.stage === "expired"
+                                ? "만료됨"
+                                : ACCEPTANCE_STAGES.includes(r.stage)
+                                  ? "승인됨"
+                                  : "-"}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className="inline-flex items-center gap-1">

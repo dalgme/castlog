@@ -31,9 +31,9 @@ import {
   setCandidateFee,
   setCandidateUnitFees,
 } from "./slot-actions";
-import { countLabel, hybridCountLabel, type SessionSchedule } from "@/lib/sessions/schedule";
-import { computeFeeTotal, formatFeeTotal } from "@/lib/sessions/fees";
-import { unitFeeFields } from "@/components/sessions/unit-fee-form";
+import { countLabel, fmtHours, hybridCountLabel, type SessionSchedule } from "@/lib/sessions/schedule";
+import { computeFeeTotal, formatFeeTotal, formatWon } from "@/lib/sessions/fees";
+import { hourlyFromStored, unitFeeFields } from "@/components/sessions/unit-fee-form";
 
 /**
  * 세션별 섭외 후보 목록 (기획 확정 2026-08-22 — 후보 순위 모델)
@@ -58,6 +58,8 @@ export function CandidateList({
   schedule,
   slotUnitOnline,
   slotUnitOffline,
+  slotHourlyOnline,
+  slotHourlyOffline,
 }: {
   tenantSlug: string;
   projectId: string;
@@ -79,9 +81,14 @@ export function CandidateList({
   /** 세션 일괄 단가 — 이와 다르면 '개별 수정'(코랄) */
   slotUnitOnline: number | null;
   slotUnitOffline: number | null;
+  /** 세션 일괄 시간당 비용 (입력값) */
+  slotHourlyOnline: number | null;
+  slotHourlyOffline: number | null;
 }) {
   const feeFields = unitFeeFields(schedule.deliveryMode);
   const countText = hybridCountLabel(schedule) ?? countLabel(schedule);
+  const hours = schedule.hoursPerSession;
+  const hoursText = hours ? `${fmtHours(hours)}시간` : "1시간(미입력)";
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -248,33 +255,53 @@ export function CandidateList({
                   );
                 }
                 if (editable && canManage) {
+                  // 입력은 시간당 비용, 회당 단가 = 시간당 × 회차당 시간, 총액 = 회당 × 회차 (기획 지시 2026-09-21)
+                  const hourlyOf = (key: "online" | "offline") =>
+                    hourlyFromStored(
+                      key === "online" ? p.hourlyFeeOnline : p.hourlyFeeOffline,
+                      key === "online" ? p.unitFeeOnline : p.unitFeeOffline,
+                      hours
+                    );
+                  const slotHourlyOf = (key: "online" | "offline") =>
+                    hourlyFromStored(
+                      key === "online" ? slotHourlyOnline : slotHourlyOffline,
+                      key === "online" ? slotUnitOnline : slotUnitOffline,
+                      hours
+                    );
                   return (
                     <span className="inline-flex flex-wrap items-center gap-1 text-xs">
-                      {feeFields.map((f) => (
-                        <label key={f.key} className="inline-flex items-center gap-1">
-                          <span className="text-muted-foreground">{f.label.replace(" 회당 단가", "").replace("회당 단가", "회당")}</span>
-                          <Input
-                            inputMode="numeric"
-                            defaultValue={formatComma(f.key === "online" ? p.unitFeeOnline : p.unitFeeOffline)}
-                            onInput={commaInputHandler}
-                            placeholder={formatComma(f.key === "online" ? slotUnitOnline : slotUnitOffline) || "회당(원)"}
-                            className={cn("h-7 w-24 text-xs tabular-nums", p.feeCustom && "border-coral text-coral")}
-                            onBlur={(e) => {
-                              const v = e.target.value.replace(/\D/g, "");
-                              const cur = f.key === "online" ? p.unitFeeOnline : p.unitFeeOffline;
-                              if (v !== String(cur ?? "")) {
-                                const other = f.key === "online" ? p.unitFeeOffline : p.unitFeeOnline;
-                                run(() =>
-                                  setCandidateUnitFees(p.id, {
-                                    online: f.key === "online" ? v : String(other ?? ""),
-                                    offline: f.key === "offline" ? v : String(other ?? ""),
-                                  })
-                                );
-                              }
-                            }}
-                          />
-                        </label>
-                      ))}
+                      {feeFields.map((f) => {
+                        const unit = f.key === "online" ? p.unitFeeOnline ?? slotUnitOnline : p.unitFeeOffline ?? slotUnitOffline;
+                        return (
+                          <label key={f.key} className="inline-flex items-center gap-1">
+                            <span className="text-muted-foreground">
+                              {f.label.replace(" 시간당 비용", "").replace("시간당 비용", "").trim() || "시간당"}
+                            </span>
+                            <Input
+                              inputMode="numeric"
+                              defaultValue={formatComma(hourlyOf(f.key))}
+                              onInput={commaInputHandler}
+                              placeholder={formatComma(slotHourlyOf(f.key)) || "시간당(원)"}
+                              title={`시간당 비용 — 회차당 ${hoursText}을 곱해 회당 단가가 됩니다`}
+                              className={cn("h-7 w-24 text-xs tabular-nums", p.feeCustom && "border-coral text-coral")}
+                              onBlur={(e) => {
+                                const v = e.target.value.replace(/\D/g, "");
+                                const cur = hourlyOf(f.key);
+                                if (v !== String(cur ?? "")) {
+                                  const other = hourlyOf(f.key === "online" ? "offline" : "online");
+                                  run(() =>
+                                    setCandidateUnitFees(p.id, {
+                                      hourlyOnline: f.key === "online" ? v : String(other ?? ""),
+                                      hourlyOffline: f.key === "offline" ? v : String(other ?? ""),
+                                    })
+                                  );
+                                }
+                              }}
+                            />
+                            {unit !== null && <span className="text-muted-foreground">→ 회당 {formatWon(unit)}</span>}
+                          </label>
+                        );
+                      })}
                       <span className={cn("text-muted-foreground", customCls)} title={total?.note ?? undefined}>
                         {countText ? `× ${countText} = ` : ""}
                         {totalText ? `총액 ${totalText}` : "총액 —"}

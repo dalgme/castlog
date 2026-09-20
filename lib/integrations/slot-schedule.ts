@@ -35,7 +35,8 @@ export function scheduleSnapshotText(s: SessionSchedule): string | null {
 
 export const SLOT_SCHEDULE_COLUMNS =
   "date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, " +
-  "session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline";
+  "session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, " +
+  "hours_per_session, hourly_fee_online, hourly_fee_offline";
 
 export type SlotScheduleRow = {
   slot_date: string;
@@ -50,6 +51,7 @@ export type SlotScheduleRow = {
   session_count_online?: number | null;
   session_count_offline?: number | null;
   delivery_mode?: string | null;
+  hours_per_session?: number | string | null;
 };
 
 export function scheduleFromRow(row: SlotScheduleRow, dates: SessionDate[]): SessionSchedule {
@@ -75,6 +77,13 @@ export function scheduleFromRow(row: SlotScheduleRow, dates: SessionDate[]): Ses
     onlineCount: row.session_count_online ?? null,
     offlineCount: row.session_count_offline ?? null,
     deliveryMode: isDeliveryMode(row.delivery_mode) ? row.delivery_mode : null,
+    // numeric 열은 드라이버에 따라 문자열로 올 수 있다
+    hoursPerSession:
+      row.hours_per_session === null || row.hours_per_session === undefined
+        ? null
+        : Number.isFinite(Number(row.hours_per_session))
+          ? Number(row.hours_per_session)
+          : null,
   };
 }
 

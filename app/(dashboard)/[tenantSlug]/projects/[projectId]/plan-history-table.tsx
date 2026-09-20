@@ -212,7 +212,9 @@ export function PlanHistoryTable({
                         {p.positionCount}명
                       </TableCell>
                       <TableCell className="text-right text-xs">
-                        {formatKrw(p.plannedAmount)}
+                        {p.plannedAmountMax !== null && p.plannedAmountMax !== p.plannedAmount
+                          ? `${formatKrw(p.plannedAmount)} ~ ${formatKrw(p.plannedAmountMax)}`
+                          : formatKrw(p.plannedAmount)}
                       </TableCell>
                       <TableCell className="text-xs">{when(p.submittedAt)}</TableCell>
                       <TableCell className="text-xs">{when(p.approvedAt)}</TableCell>

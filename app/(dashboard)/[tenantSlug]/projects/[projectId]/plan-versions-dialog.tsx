@@ -88,7 +88,9 @@ export function PlanVersionsDialog({ projectId }: { projectId: string }) {
                 </Badge>
                 <span className="text-muted-foreground">
                   세션 {v.slotCount} · 후보 {v.positionCount} ·{" "}
-                  {formatKrw(v.plannedAmount)}
+                  {v.plannedAmountMax !== null && v.plannedAmountMax !== v.plannedAmount
+                    ? `${formatKrw(v.plannedAmount)} ~ ${formatKrw(v.plannedAmountMax)}`
+                    : formatKrw(v.plannedAmount)}
                 </span>
                 {v.submittedAt && (
                   <span className="ml-auto text-xs text-muted-foreground">

@@ -238,7 +238,7 @@ export async function buildEngagementPlanDraft(
   const { data: slots } = await supabase
     .from("engagement_slots")
     .select(
-      "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode"
+      "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, fee_amount, location_name, required_count, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, hours_per_session"
     )
     .eq("project_id", projectId)
     .order("slot_date", { ascending: true })
