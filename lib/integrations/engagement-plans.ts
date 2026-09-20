@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { getTenantModules } from "@/lib/modules/server";
+import { logEngagementEvent } from "@/lib/integrations/engagement-events";
+import { notifyExpert } from "@/lib/experts/notifications";
+import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import {
   SLOT_SCHEDULE_COLUMNS,
   loadSlotDates,
@@ -1069,6 +1072,150 @@ export async function onEngagementPlanApprovalCanceled(
   });
 }
 
+
+/**
+ * 변경 품의 승인 → 바뀐 자리 재섭외 (기획 지시 2026-09-21).
+ *
+ * 부모(승인본)와 자식(변경본) 지문을 세션·후보 단위로 대조해 실제 내용이 바뀐 자리
+ * (전문가·금액·일정·회차·방식·시간 등)를 찾는다. 같은 전문가라도 조건이 바뀌었으면
+ * 섭외를 다시 해야 한다 — 그 자리의 살아 있는 섭외 건(요청 중·승인)을 회수하고,
+ * 발송 전·송부 후(미서명) 수락서를 폐기하며, 자리는 같은 전문가가 배정된 상태로
+ * 되돌려 '승인 목록 및 섭외 진행'에 '문자보내기'가 다시 나오게 한다. 전문가가 새 조건으로
+ * 다시 수락하면 수락서가 바뀐 내용으로 새로 만들어지고 '수락서 송신'이 다시 열린다.
+ * 서명·확정된 수락서는 회수된 섭외 건에 문서로만 남는다.
+ */
+async function reengageChangedPositions(
+  admin: ReturnType<typeof createAdminClient>,
+  plan: { id: string; tenantId: string; projectId: string; parentPlanId: string }
+): Promise<void> {
+  try {
+    const planIds = [plan.id, plan.parentPlanId];
+    const [{ data: pair }, { data: lines }] = await Promise.all([
+      admin.from("engagement_plans").select("id, plan_signature").in("id", planIds),
+      admin
+        .from("engagement_plan_lines")
+        .select("plan_id, slot_id, slot_date, starts_time, ends_time, role_type, required_count, subtotal")
+        .in("plan_id", planIds),
+    ]);
+    const signatureOf = (id: string) => (pair ?? []).find((p) => p.id === id)?.plan_signature ?? "";
+    const linesOf = (id: string) =>
+      (lines ?? [])
+        .filter((l) => l.plan_id === id)
+        .map((l) => ({ slot_id: l.slot_id, key: planLineKey(l) }));
+    const { changedCodesBySlot } = diffPlanSignatures(
+      signatureOf(plan.parentPlanId),
+      signatureOf(plan.id),
+      linesOf(plan.parentPlanId),
+      linesOf(plan.id)
+    );
+    const slotIds = Array.from(changedCodesBySlot.keys());
+    if (slotIds.length === 0) return;
+
+    const { data: positions } = await admin
+      .from("engagement_slot_positions")
+      .select("id, slot_id, code, engagement_id")
+      .in("slot_id", slotIds)
+      .not("engagement_id", "is", null);
+    const targets = (positions ?? []).filter(
+      (p) => p.engagement_id && changedCodesBySlot.get(p.slot_id)?.has(p.code)
+    );
+    if (targets.length === 0) return;
+
+    const { data: engagements } = await admin
+      .from("expert_engagements")
+      .select("id, status, expert_id, position_code, is_practice")
+      .in(
+        "id",
+        targets.map((p) => p.engagement_id as string)
+      )
+      .in("status", ["requested", "accepted"]);
+    const engagementById = new Map((engagements ?? []).map((e) => [e.id, e]));
+    const now = new Date().toISOString();
+    const reengaged: string[] = [];
+
+    for (const position of targets) {
+      const engagement = engagementById.get(position.engagement_id as string);
+      if (!engagement) continue;
+      // 수락서 폐기 — 발송 전(issued)·송부 후 미서명(sent). 서명·확정본은 문서로 남긴다
+      await admin
+        .from("engagement_acceptances")
+        .delete()
+        .eq("engagement_id", engagement.id)
+        .in("status", ["issued", "sent"]);
+      // 섭외 건 회수
+      const { data: canceled } = await admin
+        .from("expert_engagements")
+        .update({
+          status: "canceled",
+          response_note: "[변경 품의 승인] 조건이 바뀌어 재섭외 — 이전 요청·수락서 회수",
+        })
+        .eq("id", engagement.id)
+        .in("status", ["requested", "accepted"])
+        .select("id")
+        .maybeSingle();
+      if (!canceled) continue;
+      await admin.from("engagement_cancellations").insert({
+        tenant_id: plan.tenantId,
+        engagement_id: engagement.id,
+        expert_id: engagement.expert_id,
+        project_id: plan.projectId,
+        prior_status: engagement.status === "accepted" ? "accepted" : "requested",
+        is_urgent: false,
+        reason: `변경 품의 승인 — 코드넘버 ${position.code} 조건 변경으로 재섭외`,
+        canceled_by: null,
+        is_practice: engagement.is_practice ?? false,
+      });
+      // 자리는 같은 전문가가 배정된 상태로 — '문자보내기'가 다시 나온다
+      await admin
+        .from("engagement_slot_positions")
+        .update({
+          status: "assigned",
+          engagement_id: null,
+          expert_id: null,
+          assigned_expert_id: engagement.expert_id,
+        })
+        .eq("id", position.id);
+      await logEngagementEvent({
+        tenantId: plan.tenantId,
+        engagementId: engagement.id,
+        type: "canceled",
+        actorKind: "system",
+        actorLabel: "시스템",
+        note: `변경 품의 승인 — 코드넘버 ${position.code} 조건이 바뀌어 재섭외 (이전 요청·수락서 회수)`,
+        isPractice: engagement.is_practice ?? false,
+      });
+      await notifyExpert({
+        expertId: engagement.expert_id,
+        category: "engagement_cancelled",
+        title: "섭외 조건이 바뀌어 이전 요청이 회수되었습니다",
+        body: "요청 기업이 세션 조건(일정·비용·방식 등)을 변경했습니다. 바뀐 조건으로 섭외 요청이 다시 오면 그때 응답해 주세요. 이전 수락서는 효력이 없습니다.",
+        link: "/expert/engagements",
+        tenantId: plan.tenantId,
+      });
+      reengaged.push(engagement.id);
+    }
+
+    if (reengaged.length === 0) return;
+    await admin.from("audit_logs").insert({
+      tenant_id: plan.tenantId,
+      actor_auth_user_id: null,
+      actor_role: "system",
+      action: "engagement_plan.reengage_changed",
+      resource_type: "engagement_plan",
+      resource_id: plan.id,
+      after_data: { project_id: plan.projectId, engagement_ids: reengaged, at: now },
+    });
+    try {
+      await refreshProjectEngagementStage(plan.projectId);
+    } catch {
+      // 단계 갱신 실패가 승인 처리를 막지 않는다
+    }
+  } catch (error) {
+    // 재섭외 동기화 실패는 승인 자체를 되돌리지 않는다 — 담당자는 '거절로 변경'으로 손수 되돌릴 수 있다
+    console.warn("[engagement-plans] reengage on change approval failed:", error);
+  }
+}
+
 /**
  * 섭외계획 품의 ↔ 결재 연동 훅.
  * 결재 도메인은 계획 도메인을 알지 않는다 — 결재 종결 시 여기서 상태를 맞춘다.
@@ -1095,12 +1242,18 @@ export async function onEngagementPlanApprovalResolved(
       .from("engagement_plans")
       .update({ status: "approved", approved_at: new Date().toISOString() })
       .eq("id", plan.id);
-    // 변경 품의였다면 이전 계획을 대체 처리
+    // 변경 품의였다면 이전 계획을 대체 처리하고, 실제 내용이 바뀐 자리는 재섭외로 되돌린다
     if (plan.parent_plan_id) {
       await admin
         .from("engagement_plans")
         .update({ status: "superseded" })
         .eq("id", plan.parent_plan_id);
+      await reengageChangedPositions(admin, {
+        id: plan.id,
+        tenantId: plan.tenant_id,
+        projectId: plan.project_id,
+        parentPlanId: plan.parent_plan_id,
+      });
     }
   } else if (plan.parent_plan_id) {
     // 변경·보완 품의의 반려 — 이미 승인된 부모 계획을 되살린다. 부모를 죽인
