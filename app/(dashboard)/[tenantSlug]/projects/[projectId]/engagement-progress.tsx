@@ -54,7 +54,7 @@ import { COMPLETED_BADGE_CLASS } from "./completion-buttons";
 
 export type ApprovedPlanSession = {
   slotId: string | null;
-  /** 결재 승인 뒤 세션 정보(회차·시간·비용·방식·일정 등)가 바뀌었는가 — 주홍색 굵은 테두리 */
+  /** 결재 승인 뒤 세션 정보(회차·시간·비용·방식·일정 등)가 바뀌었는가 — 붉은 굵은 테두리 */
   changed: boolean;
   label: string;
   schedule: string | null;
@@ -62,6 +62,9 @@ export type ApprovedPlanSession = {
   locationName: string | null;
   requiredCount: number;
   subtotal: number;
+  /** 현재 섭외 테이블의 소계(최소~최대) — 승인 소계와 다르면 함께 보여 준다 (기획 2026-09-21) */
+  currentSubtotal?: number | null;
+  currentSubtotalMax?: number | null;
   /** 지문에 기록된 섭외 대상 — 결재된 금액 */
   experts: { code: string; name: string; fee: number }[];
 };
@@ -129,10 +132,10 @@ export type ProgressRow = {
  * 표 행은 border-collapse 아래서 tr 테두리가 칸에 가려지므로 칸마다 그린다.
  */
 export const CHANGED_SESSION_RING =
-  "border-[3px] border-orange-600";
+  "border-[3px] border-red-600";
 export const CHANGED_SESSION_ROW =
-  "[&>td]:border-y-[3px] [&>td]:border-y-orange-600 [&>td:first-child]:border-l-[3px] [&>td:first-child]:border-l-orange-600 [&>td:last-child]:border-r-[3px] [&>td:last-child]:border-r-orange-600";
-export const CHANGED_SESSION_HINT = "결재 승인 후 세션 정보가 변경됨 — 변경 품의 필요";
+  "[&>td]:border-y-[3px] [&>td]:border-y-red-600 [&>td:first-child]:border-l-[3px] [&>td:first-child]:border-l-red-600 [&>td:last-child]:border-r-[3px] [&>td:last-child]:border-r-red-600";
+export const CHANGED_SESSION_HINT = "결재 승인 후 세션 정보가 변경됨 — 변경 품의(재승인) 필요";
 
 /** 수락서가 존재하는 단계 — 이때만 '수락서 확인' 버튼이 의미 있다 */
 const ACCEPTANCE_STAGES: readonly EngagementStage[] = [
@@ -407,8 +410,8 @@ export function EngagementProgress({
                       <TableCell className="text-xs">
                         {r.slotLabel}
                         {r.sessionChanged && (
-                          <span className="ml-1.5 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                            승인 후 변경
+                          <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            승인 후 변경 · 재승인 필요
                           </span>
                         )}
                         {r.sessionDetail && (

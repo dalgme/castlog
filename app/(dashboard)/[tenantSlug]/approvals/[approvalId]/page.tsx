@@ -21,7 +21,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { getPlanCoveredSlotIds } from "@/lib/integrations/engagement-plans";
+import {
+  buildPlanSnapshot,
+  changedSlotIdsAgainst,
+  getPlanCoveredSlotIds,
+  planSignatureMatches,
+} from "@/lib/integrations/engagement-plans";
+import { formatWonRange } from "@/lib/sessions/fees";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { countLabel, DELIVERY_LABELS, hybridCountLabel, scheduleLines } from "@/lib/sessions/schedule";
 import { ActPanel } from "./act-panel";
@@ -141,10 +147,22 @@ export default async function ApprovalDetailPage({
   let reviewChanges: ReviewChange[] = [];
   let isPlanApproval = false;
   let planProjectId: string | null = null;
+  /**
+   * 승인 뒤 세션 내용이 바뀐 계획 (기획 지시 2026-09-21): 결재된 금액과 현재 섭외
+   * 테이블 금액을 나란히 보여 준다. 결재 문서 자체는 승인 시점 값이 진실이라
+   * 덮어쓰지 않고, 아래 후보 목록은 현재 값이라 그 차이를 말해 준다.
+   */
+  let planDrift: {
+    approvedAmount: number;
+    approvedAmountMax: number | null;
+    currentAmount: number;
+    currentAmountMax: number;
+    changedSlotIds: Set<string>;
+  } | null = null;
   {
     const { data: plan } = await supabase
       .from("engagement_plans")
-      .select("id, project_id")
+      .select("id, project_id, status, planned_amount, planned_amount_max, plan_signature")
       .eq("approval_id", approval.id)
       .maybeSingle();
     if (plan) {
@@ -153,6 +171,18 @@ export default async function ApprovalDetailPage({
       // 이 결재건의 계획에 담긴 세션만 — 계획이 여러 건(2026-09-05)이면 다른
       // 계획의 세션은 여기서 보이지도, 고쳐지지도 않아야 한다 (리뷰 M3)
       const coveredForReview = await getPlanCoveredSlotIds(plan.id);
+      if (plan.status === "approved") {
+        const current = await buildPlanSnapshot(plan.project_id, coveredForReview ?? undefined);
+        if (!planSignatureMatches(plan.plan_signature, current.signature)) {
+          planDrift = {
+            approvedAmount: plan.planned_amount,
+            approvedAmountMax: plan.planned_amount_max ?? null,
+            currentAmount: current.plannedAmount,
+            currentAmountMax: current.plannedAmountMax,
+            changedSlotIds: new Set(changedSlotIdsAgainst(plan.plan_signature, current)),
+          };
+        }
+      }
       const { data: allPlanSlots } = await supabase
         .from("engagement_slots")
         .select(
@@ -205,6 +235,7 @@ export default async function ApprovalDetailPage({
         const sc = scheduleFromRow(slot, planDates.get(slot.id) ?? []);
         return {
           slotId: slot.id,
+          changed: planDrift?.changedSlotIds.has(slot.id) ?? false,
           label: `${slot.session_name ?? slot.role_type} · ${scheduleLines(sc)[0] ?? slot.slot_date}`,
           requiredCount: slot.required_count,
           detail: {
@@ -453,6 +484,25 @@ export default async function ApprovalDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* 승인 뒤 세션 내용이 바뀐 계획 — 결재 금액과 현재 금액을 나란히 (기획 2026-09-21) */}
+              {planDrift && (
+                <div className="mb-3 rounded-md border-[3px] border-red-600 bg-red-50 p-3 text-sm text-red-900">
+                  <p className="font-bold">
+                    결재 승인 후 세션 내용이 변경되었습니다 — 변경 품의(재승인)가 필요합니다.
+                  </p>
+                  <p className="mt-1">
+                    결재된 계획 섭외비{" "}
+                    <strong>{formatWonRange(planDrift.approvedAmount, planDrift.approvedAmountMax)}</strong>
+                    {" → "}현재 섭외 테이블{" "}
+                    <strong>{formatWonRange(planDrift.currentAmount, planDrift.currentAmountMax)}</strong>
+                  </p>
+                  <p className="mt-1 text-xs">
+                    아래 후보 목록의 예정가는 <b>현재 값</b>입니다. 변경된 세션은 붉은 테두리로 표시됩니다. 이 문서 자체는
+                    승인 시점의 기록이므로 바꾸지 않습니다 — 프로젝트의 섭외계획 패널에서 변경 품의를 올리거나
+                    긴급 진행(전결)으로 처리해 주세요.
+                  </p>
+                </div>
+              )}
               {/* 대결자에게 읽기 전용인 이유를 말한다 — 무설명이면 시스템 결함으로
                   오인한다 (검수 F3 · §12-9 원인 분류) */}
               {canAct && actingAsDelegate && approval.status === "in_progress" && (
