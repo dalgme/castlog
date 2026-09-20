@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ import {
   moveGroupBefore,
   moveItemBefore,
   sameGroup,
+  type GroupColorKey,
   type GroupField,
   type GroupValues,
   type ItemGroup,
@@ -71,6 +72,7 @@ import {
   listMyChecklistSources,
   renameChecklistGroup,
   reorderChecklistItems,
+  setChecklistGroupColor,
   setPlannedDue,
   updateChecklistDday,
   updateChecklistItem,
@@ -108,6 +110,8 @@ export type ProjectChecklistItemView = {
   check2: string | null;
   decision: string | null;
   applicable: string | null;
+  /** 영역 색상 키 (기획 지시 2026-09-21) — 영역의 모든 항목이 같은 값 */
+  color: string | null;
   dueChanges: DueChangeView[];
 };
 
@@ -691,7 +695,7 @@ function ChecklistCard({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
   // 낙관적 분류 이어받기 — 서버가 다시 그리기 전까지 옮긴 항목을 목적지 묶음으로 보이게 (리뷰 M2)
-  const [overrides, setOverrides] = useState<Record<string, GroupValues>>({});
+  const [overrides, setOverrides] = useState<Record<string, GroupValues & { color?: string | null }>>({});
   const [openMemo, setOpenMemo] = useState<Record<string, boolean>>({});
   const [openClassify, setOpenClassify] = useState<Record<string, boolean>>({});
   const [dueDialog, setDueDialog] = useState<{ item: ProjectChecklistItemView; next: string | null } | null>(null);
@@ -720,7 +724,10 @@ function ChecklistCard({
   }
   const categories = Array.from(categoryCounts.entries()).map(([name, count]) => ({ name, count }));
 
-  function commitOrder(next: string[], adopt: { itemIds: string[]; values: GroupValues } | null) {
+  function commitOrder(
+    next: string[],
+    adopt: { itemIds: string[]; values: GroupValues & { color?: string | null } } | null
+  ) {
     setDrag(null);
     // 자리도 분류도 그대로면 서버에 보내지 않는다 (리뷰 M4)
     if (adopt === null && next.join(",") === ids.join(",")) return;
@@ -747,7 +754,7 @@ function ChecklistCard({
       if (drag.id === targetId) return setDrag(null);
       const me = byId.get(drag.id);
       const adopt = me && !sameGroup(me, target, groupFields)
-        ? { itemIds: [drag.id], values: groupValuesOf(target, groupFields) }
+        ? { itemIds: [drag.id], values: { ...groupValuesOf(target, groupFields), color: target.color ?? null } }
         : null;
       return commitOrder(moveItemBefore(ids, drag.id, targetId), adopt);
     }
@@ -761,7 +768,8 @@ function ChecklistCard({
     if (!drag) return;
     if (drag.kind === "item") {
       const me = byId.get(drag.id);
-      const adopt = me && !sameGroup(me, g.values, groupFields) ? { itemIds: [drag.id], values: g.values } : null;
+      const adopt =
+        me && !sameGroup(me, g.values, groupFields) ? { itemIds: [drag.id], values: { ...g.values, color: g.color } } : null;
       return commitOrder(moveItemBefore(ids, drag.id, g.ids[0]!), adopt);
     }
     if (drag.key === g.key) return setDrag(null);
@@ -901,6 +909,14 @@ function ChecklistCard({
                     onDuplicate={() =>
                       run(() => duplicateChecklistItems(checklist.id, g.ids, "group"), `영역을 복제했습니다 (${g.ids.length}개 항목).`)
                     }
+                    onColor={(key) => {
+                      // 낙관적 반영 — 서버가 다시 그리기 전에 머리행·항목 행 색이 바로 바뀐다
+                      setOverrides((o) => ({
+                        ...o,
+                        ...Object.fromEntries(g.ids.map((id) => [id, { ...(o[id] ?? g.values), color: key }])),
+                      }));
+                      run(() => setChecklistGroupColor(checklist.id, g.ids, key));
+                    }}
                     onDelete={() => {
                       const where = groupFields.map((f) => g.values[f] ?? "(미분류)").join(" › ");
                       if (window.confirm(`'${where}' 영역의 ${g.ids.length}개 항목을 모두 삭제할까요? 변경 로그에는 남습니다.`)) {
@@ -998,7 +1014,7 @@ type Drag = { kind: "item"; id: string } | { kind: "group"; key: string; ids: st
 /** 묶음 머리행 + 그 묶음의 항목 행들. 묶음 열이 없는 종류(마감일)는 머리행 없이 항목만 */
 function GroupBlock({
   group, fields, labels, span, canEdit, pending, dragging, onDragStart, onDragEnd, onDrop, onRename, onAdd,
-  onDuplicate, onDelete, children,
+  onDuplicate, onDelete, onColor, children,
 }: {
   group: ItemGroup;
   fields: GroupField[];
@@ -1014,6 +1030,7 @@ function GroupBlock({
   onAdd: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onColor: (key: GroupColorKey | null) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -1027,6 +1044,8 @@ function GroupBlock({
           colSpan={span}
           canEdit={canEdit}
           shade={group.shade}
+          color={group.color}
+          onColor={onColor}
           dragging={dragging}
           pending={pending}
           onDragStart={onDragStart}
@@ -1392,7 +1411,7 @@ function DueChangeDialog({
           </p>
           <label className="block text-xs">
             변경 일자
-            <Input type="date" value={changedOn} onChange={(e) => setChangedOn(e.target.value)} />
+            <KoreanDateInput value={changedOn} onChange={setChangedOn} ariaLabel="변경 일자" />
           </label>
           <label className="block text-xs">
             변경 사유

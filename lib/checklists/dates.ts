@@ -37,6 +37,14 @@ export function formatKoreanDate(iso: string | null | undefined): string {
   return `${String(p.m).padStart(2, "0")}월 ${String(p.d).padStart(2, "0")}일(${w})`;
 }
 
+/** "2026-09-06" → "2026년 09월 06일(일)" — 플랫폼 공통 날짜 표기 (기획 지시 2026-09-21) */
+export function formatKoreanDateFull(iso: string | null | undefined): string {
+  const p = splitIso(iso);
+  if (!p) return "";
+  const w = WEEKDAYS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()];
+  return `${p.y}년 ${String(p.m).padStart(2, "0")}월 ${String(p.d).padStart(2, "0")}일(${w})`;
+}
+
 /** "2026-09-06" → "9/6" (편집 칸에 넣는 짧은 표기) */
 export function toMonthDay(iso: string | null | undefined): string {
   const p = splitIso(iso);

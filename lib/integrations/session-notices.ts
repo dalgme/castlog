@@ -3,7 +3,9 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantSms, type SmsRecipient } from "@/lib/sms/send";
+import { scheduleLines } from "@/lib/sessions/schedule";
 import { formatEventSchedule, roleTypeLabel } from "./engagement-roles";
+import { loadSlotSchedule, scheduleSnapshotText, type SlotScheduleRow } from "./slot-schedule";
 
 export {
   NOTICE_VARIABLES,
@@ -39,6 +41,10 @@ export type SessionNoticeContext = {
   periodEndDate: string | null;
   startsTime: string | null;
   endsTime: string | null;
+  /** 날짜 유형·회차·진행 방식이 있는 세션의 일정 문구 (2026-09-21). 단일 날짜면 null */
+  scheduleText: string | null;
+  /** {일자}용 — 개별선택형은 날짜마다 한 줄 */
+  dateLines: string[];
   roleType: string;
   locationName: string | null;
   locationAddress: string | null;
@@ -51,14 +57,35 @@ export async function getSessionNoticeContext(
 ): Promise<SessionNoticeContext | null> {
   const admin = createAdminClient();
 
-  const { data: slot } = await admin
+  // 날짜 유형·회차·진행 방식 열(2026-09-21)은 42703 한정 폴백 (§14-10)
+  const slotResult = await admin
     .from("engagement_slots")
     .select(
-      "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address"
+      "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, hours_per_session"
     )
     .eq("id", slotId)
     .maybeSingle();
+  let slot: SlotScheduleRow & {
+    id: string;
+    tenant_id: string;
+    project_id: string;
+    role_type: string;
+    session_name: string | null;
+    location_name: string | null;
+    location_address: string | null;
+  } | null = slotResult.data;
+  if (slotResult.error?.code === "42703") {
+    const { data: legacySlot } = await admin
+      .from("engagement_slots")
+      .select(
+        "id, tenant_id, project_id, slot_date, period_end_date, starts_time, ends_time, role_type, session_name, location_name, location_address"
+      )
+      .eq("id", slotId)
+      .maybeSingle();
+    slot = legacySlot;
+  }
   if (!slot) return null;
+  const schedule = await loadSlotSchedule(admin, slot);
 
   const [{ data: tenant }, { data: project }, { data: positions }] =
     await Promise.all([
@@ -109,11 +136,23 @@ export async function getSessionNoticeContext(
     periodEndDate: slot.period_end_date ?? null,
     startsTime: slot.starts_time,
     endsTime: slot.ends_time,
+    scheduleText: scheduleSnapshotText(schedule),
+    dateLines: schedule.dateKind === "individual" && schedule.dates.length > 1 ? scheduleLines(schedule, true) : [],
     roleType: slot.role_type,
     locationName: slot.location_name,
     locationAddress: slot.location_address,
     recipients,
   };
+}
+
+/** 세션 일정 요약 한 줄 — 안내문자 화면·이력 표시용 */
+export function noticeScheduleText(context: SessionNoticeContext): string {
+  const endsOn = context.periodEndDate ?? context.slotDate;
+  return (
+    context.scheduleText ??
+    formatEventSchedule(context.slotDate, endsOn, context.startsTime, context.endsTime) ??
+    context.slotDate
+  );
 }
 
 function timeRange(startsTime: string | null, endsTime: string | null): string {
@@ -146,17 +185,14 @@ export function renderNoticeBody(
     "{기업명}": context.tenantName,
     "{사업명}": context.projectName,
     "{세션명}": context.sessionName ?? context.projectName,
-    "{일정}":
-      formatEventSchedule(
-        context.slotDate,
-        endsOn,
-        context.startsTime,
-        context.endsTime
-      ) || context.slotDate,
+    // 날짜 유형·회차·진행 방식이 있으면 그 문장(2026-09-21), 아니면 옛 표기
+    "{일정}": noticeScheduleText(context),
     "{일자}":
-      endsOn !== context.slotDate
-        ? `${context.slotDate} ~ ${endsOn}`
-        : context.slotDate,
+      context.dateLines.length > 0
+        ? context.dateLines.join(", ")
+        : endsOn !== context.slotDate
+          ? `${context.slotDate} ~ ${endsOn}`
+          : context.slotDate,
     "{시간}": timeRange(context.startsTime, context.endsTime),
     "{장소}": location,
     "{역할}": roleTypeLabel(context.roleType) ?? context.roleType,

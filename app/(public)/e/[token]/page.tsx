@@ -90,12 +90,13 @@ export default async function EngagementConsentPage({
       ? await getPublicTenantBrand(summary.tenantId)
       : EMPTY_BRAND;
     const failSchedule = summary
-      ? formatEventSchedule(
+      ? (summary.scheduleText ??
+        formatEventSchedule(
           summary.startsOn,
           summary.endsOn,
           summary.startsTime,
           summary.endsTime
-        )
+        ))
       : null;
     // 이미 수락한 링크를 다시 연 전문가 — 다음 단계(포털)를 등록 상태별로 안내.
     // 토큰이 영구 열쇠가 되지 않도록 재래핑과 같은 창(72h) 안에서만 (리뷰 H1)
@@ -182,12 +183,15 @@ export default async function EngagementConsentPage({
   const brand = await getPublicTenantBrand(engagement.tenant_id);
   // 수락 후 포털 안내 — 등록 상태(미가입/기업 사전등록/가입)별 문구
   const portalGuide = await getExpertPortalGuide(engagement.expert_id);
-  const schedule = formatEventSchedule(
-    engagement.starts_on,
-    engagement.ends_on,
-    engagement.starts_time,
-    engagement.ends_time
-  );
+  // 요청 시점 일정 문구 스냅샷(날짜 유형·회차·진행 방식) 우선 — 없으면 날짜·시각 표기
+  const schedule =
+    engagement.schedule_text ??
+    formatEventSchedule(
+      engagement.starts_on,
+      engagement.ends_on,
+      engagement.starts_time,
+      engagement.ends_time
+    );
   // 본인의 확정 일정과 겹치는지 — 수락은 계약 성립인데, 이중 계약 위험을
   // 수락 전에 본인에게 알려 주는 화면이 없었다 (검수 C6). 어느 회사의 무슨
   // 일인지는 밝히지 않고 겹침 건수만 보여 준다 (테넌트 격리 원칙).

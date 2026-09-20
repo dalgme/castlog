@@ -13,7 +13,7 @@ import { explainActionError } from "@/lib/ux/action-errors";
 import { buildSlotCode } from "@/lib/integrations/slot-codes";
 import { refreshProjectEngagementStage } from "@/lib/integrations/project-engagement";
 import { loadSlotSchedule } from "@/lib/integrations/slot-schedule";
-import { computeFeeTotal } from "@/lib/sessions/fees";
+import { computeFeeTotal, unitFromHourly } from "@/lib/sessions/fees";
 
 export type SlotResult = { ok: true } | { ok: false; error: string };
 
@@ -53,6 +53,8 @@ const slotSchema = z
     countMax: countField,
     onlineCount: z.number().int().min(0).max(999).nullable().optional(),
     offlineCount: z.number().int().min(0).max(999).nullable().optional(),
+    // 회차당 시간 (기획 지시 2026-09-21) — 0.5시간 단위, 최대 24
+    hoursPerSession: z.number().min(0.25, "회차당 시간을 확인하세요.").max(24).nullable().optional(),
     deliveryMode: z.enum(["online", "offline", "hybrid"]).nullable().optional(),
     roleType: z.enum([
       "host",
@@ -122,6 +124,7 @@ function scheduleColumns(d: z.output<typeof slotSchema>) {
         end_ends_time: null,
         session_count_min: null,
         session_count_max: null,
+        hours_per_session: d.hoursPerSession ?? null,
       },
       dates,
     };
@@ -137,6 +140,7 @@ function scheduleColumns(d: z.output<typeof slotSchema>) {
       end_ends_time: d.endEndsTime || null,
       session_count_min: d.countMin ?? null,
       session_count_max: d.countMax ?? null,
+      hours_per_session: d.hoursPerSession ?? null,
     },
     dates: [] as { date: string; startsTime?: string; endsTime?: string }[],
   };
@@ -744,7 +748,7 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   const { data: source } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, period_end_date, field_id, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline"
+      "id, project_id, slot_date, period_end_date, field_id, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session, hourly_fee_online, hourly_fee_offline"
     )
     .eq("id", slotId)
     .maybeSingle();
@@ -801,6 +805,9 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
       delivery_mode: source.delivery_mode,
       unit_fee_online: source.unit_fee_online,
       unit_fee_offline: source.unit_fee_offline,
+      hours_per_session: source.hours_per_session,
+      hourly_fee_online: source.hourly_fee_online,
+      hourly_fee_offline: source.hourly_fee_offline,
       created_by: auth.userId,
     })
     .select("id")
@@ -1078,21 +1085,40 @@ export async function setCandidateFee(
 const unitFeeInput = z.object({
   online: z.string().regex(/^\d*$/, "단가는 숫자만 입력하세요.").optional(),
   offline: z.string().regex(/^\d*$/, "단가는 숫자만 입력하세요.").optional(),
+  // 시간당 비용 (기획 지시 2026-09-21) — 주면 회당 단가 = 시간당 비용 × 회차당 시간
+  hourlyOnline: z.string().regex(/^\d*$/, "시간당 비용은 숫자만 입력하세요.").optional(),
+  hourlyOffline: z.string().regex(/^\d*$/, "시간당 비용은 숫자만 입력하세요.").optional(),
 });
 export type UnitFeeInput = z.input<typeof unitFeeInput>;
 
 const SLOT_FEE_COLUMNS =
-  "id, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline";
+  "id, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session, hourly_fee_online, hourly_fee_offline";
 
-/** 진행 방식에 맞는 단가만 남긴다 — 온라인 세션에 오프라인 단가가 들어오면 버린다 */
-function normalizeUnitFees(mode: string | null, input: z.output<typeof unitFeeInput>) {
-  const online = input.online ? parseInt(input.online, 10) : null;
-  const offline = input.offline ? parseInt(input.offline, 10) : null;
-  if (mode === "online") return { online, offline: null };
-  if (mode === "offline") return { online: null, offline };
-  if (mode === "hybrid") return { online, offline };
+type NormalizedFees = {
+  online: number | null;
+  offline: number | null;
+  hourlyOnline: number | null;
+  hourlyOffline: number | null;
+};
+
+/**
+ * 진행 방식에 맞는 금액만 남긴다 — 온라인 세션에 오프라인 단가가 들어오면 버린다.
+ * 시간당 비용이 오면 회당 단가는 시간당 비용 × 회차당 시간으로 계산한다(없으면 1시간).
+ */
+function normalizeUnitFees(
+  mode: string | null,
+  hoursPerSession: number | null,
+  input: z.output<typeof unitFeeInput>
+): NormalizedFees {
+  const hOn = input.hourlyOnline ? parseInt(input.hourlyOnline, 10) : null;
+  const hOff = input.hourlyOffline ? parseInt(input.hourlyOffline, 10) : null;
+  const online = hOn !== null ? unitFromHourly(hOn, hoursPerSession) : input.online ? parseInt(input.online, 10) : null;
+  const offline = hOff !== null ? unitFromHourly(hOff, hoursPerSession) : input.offline ? parseInt(input.offline, 10) : null;
+  if (mode === "online") return { online, offline: null, hourlyOnline: hOn, hourlyOffline: null };
+  if (mode === "offline") return { online: null, offline, hourlyOnline: null, hourlyOffline: hOff };
+  if (mode === "hybrid") return { online, offline, hourlyOnline: hOn, hourlyOffline: hOff };
   // 진행 방식 미지정 — 하나만 쓴다 (오프라인 칸)
-  return { online: null, offline: offline ?? online };
+  return { online: null, offline: offline ?? online, hourlyOnline: null, hourlyOffline: hOff ?? hOn };
 }
 
 /**
@@ -1113,13 +1139,18 @@ export async function applySlotUnitFees(slotId: string, input: UnitFeeInput): Pr
   const editable = await assertSlotEditable(slotId);
   if (!editable.ok) return editable;
 
-  const fees = normalizeUnitFees(slot.delivery_mode, parsed.data);
   const schedule = await loadSlotSchedule(supabase, slot);
+  const fees = normalizeUnitFees(slot.delivery_mode, schedule.hoursPerSession, parsed.data);
   const total = computeFeeTotal(schedule, fees.online, fees.offline);
 
   const { error } = await supabase
     .from("engagement_slots")
-    .update({ unit_fee_online: fees.online, unit_fee_offline: fees.offline })
+    .update({
+      unit_fee_online: fees.online,
+      unit_fee_offline: fees.offline,
+      hourly_fee_online: fees.hourlyOnline,
+      hourly_fee_offline: fees.hourlyOffline,
+    })
     .eq("id", slotId);
   if (error) return { ok: false, error: await explainActionError(error.message, "회당 단가 저장에 실패했습니다.") };
 
@@ -1129,6 +1160,8 @@ export async function applySlotUnitFees(slotId: string, input: UnitFeeInput): Pr
     .update({
       unit_fee_online: fees.online,
       unit_fee_offline: fees.offline,
+      hourly_fee_online: fees.hourlyOnline,
+      hourly_fee_offline: fees.hourlyOffline,
       expected_fee: total ? total.min : null,
       expected_fee_max: total && total.max !== total.min ? total.max : null,
     })
@@ -1144,7 +1177,14 @@ export async function applySlotUnitFees(slotId: string, input: UnitFeeInput): Pr
     action: "slot.unit_fee_apply",
     resource_type: "engagement_slot",
     resource_id: slotId,
-    after_data: { unit_fee_online: fees.online, unit_fee_offline: fees.offline, total },
+    after_data: {
+      unit_fee_online: fees.online,
+      unit_fee_offline: fees.offline,
+      hourly_fee_online: fees.hourlyOnline,
+      hourly_fee_offline: fees.hourlyOffline,
+      hours_per_session: schedule.hoursPerSession,
+      total,
+    },
   });
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
@@ -1166,6 +1206,8 @@ async function inheritSlotUnitFees(supabase: ReturnType<typeof createClient>, sl
     .update({
       unit_fee_online: slot.unit_fee_online,
       unit_fee_offline: slot.unit_fee_offline,
+      hourly_fee_online: slot.hourly_fee_online,
+      hourly_fee_offline: slot.hourly_fee_offline,
       expected_fee: total ? total.min : null,
       expected_fee_max: total && total.max !== total.min ? total.max : null,
     })
@@ -1197,8 +1239,8 @@ export async function setCandidateUnitFees(positionId: string, input: UnitFeeInp
   const { data: slot } = await supabase.from("engagement_slots").select(SLOT_FEE_COLUMNS).eq("id", position.slot_id).maybeSingle();
   if (!slot) return { ok: false, error: "세션을 찾을 수 없습니다." };
 
-  const fees = normalizeUnitFees(slot.delivery_mode, parsed.data);
   const schedule = await loadSlotSchedule(supabase, slot);
+  const fees = normalizeUnitFees(slot.delivery_mode, schedule.hoursPerSession, parsed.data);
   const total = computeFeeTotal(schedule, fees.online, fees.offline);
   const custom =
     (fees.online ?? null) !== (slot.unit_fee_online ?? null) ||
@@ -1209,6 +1251,8 @@ export async function setCandidateUnitFees(positionId: string, input: UnitFeeInp
     .update({
       unit_fee_online: fees.online,
       unit_fee_offline: fees.offline,
+      hourly_fee_online: fees.hourlyOnline,
+      hourly_fee_offline: fees.hourlyOffline,
       expected_fee: total ? total.min : null,
       expected_fee_max: total && total.max !== total.min ? total.max : null,
       fee_custom: custom,

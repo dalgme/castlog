@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Time24Input } from "@/components/ui/datetime24";
 import { useToast } from "@/hooks/use-toast";
@@ -157,6 +158,10 @@ function SessionForm({
       countMax: d.dateKind === "continuous" ? num(d.countMax) : null,
       onlineCount: d.deliveryMode === "hybrid" ? num(d.onlineCount) : null,
       offlineCount: d.deliveryMode === "hybrid" ? num(d.offlineCount) : null,
+      hoursPerSession: (() => {
+        const h = parseFloat(d.hoursPerSession);
+        return Number.isFinite(h) && h > 0 ? h : null;
+      })(),
       deliveryMode: d.deliveryMode || null,
       roleType: d.roleType as SlotInput["roleType"],
       sessionName: d.sessionName.trim(),
@@ -169,6 +174,26 @@ function SessionForm({
       fieldId: d.fieldId,
     };
   }
+
+  // 회차당 시간 — 총 회차 아래 (기획 지시 2026-09-21). 총액 = 총회차 × 회차당 시간 × 시간당 비용
+  const hoursRow = (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="w-12 text-muted-foreground">회차당</span>
+      <Input
+        type="number"
+        min={0.5}
+        max={24}
+        step={0.5}
+        value={d.hoursPerSession}
+        onChange={(e) => set("hoursPerSession", e.target.value)}
+        placeholder="시간"
+        className={cn(inputCls, "w-20")}
+        aria-label="회차당 시간"
+      />
+      <span className="text-muted-foreground">시간</span>
+      <span className="text-[11px] text-muted-foreground">섭외후보의 시간당 비용 × 이 시간 = 회차당 단가</span>
+    </div>
+  );
 
   function submit() {
     const input = toInput();
@@ -302,19 +327,20 @@ function SessionForm({
                 />
                 <span className="text-[11px] text-muted-foreground">확정 회차면 최소만 적으세요</span>
               </div>
+              {hoursRow}
             </div>
           ) : (
             <div className="space-y-1.5">
               {d.dates.map((row, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-1.5">
-                  <Input
-                    type="date"
+                  <KoreanDateInput
                     value={row.date}
-                    onChange={(e) =>
-                      set("dates", d.dates.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))
+                    onChange={(next) =>
+                      set("dates", d.dates.map((x, j) => (j === i ? { ...x, date: next } : x)))
                     }
-                    className={cn(inputCls, "w-40")}
-                    aria-label={`날짜 ${i + 1}`}
+                    size="sm"
+                    className="w-52"
+                    ariaLabel={`날짜 ${i + 1}`}
                   />
                   <Time24Input
                     value={row.startsTime}
@@ -352,6 +378,7 @@ function SessionForm({
                   {d.dates.filter((x) => x.date).length}회차
                 </span>
               </div>
+              {hoursRow}
             </div>
           )}
         </section>
@@ -552,7 +579,7 @@ function DayRow({
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="w-12 text-muted-foreground">{label}</span>
-      <Input type="date" value={date} onChange={(e) => onDate(e.target.value)} className={cn(inputCls, "w-40")} aria-label={label} />
+      <KoreanDateInput value={date} onChange={onDate} size="sm" className="w-52" ariaLabel={label} />
       <Time24Input value={starts} onChange={onStarts} ariaLabel={`${label} 시작 시각`} />
       <span className="text-muted-foreground">~</span>
       <Time24Input value={ends} onChange={onEnds} ariaLabel={`${label} 종료 시각`} />

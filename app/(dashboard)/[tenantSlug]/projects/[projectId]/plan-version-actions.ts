@@ -38,6 +38,7 @@ export type PlanVersion = {
   revision: number;
   statusLabel: string;
   plannedAmount: number;
+  plannedAmountMax: number | null;
   slotCount: number;
   positionCount: number;
   submittedAt: string | null;
@@ -70,7 +71,7 @@ export async function getEngagementPlanVersions(
   const { data: plans, error } = await supabase
     .from("engagement_plans")
     .select(
-      "id, revision, status, approval_id, planned_amount, slot_count, position_count, submitted_at, approved_at, last_rejection_note, note"
+      "id, revision, status, approval_id, planned_amount, planned_amount_max, slot_count, position_count, submitted_at, approved_at, last_rejection_note, note"
     )
     .eq("project_id", projectId)
     .order("revision", { ascending: false });
@@ -141,6 +142,7 @@ export async function getEngagementPlanVersions(
               p.status as keyof typeof PLAN_STATUS_LABELS
             ] ?? p.status),
       plannedAmount: p.planned_amount,
+      plannedAmountMax: p.planned_amount_max,
       slotCount: p.slot_count,
       positionCount: p.position_count,
       submittedAt: p.submitted_at,

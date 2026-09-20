@@ -5,6 +5,7 @@ import { Calculator } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -152,12 +153,7 @@ export function TravelForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>출장일</Label>
-          <Input
-            type="date"
-            value={travelDate}
-            onChange={(e) => setTravelDate(e.target.value)}
-            disabled={pending}
-          />
+          <KoreanDateInput value={travelDate} onChange={setTravelDate} disabled={pending} ariaLabel="출장일" />
         </div>
         <div className="space-y-2">
           <Label>연료</Label>

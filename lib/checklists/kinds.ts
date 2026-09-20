@@ -242,6 +242,7 @@ export const CHECKLIST_LOG_ACTION_LABELS: Record<string, string> = {
   "group.add": "새 영역 추가",
   "group.duplicate": "영역 복제",
   "group.delete": "영역 삭제",
+  "group.color": "영역 색상 변경",
   "category.duplicate": "행사(구분) 복제",
   "due.change": "마감일 변경(사유)",
   "due.reason_update": "변경 사유 수정",

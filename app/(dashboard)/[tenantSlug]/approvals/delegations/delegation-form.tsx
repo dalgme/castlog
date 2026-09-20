@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import {
   Select,
   SelectContent,
@@ -93,7 +94,7 @@ export function DelegationForm({ users }: { users: UserOption[] }) {
               <FormItem>
                 <FormLabel>시작일</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="시작일" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -106,7 +107,7 @@ export function DelegationForm({ users }: { users: UserOption[] }) {
               <FormItem>
                 <FormLabel>종료일</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="종료일" />
                 </FormControl>
                 <FormMessage />
               </FormItem>

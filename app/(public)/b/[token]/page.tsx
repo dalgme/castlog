@@ -160,12 +160,14 @@ export default async function EngagementBundlePage({
         [roleTypeLabel(item.role_type), item.role_description]
           .filter(Boolean)
           .join(" · ") || null,
-      schedule: formatEventSchedule(
-        item.starts_on,
-        item.ends_on,
-        item.starts_time,
-        item.ends_time
-      ),
+      schedule:
+        item.schedule_text ??
+        formatEventSchedule(
+          item.starts_on,
+          item.ends_on,
+          item.starts_time,
+          item.ends_time
+        ),
       locationName: item.location_name,
       feeLabel: item.fee_amount !== null ? formatKrw(item.fee_amount) : null,
       // 형제 건은 아직 requested라 확정 일정 집계에 들어가지 않는다 —

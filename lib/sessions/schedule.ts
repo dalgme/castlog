@@ -52,7 +52,14 @@ export type SessionSchedule = {
   onlineCount: number | null;
   offlineCount: number | null;
   deliveryMode: DeliveryMode | null;
+  /** 회차당 진행 시간(시간) — 총액 = 총회차 × 회차당 시간 × 시간당 비용 (기획 2026-09-21) */
+  hoursPerSession: number | null;
 };
+
+/** "2", "1.5" — 소수점 뒤 0은 버린다 */
+export function fmtHours(h: number): string {
+  return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100);
+}
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
@@ -119,6 +126,7 @@ export function describeSchedule(s: SessionSchedule, opts?: { withYear?: boolean
   if (opts?.withMeta !== false) {
     const c = hybridCountLabel(s) ?? countLabel(s);
     if (c) parts.push(c);
+    if (s.hoursPerSession) parts.push(`회차당 ${fmtHours(s.hoursPerSession)}시간`);
     if (s.deliveryMode) parts.push(DELIVERY_LABELS[s.deliveryMode]);
   }
   return parts.join(" · ");
@@ -165,5 +173,6 @@ export function legacySchedule(row: {
     onlineCount: null,
     offlineCount: null,
     deliveryMode: null,
+    hoursPerSession: null,
   };
 }

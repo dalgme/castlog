@@ -46,12 +46,10 @@ export function AcceptanceLetter({
   const acceptedAt = new Date(a.accepted_at).toLocaleString("ko-KR", {
     timeZone: "Asia/Seoul",
   });
-  const schedule = formatEventSchedule(
-    a.starts_on,
-    a.ends_on,
-    a.starts_time,
-    a.ends_time
-  );
+  // 수락 시점 일정 문구 스냅샷(날짜 유형·회차·진행 방식) 우선, 없으면 옛 표기
+  const schedule =
+    a.schedule_text ??
+    formatEventSchedule(a.starts_on, a.ends_on, a.starts_time, a.ends_time);
 
   return (
     <div className="rounded-lg border bg-white p-6 text-sm text-foreground shadow-sm">

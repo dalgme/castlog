@@ -73,11 +73,10 @@ export async function createEngagementAcceptance(
     .maybeSingle();
   if (existing) return;
 
+  // 전체 열 — schedule_text(2026-09-21) 미적용 DB에서도 조회가 죽지 않는다 (§14-10)
   const { data: eng } = await admin
     .from("expert_engagements")
-    .select(
-      "id, tenant_id, expert_id, project_id, role_description, fee_amount, starts_on, ends_on, status, program_name, role_type, session_name, position_code, starts_time, ends_time, location_name, location_address, event_summary, special_notes, is_practice"
-    )
+    .select("*")
     .eq("id", engagementId)
     .maybeSingle();
   if (!eng || eng.status !== "accepted") return;
@@ -128,7 +127,7 @@ export async function createEngagementAcceptance(
     .slice(0, 10)
     .replace(/-/g, "")}-${letterShortId(eng.id)}`;
 
-  await admin.from("engagement_acceptances").insert({
+  const acceptanceRow = {
     tenant_id: eng.tenant_id,
     engagement_id: eng.id,
     expert_id: eng.expert_id,
@@ -165,7 +164,15 @@ export async function createEngagementAcceptance(
     // 20260819000002)가 섭외 건의 플래그로 최종 강제하지만, admin 경로도
     // 명시해 의도를 코드에 드러낸다(심층 방어).
     is_practice: eng.is_practice,
-  });
+  };
+  // 일정 문구 스냅샷(2026-09-21) — 열 미적용 DB(42703)면 문구 없이 만든다 (§14-10)
+  const scheduleText = (eng as { schedule_text?: string | null }).schedule_text ?? null;
+  const { error: insertError } = await admin
+    .from("engagement_acceptances")
+    .insert({ ...acceptanceRow, schedule_text: scheduleText });
+  if (insertError?.code === "42703") {
+    await admin.from("engagement_acceptances").insert(acceptanceRow);
+  }
 
   await admin.from("audit_logs").insert({
     tenant_id: eng.tenant_id,

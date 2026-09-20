@@ -6,6 +6,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { tenantIdFromUser } from "@/lib/auth/tenant";
 import { tagSortWeight } from "./expert-tags";
 import { CANDIDATE_LIMIT } from "./candidate-limits";
+import { loadSlotSchedule, scheduleSnapshotText, type SlotScheduleRow } from "./slot-schedule";
 import {
   blindBucketOf,
   blindConflictWeight,
@@ -74,6 +75,8 @@ export type SlotContext = {
   slotId: string;
   /** 컨설팅 수행 종료일 (34번) — 행사 세션은 null */
   periodEndDate: string | null;
+  /** 날짜 유형·회차·진행 방식 일정 문구 (2026-09-21) — 단일 날짜 세션은 null */
+  scheduleText: string | null;
   code: string;
   status: string;
   slotDate: string;
@@ -122,15 +125,24 @@ export async function getPositionContext(
     .maybeSingle();
   if (!position) return null;
 
-  // period_end_date는 42703 한정 폴백 (§14-10 — 마이그레이션 전 환경)
+  // period_end_date·날짜 유형 열은 42703 한정 폴백 (§14-10 — 마이그레이션 전 환경)
   const slotResult = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date"
+      "id, project_id, slot_date, starts_time, ends_time, role_type, session_name, role_description, fee_amount, location_name, location_address, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, hours_per_session"
     )
     .eq("id", position.slot_id)
     .maybeSingle();
-  let slot = slotResult.data;
+  let slot: SlotScheduleRow & {
+    id: string;
+    project_id: string;
+    role_type: string;
+    session_name: string | null;
+    role_description: string | null;
+    fee_amount: number | null;
+    location_name: string | null;
+    location_address: string | null;
+  } | null = slotResult.data;
   if (slotResult.error?.code === "42703") {
     const { data: legacySlot } = await supabase
       .from("engagement_slots")
@@ -149,11 +161,13 @@ export async function getPositionContext(
     .eq("id", slot.project_id)
     .maybeSingle();
   if (!project) return null;
+  const schedule = await loadSlotSchedule(supabase, slot);
 
   return {
     positionId: position.id,
     slotId: slot.id,
     periodEndDate: slot.period_end_date ?? null,
+    scheduleText: scheduleSnapshotText(schedule),
     code: position.code,
     status: position.status,
     slotDate: slot.slot_date,

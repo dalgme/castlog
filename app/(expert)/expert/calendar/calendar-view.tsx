@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DateTime24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tag } from "@/components/expert/ui";
@@ -346,11 +347,7 @@ function ScheduleForm({
         <div>
           <label className="text-[11px] text-muted-foreground">시작</label>
           {allDay ? (
-            <Input
-              type="date"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-            />
+            <KoreanDateInput value={startsAt} onChange={setStartsAt} ariaLabel="시작일" />
           ) : (
             <DateTime24Input value={startsAt} onChange={setStartsAt} />
           )}
@@ -358,11 +355,7 @@ function ScheduleForm({
         <div>
           <label className="text-[11px] text-muted-foreground">종료 (선택)</label>
           {allDay ? (
-            <Input
-              type="date"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-            />
+            <KoreanDateInput value={endsAt} onChange={setEndsAt} ariaLabel="종료일" />
           ) : (
             <DateTime24Input value={endsAt} onChange={setEndsAt} />
           )}

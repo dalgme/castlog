@@ -100,13 +100,16 @@ export default async function PositionPage({
   const requestable = ctx.status === "open" || ctx.status === "assigned";
   const candidates = canManage && requestable ? await getSlotCandidates(ctx) : [];
 
+  // 날짜 유형·회차·진행 방식 문구(2026-09-21) 우선 — 단일 날짜는 옛 표기,
   // 컨설팅 세션(34번)은 수행기간으로 표기 (감사 P3-3)
-  const schedule = formatEventSchedule(
-    ctx.slotDate,
-    ctx.periodEndDate ?? ctx.slotDate,
-    ctx.startsTime,
-    ctx.endsTime
-  );
+  const schedule =
+    ctx.scheduleText ??
+    formatEventSchedule(
+      ctx.slotDate,
+      ctx.periodEndDate ?? ctx.slotDate,
+      ctx.startsTime,
+      ctx.endsTime
+    );
 
   return (
     <div>

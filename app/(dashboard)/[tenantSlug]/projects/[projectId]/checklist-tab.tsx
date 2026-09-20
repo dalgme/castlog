@@ -120,7 +120,7 @@ export async function ChecklistTab({
       ? supabase
           .from("project_checklist_items")
           .select(
-            "id, checklist_id, phase, category, subcategory, title, offset_days, quantity, assignee_user_id, planned_due_on, completed_on, note, memo, check1, check2, decision, applicable"
+            "id, checklist_id, phase, category, subcategory, title, offset_days, quantity, assignee_user_id, planned_due_on, completed_on, note, memo, check1, check2, decision, applicable, color"
           )
           .in("checklist_id", checklistIds)
           .order("sort_order", { ascending: true })
@@ -177,6 +177,7 @@ export async function ChecklistTab({
           check2: it.check2,
           decision: it.decision,
           applicable: it.applicable,
+          color: it.color,
           dueChanges: changesByItem.get(it.id) ?? [],
         })),
     }));

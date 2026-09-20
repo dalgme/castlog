@@ -679,6 +679,77 @@ export async function manualAcceptEngagement(
   return { ok: true, confirmedNow, confirmDeniedByRule };
 }
 
+/**
+ * 수동 거절 처리 (기획 지시 2026-09-21) — 전화 등으로 거절 의사를 확인한 담당자가
+ * '거절'로 표시한다. 전문가 본인의 거절과 같은 경로(자리 해제·이력·단계 재판정)를
+ * 타되 실행자는 담당자로 남는다. 수동 완료(승인)와 같은 권한 축·부PM 게이트.
+ */
+export async function manualDeclineEngagement(
+  engagementId: string,
+  note?: string
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; needsPmApproval?: true; projectId?: string | null }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const modules = await getTenantModules();
+  if (!modules.experts) {
+    return { ok: false, error: "전문가 모듈이 비활성화된 테넌트입니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role) {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (!(await canExecTenant("engagementRequest", user))) {
+    return { ok: false, error: await deniedExec("engagementRequest") };
+  }
+  const { data: engagement } = await supabase
+    .from("expert_engagements")
+    .select("id, status, project_id")
+    .eq("id", engagementId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!engagement) return { ok: false, error: "섭외 건을 찾을 수 없습니다." };
+  if (engagement.status !== "requested") {
+    return { ok: false, error: "회신 대기 중인 건만 거절로 표시할 수 있습니다 (규칙). 이미 수락된 건은 긴급 취소로 처리합니다." };
+  }
+  if (engagement.project_id) {
+    const deputyGate = await gateDeputyAction({
+      projectId: engagement.project_id,
+      actionType: "engagement.manual_accept",
+      targetId: engagement.id,
+    });
+    if (!deputyGate.ok) {
+      return {
+        ok: false,
+        error: deputyGate.error,
+        ...(deputyGate.needsPmApproval
+          ? { needsPmApproval: true as const, projectId: engagement.project_id }
+          : {}),
+      };
+    }
+  }
+  const actorName = await staffActorLabel(user.id);
+  const result = await applyEngagementResponse(
+    engagementId,
+    "declined",
+    note?.trim() ? `[수동 처리] ${note.trim()}` : "[수동 처리 — 전화 등으로 거절 확인]",
+    null,
+    { userId: user.id, role, name: actorName }
+  );
+  if (!result.ok) return result;
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  revalidatePath("/[tenantSlug]/experts", "page");
+  return { ok: true };
+}
+
 export type EngagementEventRow = {
   id: string;
   label: string;

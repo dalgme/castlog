@@ -29,6 +29,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -258,7 +259,7 @@ export function BasicInfoDialog({
                 <FormItem>
                   <FormLabel>D-Day 기준일 (행사일 등)</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="D-Day 기준일" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -272,7 +273,7 @@ export function BasicInfoDialog({
                   <FormItem>
                     <FormLabel>시작일</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="시작일" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -285,7 +286,7 @@ export function BasicInfoDialog({
                   <FormItem>
                     <FormLabel>종료일</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="종료일" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

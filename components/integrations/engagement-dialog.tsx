@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/form";
 import { DateTime24Input, Time24Input } from "@/components/ui/datetime24";
 import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { CommaNumberInput } from "@/components/ui/comma-number-input";
 import {
   Select,
@@ -420,7 +421,7 @@ export function EngagementDialog({
                     <FormItem>
                       <FormLabel>시작일 (선택)</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="시작일" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -433,7 +434,7 @@ export function EngagementDialog({
                     <FormItem>
                       <FormLabel>종료일 (선택)</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <KoreanDateInput value={field.value ?? ""} onChange={field.onChange} ariaLabel="종료일" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

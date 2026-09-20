@@ -12,7 +12,13 @@ import {
   type ChecklistKind,
   type ChecklistLogRow,
 } from "@/lib/checklists/kinds";
-import { GROUP_FIELDS, GROUP_FIELD_LABELS, type GroupField } from "@/lib/checklists/groups";
+import {
+  GROUP_COLORS,
+  GROUP_FIELDS,
+  GROUP_FIELD_LABELS,
+  isGroupColorKey,
+  type GroupField,
+} from "@/lib/checklists/groups";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
 import {
   logChecklist,
@@ -290,7 +296,7 @@ export async function addChecklistItem(
   // 담당자가 임의로 추가한 항목은 위 항목의 권장일자를 복사). 맨 끝에 추가하면 마지막 항목이 '위'다.
   const prevQuery = supabase
     .from("project_checklist_items")
-    .select("phase, category, subcategory, offset_days, assignee_user_id")
+    .select("phase, category, subcategory, offset_days, assignee_user_id, color")
     .eq("checklist_id", checklistId);
   const { data: prev } = afterItemId
     ? await prevQuery.eq("id", afterItemId).maybeSingle()
@@ -305,6 +311,8 @@ export async function addChecklistItem(
       category: innermost === "category" ? "새 영역" : (prev?.category ?? null),
       subcategory: innermost === "subcategory" ? "새 영역" : (prev?.subcategory ?? null),
       offset_days: prev?.offset_days ?? null, assignee_user_id: assignee,
+      // 새 영역은 색을 새로 고른다 — 같은 영역에 추가한 항목은 영역 색을 잇는다
+      color: innermost ? null : (prev?.color ?? null),
       title: t, created_by: gate.actor.userId, updated_by: gate.actor.userId,
     })
     .select("id").single();
@@ -419,6 +427,8 @@ const groupValuesSchema = z.object({
   phase: z.string().max(40).nullable(),
   category: z.string().max(80).nullable(),
   subcategory: z.string().max(80).nullable(),
+  /** 목적지 영역의 색 — 옮겨 온 항목도 그 영역 색을 잇는다 (기획 지시 2026-09-21) */
+  color: z.string().max(20).nullable().optional(),
 });
 const adoptSchema = z.object({ itemIds: z.array(uuid).min(1).max(500), values: groupValuesSchema });
 export type GroupAdopt = z.infer<typeof adoptSchema>;
@@ -450,6 +460,7 @@ export async function reorderChecklistItems(
     const { itemIds, values } = parsedAdopt.data;
     const update: TablesUpdate<"project_checklist_items"> = { updated_by: gate.actor.userId };
     for (const f of fields) update[f] = values[f]?.trim() || null;
+    if (values.color !== undefined) update.color = isGroupColorKey(values.color) ? values.color : null;
     const { data: moved } = await supabase
       .from("project_checklist_items")
       .select("id, title, phase, category, subcategory").in("id", itemIds).eq("checklist_id", checklistId);
@@ -517,7 +528,46 @@ export async function renameChecklistGroup(
 }
 
 const DUP_COLUMNS =
-  "id, sort_order, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, check1, check2, decision, applicable";
+  "id, sort_order, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, check1, check2, decision, applicable, color";
+
+/**
+ * 영역 색상 (기획 지시 2026-09-21) — 머리행의 색상 단추. 영역의 모든 항목에 같은 키를
+ * 저장한다(항목 행은 같은 계열의 연한 색으로 그려진다). null = 자동 음영으로 복귀.
+ */
+export async function setChecklistGroupColor(
+  checklistId: string,
+  itemIds: string[],
+  color: string | null
+): Promise<Result> {
+  if (!uuid.safeParse(checklistId).success || !z.array(uuid).min(1).max(500).safeParse(itemIds).success) {
+    return { ok: false, error: "대상을 확인할 수 없습니다." };
+  }
+  if (color !== null && !isGroupColorKey(color)) return { ok: false, error: "색상을 팔레트에서 골라 주세요." };
+  const supabase = createClient();
+  const { data: c } = await supabase
+    .from("project_checklists").select("id, project_id").eq("id", checklistId).maybeSingle();
+  if (!c) return { ok: false, error: "체크리스트를 찾을 수 없습니다." };
+  const gate = await requireProjectTeam(c.project_id);
+  if (!gate.ok) return gate;
+  const { data: rows } = await supabase
+    .from("project_checklist_items").select("id, phase, category, subcategory, color")
+    .in("id", itemIds).eq("checklist_id", checklistId);
+  if (!rows || rows.length === 0) return { ok: false, error: "항목을 찾을 수 없습니다 — 새로고침 후 다시 시도하세요." };
+  const { error } = await supabase
+    .from("project_checklist_items")
+    .update({ color, updated_by: gate.actor.userId })
+    .in("id", rows.map((r) => r.id)).eq("checklist_id", checklistId);
+  if (error) return { ok: false, error: SYSTEM_FAIL };
+  const first = rows[0]!;
+  const where = [first.phase, first.category, first.subcategory].filter(Boolean).join(" › ") || "(미분류)";
+  const label = (k: string | null) => (k ? (GROUP_COLORS.find((x) => x.key === k)?.label ?? k) : "자동");
+  await logChecklist(gate.actor, {
+    scope: "project", action: "group.color", checklistId, projectId: c.project_id,
+    itemTitle: `${rows.length}개 항목`, field: where, before: label(first.color), after: label(color),
+  });
+  revalidate();
+  return { ok: true };
+}
 
 /**
  * 영역(분류 묶음) 또는 행사(구분) 복제 (기획 지시 2026-09-20).
@@ -550,7 +600,7 @@ export async function duplicateChecklistItems(
     sort_order: maxOrder + (i + 1) * 10,
     phase: r.phase, category: r.category, subcategory: r.subcategory, title: r.title,
     offset_days: r.offset_days, quantity: r.quantity, note: r.note, assignee_user_id: r.assignee_user_id,
-    check1: r.check1, check2: r.check2, decision: r.decision, applicable: r.applicable,
+    check1: r.check1, check2: r.check2, decision: r.decision, applicable: r.applicable, color: r.color,
     created_by: gate.actor.userId, updated_by: gate.actor.userId,
   }));
   const { data: inserted, error } = await supabase
@@ -703,7 +753,7 @@ export async function importProjectChecklists(
   const projectNameById = new Map((srcProjects ?? []).map((p) => [p.id, p.name]));
   const { data: srcItems } = await supabase
     .from("project_checklist_items")
-    .select("checklist_id, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, sort_order")
+    .select("checklist_id, phase, category, subcategory, title, offset_days, quantity, note, assignee_user_id, sort_order, color")
     .in("checklist_id", permitted.map((s) => s.id)).order("sort_order", { ascending: true });
   const assigneeIds = Array.from(new Set((srcItems ?? []).map((it) => it.assignee_user_id).filter((v): v is string => Boolean(v))));
   const { data: activeUsers } = assigneeIds.length
@@ -751,7 +801,7 @@ export async function importProjectChecklists(
       tenant_id: gate.actor.tenantId, checklist_id: target!.id, project_id: projectId,
       sort_order: base + (i + 1) * 10,
       phase: it.phase, category: it.category, subcategory: it.subcategory, title: it.title,
-      offset_days: it.offset_days, quantity: it.quantity, note: it.note,
+      offset_days: it.offset_days, quantity: it.quantity, note: it.note, color: it.color,
       assignee_user_id: it.assignee_user_id && active.has(it.assignee_user_id) ? it.assignee_user_id : pmId,
       created_by: gate.actor.userId, updated_by: gate.actor.userId,
     }));

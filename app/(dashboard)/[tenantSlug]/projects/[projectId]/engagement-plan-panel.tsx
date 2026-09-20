@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { formatWonRange } from "@/lib/sessions/fees";
 
 import { submitEngagementPlanChange } from "./plan-actions";
 
@@ -37,6 +38,8 @@ export type PlanPanelPlan = {
   state: "in_progress" | "approved" | "changed" | "rejected" | "draft";
   approvalId: string | null;
   plannedAmount: number;
+  /** 계획 섭외비 최대 — null이면 단일 금액 (기획 2026-09-21) */
+  plannedAmountMax: number | null;
   positionCount: number;
   slotCount: number;
   /** 계획이 덮는 세션 — null = 전체(세션 구분 없는 옛 계획) */
@@ -66,11 +69,13 @@ export type PlanPanelState = {
   /** 어느 살아 있는 계획에도 없는 세션 */
   uncoveredSlotIds: string[];
   currentPlannedAmount: number;
+  /** 현재 계획 섭외비 최대 — 회차·병행 범위 (기획 2026-09-21) */
+  currentPlannedAmountMax: number;
   currentPositionCount: number;
   currentSlotCount: number;
 };
 
-const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+const won = (n: number, max?: number | null) => formatWonRange(n, max);
 
 const PLAN_STYLE: Record<
   PlanPanelPlan["state"],
@@ -168,7 +173,7 @@ export function EngagementPlanPanel({
           <p className="text-sm text-muted-foreground">
             전자결재 모듈이 비활성 상태입니다. 계획 품의 없이 섭외요청을 바로 보낼 수
             있습니다. 계획 섭외비{" "}
-            <strong>{won(plan.currentPlannedAmount)}</strong> (인원{" "}
+            <strong>{won(plan.currentPlannedAmount, plan.currentPlannedAmountMax)}</strong> (인원{" "}
             {plan.currentPositionCount}명 / 세션 {plan.currentSlotCount}건)
           </p>
         </CardContent>
@@ -243,8 +248,8 @@ export function EngagementPlanPanel({
             </p>
           </div>
           <div className="rounded-md border bg-background p-2.5">
-            <p className="text-xs text-muted-foreground">현재 계획 섭외비</p>
-            <p className="font-medium">{won(plan.currentPlannedAmount)}</p>
+            <p className="text-xs text-muted-foreground">현재 계획 섭외비 (최소 ~ 최대)</p>
+            <p className="font-medium">{won(plan.currentPlannedAmount, plan.currentPlannedAmountMax)}</p>
           </div>
           <div className="rounded-md border bg-background p-2.5">
             <p className="text-xs text-muted-foreground">승인된 계획 합계</p>
@@ -253,8 +258,9 @@ export function EngagementPlanPanel({
                 const approved = plan.plans.filter((p) => p.state === "approved");
                 if (approved.length === 0) return "-";
                 const amount = approved.reduce((s, p) => s + p.plannedAmount, 0);
+                const amountMax = approved.reduce((s, p) => s + (p.plannedAmountMax ?? p.plannedAmount), 0);
                 const count = approved.reduce((s, p) => s + p.positionCount, 0);
-                return `${won(amount)} · ${count}명 · ${approved.length}건`;
+                return `${won(amount, amountMax)} · ${count}명 · ${approved.length}건`;
               })()}
             </p>
           </div>
@@ -288,7 +294,7 @@ export function EngagementPlanPanel({
                       </span>
                     )}
                     <span className="ml-auto tabular-nums text-xs text-muted-foreground">
-                      {won(p.plannedAmount)} · {p.positionCount}명 · 세션 {p.slotCount}건
+                      {won(p.plannedAmount, p.plannedAmountMax)} · {p.positionCount}명 · 세션 {p.slotCount}건
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">

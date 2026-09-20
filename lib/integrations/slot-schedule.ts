@@ -1,13 +1,32 @@
 import "server-only";
 
-import type { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database } from "@/lib/supabase/database.types";
 import {
+  describeSchedule,
   isDateKind,
   isDeliveryMode,
   legacySchedule,
   type SessionDate,
   type SessionSchedule,
 } from "@/lib/sessions/schedule";
+
+/** RLS 클라이언트(server.ts)와 service_role 클라이언트(admin.ts) 둘 다 받는다 */
+type Db = SupabaseClient<Database>;
+
+/**
+ * 섭외 건·수락서에 남기는 일정 문구 스냅샷 (기획 2026-09-21 후속).
+ * 단일 날짜 세션은 null — 옛 표기(starts_on/ends_on 기반)를 그대로 써서
+ * 이미 나간 고객 화면이 바뀌지 않게 한다. 여러 날·회차·진행 방식이 있는
+ * 세션만 문장으로 남긴다.
+ */
+export function scheduleSnapshotText(s: SessionSchedule): string | null {
+  const singleDay =
+    s.dateKind === "individual" && s.dates.length <= 1 && s.deliveryMode === null && s.countMin === null;
+  if (singleDay) return null;
+  return describeSchedule(s, { withYear: true });
+}
 
 /**
  * engagement_slots 행 + engagement_slot_dates → SessionSchedule (서버 공용).
@@ -16,7 +35,8 @@ import {
 
 export const SLOT_SCHEDULE_COLUMNS =
   "date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, " +
-  "session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline";
+  "session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, " +
+  "hours_per_session, hourly_fee_online, hourly_fee_offline";
 
 export type SlotScheduleRow = {
   slot_date: string;
@@ -31,6 +51,7 @@ export type SlotScheduleRow = {
   session_count_online?: number | null;
   session_count_offline?: number | null;
   delivery_mode?: string | null;
+  hours_per_session?: number | string | null;
 };
 
 export function scheduleFromRow(row: SlotScheduleRow, dates: SessionDate[]): SessionSchedule {
@@ -56,12 +77,19 @@ export function scheduleFromRow(row: SlotScheduleRow, dates: SessionDate[]): Ses
     onlineCount: row.session_count_online ?? null,
     offlineCount: row.session_count_offline ?? null,
     deliveryMode: isDeliveryMode(row.delivery_mode) ? row.delivery_mode : null,
+    // numeric 열은 드라이버에 따라 문자열로 올 수 있다
+    hoursPerSession:
+      row.hours_per_session === null || row.hours_per_session === undefined
+        ? null
+        : Number.isFinite(Number(row.hours_per_session))
+          ? Number(row.hours_per_session)
+          : null,
   };
 }
 
 /** 여러 세션의 개별 날짜를 한 번에 — 테이블 부재(42P01)면 빈 맵 */
 export async function loadSlotDates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   slotIds: string[]
 ): Promise<Map<string, SessionDate[]>> {
   const map = new Map<string, SessionDate[]>();
@@ -82,7 +110,7 @@ export async function loadSlotDates(
 
 /** 세션 하나의 일정 — 안내문자·결재 상세처럼 한 건만 보는 자리 */
 export async function loadSlotSchedule(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   slot: SlotScheduleRow & { id: string }
 ): Promise<SessionSchedule> {
   const dates = await loadSlotDates(supabase, [slot.id]);

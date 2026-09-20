@@ -71,7 +71,7 @@ export default async function ExpertEngagementsPage() {
     .select(
       `id, tenant_id, role_description, message, fee_amount, starts_on, ends_on, status,
        responded_at, response_note, created_at, token_expires_at,
-       program_name, role_type, starts_time, ends_time,
+       program_name, role_type, starts_time, ends_time, schedule_text,
        location_name, location_address, event_summary,
        tenants (name), projects (name)`
     )
@@ -151,6 +151,15 @@ export default async function ExpertEngagementsPage() {
             const answerable =
               engagement.status === "requested" &&
               new Date(engagement.token_expires_at).getTime() >= now;
+            // 요청 시점 일정 문구 스냅샷(여러 날·회차·진행 방식) 우선, 없으면 날짜·시각
+            const scheduleText =
+              engagement.schedule_text ??
+              formatEventSchedule(
+                engagement.starts_on,
+                engagement.ends_on,
+                engagement.starts_time,
+                engagement.ends_time
+              );
             return (
               <Card key={engagement.id} className="overflow-hidden shadow-sm">
                 {answerable && <div className="h-1 bg-brand-amber" />}
@@ -197,20 +206,8 @@ export default async function ExpertEngagementsPage() {
                         .filter(Boolean)
                         .join(" · ")}
                     </MetaRow>
-                    {formatEventSchedule(
-                      engagement.starts_on,
-                      engagement.ends_on,
-                      engagement.starts_time,
-                      engagement.ends_time
-                    ) ? (
-                      <MetaRow label="일정">
-                        {formatEventSchedule(
-                          engagement.starts_on,
-                          engagement.ends_on,
-                          engagement.starts_time,
-                          engagement.ends_time
-                        )}
-                      </MetaRow>
+                    {scheduleText ? (
+                      <MetaRow label="일정">{scheduleText}</MetaRow>
                     ) : (
                       (engagement.starts_on || engagement.ends_on) && (
                         <MetaRow label="일정">

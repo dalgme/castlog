@@ -176,7 +176,7 @@ export default async function EngagementStatusPage({
   const activeParams = { status: statusFilter === "all" ? undefined : statusFilter };
 
   const SELECT_COLUMNS = `id, expert_id, project_id, role_description, role_type, program_name,
-       fee_amount, starts_on, ends_on, starts_time, ends_time, status,
+       fee_amount, starts_on, ends_on, starts_time, ends_time, schedule_text, status,
        created_at, responded_at, response_note, token_expires_at,
        experts (name)`;
 
@@ -352,12 +352,14 @@ export default async function EngagementStatusPage({
                             .join(" · ")}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {formatEventSchedule(
-                            e.starts_on,
-                            e.ends_on,
-                            e.starts_time,
-                            e.ends_time
-                          ) ?? "-"}
+                          {e.schedule_text ??
+                            formatEventSchedule(
+                              e.starts_on,
+                              e.ends_on,
+                              e.starts_time,
+                              e.ends_time
+                            ) ??
+                            "-"}
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           {e.fee_amount !== null ? formatKrw(e.fee_amount) : "-"}

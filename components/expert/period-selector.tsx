@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarRange } from "lucide-react";
 
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -76,23 +78,9 @@ export function PeriodSelector({
 
       {showCustom && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <input
-            type="date"
-            value={fromValue}
-            max={toValue || undefined}
-            onChange={(e) => setFromValue(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-xs text-brand-navy"
-            aria-label="시작일"
-          />
+          <KoreanDateInput value={fromValue} max={toValue || undefined} onChange={setFromValue} size="sm" className="w-48" ariaLabel="시작일" />
           <span className="text-xs text-muted-foreground">~</span>
-          <input
-            type="date"
-            value={toValue}
-            min={fromValue || undefined}
-            onChange={(e) => setToValue(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-xs text-brand-navy"
-            aria-label="종료일"
-          />
+          <KoreanDateInput value={toValue} min={fromValue || undefined} onChange={setToValue} size="sm" className="w-48" ariaLabel="종료일" />
           <Button
             type="button"
             size="sm"

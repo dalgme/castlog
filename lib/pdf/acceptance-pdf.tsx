@@ -107,12 +107,10 @@ function kst(iso: string | null): string | null {
 export async function renderAcceptancePdf(view: AcceptanceView): Promise<Buffer> {
   registerFonts();
   const a = view.acceptance;
-  const schedule = formatEventSchedule(
-    a.starts_on,
-    a.ends_on,
-    a.starts_time,
-    a.ends_time
-  );
+  // 수락 시점 일정 문구 스냅샷(날짜 유형·회차·진행 방식) 우선, 없으면 옛 표기
+  const schedule =
+    a.schedule_text ??
+    formatEventSchedule(a.starts_on, a.ends_on, a.starts_time, a.ends_time);
   const paymentLabel = a.payment_type
     ? (PAYMENT_TYPE_LABELS[a.payment_type as PaymentType] ?? a.payment_type)
     : null;

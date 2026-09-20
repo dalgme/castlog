@@ -17,7 +17,7 @@ import {
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -397,12 +397,12 @@ export function ProjectCalendar({
         <div className="flex items-end gap-1.5">
           <div>
             <label className="text-[11px] text-muted-foreground">기간 설정해서 보기 — 시작</label>
-            <Input type="date" value={viewFrom} max={viewTo || undefined} onChange={(e) => setViewFrom(e.target.value)} className="h-8 w-36" />
+            <KoreanDateInput value={viewFrom} max={viewTo || undefined} onChange={setViewFrom} size="sm" className="w-52" ariaLabel="보기 시작일" />
           </div>
           <span className="pb-2 text-xs text-muted-foreground">~</span>
           <div>
             <label className="text-[11px] text-muted-foreground">종료</label>
-            <Input type="date" value={viewTo} min={viewFrom || undefined} onChange={(e) => setViewTo(e.target.value)} className="h-8 w-36" />
+            <KoreanDateInput value={viewTo} min={viewFrom || undefined} onChange={setViewTo} size="sm" className="w-52" ariaLabel="보기 종료일" />
           </div>
           {(viewFrom || viewTo) && (
             <Button
@@ -436,12 +436,12 @@ export function ProjectCalendar({
           <div className="flex items-end gap-1.5">
             <div>
               <label className="text-[11px] text-muted-foreground">일자 열 — 기간 시작</label>
-              <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className="h-8 w-36" />
+              <KoreanDateInput value={rangeFrom} onChange={setRangeFrom} size="sm" className="w-52" ariaLabel="일자 생성 시작일" />
             </div>
             <span className="pb-2 text-xs text-muted-foreground">~</span>
             <div>
               <label className="text-[11px] text-muted-foreground">기간 종료</label>
-              <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className="h-8 w-36" />
+              <KoreanDateInput value={rangeTo} onChange={setRangeTo} size="sm" className="w-52" ariaLabel="일자 생성 종료일" />
             </div>
             <Button size="sm" variant="outline" className="h-8" onClick={addRange} disabled={pending}>
               <CalendarPlus className="mr-1 h-3.5 w-3.5" aria-hidden />
@@ -451,7 +451,7 @@ export function ProjectCalendar({
           <div className="flex items-end gap-1.5">
             <div>
               <label className="text-[11px] text-muted-foreground">개별 날짜</label>
-              <Input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)} className="h-8 w-36" />
+              <KoreanDateInput value={singleDate} onChange={setSingleDate} size="sm" className="w-52" ariaLabel="추가할 날짜" />
             </div>
             <Button size="sm" variant="outline" className="h-8" onClick={addSingle} disabled={pending}>
               <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />

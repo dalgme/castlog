@@ -1,5 +1,7 @@
 "use client";
 
+import { KoreanDateInput } from "@/components/ui/korean-date-input";
+
 /**
  * 24시간제 일시 입력 (기획 확정 2026-08-23 — 시간 기능은 전부 24시간 기준).
  * datetime-local은 브라우저 로캘에 따라 오전/오후로 표시되어 쓰지 않는다.
@@ -40,12 +42,11 @@ export function DateTime24Input({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <input
+      <KoreanDateInput
         id={id}
-        type="date"
         value={date}
-        onChange={(e) => emit(e.target.value, hour || "09", minute || "00")}
-        className={selectCls}
+        onChange={(next) => emit(next, hour || "09", minute || "00")}
+        className="w-56"
       />
       <select
         aria-label="시 (24시간)"
