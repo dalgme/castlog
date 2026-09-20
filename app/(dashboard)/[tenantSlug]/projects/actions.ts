@@ -35,7 +35,6 @@ import { DEFAULT_LIFECYCLE_STEPS } from "@/lib/operations/steps";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { CONTRIBUTION_SLOT_KEYS, isExtraSlot } from "@/lib/integrations/contribution-slots";
-import { tryAutoSettlementReview } from "@/lib/integrations/settlement-auto";
 
 export type CreateProjectResult =
   | { ok: true; projectId: string }
@@ -432,6 +431,43 @@ async function requireProjectManager(): Promise<
   return { ok: true, session: { userId: user.id, tenantId, role } };
 }
 
+/**
+ * 참여율 배분 쓰기 주체 — 대표(ceo 직급) 또는 그 프로젝트의 PM(pm·pl_pm 배정) (기획 2026-09-21).
+ * RLS(마이그레이션 0009 project_contributions_*)와 같은 기준. 탭도 이 둘에게만 보인다.
+ */
+async function requireContributionEditor(projectId: string): Promise<
+  { ok: true; session: ProjectMgrSession } | { ok: false; error: string }
+> {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const tenantId = tenantIdFromUser(user);
+  const role = roleFromUser(user);
+  if (!user || !tenantId || !role || role === "expert") {
+    return { ok: false, error: "로그인이 필요합니다." };
+  }
+  if (gradeFromUser(user) === "ceo") {
+    return { ok: true, session: { userId: user.id, tenantId, role } };
+  }
+  const { data: mine } = await supabase
+    .from("project_assignments")
+    .select("assignment_role")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (mine?.assignment_role === "pm" || mine?.assignment_role === "pl_pm") {
+    return { ok: true, session: { userId: user.id, tenantId, role } };
+  }
+  return {
+    ok: false,
+    error: "참여율 배분은 대표와 이 프로젝트의 PM만 입력·확정할 수 있습니다 (권한 규칙).",
+  };
+}
+
 const contributionsSchema = z.object({
   projectId: z.string().uuid("프로젝트를 확인하세요."),
   // 가로 표의 열 (기획 지시 2026-09-21) — 열마다 사람 한 명 + %
@@ -466,15 +502,14 @@ export async function saveProjectContributions(
   input: ContributionsInput,
   options?: { confirm?: boolean }
 ): Promise<ProjectActionResult> {
-  const auth = await requireProjectManager();
-  if (!auth.ok) return auth;
-  const { session } = auth;
-
   const parsed = contributionsSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
   }
   const data = parsed.data;
+  const auth = await requireContributionEditor(data.projectId);
+  if (!auth.ok) return auth;
+  const { session } = auth;
   const seenSlots = new Set<string>();
   for (const r of data.rows) {
     if (seenSlots.has(r.slotKey)) {
@@ -591,28 +626,18 @@ export async function saveProjectContributions(
     after_data: { count: data.rows.length, total },
   });
 
-  // 참여율 확정 + 모든 전문가 평가·종료가 끝나면 지급 품의서 자동 생성 (기획 2026-09-21)
-  if (options?.confirm) {
-    await tryAutoSettlementReview({
-      projectId: data.projectId,
-      tenantId: session.tenantId,
-      actorUserId: session.userId,
-      actorRole: session.role,
-    });
-  }
-
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
 
 /** 참여율 확정 잠금 해제 — '수정' 버튼 (관리자 이상). 값은 그대로 두고 잠금만 푼다. */
 export async function unlockProjectContributions(projectId: string): Promise<ProjectActionResult> {
-  const auth = await requireProjectManager();
-  if (!auth.ok) return auth;
-  const { session } = auth;
   if (!z.string().uuid().safeParse(projectId).success) {
     return { ok: false, error: "프로젝트를 확인하세요." };
   }
+  const auth = await requireContributionEditor(projectId);
+  if (!auth.ok) return auth;
+  const { session } = auth;
   const supabase = createClient();
   const { data: project } = await supabase
     .from("projects")

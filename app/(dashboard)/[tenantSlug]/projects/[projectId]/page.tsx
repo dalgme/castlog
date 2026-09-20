@@ -90,7 +90,6 @@ import { ProjectTabs, resolveProjectTab } from "./project-tabs";
 import { ChecklistTab } from "./checklist-tab";
 import { QuoteTab } from "./quote-tab";
 import { getProjectSettlement } from "@/lib/integrations/project-settlement";
-import { getAutoSettlementStatus } from "@/lib/integrations/settlement-auto";
 import {
   EngagementWorkbench,
   type UnlinkedEngagement,
@@ -107,7 +106,7 @@ import {
   decidePlanFlow,
   type PlanFlow,
 } from "@/lib/integrations/engagement-post-report";
-import { ClosingTab } from "./closing-tab";
+import { ClosingTab, type PaymentBatchRow, type PaymentSessionRow } from "./closing-tab";
 import { ProjectClosing } from "./project-closing";
 import {
   ProjectReviewTab,
@@ -1101,7 +1100,10 @@ export default async function ProjectDetailPage({
     canManagePayments(),
   ]);
 
-  const tab = resolveProjectTab(searchParams.tab, modules.experts, modules.quotes);
+  // 참여율 배분 탭 — 대표(ceo)와 이 프로젝트의 PM(pm·pl_pm)만 (기획 2026-09-21). 나머지는 탭을 숨긴다
+  const canSeeContribTab =
+    grade === "ceo" || myAssignmentRole === "pm" || myAssignmentRole === "pl_pm";
+  const tab = resolveProjectTab(searchParams.tab, modules.experts, modules.quotes, canSeeContribTab);
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -1611,9 +1613,86 @@ export default async function ProjectDetailPage({
     };
   }
 
-  // 지급 품의서 자동 생성 조건의 현재 상태 (기획 2026-09-21) — 마감 탭에서 보여 준다
-  const autoSettlementStatus =
-    tab === "closing" && modules.experts ? await getAutoSettlementStatus(project.id) : null;
+  // 지급 품의 탭 (기획 지시 2026-09-21) — 세션별 종료·평가 상태 + 지급 건(결재 중/승인/완료)
+  const paymentSessions: PaymentSessionRow[] = [];
+  let paymentBatches: PaymentBatchRow[] = [];
+  if (tab === "closing" && modules.experts) {
+    const acceptedIds = engagements.filter((e) => e.status === "accepted").map((e) => e.id);
+    const [{ data: evalRows }, batchesResult, itemsResult] = await Promise.all([
+      supabase.from("expert_evaluations").select("expert_id, slot_id").eq("project_id", project.id),
+      supabase
+        .from("expert_payment_batches")
+        .select("id, title, status, total_gross, approval_id, last_rejection_note, confirmed_at, paid_at, created_at")
+        .eq("project_id", project.id)
+        .neq("status", "canceled")
+        .order("created_at", { ascending: false }),
+      acceptedIds.length
+        ? supabase
+            .from("expert_payment_items")
+            .select("batch_id, engagement_id, expert_payment_batches!inner (status)")
+            .in("engagement_id", acceptedIds)
+            .neq("expert_payment_batches.status", "canceled")
+        : Promise.resolve({ data: [] as { batch_id: string; engagement_id: string }[] }),
+    ]);
+    const evaluatedKeys = new Set((evalRows ?? []).map((e) => `${e.expert_id}:${e.slot_id ?? ""}`));
+    const evaluatedExperts = new Set((evalRows ?? []).map((e) => e.expert_id));
+    const batchByEngagement = new Map((itemsResult.data ?? []).map((i) => [i.engagement_id, i.batch_id]));
+    const engagementById = new Map(engagements.map((e) => [e.id, e]));
+    const slotsWithBatch = new Map<string, Set<string>>();
+    for (const s of slotRows) {
+      const lines = s.positions
+        .filter((p) => p.engagementId && engagementById.get(p.engagementId)?.status === "accepted")
+        .map((p) => {
+          const e = engagementById.get(p.engagementId as string)!;
+          const batchId = batchByEngagement.get(e.id) ?? null;
+          if (batchId) {
+            const set = slotsWithBatch.get(batchId) ?? new Set<string>();
+            set.add(slotLabelById.get(s.id) ?? s.slotDate);
+            slotsWithBatch.set(batchId, set);
+          }
+          return {
+            engagementId: e.id,
+            expertName: p.expertName ?? e.experts?.name ?? "-",
+            code: p.code,
+            gross: e.fee_amount ?? p.expectedFee ?? null,
+            fallback: e.fee_amount === null && p.expectedFee !== null,
+            completed: Boolean(e.completed_at),
+            evaluated: evaluatedKeys.has(`${e.expert_id}:${s.id}`) || evaluatedExperts.has(e.expert_id),
+            batchId,
+          };
+        });
+      if (lines.length === 0) continue;
+      paymentSessions.push({
+        slotId: s.id,
+        label: slotLabelById.get(s.id) ?? s.slotDate,
+        detail: [describeSchedule(s.schedule, { withYear: true }), s.roleDescription].filter(Boolean).join(" · ") || null,
+        lines,
+        eligible: lines.every((l) => l.completed && l.evaluated),
+      });
+    }
+    paymentBatches = (batchesResult.data ?? []).map((b) => ({
+      id: b.id,
+      title: b.title,
+      status: b.status,
+      totalGross: b.total_gross,
+      approvalId: b.approval_id,
+      rejectionNote: b.last_rejection_note,
+      confirmedAt: b.confirmed_at,
+      paidAt: b.paid_at,
+      createdAt: b.created_at,
+      slotLabels: Array.from(slotsWithBatch.get(b.id) ?? []),
+    }));
+  }
+  // 지급 품의 상신 — 지급 권한자 또는 이 프로젝트의 PL·PM·부PM (payments/actions와 같은 기준)
+  const canSubmitPayment =
+    canReviewSettlementDoc ||
+    myAssignmentRole === "pl" ||
+    myAssignmentRole === "pl_pm" ||
+    myAssignmentRole === "pm" ||
+    myAssignmentRole === "deputy_pm";
+  // 금액 표시 — 지급 권한자 또는 프로젝트 팀 (RLS 0009와 같은 범위)
+  const canSeePaymentAmounts =
+    canReviewSettlementDoc || myAssignmentRole !== null || project.created_by === user?.id;
 
   // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
   // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
@@ -1657,6 +1736,7 @@ export default async function ProjectDetailPage({
         active={tab}
         hasExperts={modules.experts}
         hasQuotes={modules.quotes}
+        canSeeExecOnly={canSeeContribTab}
       />
       <main className="space-y-5 p-5">
         {tab === "overview" && (
@@ -2026,7 +2106,7 @@ export default async function ProjectDetailPage({
                   closingInProgress={closingInProgress}
                   approvalsActive={modules.approvals}
                   contributionsOnly={modules.experts}
-                  canEdit={canManage}
+                  canEdit={canSeeContribTab}
                 />
               )}
               {!isClosed && (
@@ -2057,18 +2137,20 @@ export default async function ProjectDetailPage({
         )}
         {tab === "closing" && (
           <ClosingTab
-            approverOptions={planApprovers}
-            attachmentsByEngagement={settlementAttachments}
+            tenantSlug={params.tenantSlug}
             projectId={project.id}
-            settlement={settlement}
             hasExperts={modules.experts}
-            canManage={canManage}
-            canEvaluate={canEvaluate}
-            canReviewSettlement={canReviewSettlementDoc}
+            expertsLite={expertsLite}
+            sessions={paymentSessions}
+            batches={paymentBatches}
+            canSubmit={canSubmitPayment}
+            canMarkPaid={canReviewSettlementDoc}
+            canSeeAmounts={canSeePaymentAmounts}
+            canClose={canManage}
             isClosed={isClosed}
             closedAt={project.closed_at}
-            autoStatus={autoSettlementStatus}
-            expertsLite={expertsLite}
+            attachmentsByEngagement={settlementAttachments}
+            canAttach={canEvaluate}
           />
         )}
 

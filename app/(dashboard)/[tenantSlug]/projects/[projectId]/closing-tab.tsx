@@ -1,411 +1,482 @@
-import { Check, Lock } from "lucide-react";
+"use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  PROJECT_STAGE_LABELS,
-  stageIndex,
-  type ProjectStage,
-} from "@/lib/integrations/project-stage";
-import type { ProjectSettlement } from "@/lib/integrations/project-settlement";
-import { buildSettlementDocument } from "@/lib/integrations/project-settlement";
-
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { BadgeCheck, CheckCircle2, Lock, RotateCcw, Send } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { formatKrw } from "@/lib/approvals/constants";
 
 import {
-  ClosingAttachment,
-  type SettlementAttachment,
-} from "./closing-attachment";
-import { ClosingStageButtons } from "./closing-stage-buttons";
-import {
-  SatisfactionForm,
-  SatisfactionHint,
-  SatisfactionProgress,
-} from "./satisfaction-form";
-import { SettlementPanel } from "./settlement-panel";
-import {
-  autoSettlementReady,
-  type AutoSettlementStatus,
-} from "@/lib/integrations/settlement-auto";
+  createSessionPaymentBatch,
+  markBatchPaid,
+  resubmitSessionBatch,
+} from "../../payments/actions";
+import { closeProjectAfterPayments } from "./closing-actions";
+import { ClosingAttachment, type SettlementAttachment } from "./closing-attachment";
 
 /**
- * 프로젝트 종료 및 지급 품의 탭.
+ * 지급 품의 탭 (기획 지시 2026-09-21).
  *
- * 마감은 순서가 있는 일이다: 참여율 → 만족도 → 회계 검토 → 종료·지급 품의.
- * 그래서 화면도 순서로 읽히게 만든다 — 위에 단계 띠를 두고, 각 단계는 카드
- * 하나로 분리하고, **지금 할 단계만 펼친다.** 끝난 단계는 접어서 결과만 보여
- * 주고, 아직 못 하는 단계는 왜 못 하는지 한 줄로 적는다.
- *
- * 예전에는 카드 하나 안에 네 구역이 세로로 늘어서 있어서, 다 끝난 참여율 입력
- * 폼과 아직 열리지 않은 회계 검토가 같은 무게로 보였다. 그 화면에서 담당자는
- * 자기가 무엇을 해야 하는지 알 수 없다.
+ * 세션 단위로 종료(전문가 평가·완료)가 끝난 세션이 이 탭에 온다. 단일 세션 또는 여러 세션을
+ * 묶어 지급 품의를 올리면 '결재 중' → 결재가 나면 '결재 승인' → 지급 뒤 '지급 완료'를 누른다.
+ * 지급 건(expert_payment_batches)은 비용·지급 화면과 같은 기록이다 — 여기서 올린 품의가
+ * 그 화면과 지급 내보내기(비즈로그 연동 시트)에 그대로 보인다.
  */
 
-type Step = {
-  no: number;
-  title: string;
-  /** 이 단계가 '진행 중'인 프로젝트 단계 */
-  activeAt: ProjectStage[];
+export type PaymentLine = {
+  engagementId: string;
+  expertName: string;
+  code: string | null;
+  /** 의뢰비용 — 비어 있으면 예정가로 대신(fallback=true) */
+  gross: number | null;
+  fallback: boolean;
+  completed: boolean;
+  evaluated: boolean;
+  /** 살아 있는 지급 건에 담겨 있으면 그 id */
+  batchId: string | null;
 };
 
-const STEPS: Step[] = [
-  { no: 1, title: "참여율 배분", activeAt: ["closing"] },
-  { no: 2, title: "전문가 평가·종료", activeAt: ["closing"] },
-  { no: 3, title: "지급 품의서 검토", activeAt: ["settlement_review"] },
-  { no: 4, title: "종료·지급 품의", activeAt: ["settled"] },
-];
+export type PaymentSessionRow = {
+  slotId: string;
+  label: string;
+  detail: string | null;
+  lines: PaymentLine[];
+  /** 모든 계약 성립 건이 종료·평가 완료 */
+  eligible: boolean;
+};
 
-function StepRail({ stage }: { stage: ProjectStage }) {
-  const index = stageIndex(stage);
-  const closingIndex = stageIndex("closing");
-  const reviewIndex = stageIndex("settlement_review");
-  const settledIndex = stageIndex("settled");
+export type PaymentBatchRow = {
+  id: string;
+  title: string;
+  status: string;
+  totalGross: number;
+  approvalId: string | null;
+  rejectionNote: string | null;
+  confirmedAt: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  /** 이 지급 건에 담긴 세션 표기 */
+  slotLabels: string[];
+};
 
-  function stateOf(step: Step): "done" | "current" | "todo" {
-    if (step.no <= 2) {
-      if (index > closingIndex) return "done";
-      return index === closingIndex ? "current" : "todo";
-    }
-    if (step.no === 3) {
-      if (index > reviewIndex) return "done";
-      return index === reviewIndex ? "current" : "todo";
-    }
-    return index >= settledIndex ? "done" : "todo";
-  }
+const BATCH_STATUS: Record<string, { label: string; className: string }> = {
+  pending: { label: "결재 대기", className: "bg-amber-100 text-amber-900 border-amber-300" },
+  approval_in_progress: { label: "결재 중", className: "bg-sky-100 text-sky-900 border-sky-300" },
+  confirmed: { label: "결재 승인", className: "bg-emerald-100 text-emerald-900 border-emerald-300" },
+  paid: { label: "지급 완료", className: "bg-violet-600 text-white border-violet-600" },
+  canceled: { label: "취소", className: "bg-neutral-200 text-neutral-700 border-neutral-300" },
+};
 
+function StatusBadge({ status }: { status: string }) {
+  const s = BATCH_STATUS[status] ?? { label: status, className: "" };
   return (
-    <ol className="grid gap-1.5 sm:grid-cols-4">
-      {STEPS.map((step) => {
-        const state = stateOf(step);
-        return (
-          <li
-            key={step.no}
-            className={
-              state === "current"
-                ? "flex items-center gap-2 rounded-lg border-2 border-brand bg-brand/[0.06] px-2.5 py-2"
-                : state === "done"
-                  ? "flex items-center gap-2 rounded-lg border bg-white px-2.5 py-2"
-                  : "flex items-center gap-2 rounded-lg border border-dashed px-2.5 py-2"
-            }
-          >
-            <span
-              className={
-                state === "done"
-                  ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white"
-                  : state === "current"
-                    ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand text-[10px] font-bold text-white"
-                    : "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground"
-              }
-            >
-              {state === "done" ? <Check className="h-3 w-3" /> : step.no}
-            </span>
-            <span
-              className={
-                state === "current"
-                  ? "truncate text-xs font-bold text-brand-navy"
-                  : "truncate text-xs text-muted-foreground"
-              }
-            >
-              {step.title}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+    <span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold", s.className)}>
+      {s.label}
+    </span>
   );
 }
 
-/** 자동 생성 조건 한 줄 — 충족 여부를 앞에 표시 */
-function ConditionLine({ ok, text }: { ok: boolean; text: string }) {
-  return (
-    <p className={ok ? "flex items-center gap-1.5 text-emerald-700" : "flex items-center gap-1.5 text-muted-foreground"}>
-      <span
-        className={
-          ok
-            ? "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"
-            : "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-neutral-300"
-        }
-        aria-hidden
-      >
-        {ok && <Check className="h-3 w-3" />}
-      </span>
-      {text}
-    </p>
-  );
-}
-
-/** 아직 열리지 않은 단계 — 왜 닫혀 있는지만 적는다 */
-function LockedNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-      <Lock className="mt-0.5 h-3 w-3 flex-none" aria-hidden />
-      {children}
-    </p>
-  );
+function fmtWhen(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
 }
 
 export function ClosingTab({
+  tenantSlug,
   projectId,
-  settlement,
   hasExperts,
-  canManage,
-  canEvaluate,
-  canReviewSettlement,
+  expertsLite = false,
+  sessions,
+  batches,
+  canSubmit,
+  canMarkPaid,
+  canSeeAmounts,
+  canClose,
   isClosed,
   closedAt,
-  autoStatus = null,
-  approverOptions = [],
   attachmentsByEngagement = {},
-  expertsLite = false,
+  canAttach,
 }: {
+  tenantSlug: string;
   projectId: string;
-  settlement: ProjectSettlement | null;
   hasExperts: boolean;
-  canManage: boolean;
-  canEvaluate: boolean;
-  /** 지급품의서 열람 권한 (회계담당관·임원 이상) */
-  canReviewSettlement: boolean;
+  expertsLite?: boolean;
+  sessions: PaymentSessionRow[];
+  batches: PaymentBatchRow[];
+  /** 지급 품의 상신 — PL·PM·부PM 또는 지급 권한자 */
+  canSubmit: boolean;
+  /** 지급 완료 처리 — 지급 권한자(대표·이사·지급 위임자) */
+  canMarkPaid: boolean;
+  /** 금액 표시 — 지급 권한자 또는 프로젝트 팀 */
+  canSeeAmounts: boolean;
+  /** 프로젝트 종료 — 관리자 이상 */
+  canClose: boolean;
   isClosed: boolean;
   closedAt: string | null;
-  /** 지급 품의서 자동 생성 조건의 현재 상태 (기획 2026-09-21) — experts 모듈에서만 */
-  autoStatus?: AutoSettlementStatus | null;
-  /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
-  approverOptions?: { id: string; name: string; gradeLabel: string }[];
-  /** 참여 건별 증빙 첨부 (engagementId → 파일) — 기획 2026-08-30 */
+  /** 참여 건별 증빙 첨부 (engagementId → 파일) */
   attachmentsByEngagement?: Record<string, SettlementAttachment>;
-  /** 라이트 모드 — 지급 기능이 닫혀 있으므로 ③·④의 성격을 안내한다 (검수 A8) */
-  expertsLite?: boolean;
+  canAttach: boolean;
 }) {
-  const stage: ProjectStage = settlement?.stage ?? "assigning";
-  const inClosing = stage === "closing";
-  const afterClosing =
-    stage === "settlement_review" || stage === "settled";
-  const rated = settlement
-    ? settlement.lines.length - settlement.unratedCount
-    : 0;
-  const contributionTotal = settlement?.contributionTotal ?? 0;
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, startTransition] = useTransition();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
+  const selectable = sessions.filter((s) => s.eligible && s.lines.every((l) => l.batchId === null));
+  const waiting = sessions.filter((s) => !s.eligible && s.lines.every((l) => l.batchId === null));
+  const allPaid =
+    sessions.length > 0 &&
+    sessions.every((s) => s.lines.length === 0 || s.lines.every((l) => l.batchId && batchById.get(l.batchId)?.status === "paid"));
+
+  function toggle(slotId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(slotId)) next.delete(slotId);
+      else next.add(slotId);
+      return next;
+    });
+  }
+
+  function submit() {
+    const slotIds = Array.from(selected);
+    if (slotIds.length === 0) return;
+    if (!window.confirm(`고른 ${slotIds.length}개 세션의 지급 품의를 올릴까요? 상신 뒤에는 결재가 끝날 때까지 되돌릴 수 없습니다.`)) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await createSessionPaymentBatch({ projectId, slotIds });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSelected(new Set());
+      toast({
+        description: r.submitted
+          ? "지급 품의를 올렸습니다. 결재가 끝나면 '결재 승인'으로 바뀝니다."
+          : `지급 건은 만들었지만 결재 상신은 되지 않았습니다: ${r.warning ?? "재상신 버튼으로 다시 올려 주세요."}`,
+      });
+      router.refresh();
+    });
+  }
+
+  function paid(batchId: string) {
+    if (!window.confirm("이 지급 건의 지급을 완료한 것으로 기록할까요? 실제 이체는 시스템 밖에서 이루어집니다.")) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await markBatchPaid(batchId);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      toast({ description: "지급 완료로 기록했습니다." });
+      router.refresh();
+    });
+  }
+
+  function resubmit(batchId: string) {
+    setError(null);
+    startTransition(async () => {
+      const r = await resubmitSessionBatch({ projectId, batchId });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      toast({ description: "지급 품의를 다시 올렸습니다." });
+      router.refresh();
+    });
+  }
+
+  function close() {
+    if (!window.confirm("모든 세션의 지급이 끝났습니다. 프로젝트를 종료할까요? 종료 뒤에는 되돌릴 수 없습니다.")) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await closeProjectAfterPayments(projectId);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      toast({ description: "프로젝트를 종료했습니다." });
+      router.refresh();
+    });
+  }
+
+  if (!hasExperts) {
+    return (
+      <Card>
+        <CardContent className="pt-6 text-sm text-muted-foreground">
+          전문가 모듈을 쓰지 않는 회사입니다. 참여율 배분 탭에서 참여율을 정리한 뒤 그 탭에서 종료를 상신합니다.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const th = "border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold";
+  const td = "border px-2 py-1.5 text-sm align-top";
 
   return (
     <div className="space-y-4">
-      {/* 지금 어디인가 — 버튼이 왜 열리고 닫히는지의 근거 */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {expertsLite && (
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Lock className="mt-0.5 h-3 w-3 flex-none" aria-hidden />
+          라이트 모드 — 지급 기능을 쓰지 않습니다. 설정 &gt; 기업관리에서 라이트 모드를 끄면 지급 품의를 올릴 수 있습니다.
+        </p>
+      )}
+
+      {/* ① 지급 품의 대상 세션 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm">프로젝트 종료 및 지급 품의</CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge variant={stage === "settled" ? "default" : "secondary"}>
-              {PROJECT_STAGE_LABELS[stage]}
-            </Badge>
-            {isClosed && closedAt && (
-              <span className="text-xs text-muted-foreground">
-                {new Date(closedAt).toLocaleDateString("ko-KR")} 종료
-              </span>
-            )}
+          <div>
+            <CardTitle className="text-sm">지급 품의 대상 세션</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              섭외 확정 탭에서 세션의 모든 전문가가 종료(평가·완료)되면 여기서 고를 수 있습니다. 한 세션만, 또는
+              여러 세션을 묶어 한 번에 품의를 올립니다.
+            </p>
           </div>
+          {canSubmit && !expertsLite && (
+            <Button
+              type="button"
+              size="sm"
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={submit}
+              disabled={pending || selected.size === 0}
+              title={selected.size === 0 ? "지급 품의할 세션을 고르세요" : undefined}
+            >
+              <Send className="mr-1 h-3.5 w-3.5" aria-hidden />
+              선택 세션 지급 품의 상신{selected.size > 0 ? ` (${selected.size})` : ""}
+            </Button>
+          )}
         </CardHeader>
-        <CardContent className="space-y-3">
-          <StepRail stage={stage} />
-
-          {stage === "confirmed" && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand bg-brand/[0.06] p-3">
-              <p className="text-sm font-semibold text-brand-navy">
-                전원 확정 — 이제 마감을 시작할 수 있습니다.
-              </p>
-              {canManage ? (
-                <ClosingStageButtons
-                  projectId={projectId}
-                  mode="start"
-                  disabledReason={null}
-                />
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  마감 시작은 레벨 3 이상(관리자)이 합니다 (권한 규칙).
-                </span>
-              )}
+        <CardContent>
+          {sessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">계약 성립(승인)된 전문가가 있는 세션이 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[44rem] border-collapse">
+                <thead>
+                  <tr>
+                    {canSubmit && <th className={cn(th, "w-10")}>선택</th>}
+                    <th className={cn(th, "text-left")}>세션</th>
+                    <th className={cn(th, "text-left")}>전문가 (코드넘버)</th>
+                    <th className={cn(th, "w-28")}>종료·평가</th>
+                    {canSeeAmounts && <th className={cn(th, "w-32")}>금액</th>}
+                    <th className={cn(th, "w-28")}>지급 상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => {
+                    const batchIds = Array.from(new Set(s.lines.map((l) => l.batchId).filter((v): v is string => Boolean(v))));
+                    const batch = batchIds.length === 1 ? batchById.get(batchIds[0] as string) : undefined;
+                    const isSelectable = s.eligible && batchIds.length === 0;
+                    const doneCount = s.lines.filter((l) => l.completed && l.evaluated).length;
+                    const subtotal = s.lines.reduce((sum, l) => sum + (l.gross ?? 0), 0);
+                    const anyFallback = s.lines.some((l) => l.fallback);
+                    return (
+                      <tr
+                        key={s.slotId}
+                        className={cn(
+                          batch?.status === "paid" && "bg-violet-50",
+                          batch?.status === "confirmed" && "bg-emerald-50/60",
+                          batch?.status === "approval_in_progress" && "bg-sky-50/60",
+                          !s.eligible && batchIds.length === 0 && "bg-neutral-50 text-muted-foreground"
+                        )}
+                      >
+                        {canSubmit && (
+                          <td className={cn(td, "text-center")}>
+                            {isSelectable ? (
+                              <Checkbox
+                                checked={selected.has(s.slotId)}
+                                onCheckedChange={() => toggle(s.slotId)}
+                                disabled={pending || expertsLite}
+                                aria-label={`${s.label} 선택`}
+                              />
+                            ) : null}
+                          </td>
+                        )}
+                        <td className={td}>
+                          <div className="font-semibold">{s.label}</div>
+                          {s.detail && <div className="text-xs text-muted-foreground">{s.detail}</div>}
+                        </td>
+                        <td className={td}>
+                          <ul className="space-y-0.5">
+                            {s.lines.map((l) => (
+                              <li key={l.engagementId} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <span className="font-medium">{l.expertName}</span>
+                                {l.code && <span className="text-muted-foreground">({l.code})</span>}
+                                {canAttach && (
+                                  <ClosingAttachment
+                                    projectId={projectId}
+                                    engagementId={l.engagementId}
+                                    attachment={attachmentsByEngagement[l.engagementId] ?? null}
+                                    canManage={canAttach && !isClosed}
+                                  />
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td className={cn(td, "text-center text-xs")}>
+                          {s.eligible ? (
+                            <span className="inline-flex items-center gap-1 font-semibold text-violet-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                              종료 {doneCount}/{s.lines.length}
+                            </span>
+                          ) : (
+                            <span title="섭외 확정 탭에서 전문가별 '평가'(완료 = 종료)를 마쳐야 합니다">
+                              종료 {doneCount}/{s.lines.length}
+                            </span>
+                          )}
+                        </td>
+                        {canSeeAmounts && (
+                          <td className={cn(td, "text-right tabular-nums text-xs")}>
+                            {formatKrw(subtotal)}
+                            {anyFallback && (
+                              <div className="text-[10px] text-amber-700" title="의뢰비용이 비어 있어 코드넘버 자리의 예정가로 계산합니다">
+                                예정가 기준
+                              </div>
+                            )}
+                          </td>
+                        )}
+                        <td className={cn(td, "text-center")}>
+                          {batchIds.length > 1 ? (
+                            <span className="text-xs text-muted-foreground">여러 지급 건</span>
+                          ) : batch ? (
+                            <StatusBadge status={batch.status} />
+                          ) : s.eligible ? (
+                            <span className="text-xs text-emerald-700">품의 가능</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">종료 대기</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-
-          {!inClosing && !afterClosing && stage !== "confirmed" && (
-            <LockedNote>
-              섭외 확정 탭에서 모든 전문가의 평가·종료를 마치고 참여율 배분을 100%로 확정하면
-              지급 품의서가 자동으로 만들어집니다. 전원 확정 뒤에는 손수 마감을 시작할 수도 있습니다.
-            </LockedNote>
+          {canSubmit && selectable.length === 0 && waiting.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              아직 종료 대기 중인 세션만 남아 있습니다. 섭외 확정 탭에서 전문가별 「평가」를 마치면 여기서 고를 수 있습니다.
+            </p>
           )}
-
-          {!hasExperts && (
-            <LockedNote>
-              전문가 모듈을 쓰지 않는 회사입니다. 참여율만 정리하면 종료됩니다.
-            </LockedNote>
-          )}
-
-          {/* 라이트 모드 — 비용·지급 메뉴가 닫혀 있는데 종료가 '지급 품의' 개념을
-              요구하면 담당자가 길을 잃는다 (검수 A8). 성격을 먼저 말해 준다 */}
-          {hasExperts && expertsLite && (
-            <LockedNote>
-              라이트 모드 — 지급 기능을 쓰지 않으므로 ③·④의 ‘지급 품의’는
-              금액 지급 없이 <strong>종료 확정 절차</strong>로만 진행됩니다.
-              실제 정산은 회사 자체 회계로 처리하세요.
-            </LockedNote>
+          {!canSubmit && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              지급 품의 상신은 이 프로젝트의 PL·PM·부PM 또는 지급 권한자(대표·이사·지급 위임자)가 합니다 (권한 규칙).
+            </p>
           )}
         </CardContent>
       </Card>
 
-      {/* ① 참여율 — 별도 탭으로 분리됐다 (기획 확정 2026-08-30). 단계 띠의
-          ①이 어디로 갔는지 찾지 않도록, 합계와 가는 길만 여기 남긴다 */}
+      {/* ② 지급 품의 목록 */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm">① 참여율 배분</CardTitle>
-          <Badge variant={contributionTotal === 100 ? "default" : "secondary"}>
-            합계 {contributionTotal}%
-          </Badge>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">지급 품의 목록</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            참여율 입력은{" "}
-            <Link
-              href="?tab=contrib"
-              className="font-medium text-brand underline underline-offset-2"
-            >
-              참여율 배분 탭
-            </Link>
-            에서 합니다.{" "}
-            {hasExperts
-              ? "합계가 100%가 되어야 다음 단계(지급 품의 검토 요청)로 넘어갈 수 있습니다."
-              : "참여율을 정리한 뒤 그 탭에서 종료를 상신합니다."}
+          {batches.length === 0 ? (
+            <p className="text-sm text-muted-foreground">아직 올린 지급 품의가 없습니다.</p>
+          ) : (
+            <ul className="divide-y">
+              {batches.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-start justify-between gap-2 py-2.5">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={b.status} />
+                      <span className="text-sm font-semibold">{b.title}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      세션: {b.slotLabels.length > 0 ? b.slotLabels.join(" · ") : "-"}
+                      {canSeeAmounts && ` · 총 ${formatKrw(b.totalGross)}`}
+                      {` · 상신 ${fmtWhen(b.createdAt)}`}
+                      {b.status === "confirmed" && b.confirmedAt && ` · 승인 ${fmtWhen(b.confirmedAt)}`}
+                      {b.status === "paid" && b.paidAt && ` · 지급 ${fmtWhen(b.paidAt)}`}
+                    </div>
+                    {b.status === "pending" && b.rejectionNote && (
+                      <div className="text-xs text-red-700">반려: {b.rejectionNote}</div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {b.approvalId && (
+                      <Button asChild type="button" variant="outline" size="sm" className="h-7 px-2 text-[11px]">
+                        <Link href={`/${tenantSlug}/approvals/${b.approvalId}`}>결재 건 보기</Link>
+                      </Button>
+                    )}
+                    {b.status === "pending" && canSubmit && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => resubmit(b.id)}
+                        disabled={pending}
+                      >
+                        <RotateCcw className="mr-0.5 h-3 w-3" aria-hidden />
+                        재상신
+                      </Button>
+                    )}
+                    {b.status === "confirmed" &&
+                      (canMarkPaid ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 bg-violet-600 px-2 text-[11px] text-white hover:bg-violet-700"
+                          onClick={() => paid(b.id)}
+                          disabled={pending}
+                        >
+                          <BadgeCheck className="mr-0.5 h-3 w-3" aria-hidden />
+                          지급 완료
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">지급 완료는 지급 권한자가 처리</span>
+                      ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ③ 프로젝트 종료 */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-sm">프로젝트 종료</CardTitle>
+          {isClosed ? (
+            <Badge>{closedAt ? `${new Date(closedAt).toLocaleDateString("ko-KR")} 종료` : "종료"}</Badge>
+          ) : allPaid && canClose ? (
+            <Button type="button" size="sm" onClick={close} disabled={pending}>
+              프로젝트 종료
+            </Button>
+          ) : null}
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">
+            {isClosed
+              ? "종료된 프로젝트입니다. 참여율은 임원 대시보드 성과 집계에 반영됩니다."
+              : allPaid
+                ? canClose
+                  ? "모든 세션의 지급이 끝났습니다. 프로젝트를 종료할 수 있습니다."
+                  : "모든 세션의 지급이 끝났습니다. 종료는 관리자 이상이 합니다 (권한 규칙)."
+                : "모든 세션의 지급 품의가 '지급 완료'가 되면 프로젝트를 종료할 수 있습니다."}
           </p>
         </CardContent>
       </Card>
-
-      {/* 지급 품의서 자동 생성 조건 (기획 2026-09-21) — 섭외 확정 탭의 평가·종료 + 참여율 확정 */}
-      {hasExperts && autoStatus && !afterClosing && (
-        <Card className="border-indigo-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">지급 품의서 자동 생성 조건</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5 text-sm">
-            <p className="text-xs text-muted-foreground">
-              아래 조건이 모두 갖춰지는 순간 지급 품의서가 자동으로 만들어지고 회계담당자 검토(③)로
-              넘어갑니다. 버튼을 따로 누르지 않아도 됩니다.
-            </p>
-            <ConditionLine
-              ok={autoStatus.acceptedCount > 0 && autoStatus.completedCount === autoStatus.acceptedCount}
-              text={`섭외 확정 탭에서 모든 전문가 종료 처리 — ${autoStatus.completedCount}/${autoStatus.acceptedCount}건`}
-            />
-            <ConditionLine
-              ok={autoStatus.acceptedCount > 0 && autoStatus.unratedCount === 0}
-              text={
-                autoStatus.unratedCount === 0
-                  ? "모든 전문가 평가 입력 완료"
-                  : `전문가 평가 미입력 ${autoStatus.unratedCount}건 (섭외 확정 탭의 '평가' 버튼)`
-              }
-            />
-            <ConditionLine
-              ok={autoStatus.contributionTotal === 100 && autoStatus.contributionConfirmed}
-              text={
-                autoStatus.contributionConfirmed
-                  ? "참여율 배분 100% 확정"
-                  : `참여율 배분 확정 전 (현재 ${autoStatus.contributionTotal}%${autoStatus.contributionTotal === 100 ? " — '확정' 버튼을 눌러 주세요" : ""})`
-              }
-            />
-            {autoSettlementReady(autoStatus) && (
-              <p className="text-xs font-semibold text-indigo-700">
-                조건이 모두 갖춰졌습니다. 화면을 새로고침하면 ③ 지급 품의서 검토로 넘어가 있습니다.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ② 세션별 만족도 — 섭외 확정 탭의 평가와 같은 기록을 본다 (손수 마감하는 경로) */}
-      {hasExperts && settlement && (inClosing || afterClosing) && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm">② 세션별 전문가 만족도</CardTitle>
-            <SatisfactionProgress done={rated} total={settlement.lines.length} />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <SatisfactionHint readOnly={!inClosing || !canEvaluate} />
-            {settlement.lines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                수락(확정)된 참여 건이 없습니다.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {settlement.lines.map((line) => (
-                  <li key={line.engagementId} className="space-y-1">
-                    <SatisfactionForm
-                      projectId={projectId}
-                      disabled={!canEvaluate || !inClosing}
-                      row={{
-                        expertId: line.expertId,
-                        expertName: line.expertName,
-                        slotId: line.slotId,
-                        sessionName: line.sessionName,
-                        schedule: line.schedule,
-                        positionCode: line.positionCode,
-                        satisfaction: line.satisfaction,
-                        memo: line.memo,
-                      }}
-                    />
-                    {/* 참여 건별 증빙 — 파일 1개, 선택 (기획 2026-08-30) */}
-                    <div className="pb-2 pl-1">
-                      <ClosingAttachment
-                        projectId={projectId}
-                        engagementId={line.engagementId}
-                        attachment={attachmentsByEngagement[line.engagementId] ?? null}
-                        canManage={canEvaluate}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {inClosing && canManage && (
-              <div className="border-t pt-3">
-                <ClosingStageButtons
-                  projectId={projectId}
-                  mode="request"
-                  disabledReason={
-                    contributionTotal !== 100
-                      ? `참여율 합계가 100%가 아닙니다 (현재 ${contributionTotal}%).`
-                      : settlement.unratedCount > 0
-                        ? `만족도 미입력 ${settlement.unratedCount}건이 남았습니다.`
-                        : null
-                  }
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ③ 회계담당자 검토 */}
-      {hasExperts && settlement && afterClosing && (
-        <Card className={stage === "settlement_review" ? "border-brand" : undefined}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">③ 지급 품의 검토</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SettlementPanel
-            approverOptions={approverOptions}
-              projectId={projectId}
-              canReview={canReviewSettlement}
-              summary={{
-                expertCount: settlement.expertCount,
-                lineCount: settlement.lines.length,
-                totalGross: settlement.totalGross,
-                totalWithholding: settlement.totalWithholding,
-                totalNet: settlement.totalNet,
-                document: buildSettlementDocument(settlement),
-                note: settlement.settlementNote,
-                reviewedAt: settlement.settlementReviewedAt,
-                submitted: stage === "settled",
-              }}
-            />
-          </CardContent>
-        </Card>
-      )}
-
     </div>
   );
 }

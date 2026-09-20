@@ -10,7 +10,6 @@ import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getTenantModules } from "@/lib/modules/server";
-import { tryAutoSettlementReview } from "@/lib/integrations/settlement-auto";
 
 /**
  * 세션별·전문가별 종료 (기획 지시 2026-09-21) — 섭외 확정 탭.
@@ -81,15 +80,6 @@ export async function setEngagementCompleted(engagementId: string, done: boolean
     resource_id: engagementId,
     after_data: { project_id: engagement.project_id },
   });
-  // 모든 전문가의 평가·종료 + 참여율 확정이 끝나면 지급 품의서 자동 생성 (기획 2026-09-21)
-  if (done && engagement.project_id) {
-    await tryAutoSettlementReview({
-      projectId: engagement.project_id,
-      tenantId: auth.tenantId,
-      actorUserId: auth.userId,
-      actorRole: auth.role,
-    });
-  }
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
@@ -144,14 +134,6 @@ export async function setSlotCompleted(slotId: string, done: boolean): Promise<R
     resource_id: slotId,
     after_data: { project_id: slot.project_id, engagement_ids: engagementIds },
   });
-  if (done) {
-    await tryAutoSettlementReview({
-      projectId: slot.project_id,
-      tenantId: auth.tenantId,
-      actorUserId: auth.userId,
-      actorRole: auth.role,
-    });
-  }
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
 }
