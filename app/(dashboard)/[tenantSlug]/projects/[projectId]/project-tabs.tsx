@@ -20,9 +20,9 @@ export const PROJECT_TAB_KEYS = [
   "experts",
   "engage",
   "confirmed",
+  "closing",
   "review",
   "contrib",
-  "closing",
 ] as const;
 
 export type ProjectTabKey = (typeof PROJECT_TAB_KEYS)[number];
@@ -100,6 +100,14 @@ const TAB_DEFS: readonly {
     idleClass: "border-lime-200 bg-lime-50 text-lime-800 hover:bg-lime-100",
   },
   {
+    // 지급 품의 (기획 지시 2026-09-21, 섭외 확정 ↔ 리뷰 사이) — 세션 단위 지급 품의·결재 상태·지급 완료·프로젝트 종료
+    key: "closing",
+    label: "지급 품의",
+    activeClass: "border-emerald-600 bg-emerald-600 text-white shadow-sm",
+    idleClass:
+      "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+  },
+  {
     // 리뷰 (기획 지시 2026-09-21) — 완료 사업 결과 요약·전문가 평가·운영 특이사항.
     // 회사 내부 기록이라 공통 기반, 모듈 게이트 없음 (전문가 평가 절만 experts에서 의미)
     key: "review",
@@ -117,14 +125,6 @@ const TAB_DEFS: readonly {
     activeClass: "border-rose-600 bg-rose-600 text-white shadow-sm",
     idleClass:
       "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
-  },
-  {
-    // 지급 품의 (기획 지시 2026-09-21) — 세션 단위 지급 품의·결재 상태·지급 완료·프로젝트 종료
-    key: "closing",
-    label: "지급 품의",
-    activeClass: "border-emerald-600 bg-emerald-600 text-white shadow-sm",
-    idleClass:
-      "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
   },
 ];
 

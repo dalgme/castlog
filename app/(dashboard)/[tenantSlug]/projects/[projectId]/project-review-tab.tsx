@@ -73,6 +73,18 @@ export type ReviewExpertAuto = {
 /** 운영·관리 특이사항의 고정 영역 — 영역마다 줄을 댓글처럼 쌓는다 (기획 2026-09-21) */
 const OPS_AREAS = ["발주처 담당자", "대관처(행사장)", "참여인원", "기타사항"];
 
+/** 표 디자인 (기획 지시 2026-09-21 업그레이드) — 인디고 머리띠·얇은 인디고 격자·줄무늬 */
+const TABLE_CLASS = "w-full min-w-[40rem] border-separate border-spacing-0 overflow-hidden rounded-lg border border-indigo-200 text-sm";
+const HEAD_CLASS = "border-b border-indigo-200 bg-indigo-600 px-3 py-2 text-center text-xs font-semibold tracking-wide text-white";
+const CARD_CLASS = "border-indigo-200 shadow-sm";
+const SECTION_TITLE = "flex items-center gap-2 text-base font-bold text-indigo-950";
+function SectionNo({ n }: { n: number }) {
+  return (
+    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white" aria-hidden>
+      {n}
+    </span>
+  );
+}
 const REGISTER_CLASS = "h-7 px-2 text-[11px] bg-indigo-600 text-white hover:bg-indigo-700";
 const EDIT_CLASS = "h-7 px-2 text-[11px] border-indigo-300 text-indigo-800 hover:bg-indigo-50";
 
@@ -251,9 +263,9 @@ function SummarySection({
     });
   }
 
-  const th = "w-28 border bg-neutral-50 px-2 py-2 text-left text-xs font-semibold align-top";
-  const th2 = "w-40 border bg-neutral-50/60 px-2 py-2 text-left text-xs font-semibold align-top";
-  const td = "border px-2 py-2 text-sm align-top";
+  const th = "w-28 border border-indigo-100 bg-indigo-100/70 px-3 py-2.5 text-left text-xs font-bold text-indigo-900 align-top";
+  const th2 = "w-44 border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-left text-xs font-semibold text-indigo-900 align-top";
+  const td = "border border-indigo-100 bg-white px-3 py-2.5 text-sm align-top";
   const textInput = (value: string | null, key: keyof ReviewSaved, placeholder: string) =>
     editable ? (
       <Input
@@ -267,9 +279,9 @@ function SummarySection({
     ) : null;
 
   return (
-    <Card>
+    <Card className={CARD_CLASS}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm">1. 완료 사업 결과 요약표</CardTitle>
+        <CardTitle className={SECTION_TITLE}><SectionNo n={1} />완료 사업 결과 요약표</CardTitle>
         {canEdit &&
           (editing ? (
             <Button type="button" size="sm" className={REGISTER_CLASS} onClick={submit} disabled={pending}>
@@ -285,13 +297,13 @@ function SummarySection({
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] border-collapse">
+          <table className={TABLE_CLASS}>
             <thead>
               <tr>
-                <th colSpan={2} className="border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold">
+                <th colSpan={2} className={HEAD_CLASS}>
                   구분
                 </th>
-                <th className="border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold">내용</th>
+                <th className={HEAD_CLASS}>내용</th>
               </tr>
             </thead>
             <tbody>
@@ -599,14 +611,14 @@ function ExpertSection({
     ]);
   }
 
-  const th = "border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold";
-  const td = "border px-2 py-1.5 text-sm align-top";
+  const th = HEAD_CLASS;
+  const td = "border border-indigo-100 bg-white px-3 py-2 text-sm align-top";
 
   return (
-    <Card>
+    <Card className={CARD_CLASS}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <div>
-          <CardTitle className="text-sm">2. 전문가(강사) 평가 (담당 PM 작성)</CardTitle>
+          <CardTitle className={SECTION_TITLE}><SectionNo n={2} />전문가(강사) 평가 (담당 PM 작성)</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             ※ 평가항목: 준비도(자료 등), 전달력 및 집중도, 적합성(대상/주제/목적 등), 기타사항 등. 계약이 성립한 전문가는 자동으로 줄이 놓입니다.
           </p>
@@ -620,7 +632,7 @@ function ExpertSection({
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] border-collapse">
+          <table className={TABLE_CLASS}>
             <thead>
               <tr>
                 <th className={cn(th, "w-36")}>참여 전문가명</th>
@@ -640,7 +652,7 @@ function ExpertSection({
               {rows.map((row, index) => {
                 const editable = canEdit && row.editing && busyKey !== row.key;
                 return (
-                  <tr key={row.key} className={cn(row.id === null && "bg-amber-50/40")}>
+                  <tr key={row.key} className={cn("transition-colors", row.id === null ? "bg-amber-50/50" : "odd:bg-white even:bg-indigo-50/20 hover:bg-indigo-50/40")}>
                     <td className={td}>
                       {row.expertId || !editable ? (
                         <span className="font-semibold">{row.subject || <span className="text-muted-foreground">-</span>}</span>
@@ -721,7 +733,7 @@ function OpsSection({
   canEdit,
 }: {
   projectId: string;
-  title: string;
+  title: React.ReactNode;
   initialRows: RowState[];
   canEdit: boolean;
 }) {
@@ -755,20 +767,20 @@ function OpsSection({
     ...Array.from(new Set(rows.map((r) => r.subject))).filter((s) => !OPS_AREAS.includes(s)),
   ];
 
-  const th = "border bg-neutral-100 px-2 py-1.5 text-center text-xs font-semibold";
-  const td = "border px-2 py-1.5 text-sm align-top";
+  const th = HEAD_CLASS;
+  const td = "border border-indigo-100 bg-white px-3 py-2 text-sm align-top";
 
   return (
-    <Card>
+    <Card className={CARD_CLASS}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
+        <CardTitle className={SECTION_TITLE}>{title}</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           영역마다 「줄 추가」로 내용을 계속 쌓습니다. 줄마다 등록하면 작성자와 시각이 남고, 「수정」으로 고칠 수 있습니다.
         </p>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] border-collapse">
+          <table className={TABLE_CLASS}>
             <thead>
               <tr>
                 <th className={cn(th, "w-36")}>구분</th>
@@ -784,7 +796,7 @@ function OpsSection({
                   <FragmentRows key={area}>
                     {lines.length === 0 && (
                       <tr>
-                        <th rowSpan={span} className={cn(td, "w-36 bg-neutral-50 text-left text-xs font-semibold")}>
+                        <th rowSpan={span} className={cn(td, "w-36 bg-indigo-50/70 text-left text-xs font-bold text-indigo-900")}>
                           {area}
                         </th>
                         <td className={cn(td, "text-xs text-muted-foreground")} colSpan={canEdit ? 2 : 1}>
@@ -796,9 +808,9 @@ function OpsSection({
                       const editable = canEdit && row.editing && busyKey !== row.key;
                       const index = rows.findIndex((r) => r.key === row.key);
                       return (
-                        <tr key={row.key} className={cn(row.id === null && "bg-amber-50/40")}>
+                        <tr key={row.key} className={cn("transition-colors", row.id === null ? "bg-amber-50/50" : "odd:bg-white even:bg-indigo-50/20 hover:bg-indigo-50/40")}>
                           {i === 0 && (
-                            <th rowSpan={span} className={cn(td, "w-36 bg-neutral-50 text-left text-xs font-semibold")}>
+                            <th rowSpan={span} className={cn(td, "w-36 bg-indigo-50/70 text-left text-xs font-bold text-indigo-900")}>
                               {area}
                             </th>
                           )}
@@ -907,10 +919,10 @@ function PresentationDialog({
   hasExperts: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const th = cn("w-32 border bg-neutral-50 px-3 py-2 text-left font-semibold align-top", P_SMALL);
-  const th2 = cn("w-52 border bg-neutral-50/60 px-3 py-2 text-left font-semibold align-top", P_SMALL);
-  const td = cn("border px-3 py-2 align-top", P_TEXT);
-  const head = cn("border bg-neutral-100 px-3 py-2 text-center font-semibold", P_SMALL);
+  const th = cn("w-32 border border-indigo-100 bg-indigo-100/70 px-3 py-2.5 text-left font-bold text-indigo-900 align-top", P_SMALL);
+  const th2 = cn("w-56 border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-left font-semibold text-indigo-900 align-top", P_SMALL);
+  const td = cn("border border-indigo-100 bg-white px-3 py-2.5 align-top", P_TEXT);
+  const head = cn("border-b border-indigo-200 bg-indigo-600 px-3 py-2 text-center font-semibold text-white", P_SMALL);
 
   const expertItems = items.filter((i) => i.section === "expert");
   const nameByExpert = new Map(experts.map((e) => [e.expertId, e.name]));
@@ -931,12 +943,11 @@ function PresentationDialog({
     <>
       <Button
         type="button"
-        size="sm"
-        className="bg-indigo-600 text-white hover:bg-indigo-700"
+        className="h-16 rounded-xl bg-brand-coral px-8 text-2xl font-bold text-white shadow-md hover:bg-brand-coral-dark"
         onClick={() => setOpen(true)}
         title="등록된 리뷰 내용을 큰 글자로 팝업에 보여 줍니다"
       >
-        <Presentation className="mr-1 h-4 w-4" aria-hidden />
+        <Presentation className="mr-2 h-8 w-8" aria-hidden />
         발표 보기
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -950,7 +961,7 @@ function PresentationDialog({
 
           <section className="space-y-2">
             <h3 className={P_TITLE}>1. 완료 사업 결과 요약표</h3>
-            <table className="w-full border-collapse">
+            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-indigo-200">
               <thead>
                 <tr>
                   <th colSpan={2} className={head}>구분</th>
@@ -1051,7 +1062,7 @@ function PresentationDialog({
               <p className={cn(P_SMALL, "text-muted-foreground")}>
                 ※ 평가항목: 준비도(자료 등), 전달력 및 집중도, 적합성(대상/주제/목적 등), 기타사항 등
               </p>
-              <table className="w-full border-collapse">
+              <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-indigo-200">
                 <thead>
                   <tr>
                     <th className={cn(head, "w-48")}>참여 전문가명</th>
@@ -1079,7 +1090,7 @@ function PresentationDialog({
 
           <section className="space-y-2">
             <h3 className={P_TITLE}>{hasExperts ? "3" : "2"}. 프로젝트 운영 및 관리 특이사항</h3>
-            <table className="w-full border-collapse">
+            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-indigo-200">
               <thead>
                 <tr>
                   <th className={cn(head, "w-48")}>구분</th>
@@ -1193,7 +1204,12 @@ export function ProjectReviewTab({
       {hasExperts && <ExpertSection projectId={projectId} initialRows={expertRows} canEdit={canEdit} />}
       <OpsSection
         projectId={projectId}
-        title={`${hasExperts ? "3" : "2"}. 프로젝트 운영 및 관리 특이사항`}
+        title={
+          <>
+            <SectionNo n={hasExperts ? 3 : 2} />
+            프로젝트 운영 및 관리 특이사항
+          </>
+        }
         initialRows={opsRows}
         canEdit={canEdit}
       />
