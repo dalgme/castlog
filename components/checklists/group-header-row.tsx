@@ -92,7 +92,7 @@ export function GroupHeaderRow({
           {canEdit && (
             <button
               type="button"
-              title="이 분류에 항목 추가"
+              title="이 영역 아래에 새 영역 추가"
               className="rounded p-0.5 text-muted-foreground hover:text-brand"
               disabled={pending}
               onClick={onAdd}
