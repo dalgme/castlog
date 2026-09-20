@@ -696,14 +696,17 @@ function ChecklistCard({
         )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] text-xs">
+            {/* 머리행은 열마다 칸을 그려 각 열의 너비가 보이게 (기획 지시 2026-09-21) */}
             <thead className="text-left text-muted-foreground">
-              <tr>
-                <th className="w-6" />
-                <th className="w-8 py-1 font-medium">No</th>
+              <tr className="bg-secondary/60">
+                <th className="w-6 border-y border-r border-border/70" />
+                <th className="w-8 border-y border-r border-border/70 px-1 py-1.5 font-medium">No</th>
                 {columns.map((c) => (
-                  <th key={c.key} className={cn("py-1 pr-2 font-medium", c.width)}>{c.label}</th>
+                  <th key={c.key} className={cn("border-y border-r border-border/70 px-2 py-1.5 font-medium", c.width)}>
+                    {c.label}
+                  </th>
                 ))}
-                <th className="w-32" />
+                <th className="w-32 border-y border-border/70" />
               </tr>
             </thead>
             <tbody className="divide-y">
