@@ -30,6 +30,10 @@ export type ReviewSlotDetail = {
   periodEnd: string | null;
   startsTime: string | null;
   endsTime: string | null;
+  /** 날짜 유형별 일정 줄 (개별선택형은 날짜마다 한 줄) — 있으면 진행일자·시간 대신 쓴다 */
+  scheduleText?: string | null;
+  countText?: string | null;
+  deliveryText?: string | null;
   roleDescription: string | null;
   fieldName: string | null;
   locationName: string | null;
@@ -70,14 +74,23 @@ function SlotDetail({ d }: { d: ReviewSlotDetail }) {
         ? d.startsTime.slice(0, 5)
         : null;
   const hours = hoursBetween(d.startsTime, d.endsTime);
-  const rows: [string, string | null][] = [
-    ["진행일자", d.periodEnd && d.periodEnd !== d.date ? `${d.date} ~ ${d.periodEnd}` : d.date],
-    ["시간", time],
-    ["시수", hours],
-    ["세부역할", [d.fieldName, d.roleDescription].filter(Boolean).join(" · ") || null],
-    ["장소", d.locationName],
-    ["비고", d.notes],
-  ];
+  const rows: [string, string | null][] = d.scheduleText
+    ? [
+        ["진행일정", d.scheduleText],
+        ["회차·방식", [d.countText, d.deliveryText].filter(Boolean).join(" · ") || null],
+        ["시수", hours],
+        ["세부역할", [d.fieldName, d.roleDescription].filter(Boolean).join(" · ") || null],
+        ["장소", d.locationName],
+        ["비고", d.notes],
+      ]
+    : [
+        ["진행일자", d.periodEnd && d.periodEnd !== d.date ? `${d.date} ~ ${d.periodEnd}` : d.date],
+        ["시간", time],
+        ["시수", hours],
+        ["세부역할", [d.fieldName, d.roleDescription].filter(Boolean).join(" · ") || null],
+        ["장소", d.locationName],
+        ["비고", d.notes],
+      ];
   return (
     <dl className="mb-2 grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 rounded-md bg-secondary/40 px-2.5 py-2 text-xs sm:grid-cols-[4.5rem_1fr_4.5rem_1fr]">
       {rows.map(([label, value]) => (

@@ -23,11 +23,35 @@ async function requireManager(): Promise<
   return requireExecGrade("planInput");
 }
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 입력하세요.");
+const hhmm = z.string().regex(/^\d{2}:\d{2}$/).optional().or(z.literal(""));
+const timeOrder = (s: string | undefined, e: string | undefined) => !s || !e || s < e;
+const countField = z.number().int().min(1, "회차는 1 이상").max(999).nullable().optional();
+
+/**
+ * 세션 입력 (기획 지시 2026-09-21 — 날짜 유형·회차·온오프라인).
+ *  - continuous(연속형): slotDate~endDate, 양 끝 날의 시각은 선택, 회차 최소~최대
+ *  - individual(개별선택형): dates 목록 (첫 날이 slot_date, 마지막 날이 period_end_date)
+ *  - 장소는 온라인 세션이면 비워도 된다. 오프라인·병행이면 필수 (안내문자·수락서에 실린다)
+ */
 const slotSchema = z
   .object({
-    slotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 입력하세요."),
-    startsTime: z.string().regex(/^\d{2}:\d{2}$/).optional().or(z.literal("")),
-    endsTime: z.string().regex(/^\d{2}:\d{2}$/).optional().or(z.literal("")),
+    dateKind: z.enum(["continuous", "individual"]).default("individual"),
+    slotDate: isoDate,
+    startsTime: hhmm,
+    endsTime: hhmm,
+    endDate: isoDate.optional().or(z.literal("")),
+    endStartsTime: hhmm,
+    endEndsTime: hhmm,
+    dates: z
+      .array(z.object({ date: isoDate, startsTime: hhmm, endsTime: hhmm }))
+      .max(60, "개별 날짜는 60개까지")
+      .optional(),
+    countMin: countField,
+    countMax: countField,
+    onlineCount: z.number().int().min(0).max(999).nullable().optional(),
+    offlineCount: z.number().int().min(0).max(999).nullable().optional(),
+    deliveryMode: z.enum(["online", "offline", "hybrid"]).nullable().optional(),
     roleType: z.enum([
       "host",
       "lecturer",
@@ -37,44 +61,124 @@ const slotSchema = z
       "assistant",
       "other",
     ]),
-    // 세션명·장소 필수 (기획 확정 2026-08-30 — 안내문자·수락서에 그대로 실린다)
+    // 세션명 필수 (기획 확정 2026-08-30 — 안내문자·수락서에 그대로 실린다)
     sessionName: z.string().trim().min(1, "세션명을 입력하세요.").max(120),
     roleDescription: z.string().trim().max(100).optional(),
     requiredCount: z.number().int().min(1, "필요 인원은 1명 이상").max(100),
     feeAmount: z.string().regex(/^\d*$/, "비용은 숫자만 입력하세요.").optional(),
-    locationName: z.string().trim().min(1, "장소를 입력하세요.").max(150),
+    locationName: z.string().trim().max(150).optional().or(z.literal("")),
     locationAddress: z.string().trim().max(200).optional(),
     notes: z.string().trim().max(500).optional(),
     // 세션 분야 (기획 2026-08-30 — 35번, tenant_session_fields)
     fieldId: z.string().uuid().optional().or(z.literal("")),
   })
-  .refine(
-    (v) => !v.startsTime || !v.endsTime || v.startsTime < v.endsTime,
-    { message: "종료 시각은 시작 시각 이후여야 합니다.", path: ["endsTime"] }
-  );
-
-/**
- * 컨설팅 세션(34번)의 세션 계획 탭 수정용 — 장소는 구조적으로 없다(멘토·멘티가
- * 별도 협의). 행사 스키마의 장소 필수를 그대로 적용하면 수정 자체가 거부된다
- * (감사 P2-2a).
- */
-const consultingEditSchema = slotSchema.innerType()
-  .extend({
-    locationName: z.string().trim().max(150).optional().or(z.literal("")),
+  .refine((v) => timeOrder(v.startsTime, v.endsTime), {
+    message: "종료 시각은 시작 시각 이후여야 합니다.",
+    path: ["endsTime"],
   })
-  .refine(
-    (v) => !v.startsTime || !v.endsTime || v.startsTime < v.endsTime,
-    { message: "종료 시각은 시작 시각 이후여야 합니다.", path: ["endsTime"] }
+  .refine((v) => timeOrder(v.endStartsTime, v.endEndsTime), {
+    message: "종료일의 종료 시각은 시작 시각 이후여야 합니다.",
+    path: ["endEndsTime"],
+  })
+  .refine((v) => v.dateKind !== "continuous" || (Boolean(v.endDate) && v.endDate! >= v.slotDate), {
+    message: "연속형은 종료일이 필요하고 시작일 이후여야 합니다.",
+    path: ["endDate"],
+  })
+  .refine((v) => v.dateKind !== "individual" || (v.dates?.length ?? 0) > 0, {
+    message: "개별선택형은 날짜를 하나 이상 추가하세요.",
+    path: ["dates"],
+  })
+  .refine((v) => !v.dates || v.dates.every((d) => timeOrder(d.startsTime, d.endsTime)), {
+    message: "날짜별 종료 시각은 시작 시각 이후여야 합니다.",
+    path: ["dates"],
+  })
+  .refine((v) => v.countMin === null || v.countMin === undefined || v.countMax === null || v.countMax === undefined || v.countMax >= v.countMin, {
+    message: "최대 회차는 최소 회차 이상이어야 합니다.",
+    path: ["countMax"],
+  })
+  .refine((v) => v.deliveryMode === "online" || v.deliveryMode === null || v.deliveryMode === undefined || Boolean(v.locationName?.trim()), {
+    message: "오프라인·병행 세션은 장소를 입력하세요 (온라인이면 비워도 됩니다).",
+    path: ["locationName"],
+  });
+
+export type SlotInput = z.input<typeof slotSchema>;
+
+/** 날짜 유형에 따라 저장할 열 값을 정리한다 — 개별선택형은 첫 날·마지막 날을 slot_date·period_end_date에 */
+function scheduleColumns(d: z.output<typeof slotSchema>) {
+  if (d.dateKind === "individual") {
+    const dates = [...(d.dates ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+    const first = dates[0]!;
+    const last = dates[dates.length - 1]!;
+    return {
+      columns: {
+        date_kind: "individual",
+        slot_date: first.date,
+        period_end_date: dates.length > 1 ? last.date : null,
+        starts_time: first.startsTime || null,
+        ends_time: first.endsTime || null,
+        end_starts_time: null,
+        end_ends_time: null,
+        session_count_min: null,
+        session_count_max: null,
+      },
+      dates,
+    };
+  }
+  return {
+    columns: {
+      date_kind: "continuous",
+      slot_date: d.slotDate,
+      period_end_date: d.endDate || d.slotDate,
+      starts_time: d.startsTime || null,
+      ends_time: d.endsTime || null,
+      end_starts_time: d.endStartsTime || null,
+      end_ends_time: d.endEndsTime || null,
+      session_count_min: d.countMin ?? null,
+      session_count_max: d.countMax ?? null,
+    },
+    dates: [] as { date: string; startsTime?: string; endsTime?: string }[],
+  };
+}
+
+function deliveryColumns(d: z.output<typeof slotSchema>) {
+  const hybrid = d.deliveryMode === "hybrid";
+  return {
+    delivery_mode: d.deliveryMode ?? null,
+    session_count_online: hybrid ? (d.onlineCount ?? null) : null,
+    session_count_offline: hybrid ? (d.offlineCount ?? null) : null,
+  };
+}
+
+/** 개별 날짜 행을 통째로 바꾼다 — 부분 갱신보다 단순하고, 날짜 수가 작다 */
+async function replaceSlotDates(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  slotId: string,
+  dates: { date: string; startsTime?: string; endsTime?: string }[]
+): Promise<string | null> {
+  const { error: delError } = await supabase.from("engagement_slot_dates").delete().eq("slot_id", slotId);
+  if (delError) return await explainActionError(delError.message, "세션 날짜 저장에 실패했습니다.");
+  if (dates.length === 0) return null;
+  const { error } = await supabase.from("engagement_slot_dates").insert(
+    dates.map((x, i) => ({
+      tenant_id: tenantId,
+      slot_id: slotId,
+      on_date: x.date,
+      starts_time: x.startsTime || null,
+      ends_time: x.endsTime || null,
+      sort_order: i + 1,
+    }))
   );
+  return error ? await explainActionError(error.message, "세션 날짜 저장에 실패했습니다.") : null;
+}
+
+export type CreateSlotResult = { ok: true; id: string } | { ok: false; error: string };
 
 /**
- * 타임테이블 슬롯 생성 + 필요인원만큼 코드넘버 자동 부여.
+ * 세션 생성 + 필요인원 3배수만큼 코드넘버 자동 부여.
  * 코드는 테넌트 내 유일해야 하므로 충돌 시 접미사를 붙여 재시도한다.
  */
-export async function createSlot(
-  projectId: string,
-  input: z.input<typeof slotSchema>
-): Promise<SlotResult> {
+export async function createSlot(projectId: string, input: SlotInput): Promise<CreateSlotResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireManager();
   if (!auth.ok) return auth;
@@ -84,6 +188,7 @@ export async function createSlot(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
   }
   const d = parsed.data;
+  const { columns, dates } = scheduleColumns(d);
 
   const supabase = createClient();
   const { data: slot, error } = await supabase
@@ -91,15 +196,14 @@ export async function createSlot(
     .insert({
       tenant_id: auth.tenantId,
       project_id: projectId,
-      slot_date: d.slotDate,
-      starts_time: d.startsTime || null,
-      ends_time: d.endsTime || null,
+      ...columns,
+      ...deliveryColumns(d),
       role_type: d.roleType,
       session_name: d.sessionName,
       role_description: d.roleDescription || null,
       required_count: d.requiredCount,
       fee_amount: d.feeAmount ? parseInt(d.feeAmount, 10) : null,
-      location_name: d.locationName,
+      location_name: d.locationName?.trim() || null,
       location_address: d.locationAddress || null,
       notes: d.notes || null,
       field_id: d.fieldId || null,
@@ -116,6 +220,12 @@ export async function createSlot(
     };
   }
 
+  const dateErr = await replaceSlotDates(supabase, auth.tenantId, slot.id, dates);
+  if (dateErr) {
+    await supabase.from("engagement_slots").delete().eq("id", slot.id);
+    return { ok: false, error: dateErr };
+  }
+
   // 후보 순위 모델 (개정 2026-08-30): 후보 TO를 **필요인원의 3배수**로
   // 발급한다 — 거절·미회신을 감안한 예비 폭 (기획 확정). 이후 추가·삭제 가능.
   const candidateCount = Math.min(100, d.requiredCount * 3);
@@ -123,7 +233,7 @@ export async function createSlot(
     supabase,
     auth.tenantId,
     slot.id,
-    d.slotDate,
+    columns.slot_date,
     d.roleType,
     1,
     candidateCount
@@ -134,7 +244,7 @@ export async function createSlot(
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
-  return { ok: true };
+  return { ok: true, id: slot.id };
 }
 
 /** 코드넘버 부여 — 충돌 시 짧은 접미사로 재시도(테넌트 내 유일). */
@@ -182,7 +292,7 @@ async function createPositions(
  */
 export async function updateSlot(
   slotId: string,
-  input: Omit<z.input<typeof slotSchema>, "requiredCount">
+  input: Omit<SlotInput, "requiredCount">
 ): Promise<SlotResult> {
   if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
   const auth = await requireExecGrade("planInput");
@@ -198,33 +308,22 @@ export async function updateSlot(
     .maybeSingle();
   if (!before) return { ok: false, error: "세션을 찾을 수 없습니다." };
 
-  // 컨설팅 세션(수행기간 있음)은 장소 없이 저장할 수 있다 (감사 P2-2a)
-  const isConsulting = before.period_end_date !== null;
-  const parsed = (isConsulting ? consultingEditSchema : slotSchema).safeParse({
-    ...input,
-    requiredCount: 1,
-  });
+  const parsed = slotSchema.safeParse({ ...input, requiredCount: 1 });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요." };
   }
   const d = parsed.data;
-  if (isConsulting && before.period_end_date && d.slotDate > before.period_end_date) {
-    return {
-      ok: false,
-      error: `수행 시작일이 종료일(${before.period_end_date}) 뒤일 수 없습니다 (규칙). 기간은 기본설정 탭의 컨설팅 세션에서 함께 수정해 주세요.`,
-    };
-  }
+  const { columns, dates } = scheduleColumns(d);
 
   const { error } = await supabase
     .from("engagement_slots")
     .update({
-      slot_date: d.slotDate,
-      starts_time: d.startsTime || null,
-      ends_time: d.endsTime || null,
+      ...columns,
+      ...deliveryColumns(d),
       role_type: d.roleType,
       session_name: d.sessionName || null,
       role_description: d.roleDescription || null,
-      location_name: d.locationName || null,
+      location_name: d.locationName?.trim() || null,
       // 비고 — 화면 입력 신설 (기획 2026-08-30). 생성과 수정이 같은 컬럼을 쓴다
       notes: d.notes || null,
       field_id: d.fieldId || null,
@@ -236,6 +335,8 @@ export async function updateSlot(
       error: await explainActionError(error.message, "세션 수정에 실패했습니다."),
     };
   }
+  const dateErr = await replaceSlotDates(supabase, auth.tenantId, slotId, dates);
+  if (dateErr) return { ok: false, error: dateErr };
 
   await supabase.from("audit_logs").insert({
     tenant_id: auth.tenantId,
@@ -255,9 +356,13 @@ export async function updateSlot(
       notes: before.notes,
     },
     after_data: {
-      slot_date: d.slotDate,
-      starts_time: d.startsTime || null,
-      ends_time: d.endsTime || null,
+      slot_date: columns.slot_date,
+      period_end_date: columns.period_end_date,
+      date_kind: columns.date_kind,
+      starts_time: columns.starts_time,
+      ends_time: columns.ends_time,
+      dates: dates.map((x) => x.date),
+      delivery_mode: d.deliveryMode ?? null,
       session_name: d.sessionName || null,
       role_type: d.roleType,
       role_description: d.roleDescription || null,
@@ -635,7 +740,7 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   const { data: source } = await supabase
     .from("engagement_slots")
     .select(
-      "id, project_id, slot_date, period_end_date, field_id, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order"
+      "id, project_id, slot_date, period_end_date, field_id, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, location_address, notes, sort_order, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline"
     )
     .eq("id", slotId)
     .maybeSingle();
@@ -643,14 +748,11 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
   // 컨설팅 세션(34번)은 장소가 구조적으로 없다 — 세션명만 확인하고, 기간·분야를
   // 함께 복제하며 후보 TO는 원본과 같은 수로 발급한다 (감사 P2-2b)
   const isConsulting = source.period_end_date !== null;
-  // 세션명·장소 필수화 이후의 우회 방지 — 필수값 없는 구세션은 복사 대신
-  // 원본을 먼저 채우게 한다 (리뷰 A-2)
-  if (!source.session_name || (!isConsulting && !source.location_name)) {
+  // 세션명 필수 (리뷰 A-2). 장소는 온라인 세션이면 없을 수 있다 (기획 2026-09-21)
+  if (!source.session_name) {
     return {
       ok: false,
-      error: isConsulting
-        ? "원본 세션에 세션명이 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요."
-        : "원본 세션에 세션명·장소가 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
+      error: "원본 세션에 세션명이 없어 복사할 수 없습니다 (필수 규칙). 원본을 수정해 채운 뒤 복사해 주세요.",
     };
   }
 
@@ -685,6 +787,16 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
       location_name: source.location_name,
       location_address: source.location_address,
       notes: source.notes,
+      date_kind: source.date_kind,
+      end_starts_time: source.end_starts_time,
+      end_ends_time: source.end_ends_time,
+      session_count_min: source.session_count_min,
+      session_count_max: source.session_count_max,
+      session_count_online: source.session_count_online,
+      session_count_offline: source.session_count_offline,
+      delivery_mode: source.delivery_mode,
+      unit_fee_online: source.unit_fee_online,
+      unit_fee_offline: source.unit_fee_offline,
       created_by: auth.userId,
     })
     .select("id")
@@ -696,6 +808,26 @@ export async function duplicateSlot(slotId: string): Promise<SlotResult> {
         ? await explainActionError(error.message, "세션 복사에 실패했습니다.")
         : "세션 복사에 실패했습니다 (시스템 오류). 잠시 후 다시 시도해 주세요.",
     };
+  }
+  // 개별 날짜도 함께 복제한다 — 구성의 일부다
+  {
+    const { data: srcDates } = await supabase
+      .from("engagement_slot_dates")
+      .select("on_date, starts_time, ends_time, sort_order")
+      .eq("slot_id", slotId)
+      .order("sort_order", { ascending: true });
+    if (srcDates && srcDates.length > 0) {
+      await supabase.from("engagement_slot_dates").insert(
+        srcDates.map((x) => ({
+          tenant_id: auth.tenantId,
+          slot_id: created.id,
+          on_date: x.on_date,
+          starts_time: x.starts_time,
+          ends_time: x.ends_time,
+          sort_order: x.sort_order,
+        }))
+      );
+    }
   }
 
   const positionError = await createPositions(

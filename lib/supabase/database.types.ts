@@ -1664,8 +1664,28 @@ export type Database = {
           tenant_id: string
           updated_at: string
           session_name: string | null
+          date_kind: string
+          end_starts_time: string | null
+          end_ends_time: string | null
+          session_count_min: number | null
+          session_count_max: number | null
+          session_count_online: number | null
+          session_count_offline: number | null
+          delivery_mode: string | null
+          unit_fee_online: number | null
+          unit_fee_offline: number | null
         }
         Insert: {
+          date_kind?: string
+          end_starts_time?: string | null
+          end_ends_time?: string | null
+          session_count_min?: number | null
+          session_count_max?: number | null
+          session_count_online?: number | null
+          session_count_offline?: number | null
+          delivery_mode?: string | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
           field_id?: string | null
           period_end_date?: string | null
           sort_order?: number | null
@@ -1688,6 +1708,16 @@ export type Database = {
           session_name?: string | null
         }
         Update: {
+          date_kind?: string
+          end_starts_time?: string | null
+          end_ends_time?: string | null
+          session_count_min?: number | null
+          session_count_max?: number | null
+          session_count_online?: number | null
+          session_count_offline?: number | null
+          delivery_mode?: string | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
           field_id?: string | null
           period_end_date?: string | null
           sort_order?: number | null
@@ -1711,6 +1741,50 @@ export type Database = {
         }
         Relationships: []
       }
+      engagement_slot_dates: {
+        Row: {
+          id: string
+          tenant_id: string
+          slot_id: string
+          on_date: string
+          starts_time: string | null
+          ends_time: string | null
+          sort_order: number
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          slot_id: string
+          on_date: string
+          starts_time?: string | null
+          ends_time?: string | null
+          sort_order?: number
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          slot_id?: string
+          on_date?: string
+          starts_time?: string | null
+          ends_time?: string | null
+          sort_order?: number
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_slot_dates_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "engagement_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       engagement_slot_positions: {
         Row: {
           code: string
@@ -1719,6 +1793,10 @@ export type Database = {
           expert_id: string | null
           id: string
           expected_fee: number | null
+          expected_fee_max: number | null
+          unit_fee_online: number | null
+          unit_fee_offline: number | null
+          fee_custom: boolean
           position_no: number
           rank: number | null
           slot_id: string
@@ -1730,6 +1808,10 @@ export type Database = {
           assigned_by: string | null
         }
         Insert: {
+          expected_fee_max?: number | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
+          fee_custom?: boolean
           code: string
           created_at?: string
           engagement_id?: string | null
@@ -1747,6 +1829,10 @@ export type Database = {
           assigned_by?: string | null
         }
         Update: {
+          expected_fee_max?: number | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
+          fee_custom?: boolean
           code?: string
           created_at?: string
           engagement_id?: string | null

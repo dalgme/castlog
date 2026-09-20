@@ -18,32 +18,22 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { PositionRequestDialog } from "./position-request-dialog";
-import {
-  mergeFieldOptions,
-  SessionFieldDialog,
-  type SessionFieldOption,
-} from "@/components/sessions/session-field-dialog";
 import { POSITION_STATUS_LABELS } from "@/lib/integrations/slot-codes";
-
 import {
-  createSlot,
-  deleteSlot,
-  adjustSlotCount,
-  updateSlot,
-  duplicateSlot,
-  reorderSlots,
-} from "./slot-actions";
-import { Time24Input } from "@/components/ui/datetime24";
-import { durationLabel } from "@/lib/integrations/time-duration";
+  countLabel,
+  DATE_KIND_LABELS,
+  DELIVERY_LABELS,
+  hybridCountLabel,
+  scheduleLines,
+  type SessionSchedule,
+} from "@/lib/sessions/schedule";
+import { emptySessionForm, formFromSchedule, type SessionFormValue } from "@/lib/sessions/form";
+import { SessionDialog } from "@/components/sessions/session-dialog";
+import type { MenteeView } from "@/components/sessions/mentee-editor";
+
+import { deleteSlot, adjustSlotCount, duplicateSlot, reorderSlots } from "./slot-actions";
 import { PlanVersionsDialog } from "./plan-versions-dialog";
 import {
   SessionNoticeDialog,
@@ -57,17 +47,20 @@ export type SlotPositionRow = {
   positionNo: number;
   /** 세션 내 섭외 순위 (1=최우선) */
   rank: number;
-  /** 후보별 예정가 (없으면 미정) */
+  /** 후보별 예정가(총액 최소). 없으면 미정 */
   expectedFee: number | null;
+  /** 총액 최대 — 회차·병행 범위일 때만 (기획 2026-09-21) */
+  expectedFeeMax: number | null;
+  /** 회당 단가 (온라인/오프라인) */
+  unitFeeOnline: number | null;
+  unitFeeOffline: number | null;
+  /** 일괄 등록 단가에서 개별 수정한 금액 — 코랄 표시 */
+  feeCustom: boolean;
   status: string;
   expertName: string | null;
-  /** 확정 건의 수락서로 바로 가기 위한 섭외 건 id */
   engagementId: string | null;
-  /** 긴급 취소로 다시 비게 된 자리라면 취소한 전문가 이름 */
   canceledExpertName: string | null;
-  /** 거절·만료로 다시 비게 된 자리라면 그 전문가와 결과 (E2E 검수 P2-8) */
   priorOutcome: { expertName: string; outcome: "declined" | "expired" } | null;
-  /** 임의 배정된 전문가 이름 (요청 전 내부 결정) */
   assignedExpertName: string | null;
 };
 
@@ -79,7 +72,6 @@ export type SlotNoticeData = {
 export type SlotRow = {
   id: string;
   slotDate: string;
-  /** 세션 분야 (35번) / 컨설팅 수행 종료일 (34번) */
   fieldId: string | null;
   periodEndDate: string | null;
   startsTime: string | null;
@@ -91,29 +83,24 @@ export type SlotRow = {
   feeAmount: number | null;
   locationName: string | null;
   notes: string | null;
+  /** 날짜 유형·회차·진행 방식 (기획 2026-09-21) */
+  schedule: SessionSchedule;
+  /** 세션 일괄 단가 (온라인/오프라인) */
+  unitFeeOnline: number | null;
+  unitFeeOffline: number | null;
+  mentees: MenteeView[];
   positions: SlotPositionRow[];
-  /** 세션 안내문자 — 확정 전문가 대상·발송 내역 */
   notice: SlotNoticeData;
 };
 
-const emptyDraft = {
-  slotDate: "",
-  startsTime: "",
-  endsTime: "",
-  roleType: "mentor",
-  sessionName: "",
-  roleDescription: "",
-  requiredCount: "1",
-  feeAmount: "",
-  locationName: "",
-  locationAddress: "",
-  notes: "",
-  fieldId: "",
-};
+/** 세션 한 줄 요약 — 세션 목록·섭외후보·안내문자 라벨 공용 */
+export function slotHeadline(s: SlotRow): string {
+  return `${scheduleLines(s.schedule).join(", ")}${s.sessionName ? ` · ${s.sessionName}` : ""}`;
+}
 
 /**
- * 섭외 테이블(날짜별 타임테이블) — 슬롯별 역할·필요인원·비용 관리.
- * 슬롯을 만들면 필요인원 수만큼 넘버링코드가 자동 부여된다.
+ * 세션 · 전문가 코드넘버 (세션 확인 탭). 세션을 만들면 필요인원 3배수의 코드넘버가
+ * 자동 부여된다. 추가·수정은 캘린더와 같은 팝업(SessionDialog)을 쓴다 (기획 2026-09-21).
  */
 export function SlotTable({
   projectId,
@@ -131,13 +118,9 @@ export function SlotTable({
   tenantSlug: string;
   slots: SlotRow[];
   canManage: boolean;
-  /** 세션분야 선택지 (35번 — tenant_session_fields). 캘린더 팝업과 같은 목록 */
   fieldOptions?: { id: string; name: string }[];
-  /** 세션 안내문자 발송 — 레벨 4부터 (입력 권한과 별개 축) */
   canNotice: boolean;
-  /** 라이트 모드 — 안내문자 버튼을 숨긴다 (검수 A6: 눌러야 거부되는 막다른 버튼 금지) */
   expertsLite?: boolean;
-  /** experts 모듈 활성 — 꺼진 테넌트에는 섭외 진입 버튼을 숨긴다 (연동 규칙 1-2-4) */
   expertsEnabled?: boolean;
   noticeTemplates: NoticeTemplateOption[];
   defaultNoticeBody: string;
@@ -145,135 +128,20 @@ export function SlotTable({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  // 팝업에서 방금 추가·숨긴 분야 — 새로고침 전에도 선택지에 바로 반영
-  const [addedFields, setAddedFields] = useState<SessionFieldOption[]>([]);
-  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
-  const fields = mergeFieldOptions(fieldOptions, addedFields, hiddenFieldIds);
-  const [adding, setAdding] = useState(false);
-  const [d, setD] = useState({ ...emptyDraft });
-  // 다중 일정 세트 (기획 확정 2026-08-23) — 첫 세트는 d, 추가 세트는 여기
-  const [extraSchedules, setExtraSchedules] = useState<
-    { slotDate: string; startsTime: string; endsTime: string }[]
-  >([]);
-  // 세션 수정 모드 — 같은 폼을 재사용한다 (일정은 단일 세트)
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<
+    | { mode: "create"; initial: SessionFormValue }
+    | { mode: "edit"; slot: SlotRow; initial: SessionFormValue }
+    | null
+  >(null);
   // 세션 순서 (드래그·▲▼ — 기획 2026-08-30). 서버 목록이 바뀌면 재동기화
   const [order, setOrder] = useState<string[]>(slots.map((s) => s.id));
   const [dragId, setDragId] = useState<string | null>(null);
   useEffect(() => {
     const ids = slots.map((s) => s.id);
-    setOrder((prev) =>
-      prev.length === ids.length && prev.every((id) => ids.includes(id))
-        ? prev
-        : ids
-    );
+    setOrder((prev) => (prev.length === ids.length && prev.every((id) => ids.includes(id)) ? prev : ids));
   }, [slots]);
   const slotsById = new Map(slots.map((s) => [s.id, s]));
-  const orderedSlots = order
-    .map((id) => slotsById.get(id))
-    .filter((s): s is SlotRow => Boolean(s));
-
-
-  const set = (k: keyof typeof emptyDraft, v: string) =>
-    setD((prev) => ({ ...prev, [k]: v }));
-
-  const resetForm = () => {
-    setAdding(false);
-    setEditingId(null);
-    setD({ ...emptyDraft });
-    setExtraSchedules([]);
-  };
-
-  const onCreate = () => {
-    setError(null);
-    // 필수값 선검증 — 다중 일정 세트 생성 도중 서버 거부를 받으면 일부만
-    // 만들어진 채 멈춘다 (리뷰 A-4)
-    if (!d.sessionName.trim() || !d.locationName.trim()) {
-      setError("세션명과 장소는 필수입니다 (③ 세션 정보).");
-      return;
-    }
-    startTransition(async () => {
-      if (editingId) {
-        const r = await updateSlot(editingId, {
-          slotDate: d.slotDate,
-          startsTime: d.startsTime,
-          endsTime: d.endsTime,
-          roleType: d.roleType as "mentor",
-          sessionName: d.sessionName,
-          roleDescription: d.roleDescription,
-          feeAmount: d.feeAmount,
-          locationName: d.locationName,
-          locationAddress: d.locationAddress,
-          notes: d.notes,
-          fieldId: d.fieldId,
-        });
-        if (!r.ok) setError(r.error);
-        else {
-          resetForm();
-          router.refresh();
-        }
-        return;
-      }
-      // 일정 세트마다 세션 1개 — 공통 정보(역할·인원·세션명·장소)를 공유한다
-      const schedules = [
-        { slotDate: d.slotDate, startsTime: d.startsTime, endsTime: d.endsTime },
-        ...extraSchedules.filter((sc) => sc.slotDate),
-      ];
-      for (let i = 0; i < schedules.length; i++) {
-        const sc = schedules[i]!;
-        const r = await createSlot(projectId, {
-          slotDate: sc.slotDate,
-          startsTime: sc.startsTime,
-          endsTime: sc.endsTime,
-          roleType: d.roleType as "mentor",
-          sessionName: d.sessionName,
-          roleDescription: d.roleDescription,
-          requiredCount: parseInt(d.requiredCount || "1", 10),
-          feeAmount: d.feeAmount,
-          locationName: d.locationName,
-          locationAddress: d.locationAddress,
-          notes: d.notes,
-          fieldId: d.fieldId,
-        });
-        if (!r.ok) {
-          // 이미 만들어진 세트는 폼에서 제거 — 재시도 시 중복 생성을 막는다
-          const remaining = schedules.slice(i);
-          const head = remaining[0]!;
-          setD((prev) => ({
-            ...prev,
-            slotDate: head.slotDate,
-            startsTime: head.startsTime,
-            endsTime: head.endsTime,
-          }));
-          setExtraSchedules(remaining.slice(1));
-          setError(`${sc.slotDate}: ${r.error}`);
-          router.refresh();
-          return;
-        }
-      }
-      resetForm();
-      router.refresh();
-    });
-  };
-
-  const startEdit = (s: SlotRow) => {
-    setEditingId(s.id);
-    setAdding(true);
-    setExtraSchedules([]);
-    setD({
-      ...emptyDraft,
-      slotDate: s.slotDate,
-      startsTime: s.startsTime ? s.startsTime.slice(0, 5) : "",
-      endsTime: s.endsTime ? s.endsTime.slice(0, 5) : "",
-      roleType: s.roleType,
-      sessionName: s.sessionName ?? "",
-      roleDescription: s.roleDescription ?? "",
-      requiredCount: String(s.requiredCount),
-      fieldId: s.fieldId ?? "",
-      locationName: s.locationName ?? "",
-      notes: s.notes ?? "",
-    });
-  };
+  const orderedSlots = order.map((id) => slotsById.get(id)).filter((s): s is SlotRow => Boolean(s));
 
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
     setError(null);
@@ -291,13 +159,11 @@ export function SlotTable({
       const r = await reorderSlots(projectId, next);
       if (!r.ok) {
         setError(r.error);
-        // 실패한 낙관적 순서가 화면에 눌러앉지 않게 서버 순서로 복원 (리뷰 3)
         setOrder(slots.map((slot) => slot.id));
       }
       router.refresh();
     });
   };
-  // 위/아래 이동 — 드래그는 터치 기기에서 동작하지 않는다 (검수 G2 · §10)
   const moveSlotBy = (id: string, delta: number) => {
     const idx = order.indexOf(id);
     const to = idx + delta;
@@ -315,12 +181,21 @@ export function SlotTable({
     commitOrder(next);
   };
 
-  const timeLabel = (s: SlotRow) =>
-    s.startsTime && s.endsTime
-      ? `${s.startsTime.slice(0, 5)}~${s.endsTime.slice(0, 5)}`
-      : s.startsTime
-        ? s.startsTime.slice(0, 5)
-        : "시간 미정";
+  function openEdit(s: SlotRow) {
+    setEditor({
+      mode: "edit",
+      slot: s,
+      initial: formFromSchedule(s.schedule, {
+        sessionName: s.sessionName,
+        roleType: s.roleType,
+        roleDescription: s.roleDescription,
+        requiredCount: s.requiredCount,
+        locationName: s.locationName,
+        notes: s.notes,
+        fieldId: s.fieldId,
+      }),
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -330,27 +205,22 @@ export function SlotTable({
         </Alert>
       )}
 
-      {slots.length === 0 && !adding && (
+      {slots.length === 0 && (
         <p className="rounded-md bg-secondary/50 p-3 text-sm text-muted-foreground">
-          아직 세션이 없습니다. 날짜·시간대별로 필요한 역할과 인원을 추가하면
-          인원마다 코드넘버가 자동 부여됩니다.
+          아직 세션이 없습니다. 세션을 추가하면 필요 인원의 3배수만큼 코드넘버(후보 TO)가 자동 부여됩니다.
         </p>
       )}
 
       {orderedSlots.map((s, slotIdx) => {
         const filled = s.positions.filter((p) => p.status === "filled").length;
         const requested = s.positions.filter((p) => p.status === "requested").length;
+        const lines = scheduleLines(s.schedule);
+        const count = hybridCountLabel(s.schedule) ?? countLabel(s.schedule);
         return (
-          <div
-            key={s.id}
-            className="rounded-lg border p-3"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => onSlotDrop(s.id)}
-          >
+          <div key={s.id} className="rounded-lg border p-3" onDragOver={(e) => e.preventDefault()} onDrop={() => onSlotDrop(s.id)}>
             <div className="flex flex-wrap items-center gap-2">
               {canManage && (
                 <span className="inline-flex items-center gap-0.5">
-                  {/* 드래그는 손잡이에서만 — 카드 안 입력·텍스트 선택과 충돌 방지 (리뷰 10) */}
                   <span
                     draggable={!pending}
                     onDragStart={() => setDragId(s.id)}
@@ -360,66 +230,42 @@ export function SlotTable({
                   >
                     <GripVertical className="h-4 w-4 text-muted-foreground/60" aria-hidden />
                   </span>
-                  <button
-                    type="button"
-                    aria-label="세션 위로"
-                    disabled={pending || slotIdx === 0}
-                    onClick={() => moveSlotBy(s.id, -1)}
-                    className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30"
-                  >
+                  <button type="button" aria-label="세션 위로" disabled={pending || slotIdx === 0} onClick={() => moveSlotBy(s.id, -1)} className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30">
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    type="button"
-                    aria-label="세션 아래로"
-                    disabled={pending || slotIdx === orderedSlots.length - 1}
-                    onClick={() => moveSlotBy(s.id, 1)}
-                    className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30"
-                  >
+                  <button type="button" aria-label="세션 아래로" disabled={pending || slotIdx === orderedSlots.length - 1} onClick={() => moveSlotBy(s.id, 1)} className="rounded p-0.5 text-muted-foreground hover:text-brand disabled:opacity-30">
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
                 </span>
               )}
-              <span className="text-sm font-semibold">
-                {s.slotDate}
-                {/* 컨설팅 세션(34번)은 수행기간 — 시작일만 보이면 하루짜리로
-                    읽힌다 (감사 P2-2d) */}
-                {s.periodEndDate && s.periodEndDate !== s.slotDate
-                  ? ` ~ ${s.periodEndDate}`
-                  : ""}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {s.periodEndDate
-                  ? "컨설팅 수행기간"
-                  : `${timeLabel(s)}${
-                      durationLabel(s.startsTime, s.endsTime)
-                        ? ` (${durationLabel(s.startsTime, s.endsTime)})`
-                        : ""
-                    }`}
-              </span>
-              {s.sessionName && (
-                <span className="text-sm font-medium text-brand-navy">
-                  {s.sessionName}
+              <span className="text-sm font-semibold">{lines[0]}</span>
+              {lines.length > 1 && (
+                <span className="text-xs text-muted-foreground" title={lines.join("\n")}>
+                  외 {lines.length - 1}일
                 </span>
               )}
-              <Badge variant="secondary">
-                {ENGAGEMENT_ROLE_TYPES[
-                  s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES
-                ] ?? s.roleType}
+              <Badge variant="outline" className="text-[10px]">
+                {DATE_KIND_LABELS[s.schedule.dateKind]}
+                {count ? ` · ${count}` : ""}
               </Badge>
-              {s.roleDescription && (
-                <span className="text-xs text-muted-foreground">{s.roleDescription}</span>
+              {s.schedule.deliveryMode && (
+                <Badge variant="outline" className="text-[10px]">
+                  {DELIVERY_LABELS[s.schedule.deliveryMode]}
+                </Badge>
               )}
+              {s.sessionName && <span className="text-sm font-medium text-brand-navy">{s.sessionName}</span>}
+              <Badge variant="secondary">
+                {ENGAGEMENT_ROLE_TYPES[s.roleType as keyof typeof ENGAGEMENT_ROLE_TYPES] ?? s.roleType}
+              </Badge>
+              {s.roleDescription && <span className="text-xs text-muted-foreground">{s.roleDescription}</span>}
+              {s.locationName && <span className="text-xs text-muted-foreground">· {s.locationName}</span>}
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Users className="h-3.5 w-3.5" /> {filled}/{s.requiredCount} 확정
                 {requested > 0 && ` · ${requested} 요청중`}
                 {" · 후보 TO "}
                 {s.positions.filter((p) => p.status !== "canceled").length}
               </span>
-              {/* 비용은 세션이 아니라 후보별 예정가로 관리한다 (개정 2026-08-22) */}
               <span className="ml-auto flex items-center gap-1">
-                {/* 이 세션에 귀속된 정보 그대로 섭외 흐름으로 (기획 29번).
-                    experts 모듈이 꺼진 테넌트에는 숨긴다 (1-2-4) */}
                 {expertsEnabled && (
                   <Link
                     href={`/${tenantSlug}/projects/${projectId}?tab=experts#slot-${s.id}`}
@@ -431,9 +277,7 @@ export function SlotTable({
                 {canNotice && !expertsLite && (
                   <SessionNoticeDialog
                     slotId={s.id}
-                    slotLabel={`${s.slotDate} ${timeLabel(s)}${
-                      s.sessionName ? ` · ${s.sessionName}` : ""
-                    }`}
+                    slotLabel={slotHeadline(s)}
                     templates={noticeTemplates}
                     defaultBody={defaultNoticeBody}
                     targets={s.notice.targets}
@@ -450,28 +294,13 @@ export function SlotTable({
                       className="h-7 w-16 text-xs"
                       onBlur={(e) => {
                         const next = parseInt(e.target.value, 10);
-                        if (next && next !== s.requiredCount) {
-                          run(() => adjustSlotCount(s.id, next));
-                        }
+                        if (next && next !== s.requiredCount) run(() => adjustSlotCount(s.id, next));
                       }}
                     />
-                    <button
-                      type="button"
-                      aria-label="세션 복사"
-                      title="이 세션의 구성(날짜·시간·역할·장소)을 복제합니다"
-                      disabled={pending}
-                      onClick={() => run(() => duplicateSlot(s.id))}
-                      className="rounded p-1 text-muted-foreground hover:text-brand"
-                    >
+                    <button type="button" aria-label="세션 복사" title="이 세션의 구성(일정·역할·장소)을 복제합니다" disabled={pending} onClick={() => run(() => duplicateSlot(s.id))} className="rounded p-1 text-muted-foreground hover:text-brand">
                       <Copy className="h-4 w-4" />
                     </button>
-                    <button
-                      type="button"
-                      aria-label="세션 수정"
-                      disabled={pending}
-                      onClick={() => startEdit(s)}
-                      className="rounded p-1 text-muted-foreground hover:text-brand"
-                    >
+                    <button type="button" aria-label="세션 수정" disabled={pending} onClick={() => openEdit(s)} className="rounded p-1 text-muted-foreground hover:text-brand">
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
@@ -479,15 +308,7 @@ export function SlotTable({
                       aria-label="세션 삭제"
                       disabled={pending}
                       onClick={() => {
-                        // 배정·예정가까지 입력한 세션이 오클릭 한 번에 사라지면
-                        // 안 된다 (§14-3 위험 작업 2단계 확인 — 검수 B10)
-                        if (
-                          window.confirm(
-                            `이 세션을 삭제할까요?\n${s.slotDate}${
-                              s.sessionName ? ` · ${s.sessionName}` : ""
-                            } — 코드넘버 ${s.positions.length}자리가 함께 삭제됩니다.`
-                          )
-                        ) {
+                        if (window.confirm(`이 세션을 삭제할까요?\n${slotHeadline(s)} — 코드넘버 ${s.positions.length}자리가 함께 삭제됩니다.`)) {
                           run(() => deleteSlot(s.id));
                         }
                       }}
@@ -500,25 +321,24 @@ export function SlotTable({
               </span>
             </div>
 
+            {lines.length > 1 && (
+              <p className="mt-1 pl-1 text-xs text-muted-foreground">{lines.join(" · ")}</p>
+            )}
             {s.notes && (
               <p className="mt-1 pl-1 text-xs text-muted-foreground" title="비고">
                 비고: {s.notes}
               </p>
             )}
+            {s.mentees.length > 0 && (
+              <p className="mt-1 pl-1 text-xs text-muted-foreground">
+                멘티 {s.mentees.length}명: {s.mentees.map((m) => m.name).join(", ")}
+              </p>
+            )}
 
             <div className="mt-2 flex flex-wrap gap-1.5">
               {s.positions.map((p) =>
-                // 미섭외 자리는 그 자리에서 바로 섭외를 시작한다 — '전문가 등록'
-                // 탭의 버튼과 같은 팝업이다. 같은 일에 두 가지 경로를 두면
-                // 어느 쪽이 진짜인지 헷갈린다.
                 (p.status === "open" || p.status === "assigned") && canManage ? (
-                  <PositionRequestDialog
-                    key={p.id}
-                    positionId={p.id}
-                    code={p.code}
-                    currentExpertName={p.assignedExpertName}
-                    variant="chip"
-                  />
+                  <PositionRequestDialog key={p.id} positionId={p.id} code={p.code} currentExpertName={p.assignedExpertName} variant="chip" />
                 ) : (
                   <a
                     key={p.id}
@@ -533,10 +353,7 @@ export function SlotTable({
                     }
                   >
                     <span className="font-mono font-semibold">{p.code}</span>
-                    <span>
-                      {p.expertName ??
-                        (POSITION_STATUS_LABELS[p.status] ?? p.status)}
-                    </span>
+                    <span>{p.expertName ?? (POSITION_STATUS_LABELS[p.status] ?? p.status)}</span>
                   </a>
                 )
               )}
@@ -545,281 +362,28 @@ export function SlotTable({
         );
       })}
 
-      {canManage && !adding && (
+      {canManage && (
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="bg-violet-600 text-white hover:bg-violet-700"
-            onClick={() => setAdding(true)}
-          >
+          {/* 세션 추가 — 코랄 강조 (기획 지시 2026-09-21). 캘린더와 같은 팝업 */}
+          <Button size="sm" className="bg-coral text-white hover:bg-coral-dark" onClick={() => setEditor({ mode: "create", initial: emptySessionForm() })}>
             <Plus className="mr-1 h-4 w-4" /> 세션 추가
           </Button>
           <PlanVersionsDialog projectId={projectId} />
         </div>
       )}
 
-      {/* 세션 추가 영역 — 전용 색 구획 (기획 확정 2026-08-22): 세션 탭 색(보라)과
-          맞추고, 일정/역할·인원/정보 묶음으로 나눠 가독성을 높인다 */}
-      {adding && (
-        <div className="overflow-hidden rounded-lg border-2 border-violet-300 bg-violet-50/60 shadow-sm">
-          <div className="flex items-center gap-2 bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
-            {editingId ? (
-              <Pencil className="h-4 w-4" aria-hidden />
-            ) : (
-              <Plus className="h-4 w-4" aria-hidden />
-            )}
-            {editingId ? "세션 수정" : "새 세션 추가"}
-          </div>
-          <div className="space-y-3 p-3">
-            <div className="rounded-md border border-violet-200 bg-white p-3">
-              <p className="mb-2 text-xs font-semibold text-violet-800">
-                ① 일정 (24시간제)
-              </p>
-              <div className="space-y-2">
-                {/* 첫 세트 = d, 추가 세트 = extraSchedules (기획 확정 2026-08-23) */}
-                <div className="flex flex-wrap items-end gap-2">
-                  <div>
-                    <label className="block text-[11px] font-medium text-violet-900">
-                      날짜 (필수)
-                    </label>
-                    <Input
-                      type="date"
-                      value={d.slotDate}
-                      onChange={(e) => set("slotDate", e.target.value)}
-                      className="w-40"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-violet-900">
-                      시작
-                    </label>
-                    <Time24Input
-                      value={d.startsTime}
-                      onChange={(v) => set("startsTime", v)}
-                      ariaLabel="시작"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-violet-900">
-                      종료
-                    </label>
-                    <Time24Input
-                      value={d.endsTime}
-                      onChange={(v) => set("endsTime", v)}
-                      ariaLabel="종료"
-                    />
-                  </div>
-                  <span className="pb-2 text-xs font-semibold text-violet-700">
-                    {durationLabel(d.startsTime, d.endsTime) ?? ""}
-                  </span>
-                </div>
-                {!editingId &&
-                  extraSchedules.map((sc, i) => (
-                    <div key={i} className="flex flex-wrap items-end gap-2">
-                      <Input
-                        type="date"
-                        value={sc.slotDate}
-                        onChange={(e) =>
-                          setExtraSchedules((prev) =>
-                            prev.map((v, j) =>
-                              j === i ? { ...v, slotDate: e.target.value } : v
-                            )
-                          )
-                        }
-                        className="w-40"
-                      />
-                      <Time24Input
-                        value={sc.startsTime}
-                        onChange={(v) =>
-                          setExtraSchedules((prev) =>
-                            prev.map((x, j) =>
-                              j === i ? { ...x, startsTime: v } : x
-                            )
-                          )
-                        }
-                        ariaLabel={`추가 일정 ${i + 1} 시작`}
-                      />
-                      <Time24Input
-                        value={sc.endsTime}
-                        onChange={(v) =>
-                          setExtraSchedules((prev) =>
-                            prev.map((x, j) =>
-                              j === i ? { ...x, endsTime: v } : x
-                            )
-                          )
-                        }
-                        ariaLabel={`추가 일정 ${i + 1} 종료`}
-                      />
-                      <span className="pb-2 text-xs font-semibold text-violet-700">
-                        {durationLabel(sc.startsTime, sc.endsTime) ?? ""}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="일정 세트 제거"
-                        onClick={() =>
-                          setExtraSchedules((prev) =>
-                            prev.filter((_, j) => j !== i)
-                          )
-                        }
-                        className="mb-2 rounded p-1 text-muted-foreground hover:text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                {!editingId && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="border-violet-300 text-violet-700"
-                    onClick={() =>
-                      setExtraSchedules((prev) => [
-                        ...prev,
-                        { slotDate: "", startsTime: "", endsTime: "" },
-                      ])
-                    }
-                  >
-                    <Plus className="mr-1 h-3.5 w-3.5" /> 일정 추가
-                  </Button>
-                )}
-                {!editingId && extraSchedules.length > 0 && (
-                  <p className="text-[11px] text-violet-800">
-                    일정 세트마다 세션이 하나씩 만들어집니다 — 역할·인원·세션
-                    정보는 공통 적용됩니다.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-md border border-violet-200 bg-white p-3">
-              <p className="mb-2 text-xs font-semibold text-violet-800">
-                ② 역할 · 인원
-              </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <label className="text-[11px] font-medium text-violet-900">역할</label>
-                  <Select value={d.roleType} onValueChange={(v) => set("roleType", v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(ENGAGEMENT_ROLE_TYPES).map(([k, label]) => (
-                        <SelectItem key={k} value={k}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-violet-900">
-                    필요 인원 (실제 섭외할 인원)
-                  </label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={d.requiredCount}
-                    onChange={(e) => set("requiredCount", e.target.value)}
-                    disabled={Boolean(editingId)}
-                  />
-                  {editingId && (
-                    <p className="mt-1 text-[11px] text-violet-800">
-                      인원은 세션 목록의 인원 칸에서 조정합니다 (코드 발급 연동).
-                      날짜·역할을 바꿔도 이미 발급된 코드넘버는 유지됩니다 —
-                      코드는 결재·문자에 이미 나간 식별자입니다.
-                    </p>
-                  )}
-                </div>
-              </div>
-              <p className="mt-2 rounded bg-violet-50 p-2 text-[11px] leading-relaxed text-violet-800">
-                세션을 추가하면 <b>후보 TO(코드넘버)가 필요인원의 3배수</b>로
-                자동 발급됩니다 (예: 필요 2명 → TO 6개). 컨설팅 세션은 예외로,
-                기본설정 탭에서 입력한 후보인원만큼 발급됩니다. TO는 섭외후보 등록
-                탭에서 추가·삭제할 수 있습니다. 비용은 여기서 입력하지 않습니다 —
-                <b> 섭외후보 등록 탭에서 후보별 예정가</b>로 작성합니다.
-              </p>
-            </div>
-
-            <div className="rounded-md border border-violet-200 bg-white p-3">
-              <p className="mb-2 text-xs font-semibold text-violet-800">
-                ③ 세션 정보 (세션명·장소 필수)
-              </p>
-              <div className="space-y-2">
-                <Input
-                  value={d.sessionName}
-                  onChange={(e) => set("sessionName", e.target.value)}
-                  placeholder="세션명 (필수 — 예: 1일차 오전 강의, 데모데이 심사)"
-                />
-                <Input
-                  value={d.roleDescription}
-                  onChange={(e) => set("roleDescription", e.target.value)}
-                  placeholder="세부 역할 (예: IR 멘토링)"
-                />
-                {/* 세션분야 — 옆의 '분야 설정'으로 화면 전환 없이 추가 (기획 2026-09-20) */}
-                <div className="flex items-center gap-1.5">
-                  <select
-                    value={d.fieldId}
-                    onChange={(e) => set("fieldId", e.target.value)}
-                    aria-label="세션분야"
-                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                  >
-                    <option value="">
-                      {fields.length > 0 ? "세션분야 선택 (선택)" : "세션분야 없음 — 오른쪽에서 추가"}
-                    </option>
-                    {fields.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                  <SessionFieldDialog
-                    fields={fields}
-                    onAdded={(f) => {
-                      setAddedFields((p) => [...p, f]);
-                      set("fieldId", f.id);
-                    }}
-                    onRemoved={(id) => {
-                      setHiddenFieldIds((p) => [...p, id]);
-                      if (d.fieldId === id) set("fieldId", "");
-                    }}
-                  />
-                </div>
-                <Input
-                  value={d.locationName}
-                  onChange={(e) => set("locationName", e.target.value)}
-                  placeholder="장소 (필수)"
-                />
-                <Input
-                  value={d.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  placeholder="비고 (선택 — 내부 메모, 500자 이내)"
-                  maxLength={500}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="bg-violet-600 text-white hover:bg-violet-700"
-                onClick={onCreate}
-                disabled={pending || !d.slotDate}
-              >
-                {pending
-                  ? "저장 중..."
-                  : editingId
-                    ? "세션 수정 저장"
-                    : "세션 추가"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetForm}>
-                취소
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SessionDialog
+        open={editor !== null}
+        onOpenChange={(v) => !v && setEditor(null)}
+        mode={editor?.mode ?? "create"}
+        slotId={editor?.mode === "edit" ? editor.slot.id : undefined}
+        initial={editor?.initial ?? emptySessionForm()}
+        projectId={projectId}
+        tenantSlug={tenantSlug}
+        expertsEnabled={expertsEnabled}
+        fieldOptions={fieldOptions}
+        mentees={editor?.mode === "edit" ? editor.slot.mentees : []}
+      />
     </div>
   );
 }

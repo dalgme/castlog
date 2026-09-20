@@ -78,8 +78,7 @@ import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
 import { SlotTable, type SlotRow } from "./slot-table";
 import { ProjectCalendar } from "./project-calendar";
-import { ConsultingPanel } from "./consulting-panel";
-import { ProjectKindToggle } from "./project-kind-toggle";
+import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { BudgetPanel } from "./budget-panel";
 import { ProjectDashboardCards } from "./project-dashboard-cards";
 import {
@@ -263,7 +262,7 @@ export default async function ProjectDetailPage({
       supabase
         .from("engagement_slots")
         .select(
-          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order, field_id, period_end_date"
+          "id, slot_date, starts_time, ends_time, role_type, session_name, role_description, required_count, fee_amount, location_name, notes, sort_order, field_id, period_end_date, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline"
         )
         .eq("project_id", project.id)
         .order("sort_order", { ascending: true, nullsFirst: false })
@@ -585,14 +584,26 @@ export default async function ProjectDetailPage({
       sort_order: null,
       field_id: null,
       period_end_date: null,
+      date_kind: "individual",
+      end_starts_time: null,
+      end_ends_time: null,
+      session_count_min: null,
+      session_count_max: null,
+      session_count_online: null,
+      session_count_offline: null,
+      delivery_mode: null,
+      unit_fee_online: null,
+      unit_fee_offline: null,
     }));
   }
   const slotIds = slotRecords.map((s) => s.id);
+  // 개별선택형 날짜 (기획 2026-09-21) — 테이블 부재면 빈 맵(단일 날짜 폴백)
+  const slotDatesById = await loadSlotDates(supabase, slotIds);
   const { data: positionRecords } = slotIds.length
     ? await supabase
         .from("engagement_slot_positions")
         .select(
-          "id, slot_id, position_no, code, status, expert_id, engagement_id, assigned_expert_id, rank, expected_fee"
+          "id, slot_id, position_no, code, status, expert_id, engagement_id, assigned_expert_id, rank, expected_fee, expected_fee_max, unit_fee_online, unit_fee_offline, fee_custom"
         )
         .in("slot_id", slotIds)
         .order("position_no", { ascending: true })
@@ -649,9 +660,6 @@ export default async function ProjectDetailPage({
     }
     if (!fieldError) sessionFieldOptions = fieldRows ?? [];
   }
-  const sessionFieldNameById = new Map(
-    sessionFieldOptions.map((f) => [f.id, f.name])
-  );
   let menteesBySlot = new Map<
     string,
     {
@@ -663,7 +671,8 @@ export default async function ProjectDetailPage({
       menteeType: string | null;
     }[]
   >();
-  if (project.project_kind === "consulting" && slotRecords.length > 0) {
+  // 멘티 정보는 이제 어떤 세션에도 붙는다 (기획 2026-09-21 — 행사/컨설팅 구분 폐지)
+  if (slotRecords.length > 0) {
     const { data: menteeRows, error: menteeError } = await supabase
       .from("slot_mentees")
       .select("id, slot_id, org_name, position_title, name, item_name, mentee_type, sort_order")
@@ -759,6 +768,10 @@ export default async function ProjectDetailPage({
     feeAmount: s.fee_amount,
     locationName: s.location_name,
     notes: s.notes,
+    schedule: scheduleFromRow(s, slotDatesById.get(s.id) ?? []),
+    unitFeeOnline: s.unit_fee_online,
+    unitFeeOffline: s.unit_fee_offline,
+    mentees: menteesBySlot.get(s.id) ?? [],
     positions: (positionRecords ?? [])
       .filter((p) => p.slot_id === s.id)
       .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))
@@ -768,6 +781,10 @@ export default async function ProjectDetailPage({
         positionNo: p.position_no,
         rank: p.rank ?? p.position_no,
         expectedFee: p.expected_fee,
+        expectedFeeMax: p.expected_fee_max,
+        unitFeeOnline: p.unit_fee_online,
+        unitFeeOffline: p.unit_fee_offline,
+        feeCustom: p.fee_custom,
         status: p.status,
         expertName: p.expert_id ? (expertNameById.get(p.expert_id) ?? null) : null,
         engagementId: p.engagement_id,
@@ -1681,70 +1698,34 @@ export default async function ProjectDetailPage({
           </Card>
         )}
         {/* 예산은 프로젝트 기초정보 — 공통 기반 */}
-        {/* 유형별 세션 계획 (기획 2026-08-30 — 29·34번): 행사 = 캘린더
-            일정표 / 컨설팅 = 수행기간·분야·멘티. 원본은 engagement_slots 하나다 */}
+        {/* 세션 캘린더 (기획 2026-08-30 — 29번, 개정 2026-09-21): 행사/컨설팅 탭을
+            없애고 세션마다 날짜 유형(연속형/개별선택형)을 고른다. 원본은 engagement_slots 하나다 */}
         {tab === "basic" && (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-sm">
-                {project.project_kind === "consulting"
-                  ? "컨설팅 세션"
-                  : "캘린더 일정표"}
-              </CardTitle>
-              <ProjectKindToggle
-                projectId={project.id}
-                kind={
-                  project.project_kind === "consulting" ? "consulting" : "event"
-                }
-                canManage={canViewAllProjects(grade) || myAssignmentRole !== null}
-              />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">세션 캘린더</CardTitle>
             </CardHeader>
             <CardContent>
-              {project.project_kind === "consulting" ? (
-                <ConsultingPanel
-                  tenantSlug={params.tenantSlug}
-                  projectId={project.id}
-                  sessions={slotRows.map((s) => ({
-                    id: s.id,
-                    startsOn: s.slotDate,
-                    endsOn: s.periodEndDate,
-                    name: s.sessionName,
-                    fieldName: s.fieldId
-                      ? (sessionFieldNameById.get(s.fieldId) ?? null)
-                      : null,
-                    requiredCount: s.requiredCount,
-                    candidateCount: s.positions.filter(
-                      (p) => p.status !== "canceled"
-                    ).length,
-                    mentees: menteesBySlot.get(s.id) ?? [],
-                  }))}
-                  fieldOptions={sessionFieldOptions}
-                  canManage={canInput}
-                  expertsEnabled={modules.experts}
-                />
-              ) : (
-                <ProjectCalendar
-                  tenantSlug={params.tenantSlug}
-                  projectId={project.id}
-                  days={calendarDays}
-                  sessions={slotRows.map((s) => ({
-                    id: s.id,
-                    date: s.slotDate,
-                    startsTime: s.startsTime,
-                    endsTime: s.endsTime,
-                    name: s.sessionName,
-                    roleType: s.roleType,
-                    requiredCount: s.requiredCount,
-                    locationName: s.locationName,
-                    roleDescription: s.roleDescription,
-                    notes: s.notes,
-                    fieldId: s.fieldId,
-                  }))}
-                  fieldOptions={sessionFieldOptions}
-                  canManage={canInput}
-                  expertsEnabled={modules.experts}
-                />
-              )}
+              <ProjectCalendar
+                tenantSlug={params.tenantSlug}
+                projectId={project.id}
+                days={calendarDays}
+                sessions={slotRows.map((s) => ({
+                  id: s.id,
+                  schedule: s.schedule,
+                  name: s.sessionName,
+                  roleType: s.roleType,
+                  requiredCount: s.requiredCount,
+                  locationName: s.locationName,
+                  roleDescription: s.roleDescription,
+                  notes: s.notes,
+                  fieldId: s.fieldId,
+                  mentees: s.mentees,
+                }))}
+                fieldOptions={sessionFieldOptions}
+                canManage={canInput}
+                expertsEnabled={modules.experts}
+              />
             </CardContent>
           </Card>
         )}
