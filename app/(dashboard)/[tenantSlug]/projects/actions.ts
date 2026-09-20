@@ -510,42 +510,41 @@ export async function saveProjectContributions(
     return { ok: false, error: "자사 직원만 기여도 대상으로 지정할 수 있습니다." };
   }
 
-  if (data.rows.length > 0) {
-    const { error: upsertError } = await supabase
-      .from("project_contributions")
-      .upsert(
-        data.rows.map((r) => ({
-          tenant_id: session.tenantId,
-          project_id: data.projectId,
-          slot_key: r.slotKey,
-          role_label: isExtraSlot(r.slotKey) ? r.roleLabel?.trim() || null : null,
-          user_id: r.userId,
-          percentage: r.percentage,
-          created_by: session.userId,
-        })),
-        { onConflict: "project_id,slot_key" }
-      );
-    if (upsertError) {
-      return {
-        ok: false,
-        error: isMissingColumnError(upsertError)
-          ? CONTRIBUTION_COLUMN_MISSING
-          : await explainActionError(upsertError.message, "기여도 저장에 실패했습니다. 다시 시도해 주세요."),
-      };
-    }
-  }
-
-  // 표에서 빠진 열(과 가로 표 도입 전의 옛 행)은 제거
-  const keptKeys = data.rows.map((r) => r.slotKey);
-  let removeQuery = supabase
+  // 표 전체를 다시 쓴다: 옛 행(slot_key null)과 빠진 열을 지우고 현재 열을 넣는다.
+  // (project_id, slot_key) 유일 인덱스는 부분 인덱스(slot_key is not null)라
+  // PostgREST upsert의 ON CONFLICT가 잡지 못한다 (마이그레이션 0007 검증에서 확인) —
+  // upsert 대신 지우고 넣는다. 한 프로젝트 최대 8행이라 비용은 없다.
+  const { error: clearError } = await supabase
     .from("project_contributions")
     .delete()
     .eq("project_id", data.projectId);
-  removeQuery =
-    keptKeys.length > 0
-      ? removeQuery.or(`slot_key.is.null,slot_key.not.in.(${keptKeys.join(",")})`)
-      : removeQuery;
-  await removeQuery;
+  if (clearError) {
+    return {
+      ok: false,
+      error: await explainActionError(clearError.message, "기여도 저장에 실패했습니다. 다시 시도해 주세요."),
+    };
+  }
+  if (data.rows.length > 0) {
+    const { error: insertError } = await supabase.from("project_contributions").insert(
+      data.rows.map((r) => ({
+        tenant_id: session.tenantId,
+        project_id: data.projectId,
+        slot_key: r.slotKey,
+        role_label: isExtraSlot(r.slotKey) ? r.roleLabel?.trim() || null : null,
+        user_id: r.userId,
+        percentage: r.percentage,
+        created_by: session.userId,
+      }))
+    );
+    if (insertError) {
+      return {
+        ok: false,
+        error: isMissingColumnError(insertError)
+          ? CONTRIBUTION_COLUMN_MISSING
+          : await explainActionError(insertError.message, "기여도 저장에 실패했습니다. 다시 시도해 주세요."),
+      };
+    }
+  }
 
   if (options?.confirm) {
     const { error: confirmError } = await supabase
