@@ -23,8 +23,11 @@ import { cn } from "@/lib/utils";
 import {
   CHECKLIST_COLUMNS,
   CHECKLIST_KIND_LABELS,
+  DONE_ROW_CLASS,
   DUE_TONE_CLASS,
+  DUE_TONE_HINTS,
   DUE_TONE_LABELS,
+  DUE_TONE_ORDER,
   USE_BUTTON_KINDS,
   autoDueDate,
   dueTone,
@@ -394,14 +397,31 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function Legend() {
-  const tones = ["overdue", "urgent", "soon", "ahead", "done"] as const;
   return (
-    <span className="inline-flex flex-wrap gap-1 align-middle">
-      {tones.map((t) => (
-        <span key={t} className={cn("rounded border px-1.5 py-0.5 text-[10px]", DUE_TONE_CLASS[t])}>
-          {DUE_TONE_LABELS[t]}
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      {DUE_TONE_ORDER.map((t) => (
+        <span key={t} className="inline-flex items-center gap-1">
+          <DueBadge tone={t} />
+          <span className="text-[10px] text-muted-foreground">{DUE_TONE_HINTS[t]}</span>
         </span>
       ))}
+      <span className={cn("rounded px-1.5 py-0.5 text-[10px]", DONE_ROW_CLASS)}>완료된 행</span>
+    </span>
+  );
+}
+
+/** 완료일 칸 왼쪽 색인 상자 — 지남·당일·긴급·신속·여유·완료 */
+function DueBadge({ tone }: { tone: ReturnType<typeof dueTone> }) {
+  if (tone === "none") return null;
+  return (
+    <span
+      className={cn(
+        "inline-block w-8 shrink-0 rounded px-1 py-0.5 text-center text-[10px] font-semibold leading-none",
+        DUE_TONE_CLASS[tone]
+      )}
+      title={DUE_TONE_HINTS[tone]}
+    >
+      {DUE_TONE_LABELS[tone]}
     </span>
   );
 }
@@ -675,7 +695,7 @@ function ChecklistCard({
           </p>
         )}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-xs">
+          <table className="w-full min-w-[1180px] text-xs">
             <thead className="text-left text-muted-foreground">
               <tr>
                 <th className="w-6" />
@@ -894,7 +914,8 @@ function ItemRows({
           e.preventDefault();
           onDrop();
         }}
-        className={cn("align-top", shade.row, dragging && "opacity-50")}
+        // 완료 처리된 행은 분류 음영 대신 중간 회색으로 전체를 칠한다 (기획 지시 2026-09-21)
+        className={cn("align-top", tone === "done" ? DONE_ROW_CLASS : shade.row, dragging && "opacity-50")}
       >
         {/* 드래그 손잡이만 draggable — 행 전체면 칸 안 글자 선택이 안 된다 (리뷰 H4) */}
         <td
@@ -967,20 +988,23 @@ function ItemRows({
           }
           if (c.key === "completedOn") {
             return (
-              <td key={c.key} className={cn("py-0.5 pr-2", DUE_TONE_CLASS[tone])} title={DUE_TONE_LABELS[tone] || undefined}>
-                <KoreanDateCell
-                  value={item.completedOn}
-                  defaultYear={defaultYear}
-                  disabled={!canEdit}
-                  ariaLabel={`${item.title} 완료일`}
-                  column="completedOn"
-                  rowIndex={idx}
-                  onCommit={(v) => onPatch("completedOn", v)}
-                  className={cn(
-                    (tone === "overdue" || tone === "urgent" || tone === "soon") &&
-                      "text-white [&_input]:text-white [&_input]:placeholder:text-white/70 [&_input:focus]:text-black"
-                  )}
-                />
+              <td key={c.key} className="py-0.5 pr-2">
+                {/* 배경 대신 왼쪽 색인 상자 (기획 지시 2026-09-21). 자리를 고정해 칸이 흔들리지 않게 */}
+                <span className="flex items-center gap-1">
+                  <span className="inline-flex w-8 shrink-0 justify-center">
+                    <DueBadge tone={tone} />
+                  </span>
+                  <KoreanDateCell
+                    value={item.completedOn}
+                    defaultYear={defaultYear}
+                    disabled={!canEdit}
+                    ariaLabel={`${item.title} 완료일`}
+                    column="completedOn"
+                    rowIndex={idx}
+                    onCommit={(v) => onPatch("completedOn", v)}
+                    className="min-w-0 flex-1"
+                  />
+                </span>
               </td>
             );
           }

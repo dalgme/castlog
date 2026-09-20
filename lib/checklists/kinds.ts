@@ -76,7 +76,7 @@ const SCHEDULE_COLUMNS: ChecklistColumn[] = [
   { key: "assignee", label: "담당", width: "w-36" },
   { key: "offsetDays", label: "권장", template: true, width: "w-14" },
   { key: "plannedDue", label: "마감일 계획", width: "w-56" },
-  { key: "completedOn", label: "완료일", width: "w-56" },
+  { key: "completedOn", label: "완료일", width: "w-64" },
   { key: "note", label: "참고사항", template: true },
 ];
 
@@ -90,7 +90,7 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
     { key: "assignee", label: "담당", width: "w-36" },
     { key: "offsetDays", label: "권장", template: true, width: "w-14" },
     { key: "plannedDue", label: "마감일 계획", width: "w-56" },
-    { key: "completedOn", label: "완료일", width: "w-56" },
+    { key: "completedOn", label: "완료일", width: "w-64" },
     { key: "note", label: "참고사항", template: true },
   ],
   kickoff: [
@@ -104,7 +104,7 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
   deadline: [
     { key: "title", label: "진행 내용", template: true },
     { key: "plannedDue", label: "마감일", width: "w-56" },
-    { key: "completedOn", label: "완료일", width: "w-56" },
+    { key: "completedOn", label: "완료일", width: "w-64" },
     { key: "assignee", label: "담당", width: "w-36" },
     { key: "note", label: "진행 내용(메모)", template: true },
     { key: "check1", label: "발주기관 특이사항" },
@@ -135,11 +135,12 @@ export const CHECKLIST_COLUMNS: Record<ChecklistKind, ChecklistColumn[]> = {
 export const USE_BUTTON_KINDS: ChecklistKind[] = ["kickoff", "deadline", "venue", "supplies"];
 
 /**
- * 완료일 칸 배경 — 기획 지시 05:
- * 완료일 기입 = 흰색 / 당일·지남 = 검정 / 잔여 2~3일(1일 포함) = 붉은색 /
- * 4~7일 = 초록 / 8~14일 = 옐로우그린 / 그 외 = 없음.
+ * 완료일 칸 신호 — 기획 지시 05, 개정 2026-09-21:
+ * 배경을 칠하지 않고 칸 왼쪽에 색인 상자(지남·당일·긴급·신속·여유·완료)를 둔다.
+ * 지남 = 마감 경과 / 당일 / 긴급 = 잔여 1~3일 / 신속 = 4~7일 / 여유 = 8~14일.
+ * 완료 처리된 행은 행 전체를 중간 회색으로 칠한다 (DONE_ROW_CLASS).
  */
-export type DueTone = "done" | "overdue" | "urgent" | "soon" | "ahead" | "none";
+export type DueTone = "done" | "overdue" | "today" | "urgent" | "soon" | "ahead" | "none";
 
 export function dueTone(
   plannedDue: string | null,
@@ -152,30 +153,51 @@ export function dueTone(
     (Date.parse(plannedDue) - Date.parse(todayIso)) / 86_400_000
   );
   if (Number.isNaN(days)) return "none";
-  if (days <= 0) return "overdue";
+  if (days < 0) return "overdue";
+  if (days === 0) return "today";
   if (days <= 3) return "urgent";
   if (days <= 7) return "soon";
   if (days <= 14) return "ahead";
   return "none";
 }
 
+/** 색인 상자 색 (배경이 아니라 작은 라벨) */
 export const DUE_TONE_CLASS: Record<DueTone, string> = {
-  done: "bg-white",
+  done: "bg-neutral-600 text-white",
   overdue: "bg-black text-white",
+  today: "bg-red-700 text-white",
   urgent: "bg-red-500 text-white",
-  soon: "bg-green-500 text-white",
+  soon: "bg-green-600 text-white",
   ahead: "bg-lime-300 text-black",
   none: "",
 };
 
 export const DUE_TONE_LABELS: Record<DueTone, string> = {
   done: "완료",
-  overdue: "당일·지남",
+  overdue: "지남",
+  today: "당일",
+  urgent: "긴급",
+  soon: "신속",
+  ahead: "여유",
+  none: "",
+};
+
+/** 범례용 설명 — "긴급 (잔여 1~3일)" */
+export const DUE_TONE_HINTS: Record<DueTone, string> = {
+  done: "완료일 기입",
+  overdue: "마감 지남",
+  today: "마감 당일",
   urgent: "잔여 1~3일",
   soon: "잔여 4~7일",
   ahead: "잔여 8~14일",
   none: "",
 };
+
+/** 범례에 보이는 순서 */
+export const DUE_TONE_ORDER: DueTone[] = ["overdue", "today", "urgent", "soon", "ahead", "done"];
+
+/** 완료 처리된 행 전체 배경 — 중간 농도 회색 */
+export const DONE_ROW_CLASS = "bg-neutral-300";
 
 /** D-Day + 권장(D±) → 자동 마감일 (yyyy-mm-dd) */
 export function autoDueDate(dday: string | null, offsetDays: number | null): string | null {
