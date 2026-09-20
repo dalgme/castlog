@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Pencil, Plus, Presentation, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -67,6 +75,20 @@ const OPS_AREAS = ["발주처 담당자", "대관처(행사장)", "참여인원"
 
 const REGISTER_CLASS = "h-7 px-2 text-[11px] bg-indigo-600 text-white hover:bg-indigo-700";
 const EDIT_CLASS = "h-7 px-2 text-[11px] border-indigo-300 text-indigo-800 hover:bg-indigo-50";
+
+/** PL/PM/부PM — 이름 앞에 역할 꼬리표 (기획 2026-09-21) */
+function roleLine(auto: ReviewAuto): string {
+  return [
+    `[PL] ${auto.plName ?? "-"}`,
+    `[PM] ${auto.pmName ?? "-"}`,
+    `[부PM] ${auto.deputyPmNames.length > 0 ? auto.deputyPmNames.join(", ") : "-"}`,
+  ].join(" / ");
+}
+
+/** 발표 화면 글자 크기 — 화면 기본(14px/12px)보다 각각 40% 크게 (기획 2026-09-21) */
+const P_TEXT = "text-[1.225rem] leading-relaxed";
+const P_SMALL = "text-[1.05rem] leading-relaxed";
+const P_TITLE = "text-[1.4rem] font-bold";
 
 function formatWon(n: number | null): string {
   return n === null ? "미기입" : `${n.toLocaleString("ko-KR")}원`;
@@ -192,6 +214,7 @@ function SummarySection({
   canEdit: boolean;
 }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [registered, setRegistered] = useState(saved !== null);
   const [editing, setEditing] = useState(saved === null);
@@ -224,6 +247,7 @@ function SummarySection({
       setRegistered(true);
       setEditing(false);
       toast({ description: "요약표를 등록했습니다." });
+      router.refresh();
     });
   }
 
@@ -312,10 +336,7 @@ function SummarySection({
               </tr>
               <tr>
                 <th className={th2}>PL/PM/부PM</th>
-                <td className={td}>
-                  {auto.plName ?? "-"} / {auto.pmName ?? "-"} /{" "}
-                  {auto.deputyPmNames.length > 0 ? auto.deputyPmNames.join(", ") : "-"}
-                </td>
+                <td className={td}>{roleLine(auto)}</td>
               </tr>
               <tr>
                 <th rowSpan={2} className={th}>
@@ -444,6 +465,7 @@ type RowState = {
 
 function useRowActions(projectId: string, section: "expert" | "ops", withForm: boolean) {
   const { toast } = useToast();
+  const router = useRouter();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -471,6 +493,7 @@ function useRowActions(projectId: string, section: "expert" | "ops", withForm: b
       }
       onSaved(r.id);
       toast({ description: row.id ? "수정했습니다." : "등록했습니다." });
+      router.refresh();
     });
   }
 
@@ -490,6 +513,7 @@ function useRowActions(projectId: string, section: "expert" | "ops", withForm: b
       }
       onRemoved();
       toast({ description: "삭제했습니다." });
+      router.refresh();
     });
   }
 
@@ -865,6 +889,234 @@ function FragmentRows({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+
+// ---------------------------------------------------------------------------
+// 발표 보기 — 등록된 내용만 팝업에 크게 (기획 2026-09-21)
+// ---------------------------------------------------------------------------
+function PresentationDialog({
+  auto,
+  saved,
+  items,
+  experts,
+  hasExperts,
+}: {
+  auto: ReviewAuto;
+  saved: ReviewSaved | null;
+  items: ReviewItemRow[];
+  experts: ReviewExpertAuto[];
+  hasExperts: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const th = cn("w-32 border bg-neutral-50 px-3 py-2 text-left font-semibold align-top", P_SMALL);
+  const th2 = cn("w-52 border bg-neutral-50/60 px-3 py-2 text-left font-semibold align-top", P_SMALL);
+  const td = cn("border px-3 py-2 align-top", P_TEXT);
+  const head = cn("border bg-neutral-100 px-3 py-2 text-center font-semibold", P_SMALL);
+
+  const expertItems = items.filter((i) => i.section === "expert");
+  const nameByExpert = new Map(experts.map((e) => [e.expertId, e.name]));
+  const opsItems = items
+    .filter((i) => i.section === "ops")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const areas = [
+    ...OPS_AREAS,
+    ...Array.from(new Set(opsItems.map((r) => r.subject))).filter((x) => !OPS_AREAS.includes(x)),
+  ];
+  const check = (on: boolean, label: string) => (
+    <span className={cn("font-semibold", on ? "text-indigo-700" : "text-neutral-500")}>
+      {on ? "■" : "□"} {label}
+    </span>
+  );
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        className="bg-indigo-600 text-white hover:bg-indigo-700"
+        onClick={() => setOpen(true)}
+        title="등록된 리뷰 내용을 큰 글자로 팝업에 보여 줍니다"
+      >
+        <Presentation className="mr-1 h-4 w-4" aria-hidden />
+        발표 보기
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[92vh] w-[96vw] max-w-[96vw] overflow-y-auto sm:max-w-[96vw]">
+          <DialogHeader>
+            <DialogTitle className={P_TITLE}>프로젝트 리뷰 — {auto.name}</DialogTitle>
+            <DialogDescription className={P_SMALL}>
+              등록된 내용만 보입니다. 아직 등록하지 않은 줄은 탭에서 「등록」을 누른 뒤 다시 여세요.
+            </DialogDescription>
+          </DialogHeader>
+
+          <section className="space-y-2">
+            <h3 className={P_TITLE}>1. 완료 사업 결과 요약표</h3>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th colSpan={2} className={head}>구분</th>
+                  <th className={head}>내용</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th rowSpan={5} className={th}>사업 개요</th>
+                  <th className={th2}>사업코드/사업명</th>
+                  <td className={td}>{auto.code ?? "-"} / {auto.name}</td>
+                </tr>
+                <tr>
+                  <th className={th2}>발주처/담당자</th>
+                  <td className={td}>{auto.clientName ?? "-"} / {saved?.clientContact ?? "-"}</td>
+                </tr>
+                <tr>
+                  <th className={th2}>계약 처리 구분(수의/입찰)</th>
+                  <td className={td}>{auto.contractType ? `■ ${auto.contractType}` : "미정"}</td>
+                </tr>
+                <tr>
+                  <th className={th2}>사업비</th>
+                  <td className={td}>{formatWon(auto.budgetAmount)}</td>
+                </tr>
+                <tr>
+                  <th className={th2}>PL/PM/부PM</th>
+                  <td className={td}>{roleLine(auto)}</td>
+                </tr>
+                <tr>
+                  <th rowSpan={2} className={th}>기간 및 장소</th>
+                  <th className={th2}>계약기간/행사일</th>
+                  <td className={cn(td, "space-y-2")}>
+                    <div>
+                      <span className={cn(P_SMALL, "text-muted-foreground")}>계약기간 </span>
+                      {auto.contractPeriod || "-"}
+                    </div>
+                    {auto.sessions.length > 0 ? (
+                      <table className="w-full table-fixed border-collapse">
+                        <tbody>
+                          {Array.from({ length: Math.ceil(auto.sessions.length / 3) }, (_, r) => (
+                            <tr key={r}>
+                              {[0, 1, 2].map((c) => {
+                                const cell = auto.sessions[r * 3 + c];
+                                return (
+                                  <td key={c} className={cn("w-1/3 border px-3 py-2 align-top", P_SMALL)}>
+                                    {cell ? (
+                                      <>
+                                        <div className="font-semibold">{cell.label}</div>
+                                        <div className="text-muted-foreground">{cell.when}</div>
+                                      </>
+                                    ) : null}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div>{auto.ddayDate || "-"}</div>
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <th className={th2}>행사 장소</th>
+                  <td className={td}>{saved?.venueText ?? auto.venue ?? "-"}</td>
+                </tr>
+                <tr>
+                  <th className={th}>모집/홍보</th>
+                  <th className={th2}>진행여부</th>
+                  <td className={td}>
+                    {saved?.recruitDone === null || saved?.recruitDone === undefined
+                      ? "-"
+                      : saved.recruitDone
+                        ? "■ 여"
+                        : "■ 부"}
+                    {saved?.recruitNote ? ` (${saved.recruitNote})` : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th colSpan={2} className={th2}>사업비 입금 완료여부</th>
+                  <td className={td}>{check(Boolean(saved?.depositDone), "완료")}</td>
+                </tr>
+                <tr>
+                  <th colSpan={2} className={th2}>모아폼/구글폼 소유권 이전 여부</th>
+                  <td className={td}>
+                    {check(Boolean(saved?.formTransferDone), "완료")}
+                    {saved?.formTransferNote ? ` (${saved.formTransferNote})` : ""}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          {hasExperts && (
+            <section className="space-y-2">
+              <h3 className={P_TITLE}>2. 전문가(강사) 평가 (담당 PM 작성)</h3>
+              <p className={cn(P_SMALL, "text-muted-foreground")}>
+                ※ 평가항목: 준비도(자료 등), 전달력 및 집중도, 적합성(대상/주제/목적 등), 기타사항 등
+              </p>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className={cn(head, "w-48")}>참여 전문가명</th>
+                    <th className={cn(head, "w-56")}>참여 형태</th>
+                    <th className={head}>평가 내용</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expertItems.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className={cn(td, "text-center text-muted-foreground")}>등록된 평가가 없습니다.</td>
+                    </tr>
+                  )}
+                  {expertItems.map((i) => (
+                    <tr key={i.id}>
+                      <td className={cn(td, "font-semibold")}>{i.subject || (i.expertId ? nameByExpert.get(i.expertId) : "") || "-"}</td>
+                      <td className={cn(td, "whitespace-pre-wrap")}>{i.form || "-"}</td>
+                      <td className={cn(td, "whitespace-pre-wrap")}>{i.body || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <h3 className={P_TITLE}>{hasExperts ? "3" : "2"}. 프로젝트 운영 및 관리 특이사항</h3>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className={cn(head, "w-48")}>구분</th>
+                  <th className={head}>내용</th>
+                </tr>
+              </thead>
+              <tbody>
+                {areas.map((area) => {
+                  const lines = opsItems.filter((i) => i.subject === area);
+                  return (
+                    <tr key={area}>
+                      <th className={cn(th, "w-48")}>{area}</th>
+                      <td className={td}>
+                        {lines.length === 0 ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <ul className="space-y-2">
+                            {lines.map((l) => (
+                              <li key={l.id} className="whitespace-pre-wrap">
+                                {l.body}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 탭 본체
 // ---------------------------------------------------------------------------
@@ -934,6 +1186,9 @@ export function ProjectReviewTab({
 
   return (
     <div className="space-y-5">
+      <div className="flex justify-end">
+        <PresentationDialog auto={auto} saved={saved} items={items} experts={experts} hasExperts={hasExperts} />
+      </div>
       <SummarySection projectId={projectId} auto={auto} saved={saved} canEdit={canEdit} />
       {hasExperts && <ExpertSection projectId={projectId} initialRows={expertRows} canEdit={canEdit} />}
       <OpsSection
