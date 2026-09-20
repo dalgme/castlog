@@ -30,8 +30,10 @@ function isFixedSlot(key: ContributionSlotKey): boolean {
   return key === "ceo" || key === "director";
 }
 
+// 이름 칸은 화면 기본(12px)의 2배·굵게 (기획 지시 2026-09-21)
+const NAME_CLASS = "text-2xl font-bold leading-tight";
 const SELECT_CLASS =
-  "h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+  "h-11 w-full rounded-md border border-input bg-transparent px-2 text-2xl font-bold shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
 
 /**
  * 참여율 배분 — 가로 표 (기획 지시 2026-09-21).
@@ -312,11 +314,11 @@ export function ProjectClosing({
                 <td key={key} className="border px-1 py-1">
                   {isFixedSlot(key) ? (
                     <div
-                      className="px-1 text-center text-xs"
+                      className={cn("px-1 py-1 text-center", NAME_CLASS)}
                       title="설정의 대표·이사 직급에서 자동으로 채워지는 고정 열입니다. 참여율은 0%로 둘 수 있습니다."
                     >
                       {staff.find((s) => s.id === cells[key].userId)?.name ?? (
-                        <span className="text-muted-foreground">
+                        <span className="text-xs font-normal text-muted-foreground">
                           {key === "ceo" ? "대표 직급 미설정" : "이사 직급 미설정"}
                         </span>
                       )}
@@ -336,9 +338,9 @@ export function ProjectClosing({
                       ))}
                     </select>
                   ) : (
-                    <div className="px-1 text-center text-xs">
+                    <div className={cn("px-1 py-1 text-center", NAME_CLASS)}>
                       {staff.find((s) => s.id === cells[key].userId)?.name ?? (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-xs font-normal text-muted-foreground">—</span>
                       )}
                     </div>
                   )}
