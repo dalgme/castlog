@@ -23,7 +23,7 @@ import {
   matchApprovalRule,
   type EngineLineStep,
 } from "@/lib/approvals/engine";
-import { onPaymentApprovalResolved } from "@/lib/integrations/payments";
+import { onPaymentApprovalCanceled, onPaymentApprovalResolved } from "@/lib/integrations/payments";
 import { onProjectClosingApprovalResolved } from "@/lib/integrations/projects";
 import {
   onEngagementPlanApprovalCanceled,
@@ -515,6 +515,8 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
   // 세션이 '결재 중'에서 풀려 다시 편집·상신할 수 있다 (렛츠 보고 2026-09-05)
   await onEngagementPlanApprovalCanceled(approvalId);
   await onProjectEngagementApprovalResolved(approvalId);
+  // 지급 품의였다면 지급 건도 회수 — 세션을 다시 골라 새 품의를 올릴 수 있다 (기획 2026-09-21)
+  await onPaymentApprovalCanceled(approvalId);
 
   await supabase.from("audit_logs").insert({
     tenant_id: session.tenantId,
@@ -528,6 +530,7 @@ export async function cancelApproval(approvalId: string): Promise<ActResult> {
   revalidatePath("/[tenantSlug]/approvals", "page");
   revalidatePath(`/[tenantSlug]/approvals/${approvalId}`, "page");
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  revalidatePath("/[tenantSlug]/payments", "page");
   return { ok: true };
 }
 

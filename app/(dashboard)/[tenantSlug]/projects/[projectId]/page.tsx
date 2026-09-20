@@ -107,6 +107,7 @@ import {
   type PlanFlow,
 } from "@/lib/integrations/engagement-post-report";
 import { ClosingTab, type PaymentBatchRow, type PaymentSessionRow } from "./closing-tab";
+import type { SessionAttachment } from "./session-attach-dialog";
 import { ProjectClosing } from "./project-closing";
 import {
   ProjectReviewTab,
@@ -1694,19 +1695,24 @@ export default async function ProjectDetailPage({
   const canSeePaymentAmounts =
     canReviewSettlementDoc || myAssignmentRole !== null || project.created_by === user?.id;
 
-  // 참여 건별 증빙 첨부 (기획 2026-08-30) — 종료 탭에서만 쓰지만 조회는
-  // 가볍다(프로젝트당 소수). 테이블 미적용 환경은 빈 목록 폴백(§14-10)
-  const settlementAttachments: Record<string, { id: string; fileName: string }> = {};
-  {
+  // 지급 품의 탭 세션별 첨부 (기획 2026-09-21) — 표 미적용 환경은 빈 목록 폴백(§14-10)
+  const sessionAttachmentsBySlot: Record<string, SessionAttachment[]> = {};
+  if (tab === "closing" && modules.experts) {
     const { data: attachRows } = await supabase
-      .from("settlement_line_attachments")
-      .select("id, engagement_id, file_name")
-      .eq("project_id", project.id);
+      .from("session_payment_attachments")
+      .select("id, slot_id, file_name, file_size_bytes, created_at, uploaded_by")
+      .eq("project_id", project.id)
+      .order("created_at", { ascending: true });
     for (const row of attachRows ?? []) {
-      settlementAttachments[row.engagement_id] = {
+      const list = sessionAttachmentsBySlot[row.slot_id] ?? [];
+      list.push({
         id: row.id,
         fileName: row.file_name,
-      };
+        sizeBytes: row.file_size_bytes,
+        createdAt: row.created_at,
+        uploaderName: row.uploaded_by ? (staffNameById.get(row.uploaded_by) ?? null) : null,
+      });
+      sessionAttachmentsBySlot[row.slot_id] = list;
     }
   }
 
@@ -2149,8 +2155,8 @@ export default async function ProjectDetailPage({
             canClose={canManage}
             isClosed={isClosed}
             closedAt={project.closed_at}
-            attachmentsByEngagement={settlementAttachments}
-            canAttach={canEvaluate}
+            attachmentsBySlot={sessionAttachmentsBySlot}
+            canAttach={canSeePaymentAmounts}
           />
         )}
 

@@ -55,3 +55,33 @@ export async function onPaymentApprovalResolved(
     after_data: { approval_id: approvalId },
   });
 }
+
+/**
+ * 상신 취소 (기획 지시 2026-09-21) — 결재가 시작되기 전 상신자가 결재건을 거두면 연결된
+ * 지급 건도 회수한다. 취소 상태로 두면 담긴 섭외 건이 '지급 건에 포함됨'에서 풀려
+ * 지급 품의 탭에서 그 세션을 다시 골라 새 품의를 올릴 수 있다.
+ */
+export async function onPaymentApprovalCanceled(approvalId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: batch } = await admin
+    .from("expert_payment_batches")
+    .select("id, tenant_id, status")
+    .eq("approval_id", approvalId)
+    .maybeSingle();
+  if (!batch || batch.status !== "approval_in_progress") return;
+
+  await admin
+    .from("expert_payment_batches")
+    .update({ status: "canceled", last_rejection_note: "상신 취소 (회수)" })
+    .eq("id", batch.id);
+
+  await admin.from("audit_logs").insert({
+    tenant_id: batch.tenant_id,
+    actor_auth_user_id: null,
+    actor_role: "system",
+    action: "payment_batch.approval_canceled",
+    resource_type: "expert_payment_batch",
+    resource_id: batch.id,
+    after_data: { approval_id: approvalId },
+  });
+}

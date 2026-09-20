@@ -20,7 +20,7 @@ import {
   resubmitSessionBatch,
 } from "../../payments/actions";
 import { closeProjectAfterPayments } from "./closing-actions";
-import { ClosingAttachment, type SettlementAttachment } from "./closing-attachment";
+import { SessionAttachDialog, type SessionAttachment } from "./session-attach-dialog";
 
 /**
  * 지급 품의 탭 (기획 지시 2026-09-21).
@@ -103,7 +103,7 @@ export function ClosingTab({
   canClose,
   isClosed,
   closedAt,
-  attachmentsByEngagement = {},
+  attachmentsBySlot = {},
   canAttach,
 }: {
   tenantSlug: string;
@@ -122,8 +122,9 @@ export function ClosingTab({
   canClose: boolean;
   isClosed: boolean;
   closedAt: string | null;
-  /** 참여 건별 증빙 첨부 (engagementId → 파일) */
-  attachmentsByEngagement?: Record<string, SettlementAttachment>;
+  /** 세션별 첨부 (slotId → 파일들) — 기획 2026-09-21 */
+  attachmentsBySlot?: Record<string, SessionAttachment[]>;
+  /** 첨부 등록·삭제 — 프로젝트 팀 */
   canAttach: boolean;
 }) {
   const router = useRouter();
@@ -275,6 +276,7 @@ export function ClosingTab({
                     <th className={cn(th, "text-left")}>전문가 (코드넘버)</th>
                     <th className={cn(th, "w-28")}>종료·평가</th>
                     {canSeeAmounts && <th className={cn(th, "w-32")}>금액</th>}
+                    <th className={cn(th, "w-28")}>파일 첨부</th>
                     <th className={cn(th, "w-28")}>지급 상태</th>
                   </tr>
                 </thead>
@@ -318,14 +320,6 @@ export function ClosingTab({
                               <li key={l.engagementId} className="flex flex-wrap items-center gap-1.5 text-xs">
                                 <span className="font-medium">{l.expertName}</span>
                                 {l.code && <span className="text-muted-foreground">({l.code})</span>}
-                                {canAttach && (
-                                  <ClosingAttachment
-                                    projectId={projectId}
-                                    engagementId={l.engagementId}
-                                    attachment={attachmentsByEngagement[l.engagementId] ?? null}
-                                    canManage={canAttach && !isClosed}
-                                  />
-                                )}
                               </li>
                             ))}
                           </ul>
@@ -352,6 +346,15 @@ export function ClosingTab({
                             )}
                           </td>
                         )}
+                        <td className={cn(td, "text-center")}>
+                          <SessionAttachDialog
+                            projectId={projectId}
+                            slotId={s.slotId}
+                            sessionLabel={s.label}
+                            attachments={attachmentsBySlot[s.slotId] ?? []}
+                            canManage={canAttach && !isClosed}
+                          />
+                        </td>
                         <td className={cn(td, "text-center")}>
                           {batchIds.length > 1 ? (
                             <span className="text-xs text-muted-foreground">여러 지급 건</span>
