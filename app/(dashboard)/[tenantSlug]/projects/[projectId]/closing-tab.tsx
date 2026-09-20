@@ -23,7 +23,10 @@ import {
   SatisfactionProgress,
 } from "./satisfaction-form";
 import { SettlementPanel } from "./settlement-panel";
-import { ExpertReviewForm, type ExpertReviewTarget } from "./expert-review-form";
+import {
+  autoSettlementReady,
+  type AutoSettlementStatus,
+} from "@/lib/integrations/settlement-auto";
 
 /**
  * 프로젝트 종료 및 지급 품의 탭.
@@ -47,8 +50,8 @@ type Step = {
 
 const STEPS: Step[] = [
   { no: 1, title: "참여율 배분", activeAt: ["closing"] },
-  { no: 2, title: "세션별 만족도", activeAt: ["closing"] },
-  { no: 3, title: "지급 품의 검토", activeAt: ["settlement_review"] },
+  { no: 2, title: "전문가 평가·종료", activeAt: ["closing"] },
+  { no: 3, title: "지급 품의서 검토", activeAt: ["settlement_review"] },
   { no: 4, title: "종료·지급 품의", activeAt: ["settled"] },
 ];
 
@@ -112,6 +115,25 @@ function StepRail({ stage }: { stage: ProjectStage }) {
   );
 }
 
+/** 자동 생성 조건 한 줄 — 충족 여부를 앞에 표시 */
+function ConditionLine({ ok, text }: { ok: boolean; text: string }) {
+  return (
+    <p className={ok ? "flex items-center gap-1.5 text-emerald-700" : "flex items-center gap-1.5 text-muted-foreground"}>
+      <span
+        className={
+          ok
+            ? "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"
+            : "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-neutral-300"
+        }
+        aria-hidden
+      >
+        {ok && <Check className="h-3 w-3" />}
+      </span>
+      {text}
+    </p>
+  );
+}
+
 /** 아직 열리지 않은 단계 — 왜 닫혀 있는지만 적는다 */
 function LockedNote({ children }: { children: React.ReactNode }) {
   return (
@@ -131,7 +153,7 @@ export function ClosingTab({
   canReviewSettlement,
   isClosed,
   closedAt,
-  reviewTargets,
+  autoStatus = null,
   approverOptions = [],
   attachmentsByEngagement = {},
   expertsLite = false,
@@ -145,7 +167,8 @@ export function ClosingTab({
   canReviewSettlement: boolean;
   isClosed: boolean;
   closedAt: string | null;
-  reviewTargets: ExpertReviewTarget[];
+  /** 지급 품의서 자동 생성 조건의 현재 상태 (기획 2026-09-21) — experts 모듈에서만 */
+  autoStatus?: AutoSettlementStatus | null;
   /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
   approverOptions?: { id: string; name: string; gradeLabel: string }[];
   /** 참여 건별 증빙 첨부 (engagementId → 파일) — 기획 2026-08-30 */
@@ -203,8 +226,8 @@ export function ClosingTab({
 
           {!inClosing && !afterClosing && stage !== "confirmed" && (
             <LockedNote>
-              전문가 전원이 수락서를 승인해 <strong>확정</strong>된 뒤에 마감을
-              시작할 수 있습니다. 진행 상황은 ‘섭외후보 등록’ 탭에서 봅니다.
+              섭외 확정 탭에서 모든 전문가의 평가·종료를 마치고 참여율 배분을 100%로 확정하면
+              지급 품의서가 자동으로 만들어집니다. 전원 확정 뒤에는 손수 마감을 시작할 수도 있습니다.
             </LockedNote>
           )}
 
@@ -252,7 +275,47 @@ export function ClosingTab({
         </CardContent>
       </Card>
 
-      {/* ② 세션별 만족도 */}
+      {/* 지급 품의서 자동 생성 조건 (기획 2026-09-21) — 섭외 확정 탭의 평가·종료 + 참여율 확정 */}
+      {hasExperts && autoStatus && !afterClosing && (
+        <Card className="border-indigo-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">지급 품의서 자동 생성 조건</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5 text-sm">
+            <p className="text-xs text-muted-foreground">
+              아래 조건이 모두 갖춰지는 순간 지급 품의서가 자동으로 만들어지고 회계담당자 검토(③)로
+              넘어갑니다. 버튼을 따로 누르지 않아도 됩니다.
+            </p>
+            <ConditionLine
+              ok={autoStatus.acceptedCount > 0 && autoStatus.completedCount === autoStatus.acceptedCount}
+              text={`섭외 확정 탭에서 모든 전문가 종료 처리 — ${autoStatus.completedCount}/${autoStatus.acceptedCount}건`}
+            />
+            <ConditionLine
+              ok={autoStatus.acceptedCount > 0 && autoStatus.unratedCount === 0}
+              text={
+                autoStatus.unratedCount === 0
+                  ? "모든 전문가 평가 입력 완료"
+                  : `전문가 평가 미입력 ${autoStatus.unratedCount}건 (섭외 확정 탭의 '평가' 버튼)`
+              }
+            />
+            <ConditionLine
+              ok={autoStatus.contributionTotal === 100 && autoStatus.contributionConfirmed}
+              text={
+                autoStatus.contributionConfirmed
+                  ? "참여율 배분 100% 확정"
+                  : `참여율 배분 확정 전 (현재 ${autoStatus.contributionTotal}%${autoStatus.contributionTotal === 100 ? " — '확정' 버튼을 눌러 주세요" : ""})`
+              }
+            />
+            {autoSettlementReady(autoStatus) && (
+              <p className="text-xs font-semibold text-indigo-700">
+                조건이 모두 갖춰졌습니다. 화면을 새로고침하면 ③ 지급 품의서 검토로 넘어가 있습니다.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ② 세션별 만족도 — 섭외 확정 탭의 평가와 같은 기록을 본다 (손수 마감하는 경로) */}
       {hasExperts && settlement && (inClosing || afterClosing) && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -343,37 +406,6 @@ export function ClosingTab({
         </Card>
       )}
 
-      {/* ④ 정성 후기 — 선택이므로 접어 둔다 */}
-      {hasExperts && canEvaluate && reviewTargets.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">
-              ④ 전문가 정성 후기 <span className="font-normal text-muted-foreground">(선택)</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <details>
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                후기 남기기 · 지난 후기 보기 ({reviewTargets.length}명)
-              </summary>
-              <p className="mt-2 text-xs text-muted-foreground">
-                점수와 별개로 문장 기록을 남깁니다. 다음 섭외에서 후보 목록의{" "}
-                <strong>평판</strong>으로 다시 보이며,{" "}
-                <strong>전문가에게 공개되지 않습니다</strong>.
-              </p>
-              <ul className="mt-1 divide-y">
-                {reviewTargets.map((row) => (
-                  <ExpertReviewForm
-                    key={row.expertId}
-                    projectId={projectId}
-                    target={row}
-                  />
-                ))}
-              </ul>
-            </details>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

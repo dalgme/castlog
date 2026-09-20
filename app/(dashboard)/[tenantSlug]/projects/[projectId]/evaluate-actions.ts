@@ -8,6 +8,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { requireExecGrade } from "@/lib/auth/exec-gate";
 import { getTenantModules } from "@/lib/modules/server";
+import { tryAutoSettlementReview } from "@/lib/integrations/settlement-auto";
 
 /**
  * 섭외 확정 탭의 전문가 평가 (기획 지시 2026-09-21).
@@ -110,6 +111,16 @@ export async function evaluateExpertAndComplete(
     resource_id: engagementId,
     after_data: { project_id: projectId, expert_id: expertId, slot_id: slotId, rating, has_opinion: Boolean(memo) },
   });
+
+  // 모든 전문가의 평가·종료 + 참여율 확정이 끝나면 지급 품의서 자동 생성 (기획 2026-09-21)
+  if (!completeError) {
+    await tryAutoSettlementReview({
+      projectId,
+      tenantId: gate.tenantId,
+      actorUserId: gate.userId,
+      actorRole: gate.role,
+    });
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   revalidatePath("/[tenantSlug]/experts", "page");

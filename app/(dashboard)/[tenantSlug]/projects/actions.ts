@@ -35,6 +35,7 @@ import { DEFAULT_LIFECYCLE_STEPS } from "@/lib/operations/steps";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { CONTRIBUTION_SLOT_KEYS, isExtraSlot } from "@/lib/integrations/contribution-slots";
+import { tryAutoSettlementReview } from "@/lib/integrations/settlement-auto";
 
 export type CreateProjectResult =
   | { ok: true; projectId: string }
@@ -510,11 +511,22 @@ export async function saveProjectContributions(
   // 자사 직원 검증 (RLS로 자사 사용자만 조회됨)
   const userIds = Array.from(new Set(data.rows.map((r) => r.userId)));
   const { data: tenantUsers } = userIds.length
-    ? await supabase.from("users").select("id").in("id", userIds)
+    ? await supabase.from("users").select("id, grade").in("id", userIds)
     : { data: [] };
   const validIds = new Set((tenantUsers ?? []).map((u) => u.id));
   if (userIds.some((id) => !validIds.has(id))) {
     return { ok: false, error: "자사 직원만 기여도 대상으로 지정할 수 있습니다." };
+  }
+  // 대표이사·상무이사 열은 설정의 직급(대표·이사)에서 자동으로 오는 고정 열이다 (기획 2026-09-21)
+  const gradeById = new Map((tenantUsers ?? []).map((u) => [u.id, u.grade]));
+  for (const r of data.rows) {
+    const need = r.slotKey === "ceo" ? "ceo" : r.slotKey === "director" ? "director" : null;
+    if (need && gradeById.get(r.userId) !== need) {
+      return {
+        ok: false,
+        error: `${r.slotKey === "ceo" ? "대표이사" : "상무이사"} 열은 설정에서 ${need === "ceo" ? "대표" : "이사"} 직급인 사람만 설 수 있습니다 (규칙). 새로고침 후 다시 시도해 주세요.`,
+      };
+    }
   }
 
   // 표 전체를 다시 쓴다: 옛 행(slot_key null)과 빠진 열을 지우고 현재 열을 넣는다.
@@ -578,6 +590,16 @@ export async function saveProjectContributions(
     resource_id: data.projectId,
     after_data: { count: data.rows.length, total },
   });
+
+  // 참여율 확정 + 모든 전문가 평가·종료가 끝나면 지급 품의서 자동 생성 (기획 2026-09-21)
+  if (options?.confirm) {
+    await tryAutoSettlementReview({
+      projectId: data.projectId,
+      tenantId: session.tenantId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+    });
+  }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
   return { ok: true };
