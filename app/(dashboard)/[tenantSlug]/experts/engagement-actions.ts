@@ -885,18 +885,15 @@ export async function reviseEngagementDecision(
         error: "승인(수락)된 건만 거절로 바꿀 수 있습니다 (상태 미충족). 새로고침 후 상태를 확인해 주세요.",
       };
     }
+    // 확정(수락서 송부·서명·확정) 단계여도 거절로 바꿀 수 있다 (기획 지시 2026-09-21) —
+    // 자리를 비워 후보를 다시 등록하고 변경 상신하는 경로. 발송 전 수락서(issued)만 지우고,
+    // 송부·서명·확정된 수락서는 문서로 남긴다(섭외 건 상태가 '거절'이라 화면은 거절로 판정).
     const { data: acceptance } = await supabase
       .from("engagement_acceptances")
       .select("id, status")
       .eq("engagement_id", engagementId)
       .maybeSingle();
-    if (acceptance && acceptance.status !== "issued") {
-      return {
-        ok: false,
-        error:
-          "수락서가 이미 송부·서명·확정된 건은 거절로 바꿀 수 없습니다 (규칙). 계약이 성립한 건이므로 '긴급 취소'로 처리해 주세요.",
-      };
-    }
+    const contractStage = acceptance !== null && acceptance.status !== "issued";
     const { data: flipped } = await admin
       .from("expert_engagements")
       .update({
@@ -934,7 +931,12 @@ export async function reviseEngagementDecision(
       action: "engagement.decline",
       resource_type: "expert_engagement",
       resource_id: engagementId,
-      after_data: { project_id: engagement.project_id, manual: true, revised_from: "accepted" },
+      after_data: {
+        project_id: engagement.project_id,
+        manual: true,
+        revised_from: "accepted",
+        acceptance_status: acceptance?.status ?? null,
+      },
     });
     await logEngagementEvent({
       tenantId,
@@ -942,9 +944,22 @@ export async function reviseEngagementDecision(
       type: "declined",
       actorKind: "staff",
       actorLabel: actorName,
-      note: trimmed ? `결정 수정(승인→거절) — ${trimmed}` : "결정 수정(승인→거절)",
+      note:
+        (trimmed ? `결정 수정(승인→거절) — ${trimmed}` : "결정 수정(승인→거절)") +
+        (contractStage ? " · 수락서 송부 후 거절 처리" : ""),
       isPractice: engagement.is_practice ?? false,
     });
+    // 수락서가 이미 나간 전문가에게는 알려야 한다 — 문서를 받고 일정을 준비 중일 수 있다
+    if (contractStage) {
+      await notifyExpert({
+        expertId: engagement.expert_id,
+        category: "engagement_cancelled",
+        title: "확정되었던 섭외가 취소(거절 처리)되었습니다",
+        body: trimmed || "요청 기업 담당자가 섭외 결정을 거절로 변경했습니다. 문의는 요청 기업 담당자에게 연락해 주세요.",
+        link: "/expert/engagements",
+        tenantId,
+      });
+    }
   }
 
   revalidatePath("/[tenantSlug]/projects/[projectId]", "page");

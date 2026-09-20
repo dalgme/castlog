@@ -856,14 +856,17 @@ export async function assertSlotEditable(
   const gate = await evaluatePlanGate(slot.project_id, modules.approvals);
   if (!gate.required) return { ok: true };
   const state = gate.slotStates[slotId] ?? "none";
-  if (state === "in_progress" || state === "approved" || state === "changed") {
+  // 'changed'(승인 뒤 내용이 바뀜)는 어차피 변경 품의를 다시 타야 하므로 편집을 연다 —
+  // 거절로 변경·긴급 취소로 빈 자리에 새 후보를 넣고 변경 상신하는 경로 (기획 지시 2026-09-21).
+  // 결재 중(in_progress)과 승인 그대로(approved)인 세션만 잠근다
+  if (state === "in_progress" || state === "approved") {
     return {
       ok: false,
       error:
         `이 세션은 섭외계획이 '${SLOT_PLAN_STATE_LABELS[state]}' 상태라 후보·순위·예정가·필요인원을 편집할 수 없습니다 (규칙). ` +
         (state === "in_progress"
           ? "결재가 끝나거나 결재건을 상신 취소한 뒤 조정하세요."
-          : "조정이 필요하면 섭외계획 패널에서 해당 계획의 변경 품의를 올리세요."),
+          : "조정이 필요하면 승인 목록 및 섭외 진행 탭에서 해당 후보를 '거절로 변경'하거나 세션 내용을 수정한 뒤(승인 후 변경 상태) 후보를 조정하고 변경 품의를 올리세요."),
     };
   }
   return { ok: true };

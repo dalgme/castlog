@@ -524,10 +524,10 @@ export function EngagementProgress({
                                 to="accepted"
                               />
                             )}
+                            {/* 확정 단계여도 거절로 변경 가능 (기획 지시 2026-09-21) */}
                             {canManage &&
                               r.engagementId &&
-                              ACCEPTANCE_STAGES.includes(r.stage) &&
-                              r.stage !== "confirmed" && (
+                              ACCEPTANCE_STAGES.includes(r.stage) && (
                                 <EngagementReviseButton
                                   engagementId={r.engagementId}
                                   projectId={projectId}
