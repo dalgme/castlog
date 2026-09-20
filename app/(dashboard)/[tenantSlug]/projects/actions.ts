@@ -149,7 +149,7 @@ export async function createProject(
    * 터진 결함이다. 반환을 요구하지 않으면 SELECT 정책은 관여하지 않는다.
    */
   const projectId = randomUUID();
-  const { error: projectError } = await supabase.from("projects").insert({
+  const baseInsert = {
     id: projectId,
     tenant_id: tenantId,
     name: data.name,
@@ -163,7 +163,14 @@ export async function createProject(
     budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
     description: data.description || null,
     created_by: user.id,
-  });
+  };
+  // 계약 처리 구분(기획 2026-09-21) — 컬럼 미적용 환경(PGRST204)은 그 값만 빼고 다시 넣는다 (§14-10)
+  let { error: projectError } = await supabase
+    .from("projects")
+    .insert({ ...baseInsert, contract_type: data.contractType || null });
+  if (projectError && isMissingColumnError(projectError)) {
+    ({ error: projectError } = await supabase.from("projects").insert(baseInsert));
+  }
 
   if (projectError) {
     return {

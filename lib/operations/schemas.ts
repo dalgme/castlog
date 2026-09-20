@@ -53,8 +53,20 @@ export const projectCreateSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식이 올바르지 않습니다.")
     .optional()
     .or(z.literal("")),
+  // 계약 처리 구분 (기획 2026-09-21): 수의 계약 / 입찰. 개설 때 모르면 비워 두고
+  // '기본정보 수정'에서 나중에 정한다. 리뷰 탭 요약표가 이 값을 읽는다
+  contractType: z.enum(["private", "bid"]).optional().or(z.literal("")),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
+
+export const CONTRACT_TYPE_LABELS = {
+  private: "수의 계약",
+  bid: "입찰",
+} as const;
+
+export function contractTypeLabel(value: string | null | undefined): string | null {
+  return value === "private" || value === "bid" ? CONTRACT_TYPE_LABELS[value] : null;
+}
 
 /** 스텝 상태 변경 */
 export const stepStatusSchema = z.object({

@@ -4743,6 +4743,7 @@ export type Database = {
           settlement_note: string | null
           contribution_confirmed_at: string | null
           contribution_confirmed_by: string | null
+          contract_type: string | null
         }
         Insert: {
           host_org?: string | null
@@ -4782,6 +4783,7 @@ export type Database = {
           settlement_note?: string | null
           contribution_confirmed_at?: string | null
           contribution_confirmed_by?: string | null
+          contract_type?: string | null
         }
         Update: {
           host_org?: string | null
@@ -4821,6 +4823,7 @@ export type Database = {
           settlement_note?: string | null
           contribution_confirmed_at?: string | null
           contribution_confirmed_by?: string | null
+          contract_type?: string | null
         }
         Relationships: [
           {

@@ -31,6 +31,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { KoreanDateInput } from "@/components/ui/korean-date-input";
 import { CommaNumberInput } from "@/components/ui/comma-number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
@@ -53,6 +60,8 @@ export type ProjectBasicInfo = {
   hostOrg: string;
   executorOrg: string;
   ddayDate: string;
+  /** 계약 처리 구분 (기획 2026-09-21): "" 미정 / private 수의 / bid 입찰 */
+  contractType: "" | "private" | "bid";
 };
 
 /**
@@ -219,6 +228,32 @@ export function BasicInfoDialog({
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/* 계약 처리 구분 (기획 2026-09-21) — 개설 때 몰랐으면 여기서 정한다. 리뷰 탭 요약표가 읽는다 */}
+            <FormField
+              control={form.control}
+              name="contractType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>계약 처리 구분 (수의/입찰)</FormLabel>
+                  <Select
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v === "none" ? "" : v)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="미정" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">미정</SelectItem>
+                      <SelectItem value="private">수의 계약</SelectItem>
+                      <SelectItem value="bid">입찰</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

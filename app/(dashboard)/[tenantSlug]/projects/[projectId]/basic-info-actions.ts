@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { explainActionError } from "@/lib/ux/action-errors";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import {
   gradeFromUser,
   practiceFromUser,
@@ -193,24 +194,34 @@ export async function updateProjectBasicInfo(
     };
   }
 
-  const { data: updated, error } = await supabase
+  const patch = {
+    name: data.name,
+    business_year: parseInt(data.businessYear, 10),
+    client_name: data.clientName || null,
+    code: data.code || null,
+    starts_on: data.startsOn || null,
+    ends_on: data.endsOn || null,
+    budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
+    description: data.description || null,
+    host_org: data.hostOrg || null,
+    executor_org: data.executorOrg || null,
+    dday_date: data.ddayDate || null,
+  };
+  // 계약 처리 구분(기획 2026-09-21) — 컬럼 미적용 환경(PGRST204)은 그 값만 빼고 다시 저장 (§14-10)
+  let { data: updated, error } = await supabase
     .from("projects")
-    .update({
-      name: data.name,
-      business_year: parseInt(data.businessYear, 10),
-      client_name: data.clientName || null,
-      code: data.code || null,
-      starts_on: data.startsOn || null,
-      ends_on: data.endsOn || null,
-      budget_amount: data.budgetAmount ? parseInt(data.budgetAmount, 10) : null,
-      description: data.description || null,
-      host_org: data.hostOrg || null,
-      executor_org: data.executorOrg || null,
-      dday_date: data.ddayDate || null,
-    })
+    .update({ ...patch, contract_type: data.contractType || null })
     .eq("id", projectId)
     .eq("tenant_id", gate.tenantId)
     .select("id");
+  if (error && isMissingColumnError(error)) {
+    ({ data: updated, error } = await supabase
+      .from("projects")
+      .update(patch)
+      .eq("id", projectId)
+      .eq("tenant_id", gate.tenantId)
+      .select("id"));
+  }
   if (error) {
     return {
       ok: false,
