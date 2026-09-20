@@ -153,7 +153,9 @@ export default async function ApprovalDetailPage({
       const coveredForReview = await getPlanCoveredSlotIds(plan.id);
       const { data: allPlanSlots } = await supabase
         .from("engagement_slots")
-        .select("id, slot_date, starts_time, session_name, role_type, required_count")
+        .select(
+          "id, slot_date, period_end_date, starts_time, ends_time, session_name, role_type, role_description, location_name, notes, required_count, field_id"
+        )
         .eq("project_id", plan.project_id)
         .order("slot_date", { ascending: true })
         .order("starts_time", { ascending: true });
@@ -186,12 +188,31 @@ export default async function ApprovalDetailPage({
       const expertNameById = new Map(
         (candidateExperts ?? []).map((e) => [e.id, e.name])
       );
+      // 세션분야 이름 — 결재권자는 세션 화면을 열지 않고 여기서 판단해야 한다
+      const fieldIds = Array.from(
+        new Set(planSlots.map((s) => s.field_id).filter((id): id is string => id !== null))
+      );
+      const { data: fieldRows } = fieldIds.length
+        ? await supabase.from("tenant_session_fields").select("id, name").in("id", fieldIds)
+        : { data: [] as never[] };
+      const fieldNameById = new Map((fieldRows ?? []).map((f) => [f.id, f.name]));
+
       reviewSlots = planSlots.map((slot) => ({
         slotId: slot.id,
         label: `${slot.session_name ?? slot.role_type} · ${slot.slot_date}${
           slot.starts_time ? ` ${slot.starts_time.slice(0, 5)}` : ""
         }`,
         requiredCount: slot.required_count,
+        detail: {
+          date: slot.slot_date,
+          periodEnd: slot.period_end_date,
+          startsTime: slot.starts_time,
+          endsTime: slot.ends_time,
+          roleDescription: slot.role_description,
+          fieldName: slot.field_id ? (fieldNameById.get(slot.field_id) ?? null) : null,
+          locationName: slot.location_name,
+          notes: slot.notes,
+        },
         candidates: (candidates ?? [])
           .filter((c) => c.slot_id === slot.id)
           .sort((a, b) => (a.rank ?? a.position_no) - (b.rank ?? b.position_no))

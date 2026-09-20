@@ -24,12 +24,73 @@ export type ReviewCandidate = {
   editable: boolean; // 섭외 미진행(open/assigned)만 삭제 가능
 };
 
+/** 결재권자가 세션 화면을 열지 않고도 판단할 수 있게 — 진행일자·시간·시수·세부역할·장소·비고 */
+export type ReviewSlotDetail = {
+  date: string;
+  periodEnd: string | null;
+  startsTime: string | null;
+  endsTime: string | null;
+  roleDescription: string | null;
+  fieldName: string | null;
+  locationName: string | null;
+  notes: string | null;
+};
+
 export type ReviewSlot = {
   slotId: string;
   label: string; // 세션명 · 일정
   requiredCount: number;
+  detail?: ReviewSlotDetail;
   candidates: ReviewCandidate[]; // 순위순
 };
+
+/** 시작·종료 시각에서 시수 — "2.5시간". 자정을 넘기면 다음 날로 본다 */
+function hoursBetween(starts: string | null, ends: string | null): string | null {
+  if (!starts || !ends) return null;
+  const toMinutes = (t: string): number | null => {
+    const [h, m] = t.split(":").map(Number);
+    return h !== undefined && m !== undefined && Number.isFinite(h) && Number.isFinite(m)
+      ? h * 60 + m
+      : null;
+  };
+  const start = toMinutes(starts);
+  const end = toMinutes(ends);
+  if (start === null || end === null) return null;
+  let minutes = end - start;
+  if (minutes < 0) minutes += 24 * 60;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${hours}시간`;
+}
+
+function SlotDetail({ d }: { d: ReviewSlotDetail }) {
+  const time =
+    d.startsTime && d.endsTime
+      ? `${d.startsTime.slice(0, 5)}~${d.endsTime.slice(0, 5)}`
+      : d.startsTime
+        ? d.startsTime.slice(0, 5)
+        : null;
+  const hours = hoursBetween(d.startsTime, d.endsTime);
+  const rows: [string, string | null][] = [
+    ["진행일자", d.periodEnd && d.periodEnd !== d.date ? `${d.date} ~ ${d.periodEnd}` : d.date],
+    ["시간", time],
+    ["시수", hours],
+    ["세부역할", [d.fieldName, d.roleDescription].filter(Boolean).join(" · ") || null],
+    ["장소", d.locationName],
+    ["비고", d.notes],
+  ];
+  return (
+    <dl className="mb-2 grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 rounded-md bg-secondary/40 px-2.5 py-2 text-xs sm:grid-cols-[4.5rem_1fr_4.5rem_1fr]">
+      {rows.map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className={cn("whitespace-pre-wrap break-words", !value && "text-muted-foreground")}>
+            {value || "-"}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 /**
  * 결재권자용 섭외계획 편집 패널 (기획 확정 2026-08-22)
@@ -118,6 +179,7 @@ export function PlanReviewPanel({
                 필요 {slot.requiredCount}명 · 후보 {ordered.length}명
               </span>
             </p>
+            {slot.detail && <SlotDetail d={slot.detail} />}
             <ul className="divide-y">
               {ordered.map((c, idx) => {
                 const isTarget = idx < slot.requiredCount;

@@ -18,6 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Time24Input } from "@/components/ui/datetime24";
 import { ENGAGEMENT_ROLE_TYPES } from "@/lib/integrations/engagement-roles";
 import { useToast } from "@/hooks/use-toast";
+import {
+  mergeFieldOptions,
+  SessionFieldDialog,
+  type SessionFieldOption,
+} from "@/components/sessions/session-field-dialog";
 
 import { addCalendarDays, removeCalendarDay } from "./calendar-actions";
 import { createSlot, deleteSlot, updateSlot } from "./slot-actions";
@@ -144,6 +149,10 @@ export function ProjectCalendar({
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 팝업에서 방금 추가·숨긴 분야 — 새로고침 전에도 선택지에 바로 반영
+  const [addedFields, setAddedFields] = useState<SessionFieldOption[]>([]);
+  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
+  const fields = mergeFieldOptions(fieldOptions, addedFields, hiddenFieldIds);
 
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
@@ -727,7 +736,8 @@ export function ProjectCalendar({
                 </span>
               )}
             </div>
-            {fieldOptions.length > 0 && (
+            {/* 세션분야 — 옆의 '분야 설정'으로 화면 전환 없이 추가 (기획 2026-09-20) */}
+            <div className="flex items-center gap-1.5">
               <select
                 value={draft.fieldId}
                 onChange={(e) =>
@@ -736,14 +746,27 @@ export function ProjectCalendar({
                 className="h-9 w-full rounded-md border bg-background px-2 text-sm"
                 aria-label="세션분야"
               >
-                <option value="">세션분야 선택 (선택)</option>
-                {fieldOptions.map((f) => (
+                <option value="">
+                  {fields.length > 0 ? "세션분야 선택 (선택)" : "세션분야 없음 — 오른쪽에서 추가"}
+                </option>
+                {fields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name}
                   </option>
                 ))}
               </select>
-            )}
+              <SessionFieldDialog
+                fields={fields}
+                onAdded={(f) => {
+                  setAddedFields((p) => [...p, f]);
+                  setDraft((p) => ({ ...p, fieldId: f.id }));
+                }}
+                onRemoved={(id) => {
+                  setHiddenFieldIds((p) => [...p, id]);
+                  setDraft((p) => (p.fieldId === id ? { ...p, fieldId: "" } : p));
+                }}
+              />
+            </div>
             <Input
               value={draft.locationName}
               onChange={(e) =>
