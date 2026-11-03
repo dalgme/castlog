@@ -11,6 +11,7 @@ import { loadTemplateViews } from "@/lib/checklists/load-templates";
 import { ensureTenantTemplates } from "@/lib/checklists/server";
 import type { TemplateView } from "@/lib/checklists/template-view";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
+import { kindOrDefault, parseChecklistWorkbook } from "@/lib/checklists/excel-import";
 import {
   logChecklist,
   requireTemplateEditor,
@@ -368,4 +369,109 @@ export async function getTemplatesForKind(
     return { ok: false, error: "체크리스트 기능이 아직 준비되지 않았습니다 (마이그레이션 미적용) — 캐스트로그에 알려 주세요." };
   }
   return { ok: true, templates };
+}
+
+// ---------------------------------------------------------------------------
+// 엑셀 불러오기 — 회사가 쓰던 체크리스트 엑셀을 자동 해석해 표준시트로 (기획 지시 2026-11-03)
+// ---------------------------------------------------------------------------
+
+export type TemplateExcelImportResult =
+  | {
+      ok: true;
+      sheets: { name: string; kind: string; items: number; target: "appended" | "created" }[];
+      skipped: string[];
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
+/**
+ * 시트마다 종류를 추정한다(시트 이름·열 구성). 못 추정하면 지금 보고 있는 종류(defaultKind).
+ * 공통·유형별·착수·마감·숙소는 그 종류의 활성 표준시트가 있으면 끝에 붙이고, 없으면 새로 만든다.
+ * 준비물품은 시트가 여럿일 수 있으니 항상 시트 이름으로 새로 만든다.
+ */
+export async function importTemplateExcel(formData: FormData, defaultKind: string): Promise<TemplateExcelImportResult> {
+  const gate = await requireTemplateEditor();
+  if (!gate.ok) return gate;
+  if (!isChecklistKind(defaultKind)) return { ok: false, error: "종류를 확인하세요." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "엑셀 파일을 선택하세요." };
+  if (file.size > 5 * 1024 * 1024) return { ok: false, error: "파일이 너무 큽니다 (최대 5MB)." };
+  if (!/\.(xlsx|xlsm|xls|csv)$/i.test(file.name)) {
+    return { ok: false, error: "엑셀 파일(.xlsx/.xls/.csv)만 불러올 수 있습니다." };
+  }
+  let parsed: ReturnType<typeof parseChecklistWorkbook>;
+  try {
+    parsed = parseChecklistWorkbook(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return { ok: false, error: "엑셀 파일을 읽을 수 없습니다 (손상되었거나 암호가 걸린 파일). 다른 이름으로 저장한 뒤 다시 올려 주세요." };
+  }
+  if (parsed.sheets.length === 0) {
+    return {
+      ok: false,
+      error: "체크리스트로 읽을 수 있는 시트가 없습니다 (상태 미충족). 첫 줄에 '업무 내용'·'항목'·'내용' 같은 머리글이 있는지 확인해 주세요.",
+    };
+  }
+
+  const supabase = createClient();
+  const results: Extract<TemplateExcelImportResult, { ok: true }>["sheets"] = [];
+  const warnings = [...parsed.sheets.flatMap((s) => s.warnings)];
+  for (const sheet of parsed.sheets) {
+    const kind = kindOrDefault(sheet.kind, defaultKind);
+    let templateId: string | null = null;
+    let target: "appended" | "created" = "created";
+    if (kind !== "supplies") {
+      const { data: existing } = await supabase
+        .from("checklist_templates").select("id").eq("kind", kind).eq("is_active", true)
+        .order("sort_order", { ascending: true }).limit(1).maybeSingle();
+      if (existing) {
+        templateId = existing.id;
+        target = "appended";
+      }
+    }
+    if (!templateId) {
+      const { data: last } = await supabase
+        .from("checklist_templates").select("sort_order").eq("kind", kind)
+        .order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      const { data: created, error } = await supabase
+        .from("checklist_templates")
+        .insert({
+          tenant_id: gate.actor.tenantId, kind, name: sheet.sheetName.slice(0, 120),
+          sort_order: (last?.sort_order ?? 0) + 10, created_by: gate.actor.userId, updated_by: gate.actor.userId,
+        })
+        .select("id").single();
+      if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+      templateId = created.id;
+      await logChecklist(gate.actor, { scope: "template", action: "template.create", templateId, after: `엑셀 불러오기(${file.name}) · ${sheet.sheetName}` });
+    }
+    const { data: lastItem } = await supabase
+      .from("checklist_template_items").select("sort_order").eq("template_id", templateId)
+      .order("sort_order", { ascending: false }).limit(1).maybeSingle();
+    const start = lastItem?.sort_order ?? 0;
+    const rows = sheet.items.map((it, i) => ({
+      tenant_id: gate.actor.tenantId,
+      template_id: templateId as string,
+      sort_order: start + (i + 1) * 10,
+      phase: it.phase?.slice(0, 40) ?? null,
+      category: it.category?.slice(0, 80) ?? null,
+      subcategory: it.subcategory?.slice(0, 80) ?? null,
+      title: it.title.slice(0, 500),
+      offset_days: it.offsetDays !== null && Math.abs(it.offsetDays) <= 365 ? it.offsetDays : null,
+      quantity: it.quantity?.slice(0, 80) ?? null,
+      note: it.note?.slice(0, 2000) ?? null,
+      created_by: gate.actor.userId,
+      updated_by: gate.actor.userId,
+    }));
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await supabase.from("checklist_template_items").insert(rows.slice(i, i + 200));
+      if (error) return { ok: false, error: `${sheet.sheetName} 시트 항목 저장에 실패했습니다 (시스템 오류). 일부만 들어갔을 수 있으니 확인해 주세요.` };
+    }
+    await logChecklist(gate.actor, {
+      scope: "template", action: "item.import_excel", templateId,
+      after: `${file.name} · ${sheet.sheetName} · ${rows.length}개 항목`,
+    });
+    results.push({ name: sheet.sheetName, kind, items: rows.length, target });
+  }
+  revalidate();
+  revalidatePath("/[tenantSlug]/projects/[projectId]", "page");
+  return { ok: true, sheets: results, skipped: parsed.skipped, warnings };
 }

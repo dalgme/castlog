@@ -28,6 +28,7 @@ import {
 } from "@/lib/checklists/groups";
 import type { TemplateItemView, TemplateView } from "@/lib/checklists/template-view";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
+import { ChecklistExcelImportDialog } from "@/components/checklists/excel-import-dialog";
 import { EditableText } from "@/components/checklists/editable-cell";
 import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
 
@@ -37,6 +38,7 @@ import {
   deleteTemplate,
   deleteTemplateItem,
   getTemplateLogs,
+  importTemplateExcel,
   renameTemplate,
   renameTemplateGroup,
   reorderTemplateItems,
@@ -82,6 +84,22 @@ export function TemplateEditor({
       {templates.map((t) => (
         <TemplateCard key={t.id} template={t} run={run} pending={pending} />
       ))}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 회사가 쓰던 체크리스트 엑셀을 자동 해석해 표준시트로 (기획 지시 2026-11-03) — 이후 모든 프로젝트가 쓴다 */}
+        <ChecklistExcelImportDialog
+          disabled={pending}
+          description={`기존에 쓰던 체크리스트 엑셀을 올리면 머리글을 자동으로 해석해 표준시트로 만듭니다. 종류를 알아볼 수 없는 시트는 지금 보고 있는 '${CHECKLIST_KIND_LABELS[kind]}' 시트로 들어가며, 이미 활성 표준시트가 있으면 그 끝에 붙습니다.`}
+          onImport={async (fd) => {
+            const r = await importTemplateExcel(fd, kind);
+            if (r.ok) {
+              toast({ description: `엑셀에서 ${r.sheets.reduce((n, s) => n + s.items, 0)}개 항목을 표준시트에 넣었습니다.` });
+              router.refresh();
+              onChanged?.();
+            }
+            return r;
+          }}
+        />
+      </div>
       {(kind === "supplies" || templates.length === 0) && (
         <div className="flex flex-wrap items-center gap-2">
           <Input
