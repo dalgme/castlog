@@ -20,6 +20,8 @@ import {
   type GroupField,
 } from "@/lib/checklists/groups";
 import { applyOrder, nextSortOrder } from "@/lib/checklists/order";
+import { kindOrDefault, parseChecklistWorkbook } from "@/lib/checklists/excel-import";
+import { practiceFromUser } from "@/lib/auth/tenant";
 import {
   logChecklist,
   requireProjectTeam,
@@ -993,3 +995,140 @@ export async function getProjectAllChecklistLogs(
   return { ok: true, rows: toLogRows(data) };
 }
 
+
+// ---------------------------------------------------------------------------
+// 엑셀 불러오기 — 회사가 쓰던 체크리스트 엑셀을 자동 해석해 이 프로젝트의 시트로 (기획 지시 2026-11-03)
+// ---------------------------------------------------------------------------
+
+export type ExcelImportResult =
+  | {
+      ok: true;
+      sheets: { name: string; kind: ChecklistKind; items: number; target: "appended" | "created" }[];
+      skipped: string[];
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
+const EXCEL_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * 시트마다 종류를 추정해 공통·유형별은 이 프로젝트의 공통 체크리스트 끝에 붙이고(없으면 만든다),
+ * 착수보고회·마감일·숙소·준비물품은 시트 이름으로 새 시트를 만든다. 담당은 이름이 자사 직원과
+ * 같으면 연결하고, 없으면 PM 기본값. 마감일 계획·완료일·확인·결정·메모 열도 같이 들어온다.
+ */
+export async function importChecklistExcel(projectId: string, formData: FormData): Promise<ExcelImportResult> {
+  const gate = await requireProjectTeam(projectId);
+  if (!gate.ok) return gate;
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "엑셀 파일을 선택하세요." };
+  if (file.size > EXCEL_MAX_BYTES) return { ok: false, error: "파일이 너무 큽니다 (최대 5MB)." };
+  if (!/\.(xlsx|xlsm|xls|csv)$/i.test(file.name)) {
+    return { ok: false, error: "엑셀 파일(.xlsx/.xls/.csv)만 불러올 수 있습니다." };
+  }
+  let parsed: ReturnType<typeof parseChecklistWorkbook>;
+  try {
+    parsed = parseChecklistWorkbook(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return { ok: false, error: "엑셀 파일을 읽을 수 없습니다 (손상되었거나 암호가 걸린 파일). 다른 이름으로 저장한 뒤 다시 올려 주세요." };
+  }
+  if (parsed.sheets.length === 0) {
+    return {
+      ok: false,
+      error: "체크리스트로 읽을 수 있는 시트가 없습니다 (상태 미충족). 첫 줄에 '업무 내용'·'항목'·'내용' 같은 머리글이 있는지 확인해 주세요.",
+    };
+  }
+
+  const supabase = createClient();
+  const dday = await projectDday(supabase, projectId);
+  const pmId = await projectPmUserId(supabase, projectId);
+  const { data: users } = await supabase.from("users").select("id, name");
+  const userIdByName = new Map((users ?? []).map((u) => [u.name.replace(/\s+/g, ""), u.id]));
+  const practice = practiceFromUser(gate.actor.user);
+
+  const results: Extract<ExcelImportResult, { ok: true }>["sheets"] = [];
+  const warnings = [...parsed.sheets.flatMap((s) => s.warnings)];
+  let commonId: string | null = null;
+
+  for (const sheet of parsed.sheets) {
+    const kind = kindOrDefault(sheet.kind, "common");
+    let checklistId: string;
+    let target: "appended" | "created";
+    if (kind === "common" || kind === "typed") {
+      if (!commonId) {
+        const { data: existing } = await supabase
+          .from("project_checklists").select("id").eq("project_id", projectId).eq("kind", "common").maybeSingle();
+        if (existing) commonId = existing.id;
+        else {
+          const { data: created, error } = await supabase
+            .from("project_checklists")
+            .insert({
+              tenant_id: gate.actor.tenantId, project_id: projectId, kind: "common", name: "프로젝트 체크리스트",
+              dday_date: dday, created_by: gate.actor.userId, updated_by: gate.actor.userId,
+            })
+            .select("id").single();
+          if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+          commonId = created.id;
+          await logChecklist(gate.actor, { scope: "project", action: "checklist.create", checklistId: created.id, projectId, after: `엑셀 불러오기(${file.name})` });
+        }
+      }
+      checklistId = commonId;
+      target = "appended";
+    } else {
+      const { data: created, error } = await supabase
+        .from("project_checklists")
+        .insert({
+          tenant_id: gate.actor.tenantId, project_id: projectId, kind, name: sheet.sheetName.slice(0, 120),
+          dday_date: dday, created_by: gate.actor.userId, updated_by: gate.actor.userId,
+        })
+        .select("id").single();
+      if (error || !created) return { ok: false, error: SYSTEM_FAIL };
+      checklistId = created.id;
+      target = "created";
+      await logChecklist(gate.actor, { scope: "project", action: "checklist.create", checklistId: created.id, projectId, after: `엑셀 불러오기(${file.name}) · ${sheet.sheetName}` });
+    }
+
+    const { data: last } = await supabase
+      .from("project_checklist_items").select("sort_order").eq("checklist_id", checklistId)
+      .order("sort_order", { ascending: false }).limit(1).maybeSingle();
+    const start = last?.sort_order ?? 0;
+    const rows = sheet.items.map((it, i) => ({
+      tenant_id: gate.actor.tenantId,
+      checklist_id: checklistId,
+      project_id: projectId,
+      sort_order: start + (i + 1) * 10,
+      phase: it.phase?.slice(0, 40) ?? null,
+      category: it.category?.slice(0, 80) ?? null,
+      subcategory: it.subcategory?.slice(0, 80) ?? null,
+      title: it.title.slice(0, 500),
+      offset_days: it.offsetDays !== null && Math.abs(it.offsetDays) <= 365 ? it.offsetDays : null,
+      quantity: it.quantity?.slice(0, 80) ?? null,
+      note: it.note?.slice(0, 2000) ?? null,
+      memo: it.memo?.slice(0, 2000) ?? null,
+      assignee_user_id: (it.assigneeName ? userIdByName.get(it.assigneeName.replace(/\s+/g, "")) : null) ?? pmId,
+      planned_due_on: it.plannedDue,
+      planned_due_set_on: it.plannedDue ? kstToday() : null,
+      planned_due_set_by: it.plannedDue ? gate.actor.userId : null,
+      completed_on: it.completedOn,
+      check1: it.check1?.slice(0, 2000) ?? null,
+      check2: it.check2?.slice(0, 2000) ?? null,
+      decision: it.decision?.slice(0, 2000) ?? null,
+      applicable: it.applicable?.slice(0, 200) ?? null,
+      is_practice: practice,
+      created_by: gate.actor.userId,
+      updated_by: gate.actor.userId,
+    }));
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await supabase.from("project_checklist_items").insert(rows.slice(i, i + 200));
+      if (error) return { ok: false, error: `${sheet.sheetName} 시트 항목 저장에 실패했습니다 (시스템 오류). 일부만 들어갔을 수 있으니 확인해 주세요.` };
+    }
+    const unmatched = Array.from(new Set(sheet.items.map((it) => it.assigneeName).filter((n): n is string => Boolean(n) && !userIdByName.has((n as string).replace(/\s+/g, "")))));
+    if (unmatched.length > 0) warnings.push(`'${sheet.sheetName}' 담당 ${unmatched.join(", ")}은(는) 자사 직원에 없어 PM으로 넣었습니다.`);
+    await logChecklist(gate.actor, {
+      scope: "project", action: "item.import_excel", checklistId, projectId,
+      after: `${file.name} · ${sheet.sheetName} · ${rows.length}개 항목`,
+    });
+    results.push({ name: sheet.sheetName, kind, items: rows.length, target });
+  }
+  revalidate();
+  return { ok: true, sheets: results, skipped: parsed.skipped, warnings };
+}

@@ -49,6 +49,7 @@ import {
 } from "@/lib/checklists/groups";
 import { assignmentRoleLabel } from "@/lib/integrations/assignment-roles";
 import { ChecklistLogsDialog } from "@/components/checklists/checklist-logs-dialog";
+import { ChecklistExcelImportDialog } from "@/components/checklists/excel-import-dialog";
 import { DateCell, EditableText } from "@/components/checklists/editable-cell";
 import { DropEndRow, GroupHeaderRow } from "@/components/checklists/group-header-row";
 import { KoreanDateCell } from "@/components/checklists/korean-date-cell";
@@ -66,6 +67,7 @@ import {
   duplicateChecklistItems,
   getProjectAllChecklistLogs,
   getProjectChecklistLogs,
+  importChecklistExcel,
   importCommonChecklist,
   importProjectChecklists,
   importTypedItems,
@@ -307,6 +309,19 @@ export function ProjectChecklistPanel({
                 return r;
               }, "다른 프로젝트의 체크리스트를 불러왔습니다.")
             }
+          />
+          {/* 회사가 쓰던 체크리스트 엑셀을 자동 해석해 이 프로젝트 시트로 넣는다 (기획 지시 2026-11-03) */}
+          <ChecklistExcelImportDialog
+            disabled={pending}
+            description="기존에 쓰던 체크리스트 엑셀을 올리면 머리글을 자동으로 해석해 이 프로젝트의 체크리스트에 넣습니다. 공통·유형 항목은 공통 체크리스트 끝에, 착수보고회·마감일·숙소·준비물품 시트는 새 시트로 들어갑니다."
+            onImport={async (fd) => {
+              const r = await importChecklistExcel(projectId, fd);
+              if (r.ok) {
+                toast({ description: `엑셀에서 ${r.sheets.reduce((n, s) => n + s.items, 0)}개 항목을 불러왔습니다.` });
+                router.refresh();
+              }
+              return r;
+            }}
           />
           {USE_BUTTON_KINDS.map((kind) => {
             const ofKind = templates.filter((t) => t.kind === kind);
