@@ -12,6 +12,7 @@ import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { generateClientPassword, hashClientPassword } from "@/lib/integrations/client-review";
 import { CLIENT_LINK_DEFAULT_DAYS, CLIENT_LINK_MAX_DAYS } from "@/lib/integrations/client-review-shared";
+import { movePrePlanStage } from "@/lib/integrations/pre-plan-stage";
 
 /**
  * 발주처 검토 액션 (기획 승인 2026-11-07 — 3단계, 02·04번 + 보정).
@@ -121,6 +122,8 @@ export async function createClientReviewLink(listId: string, input: z.infer<type
     resource_id: created.id,
     after_data: { list_id: listId, project_id: list.project_id, round, expires_at: expiresAt },
   });
+  // 프로젝트 섭외 단계 → 발주처 검토 중 (4단계 단계값, 품의 전 구간에서만)
+  await movePrePlanStage(supabase, list.project_id, "client_review");
   let url: string;
   try {
     url = buildPublicLink("clientReview", token);
@@ -181,6 +184,8 @@ export async function skipClientReview(listId: string): Promise<Result> {
     resource_id: listId,
     after_data: { from_status: list.status },
   });
+  // 프로젝트 섭외 단계 → 후보 조정 중 (4단계 단계값, 품의 전 구간에서만)
+  await movePrePlanStage(supabase, list.project_id, "adjusting");
   revalidate();
   return { ok: true };
 }

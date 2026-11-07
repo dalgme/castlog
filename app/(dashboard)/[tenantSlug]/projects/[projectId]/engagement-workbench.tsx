@@ -3,6 +3,7 @@ import {
   Search,
   CalendarCheck,
   FileText,
+  FileSignature,
   Send,
   FileCheck2,
 } from "lucide-react";
@@ -43,10 +44,6 @@ import { CandidateList } from "./candidate-list";
 import { RequiredCountEditor } from "./required-count-editor";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { ManualAcceptButton } from "./manual-accept-button";
-import {
-  EngagementPlanButton,
-  type PlanPreviewLine,
-} from "./engagement-plan-button";
 
 /**
  * 섭외 작업대 — 세션(코드넘버) 단위로 '지금 무엇을 하면 되는지'를 펼친다.
@@ -74,8 +71,8 @@ const STEPS = [
   },
   {
     icon: FileText,
-    title: "③ 임의 배정 → 품의",
-    body: "세션마다 후보를 순위대로 배정하고 예정가를 적습니다. 필요인원만큼 배정되면 ‘섭외 품의서 자동 작성 및 송신’이 열립니다.",
+    title: "③ 임의 배정 → 리스트 검토 → 품의",
+    body: "세션마다 후보를 순위대로 배정하고 예정가를 적습니다. 이어서 ‘리스트 작성’(내부 검토) → ‘발주처 검토’ → ‘섭외후보 조정’ 탭에서 품의서를 자동 작성해 상신합니다.",
   },
   {
     icon: Send,
@@ -118,10 +115,6 @@ export function EngagementWorkbench({
   stageByPosition,
   unlinked,
   projectState,
-  planPreview,
-  planApproverOptions = [],
-  planRelayOn = false,
-  planFlow = { mode: "pre_approval", reason: null },
   headerActions,
   expertsLite = false,
 }: {
@@ -169,14 +162,6 @@ export function EngagementWorkbench({
     /** 지금 일괄 발송하면 요청이 나갈 자리 수 (예비 후보 제외) */
     dispatchable: number;
   };
-  /** 품의서 미리보기 (상신 전 확인용) */
-  planPreview: { lines: PlanPreviewLine[]; amount: number };
-  /** 결재라인 직접 지정 후보 (기획 2026-08-30 — 18번) */
-  planApproverOptions?: { id: string; name: string; gradeLabel: string }[];
-  /** 상급자 릴레이 결재(27번) 활성 — 픽커 안내 문구 분기 */
-  planRelayOn?: boolean;
-  /** 사후보고 모드(38번) 판정 — 버튼 라벨·다이얼로그 문구 분기 */
-  planFlow?: { mode: "post_report" } | { mode: "pre_approval"; reason: string | null };
   /** 섭외 추가·붙이기 버튼 — 서버 컴포넌트에서 내려받는다 */
   headerActions?: React.ReactNode;
   /** 라이트 모드(수기 섭외 관리) — 발송·수락서 송부 없이 기록만 */
@@ -206,18 +191,8 @@ export function EngagementWorkbench({
   // 언제든 할 수 있고, 바뀌면 '변경 품의 필요'가 되어 변경 품의를 다시 올린다.
   // 서버 가드(assertSlotEditable)와 같은 기준
   const slotLocked = (slotId: string) => slotState(slotId) === "in_progress";
-  // 새 품의 상신 제외: 살아 있는 계획(결재 중·승인·변경 필요)에 담긴 세션 — 같은 세션을 두
-  // 계획이 담을 수 없다(DB 트리거). 이 세션들의 변경은 변경 품의로만 간다
-  const slotInLivePlan = (slotId: string) => {
-    const st = slotState(slotId);
-    return st === "in_progress" || st === "approved" || st === "changed";
-  };
-  const lockedSlots: Record<string, string> = {};
-  for (const s of slots) {
-    if (slotInLivePlan(s.id)) lockedSlots[s.id] = SLOT_PLAN_STATE_LABELS[slotState(s.id)];
-  }
-  const submittableCount = slots.filter((s) => !slotInLivePlan(s.id)).length;
-
+  // 새 품의 상신 제외(살아 있는 계획에 담긴 세션 잠금)는 품의 버튼이 있는
+  // '섭외후보 조정' 탭(adjust-tab.tsx)이 같은 기준으로 판정한다 (2026-11-07)
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -225,23 +200,15 @@ export function EngagementWorkbench({
           전문가 섭외 진행 · 배정 {projectState.assigned + (projectState.total - projectState.open - projectState.assigned)}/{projectState.total}
         </CardTitle>
         <div className="flex flex-wrap items-center gap-2">
+          {/* 품의 버튼은 이 탭에서 없어졌다 (기획 승인 2026-11-07 — 4단계): 품의는
+              리스트 작성 → 발주처 검토 → '섭외후보 조정' 탭의 자동 작성으로만 올린다 */}
           {canManage && submittableStage && (
-            <EngagementPlanButton
-              projectId={projectId}
-              // 세션별 선택 상신 (기획 2026-08-30 — 22번) + 다중 계획(2026-09-05):
-              // 결재 중·승인된 계획이 있어도 나머지 세션을 별도 품의로 올린다
-              disabled={projectState.total === 0 || submittableCount === 0}
-              disabledReason={
-                projectState.total === 0
-                  ? "세션(코드넘버)을 먼저 등록하세요."
-                  : "모든 세션이 결재 중이거나 승인되었습니다. 세션을 추가하면 별도 품의로 올릴 수 있습니다."
-              }
-              lines={planPreview.lines}
-              lockedSlots={lockedSlots}
-              approverOptions={planApproverOptions}
-              relayOn={planRelayOn}
-              flow={planFlow}
-            />
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/${tenantSlug}/projects/${projectId}?tab=list`}>
+                <FileSignature className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                리스트 작성 → 검토 → 품의
+              </Link>
+            </Button>
           )}
           {/* 섭외 문자 발송·수락서 송부는 '승인 목록 및 섭외 진행' 탭으로
               옮겼다 (기획 확정 2026-08-30 — 37번). 결재가 난 뒤에는 그 탭이
@@ -447,7 +414,7 @@ export function EngagementWorkbench({
                       )}
                       title={
                         st === "none"
-                          ? "아직 품의에 담기지 않은 세션입니다. 후보·예정가를 편집하고 '섭외 품의서 자동 작성 및 송신'에서 골라 상신하세요 — 결재 중인 품의가 있어도 별도 품의로 올릴 수 있습니다."
+                          ? "아직 품의에 담기지 않은 세션입니다. 후보·예정가를 편집한 뒤 '섭외후보 조정' 탭의 '섭외 품의서 자동 작성 및 송신'에서 골라 상신하세요 — 결재 중인 품의가 있어도 별도 품의로 올릴 수 있습니다."
                           : st === "rejected"
                             ? "이 세션의 품의가 반려되었습니다. 조정 후 다시 상신하세요."
                             : st === "in_progress"

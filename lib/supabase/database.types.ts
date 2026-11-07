@@ -2116,6 +2116,7 @@ export type Database = {
           approved_at: string | null
           flow: string
           feedback_note: string | null
+          candidate_list_id: string | null
           created_at: string
           updated_at: string
         }
@@ -2139,6 +2140,7 @@ export type Database = {
           approved_at?: string | null
           flow?: string
           feedback_note?: string | null
+          candidate_list_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -2162,8 +2164,48 @@ export type Database = {
           approved_at?: string | null
           flow?: string
           feedback_note?: string | null
+          candidate_list_id?: string | null
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      approval_attachments: {
+        Row: {
+          id: string
+          tenant_id: string
+          approval_id: string
+          kind: string
+          ref_id: string | null
+          title: string
+          body_text: string | null
+          storage_path: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          approval_id: string
+          kind: string
+          ref_id?: string | null
+          title: string
+          body_text?: string | null
+          storage_path?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          approval_id?: string
+          kind?: string
+          ref_id?: string | null
+          title?: string
+          body_text?: string | null
+          storage_path?: string | null
+          created_by?: string | null
+          created_at?: string
         }
         Relationships: []
       }

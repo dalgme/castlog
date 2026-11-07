@@ -30,6 +30,7 @@ import {
 import { formatWonRange } from "@/lib/sessions/fees";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { countLabel, DELIVERY_LABELS, hybridCountLabel, scheduleLines } from "@/lib/sessions/schedule";
+import { ATTACHMENT_KIND_LABELS } from "@/lib/integrations/adjust-tab-shared";
 import { ActPanel } from "./act-panel";
 import { PlanReviewPanel, type ReviewSlot } from "./plan-review-panel";
 
@@ -93,6 +94,15 @@ export default async function ApprovalDetailPage({
     .order("step_order", { ascending: true });
 
   const stepRows = steps ?? [];
+
+  // 품의 첨부 (기획 2026-11-07 — 4단계·10번): 발주처 회신 원문·내부 검토 의견·리스트 스냅샷.
+  // 표가 아직 없으면(0015 전) 절을 그리지 않는다
+  const { data: attachmentRows, error: attachmentsError } = await supabase
+    .from("approval_attachments")
+    .select("id, kind, title, body_text, created_at")
+    .eq("approval_id", approval.id)
+    .order("created_at", { ascending: true });
+  const attachments = attachmentsError ? [] : attachmentRows ?? [];
 
   // 내 차례 판정 (표시용 — 서버 액션이 다시 검증한다)
   const pendingSteps = stepRows.filter((s) => s.status === "pending");
@@ -382,6 +392,40 @@ export default async function ApprovalDetailPage({
             )}
           </CardContent>
         </Card>
+
+        {attachments.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">첨부 ({attachments.length}건)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="divide-y rounded-md border">
+                {attachments.map((a) => (
+                  <li key={a.id} className="px-3 py-2">
+                    <details>
+                      <summary className="cursor-pointer text-sm">
+                        <Badge variant="outline" className="mr-1.5 text-[10px]">
+                          {ATTACHMENT_KIND_LABELS[a.kind] ?? a.kind}
+                        </Badge>
+                        <span className="font-medium">{a.title}</span>
+                      </summary>
+                      {a.body_text ? (
+                        <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-secondary/50 p-3 text-xs leading-relaxed">
+                          {a.body_text}
+                        </pre>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">본문 없는 첨부입니다.</p>
+                      )}
+                    </details>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                발주처 회신·내부 검토 의견은 상신 시점의 원문입니다. 요약은 위 품의 본문에 있습니다.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">

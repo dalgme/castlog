@@ -13,6 +13,7 @@ import {
 import {
   PROJECT_STAGE_DESCRIPTIONS,
   PROJECT_STAGE_LABELS,
+  isPrePlanStage,
   type ProjectStage,
 } from "@/lib/integrations/project-stage";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
@@ -219,7 +220,8 @@ export function EngagementProgress({
     (stage === "requesting" ||
       stage === "accepted_all" ||
       stage === "letters_sent");
-  const beforeApproval = stage === "assigning" || stage === "plan_review";
+  // 품의 전 구간(배정·리스트 검토·발주처 검토·후보 조정, 2026-11-07)과 결재 중은 모두 '승인 전'
+  const beforeApproval = isPrePlanStage(stage) || stage === "plan_review";
   // 사후보고 피드백(38번) — **현재 유효한(최신 승인) 리비전**의 피드백만 코랄로
   // 먼저 보인다. 조정 후 다시 보고한 뒤에도 옛 피드백이 떠 있으면 안 된다 (리뷰 P2-4)
   const latest = plans[0];
@@ -287,16 +289,23 @@ export function EngagementProgress({
 
           {beforeApproval && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
-              {stage === "assigning" ? (
+              {isPrePlanStage(stage) ? (
                 <>
                   {approvalsEnabled
-                    ? "아직 섭외 품의가 승인되지 않았습니다. 후보 배정과 품의 상신은 "
-                    : "아직 섭외 명단이 확정되지 않았습니다. 후보 배정과 확정은 "}
+                    ? "아직 섭외 품의가 승인되지 않았습니다. 후보 배정은 "
+                    : "아직 섭외 명단이 확정되지 않았습니다. 후보 배정은 "}
                   <Link
                     href={`/${tenantSlug}/projects/${projectId}?tab=experts`}
                     className="font-semibold underline underline-offset-4"
                   >
                     섭외후보 등록
+                  </Link>{" "}
+                  탭에서, 품의 상신은{" "}
+                  <Link
+                    href={`/${tenantSlug}/projects/${projectId}?tab=adjust`}
+                    className="font-semibold underline underline-offset-4"
+                  >
+                    섭외후보 조정
                   </Link>{" "}
                   {approvalsEnabled
                     ? "탭에서 합니다. 결재가 끝나면 여기서 섭외 문자를 보냅니다."

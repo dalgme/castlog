@@ -20,7 +20,7 @@ import {
   pickDispatchTargets,
   REDISPATCH_STAGES,
 } from "@/lib/integrations/project-engagement";
-import type { ProjectStage } from "@/lib/integrations/project-stage";
+import { isPrePlanStage, type ProjectStage } from "@/lib/integrations/project-stage";
 import {
   assertSlotEditable,
   buildPlanSnapshot,
@@ -440,7 +440,9 @@ export async function submitEngagementPlan(
   // 결재라인 직접 지정 (기획 2026-08-30 — 18번). 비우면 규정→직급 체계
   approverIds: string[] = [],
   // 세션 부분 선택 (기획 2026-08-30 — 22번). 빈 배열 = 전체 세션
-  slotIds: string[] = []
+  slotIds: string[] = [],
+  // 품의서 본문(자동 작성, 기획 2026-11-07 — 섭외후보 조정 탭이 넘긴다). 비우면 종전 요약만
+  note = ""
 ): Promise<PlanSubmitResult> {
   const auth = await requireManager("planSubmit");
   if (!auth.ok) return auth;
@@ -453,6 +455,9 @@ export async function submitEngagementPlan(
   // 세션 묶음은 별도 품의로 올릴 수 있다. 수락서 송부 이후·종료 단계에서만 닫는다.
   const SUBMITTABLE_STAGES: readonly ProjectStage[] = [
     "assigning",
+    "list_review",
+    "client_review",
+    "adjusting",
     "plan_review",
     "plan_approved",
     "requesting",
@@ -475,8 +480,10 @@ export async function submitEngagementPlan(
   }
 
   const modules = await getTenantModules();
+  // 품의 전 구간(배정·리스트 검토·발주처 검토·후보 조정)은 모두 '첫 품의 전'으로 본다 (2026-11-07)
+  const prePlan = isPrePlanStage(state.stage);
   if (!modules.approvals) {
-    if (state.stage === "assigning") {
+    if (prePlan) {
       await supabase
         .from("projects")
         .update({ engagement_stage: "plan_approved" })
@@ -497,7 +504,7 @@ export async function submitEngagementPlan(
     slotIds.length > 0 ? slotIds : undefined
   );
 
-  const submitted = await submitPlanRecord(projectId, "", approverIds, slotIds);
+  const submitted = await submitPlanRecord(projectId, note, approverIds, slotIds);
   if (!submitted.ok) return submitted;
   const approvalId = submitted.approvalId ?? null;
   // 사후보고 모드(38번): 계획이 즉시 확정됐으므로 단계도 바로 연다 —
@@ -507,7 +514,7 @@ export async function submitEngagementPlan(
   // 이미 승인된 계획이 있어(plan_approved 이후) 발송이 열려 있는 프로젝트를
   // 새 품의가 다시 결재 중으로 되돌리면 안 된다 — 앞 단계에서만 올린다
   const nextStage =
-    state.stage === "assigning"
+    prePlan
       ? postReport
         ? "plan_approved"
         : "plan_review"
@@ -611,8 +618,8 @@ export async function dispatchProjectEngagements(input: {
     return {
       ok: false,
       error:
-        state.stage === "assigning"
-          ? "섭외 품의를 먼저 상신·승인받아야 합니다 (규칙)."
+        isPrePlanStage(state.stage)
+          ? "섭외 품의를 먼저 상신·승인받아야 합니다 (규칙). ‘섭외후보 조정’ 탭에서 품의서를 자동 작성해 상신하세요."
           : state.stage === "plan_review"
             ? "섭외 품의가 결재 진행 중입니다. 승인 후 발송할 수 있습니다."
             : "수락서 송부 이후에는 일괄 발송을 쓸 수 없습니다 (규칙). 추가 섭외는 코드넘버별 개별 요청으로 진행해 주세요.",

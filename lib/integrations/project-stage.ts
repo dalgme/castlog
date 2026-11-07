@@ -9,6 +9,10 @@
 
 export const PROJECT_STAGES = [
   "assigning",
+  // 섭외 후보 리스트 단계 (기획 승인 2026-11-07): 내부 검토 → 발주처 검토 → 후보 조정 → 품의
+  "list_review",
+  "client_review",
+  "adjusting",
   "plan_review",
   "plan_approved",
   "requesting",
@@ -24,6 +28,9 @@ export type ProjectStage = (typeof PROJECT_STAGES)[number];
 
 export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
   assigning: "임의 배정 중",
+  list_review: "후보 리스트 내부 검토 중",
+  client_review: "발주처 검토 중",
+  adjusting: "후보 조정 중 · 품의 준비",
   plan_review: "섭외 품의 결재 중",
   plan_approved: "결재 완료 · 섭외 진행 가능",
   requesting: "섭외 요청 발송됨",
@@ -38,6 +45,12 @@ export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
 export const PROJECT_STAGE_DESCRIPTIONS: Record<ProjectStage, string> = {
   assigning:
     "코드넘버마다 전문가를 찾아 배정하는 단계입니다. 아직 아무에게도 나가지 않았습니다.",
+  list_review:
+    "섭외 후보 리스트를 상무·대표가 내부 검토하고 있습니다. ‘리스트 작성’ 탭에서 의견을 확인하세요.",
+  client_review:
+    "발주처가 후보 리스트를 검토하고 있습니다. 회신이 오면 ‘발주처 검토’ 탭에 쌓입니다.",
+  adjusting:
+    "내부·발주처 의견을 반영해 후보를 조정하는 단계입니다. ‘섭외후보 조정’ 탭에서 품의서를 자동 작성해 상신하세요.",
   plan_review:
     "배정 명단으로 섭외 품의를 올렸습니다. 결재가 끝나야 요청을 보낼 수 있습니다.",
   plan_approved:
@@ -66,6 +79,12 @@ export function projectStage(value: unknown): ProjectStage {
 
 export function stageIndex(stage: ProjectStage): number {
   return PROJECT_STAGES.indexOf(stage);
+}
+
+/** 품의 전 단계 — 배정·리스트 검토·발주처 검토·후보 조정. 이 구간 안에서는 단계가 자유롭게 오간다 */
+export const PRE_PLAN_STAGES: readonly ProjectStage[] = ["assigning", "list_review", "client_review", "adjusting"];
+export function isPrePlanStage(stage: ProjectStage): boolean {
+  return PRE_PLAN_STAGES.includes(stage);
 }
 
 /** stage가 target 이상까지 왔는가 (되돌아간 경우를 구분하려면 직접 비교할 것) */
