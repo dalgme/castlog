@@ -7,6 +7,7 @@ import { getPendingModuleOnboarding } from "@/lib/modules/onboarding";
 import { MODULE_ONBOARDING_HINTS } from "@/lib/modules/modules";
 import { canManagePayments, getAdminScopes } from "@/lib/auth/admin-scopes";
 import { getMyTurnApprovals } from "@/lib/approvals/my-turn";
+import { getUnreadNotesCount } from "@/lib/notes/server";
 import { getSetupStatus } from "@/lib/onboarding/setup-checklist";
 import { createClient } from "@/lib/supabase/server";
 import { tenantLogoSrc } from "@/lib/branding/tenant-logo";
@@ -68,6 +69,8 @@ export async function TenantShell({
   // 내 결재 차례 배지 — 결재권자가 도착을 모르면 승인 게이트에 걸린 팀이 멈춘다 (검수 A3)
   const approvalsBadge =
     modules.approvals && user ? (await getMyTurnApprovals(user.id)).length : 0;
+  // 안 읽은 쪽지 배지 (기획 2026-11-07) — 표가 없으면 0
+  const notesBadge = user && role !== "platform_admin" ? await getUnreadNotesCount(user.id) : 0;
 
   let tenantName: string | null = null;
   let testSupport = false;
@@ -103,6 +106,7 @@ export async function TenantShell({
         canManagePayments={payments}
         expertsLite={expertsLite}
         approvalsBadge={approvalsBadge}
+        notesBadge={notesBadge}
         tenantName={tenantName}
         logoSrc={logoSrc}
       />

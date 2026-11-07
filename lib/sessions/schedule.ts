@@ -63,14 +63,22 @@ export function fmtHours(h: number): string {
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
-export function fmtDate(iso: string, withYear = false): string {
+export function fmtDate(iso: string, withYear = false, formal = false): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return iso;
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
   const wd = WEEKDAYS[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+  // 정식 표기 — 플랫폼 공통 날짜 표기(기획 지시 2026-09-21) "2026년 09월 07일(월)".
+  // 문자·공개 링크·수락서·품의서처럼 상대(전문가·발주처·결재자)가 읽는 문서에 쓴다.
+  if (formal) return `${y}년 ${m[2]}월 ${m[3]}일(${wd})`;
   return `${withYear ? `${y}. ` : ""}${mo}/${d}(${wd})`;
+}
+
+/** "2026-09-07" → "2026년 09월 07일(월)" — 상대가 읽는 문서용 정식 표기 */
+export function formatFormalDate(iso: string): string {
+  return fmtDate(iso, true, true);
 }
 
 export function fmtTime(t: string | null | undefined): string | null {
@@ -109,19 +117,22 @@ export function hybridCountLabel(s: SessionSchedule): string | null {
 }
 
 /** 일정 줄 — 개별선택형은 날짜마다 한 줄, 연속형은 한 줄 */
-export function scheduleLines(s: SessionSchedule, withYear = false): string[] {
+export function scheduleLines(s: SessionSchedule, withYear = false, formal = false): string[] {
   if (s.dateKind === "individual" && s.dates.length > 0) {
-    return s.dates.map((d) => `${fmtDate(d.date, withYear)}${timeSpan(d.startsTime, d.endsTime)}`);
+    return s.dates.map((d) => `${fmtDate(d.date, withYear, formal)}${timeSpan(d.startsTime, d.endsTime)}`);
   }
-  const head = `${fmtDate(s.startDate, withYear)}${timeSpan(s.startsTime, s.endsTime)}`;
+  const head = `${fmtDate(s.startDate, withYear, formal)}${timeSpan(s.startsTime, s.endsTime)}`;
   if (!s.endDate || s.endDate === s.startDate) return [head];
-  const tail = `${fmtDate(s.endDate, withYear)}${timeSpan(s.endStartsTime, s.endEndsTime)}`;
+  const tail = `${fmtDate(s.endDate, withYear, formal)}${timeSpan(s.endStartsTime, s.endEndsTime)}`;
   return [`${head} ~ ${tail}`];
 }
 
 /** 한 줄 요약 — "9/1(월) 10:00~12:00 ~ 9/5(금) · 5회 · 온라인" */
-export function describeSchedule(s: SessionSchedule, opts?: { withYear?: boolean; withMeta?: boolean }): string {
-  const lines = scheduleLines(s, opts?.withYear);
+export function describeSchedule(
+  s: SessionSchedule,
+  opts?: { withYear?: boolean; withMeta?: boolean; formal?: boolean }
+): string {
+  const lines = scheduleLines(s, opts?.withYear, opts?.formal);
   const parts = [lines.join(", ")];
   if (opts?.withMeta !== false) {
     const c = hybridCountLabel(s) ?? countLabel(s);

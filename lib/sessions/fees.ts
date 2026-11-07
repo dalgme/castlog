@@ -9,32 +9,66 @@ export function unitFromHourly(hourly: number | null, hoursPerSession: number | 
   return Math.round(hourly * (hoursPerSession ?? 1));
 }
 
-/** 문자·품의서에 싣는 진행 방식 표기 */
+/** 문자·품의서에 싣는 진행 방식 표기 (역할 무관 구표기 — deliveryTermsLabel을 쓴다) */
 export const DELIVERY_TERMS_LABELS: Record<DeliveryMode, string> = {
   online: "온라인 멘토링",
   offline: "오프라인 멘토링",
   hybrid: "온라인/오프라인 병행",
 };
 
+/** 역할별 활동 명사 — 강사 자리에 "오프라인 멘토링"이 나가던 결함 보정 (2026-11-07) */
+const ROLE_ACTIVITY: Record<string, string> = {
+  lecturer: "강의",
+  mentor: "멘토링",
+  judge: "심사",
+  host: "진행",
+  announcer: "진행",
+  assistant: "지원",
+};
+
+/** "오프라인 강의" · "온라인 멘토링" · "온라인/오프라인 병행" — 역할을 모르면 "오프라인 진행" */
+export function deliveryTermsLabel(mode: DeliveryMode, roleType?: string | null): string {
+  if (mode === "hybrid") return DELIVERY_TERMS_LABELS.hybrid;
+  const activity = (roleType && ROLE_ACTIVITY[roleType]) || "진행";
+  return `${mode === "online" ? "온라인" : "오프라인"} ${activity}`;
+}
+
 /**
- * 섭외 조건 — 문자·메일·후보 화면이 같은 조각을 쓴다 (기획 지시 2026-09-21, 보완 2026-09-21).
- *  - mode:    "온라인 멘토링" | "오프라인 멘토링" | "온라인/오프라인 병행"
- *  - count:   "총 5회" | "총 5~8회"
- *  - hours:   "회차당 2시간"
- *  - unitFee: "회차당 120,000원" | "온라인 회차당 120,000원 / 오프라인 회차당 200,000원"
- * 컨설팅(멘토링) 유형(진행 방식이 있는 세션)의 섭외 문자는 총액 대신 unitFee만 싣는다.
+ * 섭외 조건 — 문자·메일·후보 화면이 같은 조각을 쓴다 (기획 지시 2026-09-21, 보완 2026-09-21, 2026-11-07).
+ *  - mode:     "온라인 강의" | "오프라인 멘토링" | "온라인/오프라인 병행" (역할 반영)
+ *  - count:    "총 5회" | "총 5~8회"
+ *  - hours:    "회차당 2시간"
+ *  - unitFee:  "회차당 120,000원" | "온라인 회차당 120,000원 / 오프라인 회차당 200,000원"
+ *  - totalFee: "600,000원" | "600,000원 ~ 1,000,000원" — 회차 × 단가 (전문가는 '얼마'를 알아야 한다)
+ *  - single:   총 1회 — 이때는 회차당 단가 대신 의뢰비용 한 줄로 쓴다
  */
 export type EngagementFeeTerms = {
   mode: string | null;
   count: string | null;
   hours: string | null;
   unitFee: string | null;
+  totalFee: string | null;
+  single: boolean;
 };
+
+/**
+ * 비용 한 줄 — 문자·메일·공개 링크·수락서가 같은 문장을 쓴다.
+ *  총 1회: "200,000원 (1회)" / 여러 회: "회차당 200,000원 × 총 3회 = 600,000원" / 단가만: "회차당 200,000원"
+ */
+export function feeTermsFeeLine(t: EngagementFeeTerms | null | undefined): string | null {
+  if (!t) return null;
+  if (t.single && t.totalFee) return `${t.totalFee} (1회)`;
+  if (t.unitFee && t.totalFee && t.count) return `${t.unitFee} × ${t.count} = ${t.totalFee}`;
+  if (t.unitFee) return t.unitFee;
+  if (t.totalFee) return t.totalFee;
+  return null;
+}
 
 export function engagementFeeTerms(
   s: SessionSchedule,
   unitOnline: number | null,
-  unitOffline: number | null
+  unitOffline: number | null,
+  roleType?: string | null
 ): EngagementFeeTerms {
   const countRange = sessionCount(s);
   const mode = s.deliveryMode ?? (unitOffline !== null ? "offline" : unitOnline !== null ? "online" : null);
@@ -50,8 +84,9 @@ export function engagementFeeTerms(
   } else if (mode === "offline" && unitOffline !== null) {
     unitFee = `회차당 ${formatWon(unitOffline)}`;
   }
+  const total = computeFeeTotal(s, unitOnline, unitOffline);
   return {
-    mode: s.deliveryMode ? DELIVERY_TERMS_LABELS[s.deliveryMode] : null,
+    mode: s.deliveryMode ? deliveryTermsLabel(s.deliveryMode, roleType) : null,
     count: countRange
       ? countRange.min === countRange.max
         ? `총 ${countRange.min}회`
@@ -59,20 +94,24 @@ export function engagementFeeTerms(
       : null,
     hours: s.hoursPerSession ? `회차당 ${fmtHours(s.hoursPerSession)}시간` : null,
     unitFee,
+    totalFee: total ? formatFeeTotal(total) : null,
+    single: countRange !== null && countRange.min === 1 && countRange.max === 1,
   };
 }
 
-/** 조건 조각을 한 줄로 — "온라인/오프라인 병행 · 총 5회 · 회차당 2시간 · 온라인 회차당 120,000원 / 오프라인 회차당 200,000원" */
+/** 조건 조각을 한 줄로 — "온라인/오프라인 병행 · 총 5회 · 회차당 2시간 · 회차당 200,000원 × 총 5회 = 1,000,000원" */
 export function feeTermsToText(t: EngagementFeeTerms | null | undefined): string | null {
   if (!t) return null;
-  const parts = [t.mode, t.count, t.hours, t.unitFee].filter((v): v is string => Boolean(v));
+  const parts = [t.mode, t.count, t.hours, feeTermsFeeLine(t)].filter((v): v is string => Boolean(v));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /** 조건 조각이 모두 같은가 (묶음 문자에서 한 줄로 합칠 수 있는지) */
 export function sameFeeTerms(a: EngagementFeeTerms | null, b: EngagementFeeTerms | null): boolean {
   if (!a || !b) return a === b;
-  return a.mode === b.mode && a.count === b.count && a.hours === b.hours && a.unitFee === b.unitFee;
+  return (
+    a.mode === b.mode && a.count === b.count && a.hours === b.hours && a.unitFee === b.unitFee && a.totalFee === b.totalFee
+  );
 }
 
 /**

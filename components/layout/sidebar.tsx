@@ -16,6 +16,7 @@ import {
   Handshake,
   BookOpen,
   ListChecks,
+  MessageSquare,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -36,6 +37,8 @@ const NAV_ITEMS: readonly {
   { label: "대시보드", path: "dashboard", icon: LayoutDashboard, module: null },
   // 여러 프로젝트를 맡은 사람이 마감을 놓치지 않게 — 공통 기반
   { label: "내 업무", path: "my-work", icon: ListChecks, module: null },
+  // 임직원 쪽지 (기획 2026-11-07) — 공통 기반. 안 읽은 쪽지 수 배지
+  { label: "쪽지", path: "notes", icon: MessageSquare, module: null },
   {
     label: "업무배정 현황",
     path: "executive",
@@ -78,6 +81,7 @@ export function Sidebar({
   canManagePayments,
   expertsLite = false,
   approvalsBadge = 0,
+  notesBadge = 0,
   tenantName,
   logoSrc,
 }: {
@@ -89,6 +93,8 @@ export function Sidebar({
   expertsLite?: boolean;
   /** 내 결재 차례 건수 — 전자결재 메뉴 배지 (검수 A3) */
   approvalsBadge?: number;
+  /** 안 읽은 쪽지 수 — 쪽지 메뉴 배지 (기획 2026-11-07) */
+  notesBadge?: number;
   tenantName: string | null;
   /** 등록된 회사 로고 — 없으면 캐스트로그 심볼을 쓴다 */
   logoSrc: string | null;
@@ -159,6 +165,11 @@ export function Sidebar({
               {path === "approvals" && approvalsBadge > 0 && (
                 <span className="ml-auto hidden rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold leading-none text-white md:inline-block">
                   {approvalsBadge}
+                </span>
+              )}
+              {path === "notes" && notesBadge > 0 && (
+                <span className="ml-auto hidden rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold leading-none text-white md:inline-block">
+                  {notesBadge > 99 ? "99+" : notesBadge}
                 </span>
               )}
             </Link>

@@ -16,17 +16,22 @@ import { roleFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
-import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import {
+  formatEventSchedule,
+  formatKstDateTimeFull,
+  roleTypeLabel,
+} from "@/lib/integrations/engagement-roles";
 import {
   loadSlotSchedule,
   scheduleSnapshotText,
   type SlotScheduleRow,
 } from "@/lib/integrations/slot-schedule";
-import { engagementFeeTerms, feeTermsToText } from "@/lib/sessions/fees";
+import { engagementFeeTerms, feeTermsFeeLine, feeTermsToText } from "@/lib/sessions/fees";
 import { describeSchedule } from "@/lib/sessions/schedule";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
 import {
+  FEE_UNDECIDED_LINE,
   buildEngagementRequestSms,
   sendEngagementSms,
 } from "@/lib/integrations/engagement-sms";
@@ -201,9 +206,13 @@ export async function requestEngagementForPositionCore(
   const feeTerms = engagementFeeTerms(
     slotSchedule,
     position.unit_fee_online ?? slot.unit_fee_online,
-    position.unit_fee_offline ?? slot.unit_fee_offline
+    position.unit_fee_offline ?? slot.unit_fee_offline,
+    slot.role_type
   );
   const terms = feeTermsToText(feeTerms);
+  // 문자·메일·페이지가 같은 정식 일정 표기를 쓴다 (보정 2026-11-07)
+  const formalSchedule = describeSchedule(slotSchedule, { withYear: true, withMeta: false, formal: true });
+  const roleLabel = [roleTypeLabel(slot.role_type), slot.role_description].filter(Boolean).join(" · ") || null;
   const engagementRow = {
     tenant_id: tenantId,
     expert_id: input.expertId,
@@ -323,12 +332,13 @@ export async function requestEngagementForPositionCore(
     url = `/e/${token}`;
   }
 
-  // 업무연락 메일 — 동의 링크 전달. 일정은 섭외 건에 남긴 문구와 같은 것을 쓴다
-  const schedule =
-    scheduleText ?? formatEventSchedule(slot.slot_date, slotEndsOn, slot.starts_time, slot.ends_time);
+  // 업무연락 메일 — 동의 링크 전달. 일정·조건은 문자와 같은 정식 문구를 쓴다
+  const schedule = formalSchedule;
   const channel = input.channel ?? "both";
   const useEmail = !input.suppressSend && (channel === "email" || channel === "both");
   const useSms = !input.suppressSend && (channel === "sms" || channel === "both");
+  const legacyFee = position.expected_fee ?? slot.fee_amount;
+  const termsHaveFee = Boolean(feeTermsFeeLine(feeTerms));
 
   if (useEmail)
   await sendEngagementEmail({
@@ -340,7 +350,8 @@ export async function requestEngagementForPositionCore(
       `섭외를 요청드립니다.\n\n` +
       [
         input.programName?.trim() ? `· 사업명: ${input.programName.trim()}` : null,
-        slot.role_description ? `· 역할: ${slot.role_description}` : null,
+        slot.session_name ? `· 세션: ${slot.session_name}` : null,
+        roleLabel ? `· 역할: ${roleLabel}` : null,
         schedule ? `· 일정: ${schedule}` : null,
         terms ? `· 조건: ${terms}` : null,
         slot.location_name
@@ -348,10 +359,13 @@ export async function requestEngagementForPositionCore(
               slot.location_address ? ` (${slot.location_address})` : ""
             }`
           : null,
-        (position.expected_fee ?? slot.fee_amount)
-          ? `· 의뢰비용: ${(position.expected_fee ?? slot.fee_amount ?? 0).toLocaleString("ko-KR")}원`
-          : null,
-        `· 회신 마감: ${new Date(expiresAtIso).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}까지`,
+        // 조건 줄에 비용이 있으면 중복해서 적지 않는다. 둘 다 없으면 '미정'을 밝힌다
+        termsHaveFee
+          ? null
+          : legacyFee
+            ? `· 의뢰비용: ${legacyFee.toLocaleString("ko-KR")}원`
+            : `· ${FEE_UNDECIDED_LINE}`,
+        `· 회신 마감: ${formatKstDateTimeFull(expiresAtIso)}까지`,
       ]
         .filter(Boolean)
         .join("\n") +
@@ -360,11 +374,10 @@ export async function requestEngagementForPositionCore(
   });
 
   // 문자 — 이메일을 등록하지 않은 전문가에게는 이게 유일한 실질 연락 수단이다.
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("name")
-    .eq("id", tenantId)
-    .maybeSingle();
+  const [{ data: tenant }, { data: expertRow }] = await Promise.all([
+    supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+    createAdminClient().from("experts").select("name").eq("id", input.expertId).maybeSingle(),
+  ]);
   if (useSms)
   await sendEngagementSms({
     tenantId,
@@ -375,12 +388,15 @@ export async function requestEngagementForPositionCore(
       // 폴백은 중립 표기 — 캐스트로그 브랜드가 회사 자리에 나오면 §16 위반
       tenantName: tenant?.name ?? "기업",
       programName: input.programName?.trim() || null,
-      // 문자의 일정 줄은 날짜만 — 진행 방식·회차는 조건 줄에 따로 싣는다 (중복 금지)
-      schedule: scheduleText ? describeSchedule(slotSchedule, { withYear: true, withMeta: false }) : schedule,
+      expertName: expertRow?.name ?? null,
+      roleLabel,
+      sessionName: slot.session_name,
+      // 문자의 일정 줄은 날짜만(정식 표기) — 진행 방식·회차는 조건 줄에 따로 싣는다 (중복 금지)
+      schedule: formalSchedule,
       terms: feeTerms,
       locationName: slot.location_name,
-      // 총액은 후보별 예정가(결재받은 금액) — 회차당 단가가 있으면 문자에는 싣지 않는다
-      feeAmount: position.expected_fee ?? slot.fee_amount,
+      // 조건에 비용이 없을 때의 폴백 — 후보별 예정가(결재받은 금액)
+      feeAmount: legacyFee,
       deadline: expiresAtIso,
       url,
     }),

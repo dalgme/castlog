@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isTenantExpertsLite } from "@/lib/modules/server";
 import { sendTenantSms } from "@/lib/sms/send";
-import { sameFeeTerms, type EngagementFeeTerms } from "@/lib/sessions/fees";
+import { feeTermsFeeLine, sameFeeTerms, type EngagementFeeTerms } from "@/lib/sessions/fees";
+import { formatKstDateTimeFull } from "@/lib/integrations/engagement-roles";
 
 /**
  * 섭외 조건 줄 (기획 지시 2026-09-21): 진행 방식(온라인 멘토링/오프라인 멘토링/
@@ -13,17 +14,27 @@ import { sameFeeTerms, type EngagementFeeTerms } from "@/lib/sessions/fees";
  */
 export function feeTermsLines(t: EngagementFeeTerms | null | undefined): string[] {
   if (!t) return [];
-  const countLine = [t.count, t.hours].filter(Boolean).join(" · ");
-  return [
-    t.mode ? `진행 방식: ${t.mode}` : null,
-    countLine || null,
-    t.unitFee,
-  ].filter((v): v is string => Boolean(v));
+  // 보정 2026-11-07: 진행 방식·회차·시간은 한 줄, 비용은 한 줄(총 1회면 총액만, 여러 회면 단가×회차=총액)
+  const how = [t.mode, t.count, t.hours].filter(Boolean).join(" · ");
+  const fee = feeTermsFeeLine(t);
+  // 진행 방식을 모르는 세션(구행)은 회차만 — "진행 방식: 총 1회"는 어색하다
+  return [how ? (t.mode ? `진행 방식: ${how}` : `회차: ${how}`) : null, fee ? `의뢰비용: ${fee}` : null].filter(
+    (v): v is string => Boolean(v)
+  );
 }
 
 function wonLabel(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
+
+/** 회신 마감 — "11월 21일(토)까지" (종전 "11. 21.까지"는 읽기 어려웠다) */
+function deadlineLine(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return `회신 마감: ${formatKstDateTimeFull(iso, { withYear: false, withTime: false })}까지`;
+}
+
+/** 비용 정보가 하나도 없을 때 — 침묵보다 '미정'을 밝힌다 (전문가가 금액 없는 요청을 받고 어리둥절하지 않게) */
+export const FEE_UNDECIDED_LINE = "의뢰비용: 미정 (담당자가 별도 안내)";
 
 /**
  * 섭외 워크플로우 업무연락 문자.
@@ -115,66 +126,84 @@ export function buildEngagementBundleSms(params: {
           return body ? `· ${i.name ?? "세션"}: ${body}` : null;
         })
         .filter((v): v is string => Boolean(v));
-  // 컨설팅(멘토링) 유형: 회차당 단가가 전부 있으면 총액(합계)을 싣지 않는다
-  const unitEverywhere = items.length > 0 && items.every((i) => Boolean(i.terms?.unitFee));
-  const fee = params.totalFee !== null && !unitEverywhere ? `의뢰비용 합계 ${wonLabel(params.totalFee)}` : null;
-  const due = params.deadline
-    ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
-        timeZone: "Asia/Seoul",
-        month: "numeric",
-        day: "numeric",
-      })}까지`
-    : null;
+  // 건별 조건에 비용이 전부 들어 있으면 합계를 따로 싣지 않는다(중복). 하나라도 비용이 없으면 합계로 보완
+  const feeEverywhere = items.length > 0 && items.every((i) => Boolean(feeTermsFeeLine(i.terms)));
+  const fee =
+    params.totalFee !== null && !feeEverywhere
+      ? `의뢰비용 합계: ${wonLabel(params.totalFee)}`
+      : params.totalFee === null && !feeEverywhere
+        ? FEE_UNDECIDED_LINE
+        : null;
   return [
     `[${params.tenantName}] 섭외 요청 ${params.itemCount}건`,
-    params.programName,
+    params.programName ? `사업: ${params.programName}` : null,
     ...termLines,
     fee,
-    due,
+    deadlineLine(params.deadline),
     `각 건 확인·수락/거절: ${params.url}`,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-/** 섭외요청 문자 본문 — 링크가 본문에 들어가므로 군더더기를 줄인다. */
+/**
+ * 섭외요청 문자 본문 — 링크가 본문에 들어가므로 군더더기를 줄인다.
+ * 보정 2026-11-07 (렛츠 발송 점검): 누구에게·어떤 역할·어느 세션인지, 비용은 얼마인지가 빠져
+ * 있었고 날짜 표기가 건마다 달랐다. 전문가가 링크를 열기 전에 아래 순서로 한눈에 읽게 한다.
+ *
+ *   [(주)렛츠] 섭외 요청
+ *   강지훈 전문가님, 강사(bm강의) 섭외를 요청드립니다.
+ *   사업: 2026년 대전 스타트업 원스톱지원센터 아카데
+ *   세션: 기본교육
+ *   일정: 2026년 09월 07일(월) 10:30~14:30
+ *   진행 방식: 오프라인 강의 · 총 1회
+ *   의뢰비용: 200,000원 (1회)
+ *   장소: 렛츠
+ *   회신 마감: 11월 21일(토)까지
+ *   수락/거절: https://…
+ */
 export function buildEngagementRequestSms(params: {
   tenantName: string;
   programName: string | null;
-  /** 일정 — 진행 방식·회차는 조건 줄에 따로 싣는다(중복 금지) */
+  /** 받는 전문가 이름 — 첫 줄 인사 */
+  expertName?: string | null;
+  /** 요청 역할 — "강사 · bm강의"처럼 구분·세부 역할 */
+  roleLabel?: string | null;
+  /** 세션명 */
+  sessionName?: string | null;
+  /** 일정(정식 표기) — 진행 방식·회차는 조건 줄에 따로 싣는다(중복 금지) */
   schedule: string | null;
-  /** 섭외 조건 — 진행 방식(온라인/오프라인/병행)·총 회차·회차당 시간·회차당 단가(병행은 온/오프) (기획 지시 2026-09-21) */
+  /** 섭외 조건 — 진행 방식(역할 반영)·총 회차·회차당 시간·단가·총액 (기획 지시 2026-09-21, 보정 2026-11-07) */
   terms?: EngagementFeeTerms | null;
   locationName: string | null;
-  /**
-   * 의뢰비용 총액(원) — 전문가는 링크를 열기 전에 '얼마'를 알아야 한다 (검수 C4).
-   * 컨설팅(멘토링) 유형(회차당 단가가 있는 세션)은 총액을 싣지 않고 회차당 단가만 싣는다
-   */
+  /** 의뢰비용 총액(원) — 조건에 비용이 없을 때의 폴백. 둘 다 없으면 '미정'을 밝힌다 */
   feeAmount?: number | null;
   /** 회신 마감 (ISO) — '언제까지 답해야 하는지'도 본문에 (검수 C4) */
   deadline?: string | null;
   url: string;
 }): string {
   const termLines = feeTermsLines(params.terms);
-  const fee =
-    !params.terms?.unitFee && params.feeAmount !== null && params.feeAmount !== undefined
-      ? `의뢰비용 ${wonLabel(params.feeAmount)}`
+  const hasTermFee = Boolean(feeTermsFeeLine(params.terms));
+  const fee = hasTermFee
+    ? null
+    : params.feeAmount !== null && params.feeAmount !== undefined
+      ? `의뢰비용: ${wonLabel(params.feeAmount)}`
+      : FEE_UNDECIDED_LINE;
+  const greeting = params.expertName
+    ? `${params.expertName} 전문가님, ${params.roleLabel ? `${params.roleLabel} ` : ""}섭외를 요청드립니다.`
+    : params.roleLabel
+      ? `요청 역할: ${params.roleLabel}`
       : null;
-  const due = params.deadline
-    ? `회신 마감 ${new Date(params.deadline).toLocaleDateString("ko-KR", {
-        timeZone: "Asia/Seoul",
-        month: "numeric",
-        day: "numeric",
-      })}까지`
-    : null;
   return [
     `[${params.tenantName}] 섭외 요청`,
-    params.programName,
+    greeting,
+    params.programName ? `사업: ${params.programName}` : null,
+    params.sessionName ? `세션: ${params.sessionName}` : null,
     params.schedule ? `일정: ${params.schedule}` : null,
     ...termLines,
-    params.locationName ? `장소: ${params.locationName}` : null,
     fee,
-    due,
+    params.locationName ? `장소: ${params.locationName}` : null,
+    deadlineLine(params.deadline),
     `수락/거절: ${params.url}`,
   ]
     .filter(Boolean)

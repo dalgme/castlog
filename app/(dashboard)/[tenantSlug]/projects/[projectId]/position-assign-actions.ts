@@ -900,7 +900,7 @@ export async function dispatchProjectEngagements(input: {
         ? await admin
             .from("engagement_slots")
             .select(
-              "id, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session"
+              "id, role_type, slot_date, period_end_date, starts_time, ends_time, date_kind, end_starts_time, end_ends_time, session_count_min, session_count_max, session_count_online, session_count_offline, delivery_mode, unit_fee_online, unit_fee_offline, hours_per_session"
             )
             .in("id", termSlotIds)
         : { data: [] };
@@ -912,7 +912,8 @@ export async function dispatchProjectEngagements(input: {
         const feeTerms = engagementFeeTerms(
           scheduleFromRow(s, termDates.get(s.id) ?? []),
           p.unit_fee_online ?? s.unit_fee_online,
-          p.unit_fee_offline ?? s.unit_fee_offline
+          p.unit_fee_offline ?? s.unit_fee_offline,
+          s.role_type
         );
         if (feeTermsToText(feeTerms)) termsByEngagement.set(p.engagement_id, feeTerms);
       }
