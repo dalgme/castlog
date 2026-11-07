@@ -104,6 +104,8 @@ import { CandidateListTab } from "./candidate-list-tab";
 import { loadCandidateListTab } from "@/lib/integrations/candidate-lists";
 import { ClientReviewTab } from "./client-review-tab";
 import { loadClientReviewTab } from "@/lib/integrations/client-review";
+import { AdjustTab } from "./adjust-tab";
+import { loadAdjustTab } from "@/lib/integrations/adjust-tab";
 import { EngagementConfirmed } from "./engagement-confirmed";
 import type { SmsSummary } from "./sms-resend";
 import {
@@ -1073,11 +1075,11 @@ export default async function ProjectDetailPage({
     : [null, null];
   // 사후보고 모드(38번) — 버튼 초기 라벨은 전체 계획 금액 기준. 대화상자에서
   // 세션을 고르면 previewPlanFlow가 선택 금액으로 다시 판정한다 (리뷰 P1-1).
-  // 섭외후보 탭에서만 필요하므로 그때만 조회 (리뷰 P3-7)
+  // 섭외후보 조정 탭(품의 버튼이 있는 곳, 2026-11-07)에서만 필요하므로 그때만 조회 (리뷰 P3-7)
   const planFlow: PlanFlow =
     modules.experts &&
     modules.approvals &&
-    resolveProjectTab(searchParams.tab, modules.experts, modules.quotes) === "experts"
+    resolveProjectTab(searchParams.tab, modules.experts, modules.quotes) === "adjust"
       ? await decidePlanFlow({
           amount: planDraft?.amount ?? 0,
           requesterGrade: grade,
@@ -1117,6 +1119,9 @@ export default async function ProjectDetailPage({
   // 발주처 검토 탭 (3단계) — 그 탭에서만 읽는다
   const clientReviewData =
     tab === "client" && modules.experts ? await loadClientReviewTab(project.id) : null;
+  // 섭외후보 조정 탭 (4단계) — 그 탭에서만 읽는다
+  const adjustData =
+    tab === "adjust" && modules.experts ? await loadAdjustTab(project.id) : null;
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -2176,9 +2181,6 @@ export default async function ProjectDetailPage({
         {/* 섭외 절차의 입구 — 세션(코드넘버)별로 '지금 할 일'을 펼친다 */}
         {tab === "experts" && modules.experts && (
           <EngagementWorkbench
-            planApproverOptions={planApprovers}
-            planRelayOn={planRelayOn}
-            planFlow={planFlow}
             tenantSlug={params.tenantSlug}
             projectId={project.id}
             slots={slotRows}
@@ -2232,20 +2234,6 @@ export default async function ProjectDetailPage({
               fullyAssigned: engagementState?.fullyAssigned ?? false,
               dispatchable: engagementState?.dispatchable ?? 0,
             }}
-            planPreview={{
-              lines: (planDraft?.lines ?? []).map((l) => ({
-                code: l.code,
-                expertName: l.expertName,
-                sessionName: l.sessionName,
-                schedule: l.schedule,
-                fee: l.fee,
-                slotId: l.slotId,
-                assigned: l.assigned,
-                selected: l.selected,
-                requiredCount: l.requiredCount,
-              })),
-              amount: planDraft?.amount ?? 0,
-            }}
             headerActions={
               canExecute ? (
                 <>
@@ -2291,6 +2279,38 @@ export default async function ProjectDetailPage({
             canManage={
               canViewAllProjects(grade) || myAssignmentRole !== null || role === "platform_admin" || project.created_by === user.id
             }
+          />
+        )}
+
+        {/* 섭외후보 조정 (기획 승인 2026-11-07 — 4단계): 의견을 보며 후보를 고치고
+            '섭외 품의서 자동 작성 및 송신'으로 품의를 올리는 유일한 자리 */}
+        {tab === "adjust" && modules.experts && adjustData && (
+          <AdjustTab
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
+            data={adjustData}
+            slots={slotRows}
+            slotPlanStates={planSlotStates ? slotPlanStatesForWorkbench : null}
+            stageByPosition={stageByPosition}
+            projectStage={engagementState?.stage ?? "assigning"}
+            canManage={canExecute}
+            canInput={canInput}
+            canWithdraw={exec.engagementWithdraw}
+            expertsLite={expertsLite}
+            planLines={(planDraft?.lines ?? []).map((l) => ({
+              code: l.code,
+              expertName: l.expertName,
+              sessionName: l.sessionName,
+              schedule: l.schedule,
+              fee: l.fee,
+              slotId: l.slotId,
+              assigned: l.assigned,
+              selected: l.selected,
+              requiredCount: l.requiredCount,
+            }))}
+            approverOptions={planApprovers}
+            relayOn={planRelayOn}
+            flow={planFlow}
           />
         )}
 

@@ -11,6 +11,9 @@ import {
  */
 const STAGE_COLORS: Record<ProjectStage, string> = {
   assigning: "bg-sky-600",
+  list_review: "bg-yellow-600",
+  client_review: "bg-cyan-700",
+  adjusting: "bg-violet-500",
   plan_review: "bg-amber-500",
   plan_approved: "bg-violet-600",
   requesting: "bg-orange-500",

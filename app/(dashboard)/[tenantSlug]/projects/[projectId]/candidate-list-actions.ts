@@ -10,6 +10,7 @@ import { practiceFromUser } from "@/lib/auth/tenant";
 import { explainActionError } from "@/lib/ux/action-errors";
 import { requireProjectTeam, requireTenantStaff } from "@/lib/projects/team";
 import { MIN_MEMOS_PER_CANDIDATE, buildCandidateDraft } from "@/lib/integrations/candidate-lists";
+import { movePrePlanStage } from "@/lib/integrations/pre-plan-stage";
 
 /**
  * 섭외 후보 리스트 · 내부 검토 액션 (기획 승인 2026-11-07 — 2단계, 01·04·07번).
@@ -179,6 +180,8 @@ export async function requestInternalReview(
     resource_id: created.id,
     after_data: { project_id: projectId, revision, entries: entryRows.length, reviewers: valid.map((u) => u.id) },
   });
+  // 프로젝트 섭외 단계 → 내부 검토 중 (4단계 단계값, 품의 전 구간에서만)
+  await movePrePlanStage(supabase, projectId, "list_review");
   await sendNoteQuietly({
     tenantId: gate.actor.tenantId,
     senderId: gate.actor.userId,
@@ -335,6 +338,8 @@ export async function supersedeCandidateList(listId: string): Promise<Result> {
     resource_id: listId,
     after_data: { project_id: list.project_id, from_status: list.status },
   });
+  // 리스트를 버렸으니 단계도 배정 중으로 (품의 전 구간에서만)
+  await movePrePlanStage(supabase, list.project_id, "assigning");
   revalidate();
   return { ok: true };
 }

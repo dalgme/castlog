@@ -1,6 +1,6 @@
 # 섭외 프로세스 고도화 — 리스트 작성 · 내부 검토 · 발주처 검토 · 후보 조정 · 품의 자동작성
 
-- 상태: **승인 (2026-11-07, 기본값 6항목 + 보정 2항목 포함)** — 1단계 구현 착수 (기획 지시 2026-11-07, 10항목)
+- 상태: **승인 (2026-11-07, 기본값 6항목 + 보정 2항목 포함)** — 1~4단계 구현 완료 (기획 지시 2026-11-07, 10항목). 마이그레이션 0012~0015
 - 설계문서 매핑: 4장(전문가 신원·열람), 5장(민감정보), 7장(전자결재), 8장(워크플로우), 14장(AI 경계)
 - 소속 축: `experts`(주) ↔ `approvals`(품의) ↔ `operations`(프로젝트) — 연동 로직은 lib/integrations/
 - 데이터: 전부 테넌트 격리(tenant_id + RLS). 예외는 AI 이력 요약(전문가 전역, §4 참조)
@@ -56,9 +56,14 @@
 - `client_review_response_items` — 후보별 의견. `response_id, entry_id, opinion(ok/replace/hold), comment`.
 
 ### 4단계 (0015)
-- `approval_attachments` — 품의 첨부(일반). `approval_id, kind(client_review_response/internal_review/file), ref_id, title, body_text, storage_path(null), created_at`.
-  결재 상세(plan-review-panel)에 '첨부' 섹션으로 표시. 발주처 회신·내부 검토 의견은 **본문 요약 + 첨부 원문** 둘 다 간다(10번).
+- `approval_attachments` — 품의 첨부(일반). `tenant_id, approval_id, kind(client_review_response/internal_review/candidate_list/file), ref_id, title, body_text, storage_path(null), created_by, created_at`.
+  결재 상세에 '첨부' 절로 표시(접기/펼치기). 발주처 회신·내부 검토 의견은 **본문 요약 + 첨부 원문** 둘 다 간다(10번). 리스트 스냅샷도 첨부한다.
 - `engagement_plans.candidate_list_id` 컬럼 추가 — 어느 리스트에서 올라온 품의인지.
+- `projects_engagement_stage_check` 재작성 — `list_review`·`client_review`·`adjusting` 추가. 단계 이동은 `lib/integrations/pre-plan-stage.ts movePrePlanStage`
+  (품의 전 구간에서만: 내부 검토 요청 → list_review, 발주처 링크 생성 → client_review, 검토 마침/건너뛰기 → adjusting, 리스트 대체 → assigning).
+  품의 상신(`submitEngagementPlan`)은 이 세 단계를 `assigning`과 같은 '첫 품의 전'으로 본다.
+- 품의서 본문·첨부는 `lib/integrations/adjust-tab-shared.ts composePlanDoc`(순수 함수) — 화면 미리보기와 서버 상신(`adjust-actions.submitCandidateListPlan`)이 같은 함수를 쓴다.
+  리스트 없는 프로젝트도 같은 길로 올리며 본문에 "리스트를 거치지 않은 품의"가 적힌다.
 
 ## 3. 화면·동작
 

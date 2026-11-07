@@ -20,6 +20,7 @@ export const PROJECT_TAB_KEYS = [
   "experts",
   "list",
   "client",
+  "adjust",
   "engage",
   "confirmed",
   "closing",
@@ -99,6 +100,15 @@ const TAB_DEFS: readonly {
     needsExperts: true,
     activeClass: "border-cyan-700 bg-cyan-700 text-white shadow-sm",
     idleClass: "border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100",
+  },
+  {
+    // 섭외후보 조정 (기획 승인 2026-11-07 — 4단계): 내부·발주처 의견을 보며 후보를 고치고
+    // '섭외 품의서 자동 작성 및 송신'으로 품의를 올리는 유일한 자리 (등록 탭의 품의 버튼은 없다)
+    key: "adjust",
+    label: "섭외후보 조정",
+    needsExperts: true,
+    activeClass: "border-violet-600 bg-violet-600 text-white shadow-sm",
+    idleClass: "border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100",
   },
   {
     // 승인 목록 및 섭외 진행 (기획 확정 2026-08-30 — 37번): 품의가 승인된 뒤

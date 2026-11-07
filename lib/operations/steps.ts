@@ -88,6 +88,9 @@ export type AutoStepContext = {
 
 const STAGE_ORDER = [
   "assigning",
+  "list_review",
+  "client_review",
+  "adjusting",
   "plan_review",
   "plan_approved",
   "requesting",

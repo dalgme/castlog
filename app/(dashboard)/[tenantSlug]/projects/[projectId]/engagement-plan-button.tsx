@@ -17,8 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { formatKrw } from "@/lib/approvals/constants";
+import { ATTACHMENT_KIND_LABELS, type AdjustAttachment } from "@/lib/integrations/adjust-tab-shared";
 
 import { submitEngagementPlan } from "./position-assign-actions";
+import { submitCandidateListPlan } from "./adjust-actions";
 import { previewPlanFlow } from "./plan-actions";
 import {
   ApproverPicker,
@@ -44,11 +46,21 @@ export type PlanPreviewLine = {
 /** 기본값을 렌더마다 새로 만들면 useMemo가 매번 깨진다 (리뷰 L6) */
 const EMPTY_LOCKS: Record<string, string> = {};
 
+/** 섭외후보 조정 탭이 넘기는 본문·첨부 작성기 (기획 2026-11-07 — 4단계) */
+export type CandidateListPlanSource = {
+  /** 살아 있는 리스트 id — 없으면 리스트 없이 올리는 종전 방식 */
+  listId: string | null;
+  /** 선택 세션 기준으로 본문·첨부를 만든다 — 서버 상신과 같은 순수 함수 */
+  compose: (slotIds: string[]) => { note: string; attachments: AdjustAttachment[] };
+};
+
 /**
  * 섭외 품의서 자동 작성 및 송신.
  *
  * 배정이 100% 찼을 때만 열린다. 담당자가 다시 타이핑할 것은 없다 — 눌러서
  * 무엇이 올라가는지 먼저 보여 주고, 확인하면 그대로 상신한다.
+ * 섭외후보 조정 탭(2026-11-07)에서는 candidateList로 본문·첨부(내부 검토 의견·발주처 회신)를
+ * 미리보기에 함께 보여 주고 submitCandidateListPlan으로 올린다.
  */
 export function EngagementPlanButton({
   projectId,
@@ -59,6 +71,7 @@ export function EngagementPlanButton({
   approverOptions = [],
   relayOn = false,
   flow = { mode: "pre_approval", reason: null },
+  candidateList,
 }: {
   projectId: string;
   disabled: boolean;
@@ -80,6 +93,8 @@ export function EngagementPlanButton({
    * 켰는데 특례에서 벗어난 경우)를 버튼 아래에 적는다.
    */
   flow?: { mode: "post_report" } | { mode: "pre_approval"; reason: string | null };
+  /** 섭외후보 조정 탭 — 리스트 기반 본문·첨부 (없으면 종전 요약 본문) */
+  candidateList?: CandidateListPlanSource;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -161,6 +176,11 @@ export function EngagementPlanButton({
   );
   const selectedAmount = selectedSessions.reduce((sum, s) => sum + s.amount, 0);
   const selectedUnready = selectedSessions.filter((s) => !s.ready);
+  // 본문·첨부 미리보기 (04번) — 선택 세션이 바뀌면 같은 함수로 다시 만든다
+  const composed = useMemo(
+    () => (candidateList && open ? candidateList.compose(selectedSlotIds) : null),
+    [candidateList, open, selectedSlotIds]
+  );
 
   // 선택이 바뀌면 서버 판정을 다시 받는다 — 화면 라벨과 실제 흐름이 어긋나
   // "결재 대기인 줄 알았는데 즉시 확정"이 되는 사고를 막는다 (리뷰 P1-1)
@@ -191,12 +211,18 @@ export function EngagementPlanButton({
       return;
     }
     startTransition(async () => {
-      const res = await submitEngagementPlan(
-        projectId,
-        approverIds,
-        // 전 세션 선택이어도 명시적으로 넘긴다 — 서버가 같은 검사를 태운다
-        selectedSlotIds
-      );
+      const res = candidateList
+        ? await submitCandidateListPlan(projectId, {
+            listId: candidateList.listId,
+            approverIds,
+            slotIds: selectedSlotIds,
+          })
+        : await submitEngagementPlan(
+            projectId,
+            approverIds,
+            // 전 세션 선택이어도 명시적으로 넘긴다 — 서버가 같은 검사를 태운다
+            selectedSlotIds
+          );
       if (!res.ok) {
         setError(res.error);
         return;
@@ -366,6 +392,38 @@ export function EngagementPlanButton({
             })}
           </ul>
         </div>
+
+        {/* 품의서 본문·첨부 미리보기 (기획 2026-11-07 — 04·10번): 결재권자가 읽을 그대로 */}
+        {composed && (
+          <div className="space-y-2 rounded-lg border">
+            <div className="flex items-baseline justify-between border-b bg-secondary/40 px-3 py-2">
+              <span className="text-xs font-semibold">품의서 본문 (자동 작성 — 선택 세션 기준)</span>
+              <span className="text-[11px] text-muted-foreground">첨부 {composed.attachments.length}건</span>
+            </div>
+            <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap px-3 py-1 text-xs leading-relaxed">
+              {composed.note}
+            </pre>
+            {composed.attachments.length > 0 && (
+              <ul className="divide-y border-t">
+                {composed.attachments.map((a, i) => (
+                  <li key={i} className="px-3 py-1.5">
+                    <details>
+                      <summary className="cursor-pointer text-xs">
+                        <span className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold">
+                          {ATTACHMENT_KIND_LABELS[a.kind] ?? a.kind}
+                        </span>
+                        {a.title}
+                      </summary>
+                      <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-secondary/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                        {a.bodyText}
+                      </pre>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* 선택 금액 기준 판정이 버튼 초기 라벨과 다를 때 — 무엇이 될지 먼저 말한다 */}
         {liveFlow.mode === "pre_approval" && liveFlow.reason && (

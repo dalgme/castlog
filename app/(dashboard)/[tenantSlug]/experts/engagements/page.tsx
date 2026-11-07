@@ -249,9 +249,15 @@ export default async function EngagementStatusPage({
                     <Link
                       // 결재 전은 후보 등록 탭, 결재 뒤는 섭외 진행 탭이 실행 자리 (37번)
                       href={`/${params.tenantSlug}/projects/${p.id}?tab=${
-                        p.stage === "assigning" || p.stage === "plan_review"
+                        p.stage === "assigning"
                           ? "experts"
-                          : "engage"
+                          : p.stage === "list_review"
+                            ? "list"
+                            : p.stage === "client_review"
+                              ? "client"
+                              : p.stage === "adjusting" || p.stage === "plan_review"
+                                ? "adjust"
+                                : "engage"
                       }`}
                       className="font-medium text-brand underline-offset-4 hover:underline"
                     >

@@ -139,8 +139,15 @@ export async function buildCandidateDraft(supabase: Db, projectId: string): Prom
   return { slots: draftSlots, candidateCount: seen.size, shortOnMemos };
 }
 
-/** 리스트 작성 탭이 쓰는 모든 데이터 — RLS가 열람 범위를 정한다 */
-export async function loadCandidateListTab(projectId: string): Promise<CandidateListTabData> {
+/**
+ * 리스트 작성 탭이 쓰는 모든 데이터 — RLS가 열람 범위를 정한다.
+ * fallbackToSubmitted: 살아 있는 리스트가 없으면 가장 최근 '품의 상신됨' 리스트를 돌려준다 —
+ * 섭외후보 조정 탭이 반려 뒤 재상신할 때 같은 의견·회신을 다시 첨부하기 위해 (4단계).
+ */
+export async function loadCandidateListTab(
+  projectId: string,
+  opts?: { fallbackToSubmitted?: boolean }
+): Promise<CandidateListTabData> {
   const supabase = createClient();
   const [draft, listsRes, usersRes] = await Promise.all([
     buildCandidateDraft(supabase, projectId),
@@ -161,7 +168,9 @@ export async function loadCandidateListTab(projectId: string): Promise<Candidate
     return { ready: true, draft, list: null, history: [], reviewerOptions };
   }
   const lists = listsRes.data ?? [];
-  const liveRow = lists.find((l) => l.status !== "submitted" && l.status !== "superseded") ?? null;
+  const liveRow =
+    lists.find((l) => l.status !== "submitted" && l.status !== "superseded") ??
+    (opts?.fallbackToSubmitted ? lists.find((l) => l.status === "submitted") ?? null : null);
   const history = lists.filter((l) => l.id !== liveRow?.id).map((l) => ({ id: l.id, revision: l.revision, status: l.status, createdAt: l.created_at }));
   if (!liveRow) return { ready: true, draft, list: null, history, reviewerOptions };
 
