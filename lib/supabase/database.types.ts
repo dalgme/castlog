@@ -14,6 +14,132 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_review_links: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          list_id: string
+          round: number
+          token_hash: string
+          password_hash: string
+          expires_at: string
+          revoked_at: string | null
+          revoke_reason: string | null
+          open_count: number
+          last_opened_at: string | null
+          failed_attempts: number
+          locked_until: string | null
+          created_by: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          list_id: string
+          round?: number
+          token_hash: string
+          password_hash: string
+          expires_at: string
+          revoked_at?: string | null
+          revoke_reason?: string | null
+          open_count?: number
+          last_opened_at?: string | null
+          failed_attempts?: number
+          locked_until?: string | null
+          created_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          list_id?: string
+          round?: number
+          token_hash?: string
+          password_hash?: string
+          expires_at?: string
+          revoked_at?: string | null
+          revoke_reason?: string | null
+          open_count?: number
+          last_opened_at?: string | null
+          failed_attempts?: number
+          locked_until?: string | null
+          created_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      client_review_responses: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          list_id: string
+          link_id: string
+          round: number
+          respondent_name: string | null
+          general_comment: string | null
+          submitted_at: string
+          ip_hash: string | null
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          list_id: string
+          link_id: string
+          round?: number
+          respondent_name?: string | null
+          general_comment?: string | null
+          submitted_at?: string
+          ip_hash?: string | null
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          list_id?: string
+          link_id?: string
+          round?: number
+          respondent_name?: string | null
+          general_comment?: string | null
+          submitted_at?: string
+          ip_hash?: string | null
+        }
+        Relationships: []
+      }
+      client_review_response_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          response_id: string
+          entry_id: string
+          opinion: string
+          comment: string | null
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          response_id: string
+          entry_id: string
+          opinion: string
+          comment?: string | null
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          response_id?: string
+          entry_id?: string
+          opinion?: string
+          comment?: string | null
+        }
+        Relationships: []
+      }
       candidate_lists: {
         Row: {
           id: string
