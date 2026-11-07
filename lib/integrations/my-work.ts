@@ -213,6 +213,30 @@ export async function getMyWork(
   const dueSoon: WorkItem[] = [];
   const awaitingReply: WorkItem[] = [];
 
+  // 발주처 회신 받음 (기획 2026-11-07 — 3단계) — 담당자가 후보 조정으로 넘겨야 한다. 표 부재는 무시
+  if (modules.experts) {
+    const { data: replied, error: repliedError } = await supabase
+      .from("candidate_lists")
+      .select("id, project_id, title, updated_at")
+      .in("project_id", liveIds)
+      .eq("status", "client_replied");
+    if (!repliedError) {
+      for (const l of replied ?? []) {
+        const at = new Date(l.updated_at).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+        myReviews.push({
+          kind: "review",
+          title: `${l.title} — 발주처 회신 받음`,
+          projectId: l.project_id,
+          projectName: projectNameById.get(l.project_id) ?? null,
+          dueOn: at,
+          daysLeft: daysBetween(today, at),
+          href: `/${tenantSlug}/projects/${l.project_id}?tab=client`,
+          note: "발주처 의견을 확인하고 ‘검토 마치고 다음 단계’로 후보 조정에 넘기세요.",
+        });
+      }
+    }
+  }
+
   for (const step of steps ?? []) {
     if (!step.due_on) continue;
     const daysLeft = daysBetween(today, step.due_on);

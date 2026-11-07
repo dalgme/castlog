@@ -19,6 +19,7 @@ export const PROJECT_TAB_KEYS = [
   "quote",
   "experts",
   "list",
+  "client",
   "engage",
   "confirmed",
   "closing",
@@ -90,6 +91,14 @@ const TAB_DEFS: readonly {
     activeClass: "border-yellow-600 bg-yellow-600 text-white shadow-sm",
     idleClass:
       "border-yellow-200 bg-yellow-50 text-yellow-800 hover:bg-yellow-100",
+  },
+  {
+    // 발주처 검토 (기획 승인 2026-11-07 — 3단계): 내부 검토 완료 리스트를 비밀번호 웹문서(/l)로 발주처에 보내고 회신을 받는다
+    key: "client",
+    label: "발주처 검토",
+    needsExperts: true,
+    activeClass: "border-cyan-700 bg-cyan-700 text-white shadow-sm",
+    idleClass: "border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100",
   },
   {
     // 승인 목록 및 섭외 진행 (기획 확정 2026-08-30 — 37번): 품의가 승인된 뒤
