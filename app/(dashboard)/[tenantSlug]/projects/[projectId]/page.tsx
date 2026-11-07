@@ -865,6 +865,7 @@ export default async function ProjectDetailPage({
         assignedExpertName: p.assigned_expert_id
           ? (expertNameById.get(p.assigned_expert_id) ?? null)
           : null,
+        assignedExpertId: p.assigned_expert_id ?? null,
       })),
     notice: {
       // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)

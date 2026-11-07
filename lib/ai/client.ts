@@ -70,6 +70,62 @@ export async function generateText(params: {
   }
 }
 
+/** 첨부 — PDF는 document 블록, 이미지는 image 블록으로 모델에 직접 넘긴다 (base64) */
+export type AiAttachment =
+  | { kind: "pdf"; base64: string }
+  | { kind: "image"; mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp"; base64: string };
+
+/**
+ * 첨부 문서 + 지시문 한 턴 (AI 이력 요약용, 기획 2026-11-07).
+ * 문서 원문은 서버에서만 다루고, 응답 텍스트만 저장한다.
+ */
+export async function generateWithAttachment(params: {
+  system: string;
+  instruction: string;
+  attachment: AiAttachment;
+  maxTokens?: number;
+}): Promise<GenerateResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return { ok: false, error: "AI가 설정되지 않았습니다 (ANTHROPIC_API_KEY 미설정)." };
+  }
+  const block =
+    params.attachment.kind === "pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: params.attachment.base64 } }
+      : { type: "image", source: { type: "base64", media_type: params.attachment.mediaType, data: params.attachment.base64 } };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        max_tokens: params.maxTokens ?? 900,
+        system: params.system,
+        messages: [{ role: "user", content: [block, { type: "text", text: params.instruction }] }],
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `AI 응답 오류 (${res.status})` };
+    }
+    const data = (await res.json()) as AnthropicResponse;
+    const text = Array.isArray(data.content)
+      ? data.content
+          .filter((b) => b.type === "text" && typeof b.text === "string")
+          .map((b) => b.text as string)
+          .join("")
+          .trim()
+      : "";
+    if (!text) return { ok: false, error: "AI 응답이 비어 있습니다." };
+    return { ok: true, text };
+  } catch {
+    return { ok: false, error: "AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+}
+
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 /**

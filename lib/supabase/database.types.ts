@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      expert_qualification_memos: {
+        Row: {
+          id: string
+          tenant_id: string
+          expert_id: string
+          project_id: string | null
+          position_id: string | null
+          body: string
+          created_by: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          expert_id: string
+          project_id?: string | null
+          position_id?: string | null
+          body: string
+          created_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          expert_id?: string
+          project_id?: string | null
+          position_id?: string | null
+          body?: string
+          created_by?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      expert_resume_summaries: {
+        Row: {
+          id: string
+          expert_id: string
+          document_id: string
+          status: string
+          summary: string | null
+          model: string | null
+          prompt_version: string | null
+          source_kind: string | null
+          error_note: string | null
+          generated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          expert_id: string
+          document_id: string
+          status: string
+          summary?: string | null
+          model?: string | null
+          prompt_version?: string | null
+          source_kind?: string | null
+          error_note?: string | null
+          generated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          expert_id?: string
+          document_id?: string
+          status?: string
+          summary?: string | null
+          model?: string | null
+          prompt_version?: string | null
+          source_kind?: string | null
+          error_note?: string | null
+          generated_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       staff_notes: {
         Row: {
           id: string

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { formatKrMobile } from "@/lib/auth/phone";
 import { expertTagLabel } from "@/lib/integrations/expert-tags";
+import { ExpertInsightButtons } from "@/components/experts/expert-insight-buttons";
 
 import {
   loadSlotPickerData,
@@ -358,6 +359,7 @@ export function PositionRequestDialog({
                   <TableHead>자사 평가</TableHead>
                   <TableHead>등급</TableHead>
                   <TableHead>메모</TableHead>
+                  <TableHead title="이력서 보기 · AI 이력 요약 · 자격메모 이력 (기획 2026-11-07)">이력·메모</TableHead>
                   <TableHead>상태</TableHead>
                 </TableRow>
               </TableHeader>
@@ -447,6 +449,9 @@ export function PositionRequestDialog({
                       <TableCell className="text-xs">
                         {e.noteCount > 0 ? `${e.noteCount}건` : "-"}
                       </TableCell>
+                      <TableCell className="whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
+                        <ExpertInsightButtons expertId={e.id} expertName={e.name} />
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <Badge variant={status.variant}>{status.label}</Badge>
                         {e.conflictCount > 0 && (
@@ -462,7 +467,7 @@ export function PositionRequestDialog({
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={12}
+                      colSpan={13}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       조건에 맞는 전문가가 없습니다.

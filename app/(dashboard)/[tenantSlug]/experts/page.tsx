@@ -31,6 +31,7 @@ import { InviteExpertDialog } from "./invite-dialog";
 import { ExpertRatingCell } from "./rating-cell";
 import { ExpertRecruitFieldsCell } from "./recruit-fields-cell";
 import { ExpertNotesCell } from "./notes-cell";
+import { ExpertInsightButtons } from "@/components/experts/expert-insight-buttons";
 import { ExpertRecommendDialog } from "./recommend-dialog";
 import { InvitationActions } from "./invitation-actions";
 import { ExpertQuickTag } from "./expert-quick-tag";
@@ -734,6 +735,12 @@ export default async function TenantExpertsPage({
                       </TableHead>
                       <TableHead
                         className="cursor-help"
+                        title="이력서 보기 · AI 이력 요약 · 자격메모 이력 — 이력서는 섭외 목적으로 누구나 열람할 수 있고 열람 기록이 남습니다 (기획 2026-11-07)"
+                      >
+                        이력·메모
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
                         title="우리 회사와의 연결 상태 — 연결됨 / 대기중 / 미연결"
                       >
                         상태
@@ -832,6 +839,10 @@ export default async function TenantExpertsPage({
                               canManage={canManageTags}
                             />
                           </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {/* 이력서 · AI 이력 요약 · 자격메모 이력 (기획 승인 2026-11-07 — 1단계) */}
+                            <ExpertInsightButtons expertId={expert.id} expertName={expert.name} canWriteMemo={canManageTags} />
+                          </TableCell>
                           <TableCell>
                             <Badge variant={status.variant}>{status.label}</Badge>
                           </TableCell>
@@ -874,7 +885,8 @@ export default async function TenantExpertsPage({
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 등록플랫폼의 모든 전문가에게 연락해 섭외를 시작할 수 있습니다.
-                서류(이력서·통장사본 등)는 전문가가 열람을 허용해야 보이고,
+                이력서는 섭외 목적으로 누구나 볼 수 있고(열람 기록이 남습니다),
+                통장사본·신분증 등 다른 서류는 전문가가 열람을 허용해야 보이며,
                 주민등록번호·계좌는 계약·지급 단계에서만 열립니다.
                 평가·등급·섭외이력은 우리 회사 데이터만 표시됩니다.
               </p>

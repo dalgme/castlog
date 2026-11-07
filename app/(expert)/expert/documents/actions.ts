@@ -6,6 +6,7 @@ import { readUploadFileName } from "@/lib/files/upload-name";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { scheduleResumeSummary } from "@/lib/ai/resume-summary";
 import {
   EXPERT_DOCUMENT_BUCKET,
   isGrantableDocumentType,
@@ -133,6 +134,9 @@ export async function uploadExpertDocument(
     resource_id: created.id,
     after_data: { document_type: documentType },
   });
+
+  // 이력서면 AI 이력 요약을 미리 만들어 둔다 (기획 2026-11-07) — 기다리지 않고, 실패해도 버튼 클릭 때 다시 만든다
+  if (documentType === "resume") scheduleResumeSummary(created.id, user);
 
   revalidatePath("/expert/documents");
   return { ok: true };
