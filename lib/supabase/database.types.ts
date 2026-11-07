@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      staff_notes: {
+        Row: {
+          id: string
+          tenant_id: string
+          batch_id: string
+          sender_user_id: string
+          recipient_user_id: string
+          topic_kind: string
+          project_id: string | null
+          topic_label: string | null
+          body: string
+          read_at: string | null
+          sender_hidden_at: string | null
+          recipient_hidden_at: string | null
+          is_practice: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          batch_id?: string
+          sender_user_id: string
+          recipient_user_id: string
+          topic_kind: string
+          project_id?: string | null
+          topic_label?: string | null
+          body: string
+          read_at?: string | null
+          sender_hidden_at?: string | null
+          recipient_hidden_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          batch_id?: string
+          sender_user_id?: string
+          recipient_user_id?: string
+          topic_kind?: string
+          project_id?: string | null
+          topic_label?: string | null
+          body?: string
+          read_at?: string | null
+          sender_hidden_at?: string | null
+          recipient_hidden_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       session_payment_attachments: {
         Row: {
           id: string
