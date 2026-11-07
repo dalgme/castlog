@@ -21,8 +21,12 @@ import {
 } from "@/lib/integrations/engagements";
 import {
   formatEventSchedule,
+  formatKstDateTimeFull,
   roleTypeLabel,
 } from "@/lib/integrations/engagement-roles";
+import { loadEngagementTermsAndSchedule } from "@/lib/integrations/engagement-terms";
+import { feeTermsFeeLine } from "@/lib/sessions/fees";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 import { getExpertPortalGuide } from "@/lib/integrations/expert-portal-guide";
 import { withinRewrapWindow } from "@/lib/integrations/rrn-rewrap";
@@ -183,8 +187,11 @@ export default async function EngagementConsentPage({
   const brand = await getPublicTenantBrand(engagement.tenant_id);
   // 수락 후 포털 안내 — 등록 상태(미가입/기업 사전등록/가입)별 문구
   const portalGuide = await getExpertPortalGuide(engagement.expert_id);
-  // 요청 시점 일정 문구 스냅샷(날짜 유형·회차·진행 방식) 우선 — 없으면 날짜·시각 표기
+  // 섭외 조건(진행 방식·회차·단가·총액) + 정식 일정 — 문자와 같은 문구 (보정 2026-11-07).
+  // 자리 없이 만든 건(직접 섭외)은 null → 섭외 건의 스냅샷으로 폴백
+  const live = await loadEngagementTermsAndSchedule(createAdminClient(), engagement.id).catch(() => null);
   const schedule =
+    live?.scheduleText ??
     engagement.schedule_text ??
     formatEventSchedule(
       engagement.starts_on,
@@ -192,6 +199,11 @@ export default async function EngagementConsentPage({
       engagement.starts_time,
       engagement.ends_time
     );
+  const termsHow = live ? [live.terms.mode, live.terms.count, live.terms.hours].filter(Boolean).join(" · ") : "";
+  const feeLine =
+    feeTermsFeeLine(live?.terms) ??
+    (engagement.fee_amount !== null ? formatKrw(engagement.fee_amount) : null);
+  const roleLabel = [roleTypeLabel(engagement.role_type), engagement.role_description].filter(Boolean).join(" · ");
   // 본인의 확정 일정과 겹치는지 — 수락은 계약 성립인데, 이중 계약 위험을
   // 수락 전에 본인에게 알려 주는 화면이 없었다 (검수 C6). 어느 회사의 무슨
   // 일인지는 밝히지 않고 겹침 건수만 보여 준다 (테넌트 격리 원칙).
@@ -203,7 +215,8 @@ export default async function EngagementConsentPage({
         <CardTitle>전문가 섭외 요청</CardTitle>
         <CardDescription>
           <span className="font-medium text-foreground">{tenantName}</span>
-          에서 {expertName} 전문가님께 드리는 섭외 요청입니다.
+          에서 {expertName} 전문가님께 {roleLabel ? `${roleLabel} ` : ""}섭외를 요청드립니다.
+          아래 내용을 확인하신 뒤 수락 또는 거절해 주세요.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -220,13 +233,15 @@ export default async function EngagementConsentPage({
               <span className="font-medium">{projectName}</span>
             </p>
           )}
+          {engagement.session_name && (
+            <p>
+              <span className="text-muted-foreground">세션</span>{" "}
+              <span className="font-medium">{engagement.session_name}</span>
+            </p>
+          )}
           <p>
             <span className="text-muted-foreground">요청 역할</span>{" "}
-            <span className="font-medium">
-              {[roleTypeLabel(engagement.role_type), engagement.role_description]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
+            <span className="font-medium">{roleLabel || "-"}</span>
           </p>
           {schedule ? (
             <p>
@@ -253,26 +268,26 @@ export default async function EngagementConsentPage({
               )}
             </p>
           )}
-          {engagement.fee_amount !== null && (
+          {/* 진행 방식·회차·회차당 시간 — 문자와 같은 조건 줄 (보정 2026-11-07) */}
+          {termsHow && (
             <p>
-              <span className="text-muted-foreground">의뢰비용</span>{" "}
-              <span className="font-medium">{formatKrw(engagement.fee_amount)}</span>
+              <span className="text-muted-foreground">진행 방식</span>{" "}
+              <span className="font-medium">{termsHow}</span>
             </p>
           )}
+          {/* 의뢰비용 — 총 1회면 총액, 여러 회면 단가×회차=총액. 아무 비용도 없으면 '미정'을 밝힌다 */}
+          <p>
+            <span className="text-muted-foreground">의뢰비용</span>{" "}
+            {feeLine ? (
+              <span className="font-medium">{feeLine}</span>
+            ) : (
+              <span className="font-medium text-amber-800">미정 — 요청 기업 담당자가 별도 안내합니다</span>
+            )}
+          </p>
           {/* 회신 마감 — 포털에는 있는데 정작 대부분이 쓰는 공개 링크에 없었다 (검수 C4) */}
           <p>
             <span className="text-muted-foreground">회신 마감</span>{" "}
-            <span className="font-medium">
-              {new Date(engagement.token_expires_at).toLocaleString("ko-KR", {
-                timeZone: "Asia/Seoul",
-                month: "long",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              })}
-              까지
-            </span>
+            <span className="font-medium">{formatKstDateTimeFull(engagement.token_expires_at)}까지</span>
           </p>
           {engagement.event_summary && (
             <p className="whitespace-pre-wrap border-t pt-2">

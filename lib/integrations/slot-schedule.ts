@@ -25,7 +25,8 @@ export function scheduleSnapshotText(s: SessionSchedule): string | null {
   const singleDay =
     s.dateKind === "individual" && s.dates.length <= 1 && s.deliveryMode === null && s.countMin === null;
   if (singleDay) return null;
-  return describeSchedule(s, { withYear: true });
+  // 상대(전문가)가 읽는 스냅샷 — 정식 표기 (보정 2026-11-07: 문자·페이지·수락서 표기 통일)
+  return describeSchedule(s, { withYear: true, formal: true });
 }
 
 /**
