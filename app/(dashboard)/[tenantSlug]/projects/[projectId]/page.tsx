@@ -1770,6 +1770,7 @@ export default async function ProjectDetailPage({
                   tenantSlug={params.tenantSlug}
                   projectId={project.id}
                   canDelete={canViewAllProjects(grade)}
+                  canEditCode={myAssignmentRole === "pm" || myAssignmentRole === "pl_pm"}
                   initial={{
                     name: project.name,
                     businessYear: String(project.business_year),

@@ -31,6 +31,7 @@ import {
   type ProjectCreateInput,
   type StepStatusInput,
 } from "@/lib/operations/schemas";
+import { joinClientNames, splitClientNames } from "@/lib/operations/client-names";
 import { DEFAULT_LIFECYCLE_STEPS } from "@/lib/operations/steps";
 import { buildGradeEscalationLine } from "@/lib/approvals/grade-escalation";
 import { isMissingColumnError } from "@/lib/supabase/errors";
@@ -62,7 +63,9 @@ export async function createProject(
       error: parsed.error.issues[0]?.message ?? "입력값을 확인하세요.",
     };
   }
-  const data = parsed.data;
+  // 프로젝트 코드는 PM만 작성 (기획 2026-11-07) — 개설 시점엔 PM이 없으므로 받지 않는다.
+  // PM 배정 후 PM이 '기본정보 수정'에서 넣는다 (updateProjectBasicInfo가 PM 판정)
+  const data = { ...parsed.data, code: undefined };
 
   const supabase = createClient();
   const {
@@ -154,7 +157,8 @@ export async function createProject(
     tenant_id: tenantId,
     name: data.name,
     business_year: parseInt(data.businessYear, 10),
-    client_name: data.clientName || null,
+    // 여러 발주처는 ' · '로 이어 한 칸에 (기획 2026-11-07) — 서버에서도 같은 규칙으로 정리
+    client_name: joinClientNames(splitClientNames(data.clientName)) || null,
     host_org: data.hostOrg || null,
     category_id: data.categoryId || null,
     code: data.code || null,

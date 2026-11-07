@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ClientNamesInput } from "@/components/projects/client-names-input";
 
 import { createProject } from "./actions";
 
@@ -145,48 +146,46 @@ export function CreateProjectDialog({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="code"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>관리 코드 (선택)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="P2026-01" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* 프로젝트 코드는 PM만 작성 (기획 2026-11-07) — 개설 시점엔 PM이 없으므로 배정 후 PM이 '기본정보 수정'에서 넣는다 */}
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium leading-none text-muted-foreground">프로젝트 코드</p>
+                <p className="rounded-md bg-secondary/50 px-2.5 py-2 text-xs text-muted-foreground">
+                  PM 배정 후 PM이 ‘기본정보 수정’에서 입력합니다.
+                </p>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="clientName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>발주처 (필수)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="OO창조경제혁신센터" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="hostOrg"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>주관기관 (선택)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="예: OO시" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {/* 발주처 여러 곳 (기획 2026-11-07) — '발주처 추가'로 칸을 늘린다. 저장은 ' · '로 이어 한 칸 */}
+            <FormField
+              control={form.control}
+              name="clientName"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel>발주처 (필수 — 공동 발주면 추가)</FormLabel>
+                  <FormControl>
+                    <ClientNamesInput
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      disabled={pending}
+                      invalid={Boolean(fieldState.error)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="hostOrg"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>주관기관 (선택)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="예: OO시" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {/* 계약 처리 구분 (기획 2026-09-21) — 모르면 비워 두고 '기본정보 수정'에서 정한다 */}
             <FormField
               control={form.control}
