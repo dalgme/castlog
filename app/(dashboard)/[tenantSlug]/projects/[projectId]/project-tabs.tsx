@@ -18,6 +18,7 @@ export const PROJECT_TAB_KEYS = [
   "checklist",
   "quote",
   "experts",
+  "list",
   "engage",
   "confirmed",
   "closing",
@@ -79,6 +80,16 @@ const TAB_DEFS: readonly {
     activeClass: "border-orange-600 bg-orange-600 text-white shadow-sm",
     idleClass:
       "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100",
+  },
+  {
+    // 리스트 작성 (기획 승인 2026-11-07 — 섭외 프로세스 고도화 2단계): 등록한 후보를 문서로 묶어
+    // 자격메모를 채우고 상무·대표의 내부 검토를 받는다. 3단계 발주처 검토·4단계 후보 조정이 뒤따른다
+    key: "list",
+    label: "리스트 작성",
+    needsExperts: true,
+    activeClass: "border-yellow-600 bg-yellow-600 text-white shadow-sm",
+    idleClass:
+      "border-yellow-200 bg-yellow-50 text-yellow-800 hover:bg-yellow-100",
   },
   {
     // 승인 목록 및 섭외 진행 (기획 확정 2026-08-30 — 37번): 품의가 승인된 뒤
