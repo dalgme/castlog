@@ -20,7 +20,7 @@ import type { ModuleFlags } from "@/lib/modules/modules";
 export const DUE_SOON_DAYS = 7;
 
 export type WorkItem = {
-  kind: "step" | "engagement" | "approval" | "session" | "reengagement";
+  kind: "step" | "engagement" | "approval" | "session" | "reengagement" | "review";
   title: string;
   projectId: string | null;
   projectName: string | null;
@@ -48,6 +48,11 @@ export type MyWork = {
    * 대표·이사도 결재는 온다. 승인 게이트에 걸린 팀이 이 신호로 풀린다.
    */
   myApprovals: WorkItem[];
+  /**
+   * 내게 온 섭외 후보 리스트 내부 검토 요청 (기획 2026-11-07) — 결재와 같이 배정 기준이
+   * 아니라 '검토자로 지정됨' 기준이다. 담당자는 검토 의견이 와야 발주처 단계로 넘어간다.
+   */
+  myReviews: WorkItem[];
   myProjectCount: number;
 };
 
@@ -68,12 +73,49 @@ export async function getMyWork(
     awaitingReply: [],
     needsReengagement: [],
     myApprovals: [],
+    myReviews: [],
     myProjectCount: 0,
   };
   if (!hasSupabaseEnv()) return empty;
 
   const supabase = createClient();
   const today = new Date().toISOString().slice(0, 10);
+
+  // 내부 검토 요청 — 표 부재(마이그레이션 0013 전)는 빈 목록
+  const myReviews: WorkItem[] = [];
+  if (modules.experts) {
+    const { data: reviews, error: reviewsError } = await supabase
+      .from("candidate_list_reviews")
+      .select("list_id, requested_at")
+      .eq("reviewer_user_id", userId)
+      .eq("status", "requested");
+    if (!reviewsError && reviews && reviews.length > 0) {
+      const { data: lists } = await supabase
+        .from("candidate_lists")
+        .select("id, project_id, title, status")
+        .in("id", reviews.map((r) => r.list_id));
+      const liveLists = (lists ?? []).filter((l) => l.status === "internal_requested");
+      const { data: listProjects } = liveLists.length > 0
+        ? await supabase.from("projects").select("id, name").in("id", liveLists.map((l) => l.project_id))
+        : { data: [] as { id: string; name: string }[] };
+      const listProjectName = new Map((listProjects ?? []).map((p) => [p.id, p.name]));
+      for (const r of reviews) {
+        const list = liveLists.find((l) => l.id === r.list_id);
+        if (!list) continue;
+        const dueOn = r.requested_at.slice(0, 10);
+        myReviews.push({
+          kind: "review",
+          title: `${list.title} — 내부 검토 요청`,
+          projectId: list.project_id,
+          projectName: listProjectName.get(list.project_id) ?? null,
+          dueOn,
+          daysLeft: daysBetween(today, dueOn),
+          href: `/${tenantSlug}/projects/${list.project_id}?tab=list`,
+          note: "후보별 의견을 남기고 '검토 완료'를 눌러 주세요. 담당자는 검토가 끝나야 발주처 검토로 넘어갑니다.",
+        });
+      }
+    }
+  }
   const horizon = new Date(Date.now() + DUE_SOON_DAYS * 86400000)
     .toISOString()
     .slice(0, 10);
@@ -103,7 +145,7 @@ export async function getMyWork(
   const myProjectIds = Array.from(
     new Set((assignments ?? []).map((a) => a.project_id))
   );
-  if (myProjectIds.length === 0) return { ...empty, myApprovals };
+  if (myProjectIds.length === 0) return { ...empty, myApprovals, myReviews };
 
   const { data: projects } = await supabase
     .from("projects")
@@ -115,7 +157,7 @@ export async function getMyWork(
     .filter((p) => p.status !== "completed" && p.status !== "canceled")
     .map((p) => p.id);
   if (liveIds.length === 0) {
-    return { ...empty, myApprovals, myProjectCount: myProjectIds.length };
+    return { ...empty, myApprovals, myReviews, myProjectCount: myProjectIds.length };
   }
 
   const recent = new Date(Date.now() - 14 * 86400000).toISOString();
@@ -266,6 +308,7 @@ export async function getMyWork(
     awaitingReply: awaitingReply.sort(byDue),
     needsReengagement: needsReengagement.sort(byDue),
     myApprovals: myApprovals.sort(byDue),
+    myReviews: myReviews.sort(byDue),
     myProjectCount: myProjectIds.length,
   };
 }

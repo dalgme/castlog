@@ -14,6 +14,174 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_lists: {
+        Row: {
+          id: string
+          tenant_id: string
+          project_id: string
+          revision: number
+          status: string
+          title: string
+          note: string | null
+          created_by: string | null
+          internal_requested_at: string | null
+          internal_done_at: string | null
+          is_practice: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          project_id: string
+          revision?: number
+          status?: string
+          title: string
+          note?: string | null
+          created_by?: string | null
+          internal_requested_at?: string | null
+          internal_done_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          project_id?: string
+          revision?: number
+          status?: string
+          title?: string
+          note?: string | null
+          created_by?: string | null
+          internal_requested_at?: string | null
+          internal_done_at?: string | null
+          is_practice?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      candidate_list_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          list_id: string
+          slot_id: string | null
+          position_id: string | null
+          expert_id: string
+          rank: number
+          code: string
+          session_label: string
+          role_label: string | null
+          unit_fee_online: number | null
+          unit_fee_offline: number | null
+          total_fee_min: number | null
+          total_fee_max: number | null
+          memo_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          list_id: string
+          slot_id?: string | null
+          position_id?: string | null
+          expert_id: string
+          rank?: number
+          code: string
+          session_label: string
+          role_label?: string | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
+          total_fee_min?: number | null
+          total_fee_max?: number | null
+          memo_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          list_id?: string
+          slot_id?: string | null
+          position_id?: string | null
+          expert_id?: string
+          rank?: number
+          code?: string
+          session_label?: string
+          role_label?: string | null
+          unit_fee_online?: number | null
+          unit_fee_offline?: number | null
+          total_fee_min?: number | null
+          total_fee_max?: number | null
+          memo_count?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      candidate_list_reviews: {
+        Row: {
+          id: string
+          tenant_id: string
+          list_id: string
+          reviewer_user_id: string
+          status: string
+          requested_by: string | null
+          requested_at: string
+          done_at: string | null
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          list_id: string
+          reviewer_user_id: string
+          status?: string
+          requested_by?: string | null
+          requested_at?: string
+          done_at?: string | null
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          list_id?: string
+          reviewer_user_id?: string
+          status?: string
+          requested_by?: string | null
+          requested_at?: string
+          done_at?: string | null
+        }
+        Relationships: []
+      }
+      candidate_list_review_comments: {
+        Row: {
+          id: string
+          tenant_id: string
+          list_id: string
+          entry_id: string | null
+          author_user_id: string
+          body: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          list_id: string
+          entry_id?: string | null
+          author_user_id: string
+          body: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          list_id?: string
+          entry_id?: string | null
+          author_user_id?: string
+          body?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       expert_qualification_memos: {
         Row: {
           id: string

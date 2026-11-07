@@ -100,6 +100,8 @@ import {
   type ApprovedPlanSession,
   type ProgressRow,
 } from "./engagement-progress";
+import { CandidateListTab } from "./candidate-list-tab";
+import { loadCandidateListTab } from "@/lib/integrations/candidate-lists";
 import { EngagementConfirmed } from "./engagement-confirmed";
 import type { SmsSummary } from "./sms-resend";
 import {
@@ -1106,6 +1108,10 @@ export default async function ProjectDetailPage({
   const canSeeContribTab =
     grade === "ceo" || myAssignmentRole === "pm" || myAssignmentRole === "pl_pm";
   const tab = resolveProjectTab(searchParams.tab, modules.experts, modules.quotes, canSeeContribTab);
+
+  // 리스트 작성 탭 (기획 승인 2026-11-07 — 2단계) — 그 탭에서만 읽는다
+  const candidateListData =
+    tab === "list" && modules.experts ? await loadCandidateListTab(project.id) : null;
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -2253,6 +2259,20 @@ export default async function ProjectDetailPage({
                   )}
                 </>
               ) : null
+            }
+          />
+        )}
+
+        {/* 리스트 작성 (기획 승인 2026-11-07 — 2단계): 후보 문서 + 자격메모 + 내부 검토 */}
+        {tab === "list" && modules.experts && candidateListData && user && (
+          <CandidateListTab
+            tenantSlug={params.tenantSlug}
+            projectId={project.id}
+            projectName={project.name}
+            data={candidateListData}
+            myUserId={user.id}
+            canRequest={
+              canViewAllProjects(grade) || myAssignmentRole !== null || role === "platform_admin" || project.created_by === user.id
             }
           />
         )}

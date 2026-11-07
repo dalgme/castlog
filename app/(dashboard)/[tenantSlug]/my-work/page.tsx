@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Clock, FileCheck, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Clock, FileCheck, MessageSquareWarning } from "lucide-react";
 
 import { requireRole } from "@/lib/auth/session";
 import { getTenantModules } from "@/lib/modules/server";
@@ -51,7 +51,8 @@ export default async function MyWorkPage({
     work.dueSoon.length === 0 &&
     work.awaitingReply.length === 0 &&
     work.needsReengagement.length === 0 &&
-    work.myApprovals.length === 0;
+    work.myApprovals.length === 0 &&
+    work.myReviews.length === 0;
 
   return (
     <div>
@@ -70,7 +71,15 @@ export default async function MyWorkPage({
           items={work.myApprovals}
         />
 
-        {work.myProjectCount === 0 && work.myApprovals.length === 0 ? (
+        {/* 내부 검토 요청 (기획 2026-11-07) — 검토자로 지정된 이사·대표에게. 배정과 무관 */}
+        <WorkGroup
+          title="섭외 후보 리스트 내부 검토 요청"
+          tone="warn"
+          icon={ClipboardCheck}
+          items={work.myReviews}
+        />
+
+        {work.myProjectCount === 0 && work.myApprovals.length === 0 && work.myReviews.length === 0 ? (
           <EmptyState
             title="배정된 프로젝트가 없습니다"
             description="프로젝트에 PM·부PM·담당으로 배정되면 여기에 할 일이 모입니다. 배정은 대표·이사가 합니다."
