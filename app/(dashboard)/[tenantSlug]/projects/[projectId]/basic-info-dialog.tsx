@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ClientNamesInput } from "@/components/projects/client-names-input";
 
 import {
   archiveProject,
@@ -75,12 +76,15 @@ export function BasicInfoDialog({
   projectId,
   initial,
   canDelete = false,
+  canEditCode = false,
 }: {
   tenantSlug: string;
   projectId: string;
   initial: ProjectBasicInfo;
   /** 삭제·보관 처리 노출 — 대표·이사만 */
   canDelete?: boolean;
+  /** 프로젝트 코드 입력·수정 — 이 프로젝트의 PM(pm·pl_pm)만 (기획 2026-11-07) */
+  canEditCode?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -205,28 +209,41 @@ export function BasicInfoDialog({
                   </FormItem>
                 )}
               />
+              {/* 프로젝트 코드는 그 프로젝트의 PM만 작성·수정 (기획 2026-11-07). 서버(updateProjectBasicInfo)도 같은 규칙 */}
               <FormField
                 control={form.control}
                 name="code"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>관리 코드</FormLabel>
+                    <FormLabel>프로젝트 코드 {canEditCode ? "(PM 작성)" : "(PM만 작성)"}</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input
+                        {...field}
+                        placeholder={canEditCode ? "P2026-01" : "PM이 입력합니다"}
+                        readOnly={!canEditCode}
+                        disabled={!canEditCode}
+                        title={canEditCode ? undefined : "프로젝트 코드는 이 프로젝트의 PM만 입력·수정할 수 있습니다."}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+            {/* 발주처 여러 곳 (기획 2026-11-07) — 저장된 'A · B'를 칸으로 나눠 보여 주고 추가·삭제한다 */}
             <FormField
               control={form.control}
               name="clientName"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>발주처 (필수)</FormLabel>
+                  <FormLabel>발주처 (필수 — 공동 발주면 추가)</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <ClientNamesInput
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      disabled={pending}
+                      invalid={Boolean(fieldState.error)}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

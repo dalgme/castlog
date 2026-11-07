@@ -19,6 +19,7 @@ import {
   projectCreateSchema,
   type ProjectCreateInput,
 } from "@/lib/operations/schemas";
+import { joinClientNames, splitClientNames } from "@/lib/operations/client-names";
 
 /**
  * 프로젝트 기본정보 수정·삭제·보관 (기획 확정 2026-08-30, 오후 개정).
@@ -146,6 +147,22 @@ export async function updateProjectBasicInfo(
     return { ok: false, error: "프로젝트를 찾을 수 없습니다." };
   }
 
+  // 프로젝트 코드는 이 프로젝트의 PM(pm·pl_pm)만 입력·수정 (기획 2026-11-07).
+  // 화면은 PM 아닌 사람에게 읽기 전용으로 보이지만, 요청은 조작될 수 있으니 서버가 판정한다.
+  if ((data.code ?? "") !== (before.code ?? "")) {
+    const { data: myRoles } = await supabase
+      .from("project_assignments")
+      .select("assignment_role")
+      .eq("project_id", projectId)
+      .eq("user_id", gate.userId);
+    const isPm = (myRoles ?? []).some((r) => r.assignment_role === "pm" || r.assignment_role === "pl_pm");
+    if (!isPm) {
+      const message = "프로젝트 코드는 이 프로젝트의 PM만 입력·수정할 수 있습니다 (권한 규칙). 다른 항목은 코드를 그대로 두고 저장하세요.";
+      await recordActionDenial({ kind: "exec:projectCode", message, user });
+      return { ok: false, error: message };
+    }
+  }
+
   // 이름·코드 중복 가드 — **바뀐 값에만** 건다 (리뷰 4). 기존 중복 데이터가
   // 있는 상태에서 예산·기간만 고치는 저장까지 막으면 정리 자체가 불가능해진다.
   // 자기 자신·취소 보관 건은 제외, 대소문자 차이는 ilike로 잡는다 (리뷰 5).
@@ -197,7 +214,8 @@ export async function updateProjectBasicInfo(
   const patch = {
     name: data.name,
     business_year: parseInt(data.businessYear, 10),
-    client_name: data.clientName || null,
+    // 여러 발주처는 ' · '로 이어 한 칸에 (기획 2026-11-07) — 서버에서도 같은 규칙으로 정리
+    client_name: joinClientNames(splitClientNames(data.clientName)) || null,
     code: data.code || null,
     starts_on: data.startsOn || null,
     ends_on: data.endsOn || null,
