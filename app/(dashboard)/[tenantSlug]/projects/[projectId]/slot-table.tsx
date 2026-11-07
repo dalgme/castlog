@@ -74,6 +74,8 @@ export type SlotPositionRow = {
   /** 전문가별 종료 시각 (기획 2026-09-21) — 계약 성립 건에만 의미 */
   completedAt: string | null;
   assignedExpertName: string | null;
+  /** 임의 배정된 전문가 id — 이력서·AI 요약·자격메모 버튼용 (기획 2026-11-07) */
+  assignedExpertId: string | null;
 };
 
 export type SlotNoticeData = {

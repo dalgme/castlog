@@ -20,6 +20,7 @@ import { commaInputHandler, formatComma } from "@/components/ui/comma-number-inp
 import { useToast } from "@/hooks/use-toast";
 
 import { EngagementCancelButton } from "@/components/integrations/engagement-cancel-button";
+import { ExpertInsightButtons } from "@/components/experts/expert-insight-buttons";
 import { EngagementHistoryDialog } from "./engagement-history-dialog";
 import { ManualAcceptButton } from "./manual-accept-button";
 import { PositionRequestDialog } from "./position-request-dialog";
@@ -210,6 +211,16 @@ export function CandidateList({
               >
                 {p.expertName ?? p.assignedExpertName ?? "미배정"}
               </span>
+              {/* 이력서 · AI 이력 요약 · 자격메모 이력 (기획 승인 2026-11-07 — 1단계) */}
+              {(p.expertId ?? p.assignedExpertId) && (
+                <ExpertInsightButtons
+                  expertId={(p.expertId ?? p.assignedExpertId) as string}
+                  expertName={p.expertName ?? p.assignedExpertName ?? ""}
+                  projectId={projectId}
+                  positionId={p.id}
+                  canWriteMemo={canManage}
+                />
+              )}
               <span
                 title={ENGAGEMENT_STAGE_DESCRIPTIONS[stage]}
                 className={cn(

@@ -11,6 +11,7 @@ import { deniedExec } from "@/lib/monitoring/action-denials";
 import { canExecTenant } from "@/lib/auth/exec-policy";
 import { getTenantModules } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
+import { scheduleResumeSummary } from "@/lib/ai/resume-summary";
 import {
   EXPERT_DOCUMENT_BUCKET,
   validateDocumentFile,
@@ -314,6 +315,9 @@ export async function uploadBulkExpertDocument(
     resource_id: inserted.id,
     after_data: { expert_id: expertId, document_type: docType, replaced },
   });
+
+  // 이력서면 AI 이력 요약을 미리 만들어 둔다 (기획 2026-11-07) — 기다리지 않는다
+  if (docType === "resume") scheduleResumeSummary(inserted.id, null);
 
   revalidatePath("/[tenantSlug]/experts/import", "page");
   return { ok: true, replaced };
