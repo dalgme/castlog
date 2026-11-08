@@ -68,7 +68,7 @@ export function engagementRationaleSystem(): string {
 export function engagementRationaleUser(facts: RationaleFacts): string {
   const reputation =
     facts.avgScore !== null
-      ? `자사 과거 평가 평균 ${facts.avgScore.toFixed(1)}/10 (${facts.evalCount}건)`
+      ? `자사 과거 평가 평균 ${(facts.avgScore / 2).toFixed(1)}/5 (${facts.evalCount}건)`
       : "자사 과거 평가 없음";
   const lines = [
     `역할: ${facts.roleDescription}`,

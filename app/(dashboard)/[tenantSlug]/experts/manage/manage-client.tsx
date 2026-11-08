@@ -157,14 +157,14 @@ export function ManageClient({
                         onChange={(e) => setEditRating(e.target.value)}
                       >
                         <option value="">없음</option>
-                        {Array.from({ length: 10 }, (_, i) => 10 - i).map((n) => (
+                        {Array.from({ length: 5 }, (_, i) => 5 - i).map((n) => (
                           <option key={n} value={n}>
                             {n}점
                           </option>
                         ))}
                       </select>
                     ) : row.rating ? (
-                      <span className="font-medium">{row.rating}점</span>
+                      <span className="font-medium">{row.rating}점<span className="font-normal text-muted-foreground">/5</span></span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

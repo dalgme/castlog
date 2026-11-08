@@ -22,7 +22,7 @@ import {
 
 /**
  * 자사 평가 셀 (기획 확정 2026-08-23) — 회사의 주관적 기록.
- * 프로젝트 평가 평균(읽기)과 자사 평점(1~10, 직접 지정)을 함께 보여주고,
+ * 프로젝트 평가 평균(읽기, 5점 환산)과 자사 평점(1~5, 직접 지정 — 2026-11-08 5점 만점으로 개정)을 함께 보여주고,
  * 팝업에서 점수를 매기면 변경이 평가 로그로 남는다. 전문가 본인 비노출.
  */
 export function ExpertRatingCell({
@@ -74,14 +74,14 @@ export function ExpertRatingCell({
   const display = (
     <span className="whitespace-nowrap text-sm">
       {myRating !== null ? (
-        <strong>{myRating}점</strong>
+        <strong>{myRating}점<span className="font-normal text-muted-foreground">/5</span></strong>
       ) : avg ? (
-        <strong>{avg}</strong>
+        <strong>{avg}<span className="font-normal text-muted-foreground">/5</span></strong>
       ) : (
         <span className="text-muted-foreground">평가 없음</span>
       )}
       {myRating !== null && avg && (
-        <span className="ml-1 text-[11px] text-muted-foreground">평균 {avg}</span>
+        <span className="ml-1 text-[11px] text-muted-foreground">평균 {avg}/5</span>
       )}
     </span>
   );
@@ -108,18 +108,18 @@ export function ExpertRatingCell({
 
           <p className="text-xs text-muted-foreground">
             우리 회사만의 주관적 기록입니다 — 전문가 본인과 다른 회사에는 보이지
-            않습니다. 프로젝트 평가 평균: {avg ?? "없음"}
+            않습니다. 프로젝트 평가 평균: {avg ? `${avg}/5` : "없음"}
           </p>
 
           <div className="space-y-2">
-            <p className="text-sm font-semibold">자사 평점 (1~10)</p>
+            <p className="text-sm font-semibold">자사 평점 (5점 만점)</p>
             <div className="flex flex-wrap gap-1">
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => setPicked(picked === n ? null : n)}
-                  className={`h-8 w-8 rounded-md border text-sm font-semibold ${
+                  className={`h-10 w-10 rounded-md border text-sm font-semibold ${
                     picked === n
                       ? "border-brand bg-brand text-white"
                       : "hover:bg-secondary"

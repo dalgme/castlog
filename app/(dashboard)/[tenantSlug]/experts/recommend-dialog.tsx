@@ -115,7 +115,7 @@ export function ExpertRecommendDialog() {
     const text = candidates
       .filter((c) => selected.has(c.expertId))
       .map((c) =>
-        [c.name, c.specialty ?? "", c.avgScore !== null ? `평판 ${c.avgScore.toFixed(1)}/10` : "평가 없음"]
+        [c.name, c.specialty ?? "", c.avgScore !== null ? `평판 ${(c.avgScore / 2).toFixed(1)}/5` : "평가 없음"]
           .filter(Boolean)
           .join("\t")
       )
@@ -217,7 +217,7 @@ export function ExpertRecommendDialog() {
                   )}
                   {c.avgScore !== null ? (
                     <Badge className="ml-auto">
-                      평판 {c.avgScore.toFixed(1)}/10
+                      평판 {(c.avgScore / 2).toFixed(1)}/5
                     </Badge>
                   ) : (
                     <Badge variant="secondary" className="ml-auto">

@@ -178,6 +178,8 @@ export async function previewEngagementMessages(input: z.infer<typeof dispatchSc
         specialNotes: parsed.data.memo,
         deadlineText,
         url,
+        acceptUrl: `${url}?intent=accept`,
+        declineUrl: `${url}?intent=decline`,
       });
       samples.push({
         expertName,

@@ -369,6 +369,9 @@ export async function requestEngagementForPositionCore(
       specialNotes: input.specialNotes,
       deadlineText: formatKstDateTimeFull(expiresAtIso),
       url,
+      // 메일 안 수락/거절 버튼 — /e 확인 화면으로 바로 (기획 지시 2026-11-08)
+      acceptUrl: `${url}?intent=accept`,
+      declineUrl: `${url}?intent=decline`,
     });
     await sendEngagementEmail({
       tenantId,

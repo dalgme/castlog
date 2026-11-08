@@ -104,10 +104,29 @@ export async function sendTenantEmail(
   const admin = createAdminClient();
   const batchId = randomUUID();
   const provider = resolveEmailProvider();
-  const fromAddress =
+  const baseFrom =
     process.env.EMAIL_FROM ??
     process.env.RESEND_FROM ??
     "CASTLOG <no-reply@castlog.kr>";
+  // 발신자 표시 (기획 지시 2026-11-08): 수신함에 'CASTLOG'가 아니라 **그 회사와 보낸 직원**이 보여야 한다(§16).
+  // 발신 **주소**는 인증 도메인(SPF/DKIM)이어야 하므로 env 주소를 그대로 쓰고, 표시 이름에
+  // "회사명 · 담당자 이름 (담당자 이메일)"을 넣는다. 답장은 Reply-To로 담당자에게 간다.
+  // 직원의 실제 주소를 발신 주소로 쓰려면 그 회사 도메인 인증이 필요하다 — 테넌트 도메인 작업(§1-1)에서.
+  const fromAddressOnly = baseFrom.includes("<") ? baseFrom.slice(baseFrom.indexOf("<")) : `<${baseFrom}>`;
+  const [{ data: senderRow }, { data: tenantRow }] = await Promise.all([
+    admin.from("users").select("name, email").eq("id", params.senderUserId).maybeSingle(),
+    admin.from("tenants").select("name").eq("id", params.tenantId).maybeSingle(),
+  ]);
+  const senderDisplay = senderRow?.name
+    ? senderRow.email
+      ? `${senderRow.name} (${senderRow.email})`
+      : senderRow.name
+    : null;
+  const displayName = [tenantRow?.name ?? null, senderDisplay].filter(Boolean).join(" · ") || "CASTLOG";
+  // 표시 이름의 따옴표·꺾쇠는 헤더를 깨뜨린다
+  const safeDisplay = displayName.replace(/["<>\r\n]/g, " ").replace(/\s+/g, " ").trim();
+  const fromAddress = `"${safeDisplay}" ${fromAddressOnly}`;
+  const replyTo = params.replyTo ?? senderRow?.email ?? undefined;
   // 연습모드에서는 공급자 호출을 건너뛴다 (이력은 그대로 남는다).
   const testMode = !provider || (await isPracticeMode());
 
@@ -163,7 +182,7 @@ export async function sendTenantEmail(
         subject,
         text: body,
         ...(params.html ? { html: params.html } : {}),
-        ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+        ...(replyTo ? { replyTo } : {}),
       });
       if (!result.ok) {
         ok = false;
