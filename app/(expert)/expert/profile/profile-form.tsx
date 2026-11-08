@@ -94,7 +94,7 @@ export function ExpertProfileForm({
             </FormItem>
           )}
         />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_140px]">
           <FormField
             control={form.control}
             name="organization"
@@ -116,6 +116,20 @@ export function ExpertProfileForm({
                 <FormLabel>직위 (선택)</FormLabel>
                 <FormControl>
                   <Input placeholder="예: 교수, 대표, 수석 컨설턴트" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {/* 출생연도 (기획 지시 2026-11-08) — 섭외 후보 검색·등록 화면에 소속·직위와 함께 표기된다 */}
+          <FormField
+            control={form.control}
+            name="birthYear"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>출생연도 (선택)</FormLabel>
+                <FormControl>
+                  <Input inputMode="numeric" maxLength={4} placeholder="예: 1975" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

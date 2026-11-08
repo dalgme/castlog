@@ -28,6 +28,7 @@ import {
   sendEngagementEmail,
   portalUrl,
 } from "@/lib/integrations/engagement-email";
+import { composeAcceptanceLetterMail } from "@/lib/email/mail-templates";
 import { sendEngagementSms } from "@/lib/integrations/engagement-sms";
 
 export type AcceptanceActionResult = { ok: true } | { ok: false; error: string };
@@ -383,18 +384,29 @@ export async function sendAcceptance(
     tenantId: auth.tenantId,
   });
 
-  // 업무연락 메일 — 수락서 확인·서명 요청
+  // 업무연락 메일 — 수락서 확인·서명 요청 (일괄 송부와 같은 작성기, 2026-11-08)
   const title = acceptance.program_name ?? acceptance.project_name ?? "섭외";
+  const [{ data: letterExpert }, { data: letterEngagement }] = await Promise.all([
+    createAdminClient().from("experts").select("name").eq("id", acceptance.expert_id).maybeSingle(),
+    supabase.from("expert_engagements").select("project_id").eq("id", acceptance.engagement_id).maybeSingle(),
+  ]);
+  const letterMail = composeAcceptanceLetterMail({
+    tenantName: acceptance.tenant_name,
+    expertName: letterExpert?.name ?? null,
+    projectName: title,
+    url: portalUrl(letterPath),
+    subjectSuffix: "확인 및 서명 요청",
+  });
   await sendEngagementEmail({
     tenantId: auth.tenantId,
     senderUserId: auth.userId,
     expertId: acceptance.expert_id,
-    subject: `[수락서] ${title} — 확인 및 서명 요청`,
-    body:
-      `${acceptance.tenant_name}에서 수락서를 보내드립니다.\n\n` +
-      `아래 링크에서 내용을 확인하시고 전자서명을 완료해 주세요.\n` +
-      `${portalUrl(letterPath)}\n\n` +
-      `※ 포털 로그인 후 확인하실 수 있습니다.\n`,
+    subject: letterMail.subject,
+    body: letterMail.text,
+    html: letterMail.html,
+    projectId: letterEngagement?.project_id ?? null,
+    engagementIds: [acceptance.engagement_id],
+    purpose: "acceptance_letter",
   });
 
   // 문자 — 전문가의 필수 식별자는 휴대폰이고 이메일은 선택이다. 이메일 없는

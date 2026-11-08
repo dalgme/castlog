@@ -95,6 +95,10 @@ export type SlotPickerExpert = {
   specialty: string | null;
   region: string | null;
   careerYears: number | null;
+  /** 소속·직위·출생연도 (기획 지시 2026-11-08 — 후보 검색·등록 화면 표기) */
+  organization: string | null;
+  jobTitle: string | null;
+  birthYear: number | null;
   expertise: string[];
   recruit: string[];
   rating: number | null;
@@ -175,23 +179,50 @@ export async function loadSlotPickerData(
 
   // 전문가 풀 — 전문가 메뉴와 같은 전면 공개 기준 (연습모드는 연결분만).
   // 이용 중지 전문가는 탐색에서 제외한다 (관리모드 중지, 리뷰 3).
-  const poolFirst = await admin
-    .from("experts")
-    .select("id, name, phone, specialty, region, career_years")
-    .eq("is_practice", practice)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1000);
-  // 부재 폴백 (§14-10): is_active 미적용 환경(42703)에서만 필터 없이 재시도
-  const { data: pool } = poolFirst.error?.code === "42703"
-    ? await admin
+  // 소속·직위·출생연도(2026-11-08)까지 — 출생연도 컬럼(0016) 미적용 DB는 없이 다시 읽는다 (§14-10)
+  type PoolRow = {
+    id: string;
+    name: string;
+    phone: string;
+    specialty: string | null;
+    region: string | null;
+    career_years: number | null;
+    organization?: string | null;
+    job_title?: string | null;
+    birth_year?: number | null;
+  };
+  const POOL_COLUMNS = "id, name, phone, specialty, region, career_years, organization, job_title";
+  let poolRows: PoolRow[] = [];
+  {
+    const full = await admin
+      .from("experts")
+      .select(`${POOL_COLUMNS}, birth_year`)
+      .eq("is_practice", practice)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (!full.error) poolRows = full.data ?? [];
+    else if (full.error.code === "42703") {
+      const noBirth = await admin
         .from("experts")
-        .select("id, name, phone, specialty, region, career_years")
+        .select(POOL_COLUMNS)
         .eq("is_practice", practice)
+        .eq("is_active", true)
         .order("created_at", { ascending: false })
-        .limit(1000)
-    : poolFirst;
-  const poolRows = pool ?? [];
+        .limit(1000);
+      if (!noBirth.error) poolRows = noBirth.data ?? [];
+      else {
+        // is_active까지 없는 아주 옛 환경
+        const legacy = await admin
+          .from("experts")
+          .select(POOL_COLUMNS)
+          .eq("is_practice", practice)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        poolRows = legacy.data ?? [];
+      }
+    }
+  }
 
   const [
     { data: links },
@@ -295,6 +326,9 @@ export async function loadSlotPickerData(
       specialty: e.specialty,
       region: e.region,
       careerYears: e.career_years,
+      organization: e.organization ?? null,
+      jobTitle: e.job_title ?? null,
+      birthYear: e.birth_year ?? null,
       expertise: expertiseByExpert.get(e.id) ?? [],
       recruit: recruitByExpert.get(e.id) ?? [],
       rating: ratingByExpert.get(e.id) ?? null,

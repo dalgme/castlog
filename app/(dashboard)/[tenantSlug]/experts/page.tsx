@@ -63,6 +63,21 @@ const LINK_STATUS_LABEL: Record<
  */
 const PAGE_SIZE = 30;
 const POOL_FETCH_LIMIT = 2000;
+/** 전문가 풀 열람 컬럼 — 소속·직위까지 (출생연도는 0016 이후 별도 추가) */
+const EXPERT_POOL_COLUMNS = "id, name, phone, email, specialty, region, career_years, created_at, organization, job_title";
+type ExpertPoolRow = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  specialty: string | null;
+  region: string | null;
+  career_years: number | null;
+  created_at: string;
+  organization: string | null;
+  job_title: string | null;
+  birth_year?: number | null;
+};
 
 const SCOPE_FILTERS = [
   { key: "all", label: "전체" },
@@ -168,7 +183,8 @@ export default async function TenantExpertsPage({
   ] = await Promise.all([
     admin
       .from("experts")
-      .select("id, name, phone, email, specialty, region, career_years, created_at")
+      // 소속·직위·출생연도까지 (기획 지시 2026-11-08 — 후보 검색 표기)
+      .select(`${EXPERT_POOL_COLUMNS}, birth_year`)
       .eq("is_practice", practice)
       // 관리모드에서 이용 중지된 전문가는 공개 풀에서 제외한다 (기존 이력
       // 화면은 링크 기반 RLS 조회라 이름 표기가 유지된다)
@@ -200,16 +216,26 @@ export default async function TenantExpertsPage({
     admin.from("expert_expertise_fields").select("expert_id, field_id"),
   ]);
 
-  // 부재 폴백 (§14-10): is_active 컬럼이 아직 없는 환경(42703)에서만 필터
-  // 없이 재시도한다 — 일시 오류에까지 폴백하면 중지 제외가 무효화된다 (리뷰 12)
-  let poolRows = poolResult.data;
+  // 부재 폴백 (§14-10): 출생연도(0016)·is_active 컬럼이 아직 없는 환경(42703)에서만
+  // 단계적으로 재시도한다 — 일시 오류에까지 폴백하면 중지 제외가 무효화된다 (리뷰 12)
+  let poolRows: ExpertPoolRow[] | null = poolResult.data;
   if (poolResult.error?.code === "42703") {
-    ({ data: poolRows } = await admin
+    const noBirth = await admin
       .from("experts")
-      .select("id, name, phone, email, specialty, region, career_years, created_at")
+      .select(EXPERT_POOL_COLUMNS)
       .eq("is_practice", practice)
+      .eq("is_active", true)
       .order("created_at", { ascending: false })
-      .limit(POOL_FETCH_LIMIT));
+      .limit(POOL_FETCH_LIMIT);
+    if (!noBirth.error) poolRows = noBirth.data;
+    else {
+      ({ data: poolRows } = await admin
+        .from("experts")
+        .select(EXPERT_POOL_COLUMNS)
+        .eq("is_practice", practice)
+        .order("created_at", { ascending: false })
+        .limit(POOL_FETCH_LIMIT));
+    }
   }
 
   // 자사 연결 상태 (RLS 범위 — 관계기업 판정)
@@ -299,6 +325,9 @@ export default async function TenantExpertsPage({
         expert.specialty ?? "",
         expert.region ?? "",
         expert.email ?? "",
+        expert.organization ?? "",
+        expert.job_title ?? "",
+        expert.birth_year != null ? String(expert.birth_year) : "",
         ...(expertiseByExpert.get(expert.id) ?? []),
         ...(recruitByExpert.get(expert.id) ?? []),
       ]
@@ -687,6 +716,18 @@ export default async function TenantExpertsPage({
                       </TableHead>
                       <TableHead
                         className="cursor-help"
+                        title="전문가 공개 프로필의 소속 · 직위 (기획 2026-11-08)"
+                      >
+                        소속 · 직위
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
+                        title="전문가 공개 프로필의 출생연도 (기획 2026-11-08)"
+                      >
+                        출생연도
+                      </TableHead>
+                      <TableHead
+                        className="cursor-help"
                         title="전문가 연락처 — 등록플랫폼 공개 정보입니다"
                       >
                         휴대폰
@@ -789,6 +830,19 @@ export default async function TenantExpertsPage({
                             >
                               {expert.name}
                             </Link>
+                          </TableCell>
+                          <TableCell className="max-w-[180px] text-xs">
+                            {expert.organization || expert.job_title ? (
+                              <>
+                                <span className="block truncate font-medium" title={expert.organization ?? undefined}>{expert.organization ?? "-"}</span>
+                                <span className="block truncate text-muted-foreground">{expert.job_title ?? ""}</span>
+                              </>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs tabular-nums">
+                            {expert.birth_year != null ? `${expert.birth_year}년생` : "-"}
                           </TableCell>
                           <TableCell>{formatKrMobile(expert.phone)}</TableCell>
                           <TableCell>{expert.specialty ?? "-"}</TableCell>

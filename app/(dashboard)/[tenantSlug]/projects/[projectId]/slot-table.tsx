@@ -76,7 +76,16 @@ export type SlotPositionRow = {
   assignedExpertName: string | null;
   /** 임의 배정된 전문가 id — 이력서·AI 요약·자격메모 버튼용 (기획 2026-11-07) */
   assignedExpertId: string | null;
+  /** 붙은 전문가의 소속 · 직위 · 출생연도 한 줄 (기획 지시 2026-11-08) — 없으면 null */
+  expertMetaLabel?: string | null;
 };
+
+/** "OO대학교 · 교수 · 1975년생" — 후보 목록·진행 표가 같은 표기를 쓴다 */
+export function expertMetaLabel(e: { organization?: string | null; job_title?: string | null; birth_year?: number | null } | null | undefined): string | null {
+  if (!e) return null;
+  const parts = [e.organization, e.job_title, e.birth_year != null ? `${e.birth_year}년생` : null].filter((v): v is string => Boolean(v));
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 export type SlotNoticeData = {
   targets: { name: string; code: string }[];

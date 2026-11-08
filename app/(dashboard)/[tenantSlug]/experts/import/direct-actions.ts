@@ -13,6 +13,7 @@ import { getTenantModules } from "@/lib/modules/server";
 import { isPracticeMode } from "@/lib/practice/server";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import { describeDbError } from "@/lib/supabase/db-errors";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import {
   classifyDirectImportRows,
   DIRECT_IMPORT_HEADERS,
@@ -120,6 +121,7 @@ const HEADER_TO_KEY: Record<string, keyof DirectImportRowInput | "expertiseField
   이름: "name",
   소속: "organization",
   직위: "jobTitle",
+  출생연도: "birthYear",
   이메일: "email",
   핸드폰번호: "phone",
   은행명: "bankName",
@@ -271,21 +273,27 @@ export async function commitDirectImport(
     let expertId: string;
 
     if (row.status === "create") {
-      const { data: insertedExpert, error: expertError } = await admin
+      const expertRow = {
+        auth_user_id: null, // 본인이 휴대폰 인증으로 로그인할 때 클레임된다
+        name: row.input.name,
+        organization: row.input.organization || null,
+        job_title: row.input.jobTitle || null,
+        phone: row.phoneE164,
+        email: row.input.email || null,
+        region: row.input.residence || null,
+        degree_certifications: row.input.degreeCertifications || null,
+        bio: row.input.bio || null,
+      };
+      // 출생연도(0016) — 컬럼 미적용 DB(PGRST204)에서는 빼고 생성한다 (§14-10)
+      let inserted = await admin
         .from("experts")
-        .insert({
-          auth_user_id: null, // 본인이 휴대폰 인증으로 로그인할 때 클레임된다
-          name: row.input.name,
-          organization: row.input.organization || null,
-          job_title: row.input.jobTitle || null,
-          phone: row.phoneE164,
-          email: row.input.email || null,
-          region: row.input.residence || null,
-          degree_certifications: row.input.degreeCertifications || null,
-          bio: row.input.bio || null,
-        })
+        .insert({ ...expertRow, birth_year: row.input.birthYear ? parseInt(row.input.birthYear, 10) : null })
         .select("id")
         .single();
+      if (inserted.error && isMissingColumnError(inserted.error)) {
+        inserted = await admin.from("experts").insert(expertRow).select("id").single();
+      }
+      const { data: insertedExpert, error: expertError } = inserted;
       if (expertError || !insertedExpert) {
         return {
           ok: false,

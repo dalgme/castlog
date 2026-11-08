@@ -132,6 +132,9 @@ export function PositionRequestDialog({
         e.name,
         e.specialty ?? "",
         e.region ?? "",
+        e.organization ?? "",
+        e.jobTitle ?? "",
+        e.birthYear !== null ? String(e.birthYear) : "",
         ...e.expertise,
         ...e.recruit,
       ]
@@ -259,7 +262,7 @@ export function PositionRequestDialog({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="이름 · 전문분야 · 지역 · 강의분야 · 휴대폰"
+            placeholder="이름 · 소속 · 직위 · 전문분야 · 지역 · 강의분야 · 휴대폰"
             className="h-9 w-72"
           />
           <div className="flex gap-1">
@@ -350,6 +353,8 @@ export function PositionRequestDialog({
                 <TableRow>
                   <TableHead className="w-12">선택</TableHead>
                   <TableHead>이름</TableHead>
+                  <TableHead title="전문가 공개 프로필의 소속 · 직위 (기획 2026-11-08)">소속 · 직위</TableHead>
+                  <TableHead title="전문가 공개 프로필의 출생연도 (기획 2026-11-08)">출생연도</TableHead>
                   <TableHead>휴대폰</TableHead>
                   <TableHead>전문분야</TableHead>
                   <TableHead>강의분야</TableHead>
@@ -414,6 +419,19 @@ export function PositionRequestDialog({
                           </span>
                         )}
                       </TableCell>
+                      <TableCell className="max-w-[180px] text-xs">
+                        {e.organization || e.jobTitle ? (
+                          <>
+                            <span className="block truncate font-medium" title={e.organization ?? undefined}>{e.organization ?? "-"}</span>
+                            <span className="block truncate text-muted-foreground">{e.jobTitle ?? ""}</span>
+                          </>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs tabular-nums">
+                        {e.birthYear !== null ? `${e.birthYear}년생` : "-"}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {formatKrMobile(e.phone)}
                       </TableCell>
@@ -467,7 +485,7 @@ export function PositionRequestDialog({
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={13}
+                      colSpan={15}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       조건에 맞는 전문가가 없습니다.

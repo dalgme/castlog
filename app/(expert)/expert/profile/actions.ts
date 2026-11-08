@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import { encryptSecret, hasSecretsKey } from "@/lib/crypto/secrets";
 import {
   expertProfileSchema,
@@ -51,26 +52,39 @@ export async function updateExpertProfile(
     ? parsed.data.secondaryPhone.replace(/\D/g, "")
     : "";
 
-  const { data: updated, error } = await supabase
+  const patch = {
+    name: parsed.data.name,
+    email: parsed.data.email || null,
+    organization: parsed.data.organization || null,
+    job_title: parsed.data.jobTitle || null,
+    region,
+    career_years: parsed.data.careerYears
+      ? parseInt(parsed.data.careerYears, 10)
+      : null,
+    bio: parsed.data.bio || null,
+    degree_certifications: parsed.data.degreeCertifications || null,
+    degree_level: parsed.data.degreeLevel || null,
+    degree_major: parsed.data.degreeMajor || null,
+    secondary_phone: secondaryDigits || null,
+  };
+  // 출생연도(0016) — 컬럼 미적용 DB(PGRST204)에서는 빼고 저장한다 (§14-10)
+  let { data: updated, error } = await supabase
     .from("experts")
     .update({
-      name: parsed.data.name,
-      email: parsed.data.email || null,
-      organization: parsed.data.organization || null,
-      job_title: parsed.data.jobTitle || null,
-      region,
-      career_years: parsed.data.careerYears
-        ? parseInt(parsed.data.careerYears, 10)
-        : null,
-      bio: parsed.data.bio || null,
-      degree_certifications: parsed.data.degreeCertifications || null,
-      degree_level: parsed.data.degreeLevel || null,
-      degree_major: parsed.data.degreeMajor || null,
-      secondary_phone: secondaryDigits || null,
+      ...patch,
+      birth_year: parsed.data.birthYear?.trim() ? parseInt(parsed.data.birthYear.trim(), 10) : null,
     })
     .eq("auth_user_id", user.id)
     .select("id")
     .maybeSingle();
+  if (error && isMissingColumnError(error)) {
+    ({ data: updated, error } = await supabase
+      .from("experts")
+      .update(patch)
+      .eq("auth_user_id", user.id)
+      .select("id")
+      .maybeSingle());
+  }
 
   if (error || !updated) {
     return { error: "프로필 저장에 실패했습니다. 다시 시도해 주세요." };

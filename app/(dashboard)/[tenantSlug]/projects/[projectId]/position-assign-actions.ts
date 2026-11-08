@@ -41,6 +41,8 @@ import {
   sendEngagementEmail,
   portalUrl,
 } from "@/lib/integrations/engagement-email";
+import { composeAcceptanceLetterMail, composeEngagementBundleMail } from "@/lib/email/mail-templates";
+import { formatKstDateTimeFull } from "@/lib/integrations/engagement-roles";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
@@ -964,40 +966,38 @@ export async function dispatchProjectEngagements(input: {
 
     const useEmail = input.channel === "email" || input.channel === "both";
     const useSms = input.channel === "sms" || input.channel === "both";
-    const deadlineLabel = new Date(expiresAtIso).toLocaleDateString("ko-KR", {
-      timeZone: "Asia/Seoul",
-    });
 
     if (useEmail) {
-      const lines = items.map((i) => {
-        // 요청 시점 일정 문구 스냅샷(여러 날·회차·진행 방식) 우선 (2026-09-21)
-        const schedule =
-          i.schedule_text ??
-          formatEventSchedule(
-            i.starts_on,
-            i.ends_on,
-            i.starts_time,
-            i.ends_time
-          );
-        return `· ${[i.session_name, schedule, feeTermsToText(termsByEngagement.get(i.id)), i.location_name, i.fee_amount !== null ? `${i.fee_amount.toLocaleString("ko-KR")}원` : null].filter(Boolean).join(" / ")}`;
+      const { data: expertRow } = await admin.from("experts").select("name").eq("id", expertId).maybeSingle();
+      // 미리보기와 같은 작성기 (2026-11-08). 단건 발송(/e)과 같은 정보량을 유지한다 —
+      // 수락 = 계약 성립인데 행사 내용·특이사항을 못 보고 수락하게 해서는 안 된다 (리뷰 P2-2)
+      const mail = composeEngagementBundleMail({
+        tenantName: tenantRow?.name ?? "기업",
+        expertName: expertRow?.name ?? null,
+        programName: input.programName?.trim() || null,
+        items: items.map((i) => ({
+          sessionName: i.session_name,
+          // 요청 시점 일정 문구 스냅샷(여러 날·회차·진행 방식) 우선 (2026-09-21)
+          schedule: i.schedule_text ?? formatEventSchedule(i.starts_on, i.ends_on, i.starts_time, i.ends_time),
+          terms: feeTermsToText(termsByEngagement.get(i.id)),
+          location: i.location_name,
+          fee: i.fee_amount !== null ? `의뢰비용 ${i.fee_amount.toLocaleString("ko-KR")}원` : null,
+        })),
+        eventSummary: input.eventSummary,
+        specialNotes: input.memo,
+        deadlineText: formatKstDateTimeFull(expiresAtIso),
+        url: bundleUrl,
       });
       await sendEngagementEmail({
         tenantId: auth.session.tenantId,
         senderUserId: auth.session.userId,
         expertId,
-        subject: `[섭외 요청 ${createdIds.length}건] ${input.programName?.trim() || "프로젝트 섭외"}`,
-        body:
-          `섭외를 요청드립니다. 아래 ${createdIds.length}건입니다.\n\n` +
-          lines.join("\n") +
-          // 단건 발송(/e)과 같은 정보량을 유지한다 — 수락 = 계약 성립인데
-          // 행사 내용·특이사항을 못 보고 수락하게 해서는 안 된다 (리뷰 P2-2)
-          (input.eventSummary?.trim()
-            ? `\n\n· 행사 내용: ${input.eventSummary.trim()}`
-            : "") +
-          (input.memo?.trim() ? `\n· 특이사항: ${input.memo.trim()}` : "") +
-          `\n\n· 회신 마감: ${deadlineLabel}까지` +
-          `\n\n아래 링크에서 각 건을 확인하고 건별로 수락 또는 거절해 주세요.\n${bundleUrl}\n` +
-          `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,
+        subject: mail.subject,
+        body: mail.text,
+        html: mail.html,
+        projectId: input.projectId,
+        engagementIds: createdIds,
+        purpose: "engagement_bundle",
       });
     }
     if (useSms) {
@@ -1261,22 +1261,24 @@ export async function sendAcceptanceLetters(input: {
     }
 
     if (input.channel === "email" || input.channel === "both") {
+      // 미리보기(AcceptanceSendDialog)와 같은 작성기 (2026-11-08)
+      const mail = composeAcceptanceLetterMail({
+        tenantName,
+        expertName,
+        projectName: project.name,
+        memo: input.memo,
+        url: portalUrl(letterPath),
+      });
       await sendEngagementEmail({
         tenantId: auth.session.tenantId,
         senderUserId: auth.session.userId,
         expertId: target.expertId,
-        subject: `[수락서] ${project.name} — 확인 및 승인(서명) 요청`,
-        body: [
-          `${tenantName}에서 수락서를 보내드립니다.`,
-          "",
-          "수락서는 캐스트로그 화면에서 확인하실 수 있습니다. 이 메일은 수락서가",
-          "도착했다는 안내이며, 수락서 자체는 첨부되지 않습니다.",
-          "",
-          `확인·승인: ${portalUrl(letterPath)}`,
-          input.memo?.trim() ? `\n${input.memo.trim()}` : "",
-          "",
-          "※ 포털 로그인 후 확인하실 수 있습니다.",
-        ].join("\n"),
+        subject: mail.subject,
+        body: mail.text,
+        html: mail.html,
+        projectId: input.projectId,
+        engagementIds: [target.engagementId],
+        purpose: "acceptance_letter",
       });
     }
 

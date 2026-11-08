@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Send } from "lucide-react";
+import { Eye, Send } from "lucide-react";
+
+import { MessagePreview } from "@/components/integrations/message-preview";
+import { previewEngagementMessages, type MessagePreviewResult } from "./mail-preview-actions";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -96,6 +99,25 @@ export function DispatchDialog({
   // 프로젝트 설명에서 자동 채움 (기획 확정 2026-08-23) — 수정 가능
   const [eventSummary, setEventSummary] = useState(defaultSummary ?? "");
   const [memo, setMemo] = useState("");
+  // 발송 전 미리보기 (기획 지시 2026-11-08) — 실제 작성기로 만든 메일·문자
+  const [preview, setPreview] = useState<MessagePreviewResult | null>(null);
+  const [previewPending, startPreview] = useTransition();
+
+  function loadPreview() {
+    setPreview(null);
+    startPreview(async () => {
+      const res = await previewEngagementMessages({
+        projectId,
+        slotIds,
+        positionIds,
+        programName,
+        eventSummary,
+        memo,
+        deadline: deadline || undefined,
+      });
+      setPreview(res);
+    });
+  }
 
   function send() {
     setError(null);
@@ -145,6 +167,7 @@ export function DispatchDialog({
           setError(null);
           setNeedsPmApproval(false);
           setResult(null);
+          setPreview(null);
         }
       }}
     >
@@ -154,7 +177,7 @@ export function DispatchDialog({
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className={preview?.ok ? "max-h-[90vh] overflow-y-auto sm:max-w-3xl" : "max-h-[85vh] overflow-y-auto sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>
             {expertName
@@ -338,6 +361,27 @@ export function DispatchDialog({
               일정·역할·의뢰비용·장소는 세션에서 사람마다 자동으로 채워집니다.
               여기 적는 내용은 전원에게 같게 나갑니다.
             </p>
+
+            {/* 발송 전 미리보기 (기획 지시 2026-11-08) — 실제 나갈 메일(강조 표시)·문자 */}
+            {!expertsLite && (
+              <div className="space-y-2">
+                <Button type="button" variant="outline" size="sm" onClick={loadPreview} disabled={previewPending}>
+                  <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                  {previewPending ? "미리보기 만드는 중…" : preview ? "입력값으로 다시 미리보기" : "메일·문자 미리보기"}
+                </Button>
+                {preview && !preview.ok && (
+                  <Alert variant="destructive">
+                    <AlertDescription className="text-xs">{preview.error}</AlertDescription>
+                  </Alert>
+                )}
+                {preview?.ok && <MessagePreview samples={preview.samples} total={preview.total} note={preview.note} channel={channel} />}
+                {preview?.ok && (
+                  <p className="text-[11px] text-muted-foreground">
+                    위 내용은 지금 입력한 사업명·행사 내용·메모·마감 기준입니다. 입력을 바꾸면 ‘다시 미리보기’를 누르세요.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-2">
               <Button

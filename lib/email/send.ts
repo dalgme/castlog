@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateLinkToken, hashLinkToken } from "@/lib/auth/tokens";
 import { buildPublicLink } from "@/lib/routing/links";
 import { isPracticeMode } from "@/lib/practice/server";
+import { isMissingColumnError } from "@/lib/supabase/errors";
 import { resolveEmailProvider } from "./provider";
 
 /**
@@ -40,6 +41,12 @@ export type EmailSendParams = {
    * 주소를 넣어야 "이 메일에 회신"이 실제로 닿는다 (E2E 검수 전문가 P2-5)
    */
   replyTo?: string;
+  /** HTML 본문(강조 표시). 없으면 평문만 — 2026-11-08 */
+  html?: string;
+  /** 이메일 대장 연결 (2026-11-08) — 프로젝트·섭외 건·용도. 컬럼 부재 DB에서는 버린다 */
+  projectId?: string | null;
+  engagementIds?: string[] | null;
+  purpose?: string | null;
 };
 
 export type EmailSendSummary = {
@@ -147,6 +154,7 @@ export async function sendTenantEmail(
 
     let ok = true;
     let errorMessage: string | null = null;
+    let providerMessageId: string | null = null;
 
     if (provider) {
       const result = await provider.send({
@@ -154,18 +162,21 @@ export async function sendTenantEmail(
         to: recipient.email,
         subject,
         text: body,
+        ...(params.html ? { html: params.html } : {}),
         ...(params.replyTo ? { replyTo: params.replyTo } : {}),
       });
       if (!result.ok) {
         ok = false;
         errorMessage = result.error;
+      } else {
+        providerMessageId = result.id ?? null;
       }
     }
 
     if (ok) sent += 1;
     else failed += 1;
 
-    await supabase.from("email_logs").insert({
+    const baseRow = {
       tenant_id: params.tenantId,
       batch_id: batchId,
       message_type: params.messageType,
@@ -176,7 +187,33 @@ export async function sendTenantEmail(
       status: ok ? (testMode ? "test" : "sent") : "failed",
       error_message: errorMessage,
       sent_by: params.senderUserId,
+    };
+    // 이메일 대장 컬럼(0016) — 미적용 DB(PGRST204)에서는 종전 행으로 다시 기록한다 (§14-10)
+    const { error: insertError } = await supabase.from("email_logs").insert({
+      ...baseRow,
+      project_id: params.projectId ?? null,
+      engagement_ids: params.engagementIds ?? null,
+      purpose: params.purpose ?? null,
+      body_html: params.html ?? null,
+      provider: provider?.id ?? null,
+      provider_message_id: providerMessageId,
+      delivery_status: ok && !testMode && providerMessageId ? "queued" : null,
     });
+    if (insertError && isMissingColumnError(insertError)) {
+      await supabase.from("email_logs").insert(baseRow);
+    } else if (insertError) {
+      // 자사 기록이 막히면(권한 등) service_role로 남긴다 — 발송 기록은 법적·운영 근거다
+      await admin.from("email_logs").insert({
+        ...baseRow,
+        project_id: params.projectId ?? null,
+        engagement_ids: params.engagementIds ?? null,
+        purpose: params.purpose ?? null,
+        body_html: params.html ?? null,
+        provider: provider?.id ?? null,
+        provider_message_id: providerMessageId,
+        delivery_status: ok && !testMode && providerMessageId ? "queued" : null,
+      });
+    }
   }
 
   // 사용량 계측

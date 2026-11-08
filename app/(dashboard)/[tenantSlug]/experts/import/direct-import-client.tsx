@@ -140,7 +140,7 @@ export function DirectImportClient({ tenantSlug }: { tenantSlug: string }) {
               prefetch={false}
             >
               <Download className="mr-1 h-4 w-4" />
-              템플릿 다운로드 (10개 항목)
+              템플릿 다운로드 (11개 항목)
             </Link>
           </Button>
           <Input

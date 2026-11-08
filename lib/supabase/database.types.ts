@@ -1966,6 +1966,18 @@ export type Database = {
           status: string
           subject: string
           tenant_id: string | null
+          project_id: string | null
+          engagement_ids: string[] | null
+          purpose: string | null
+          body_html: string | null
+          provider: string | null
+          provider_message_id: string | null
+          delivery_status: string | null
+          delivered_at: string | null
+          opened_at: string | null
+          bounced_at: string | null
+          delivery_detail: string | null
+          delivery_updated_at: string | null
         }
         Insert: {
           batch_id?: string | null
@@ -1980,8 +1992,32 @@ export type Database = {
           status: string
           subject: string
           tenant_id?: string | null
+          project_id?: string | null
+          engagement_ids?: string[] | null
+          purpose?: string | null
+          body_html?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          delivery_status?: string | null
+          delivered_at?: string | null
+          opened_at?: string | null
+          bounced_at?: string | null
+          delivery_detail?: string | null
+          delivery_updated_at?: string | null
         }
         Update: {
+          project_id?: string | null
+          engagement_ids?: string[] | null
+          purpose?: string | null
+          body_html?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          delivery_status?: string | null
+          delivered_at?: string | null
+          opened_at?: string | null
+          bounced_at?: string | null
+          delivery_detail?: string | null
+          delivery_updated_at?: string | null
           batch_id?: string | null
           body?: string
           created_at?: string
@@ -3609,6 +3645,7 @@ export type Database = {
           updated_at: string
           organization: string | null
           job_title: string | null
+          birth_year: number | null
         }
         Insert: {
           is_active?: boolean
@@ -3618,6 +3655,7 @@ export type Database = {
           auth_user_id?: string | null
           bio?: string | null
           career_years?: number | null
+          birth_year?: number | null
           created_at?: string
           degree_certifications?: string | null
           degree_level?: string | null
@@ -3657,6 +3695,7 @@ export type Database = {
           updated_at?: string
           organization?: string | null
           job_title?: string | null
+          birth_year?: number | null
         }
         Relationships: []
       }

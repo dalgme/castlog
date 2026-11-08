@@ -23,6 +23,7 @@ export const PROJECT_TAB_KEYS = [
   "adjust",
   "engage",
   "confirmed",
+  "mail",
   "closing",
   "review",
   "contrib",
@@ -128,6 +129,15 @@ const TAB_DEFS: readonly {
     needsExperts: true,
     activeClass: "border-lime-600 bg-lime-600 text-white shadow-sm",
     idleClass: "border-lime-200 bg-lime-50 text-lime-800 hover:bg-lime-100",
+  },
+  {
+    // 이메일 대장 (기획 지시 2026-11-08) — 이 프로젝트에서 담당자들이 보낸 모든 메일의 내용·수신 여부.
+    // 발송 인프라는 공통 기반이지만 메일의 대상이 전문가라 experts 모듈과 함께 뜬다
+    key: "mail",
+    label: "이메일 대장",
+    needsExperts: true,
+    activeClass: "border-slate-700 bg-slate-700 text-white shadow-sm",
+    idleClass: "border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100",
   },
   {
     // 지급 품의 (기획 지시 2026-09-21, 섭외 확정 ↔ 리뷰 사이) — 세션 단위 지급 품의·결재 상태·지급 완료·프로젝트 종료

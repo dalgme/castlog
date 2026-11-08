@@ -41,13 +41,23 @@ export default async function ExpertProfilePage() {
   }
 
   const supabase = createClient();
-  const { data: expert } = await supabase
+  const PROFILE_COLUMNS =
+    "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, degree_level, degree_major, expertise_other, organization, job_title";
+  const first = await supabase
     .from("experts")
-    .select(
-      "id, name, phone, email, specialty, region, career_years, bio, secondary_phone, degree_certifications, degree_level, degree_major, expertise_other, organization, job_title"
-    )
+    .select(`${PROFILE_COLUMNS}, birth_year`)
     .eq("auth_user_id", user.id)
     .maybeSingle();
+  // 출생연도 컬럼(0016) 미적용 DB(42703) — 없이 다시 읽는다 (§14-10)
+  const expert =
+    first.error?.code === "42703"
+      ? await supabase
+          .from("experts")
+          .select(PROFILE_COLUMNS)
+          .eq("auth_user_id", user.id)
+          .maybeSingle()
+          .then((r) => (r.data ? { ...r.data, birth_year: null as number | null } : null))
+      : first.data;
 
   if (!expert) {
     redirect("/expert");
@@ -120,6 +130,7 @@ export default async function ExpertProfilePage() {
                 email: expert.email ?? "",
                 organization: expert.organization ?? "",
                 jobTitle: expert.job_title ?? "",
+                birthYear: expert.birth_year != null ? String(expert.birth_year) : "",
                 regionSido: splitRegion(expert.region).sido,
                 regionDetail: splitRegion(expert.region).detail,
                 careerYears:

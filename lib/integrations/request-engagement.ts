@@ -30,9 +30,11 @@ import { engagementFeeTerms, feeTermsFeeLine, feeTermsToText } from "@/lib/sessi
 import { describeSchedule } from "@/lib/sessions/schedule";
 import { notifyExpert } from "@/lib/experts/notifications";
 import { sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import { composeEngagementRequestMail } from "@/lib/email/mail-templates";
 import {
   FEE_UNDECIDED_LINE,
   buildEngagementRequestSms,
+  feeTermsLines,
   sendEngagementSms,
 } from "@/lib/integrations/engagement-sms";
 import { assertEngagementAllowed } from "@/lib/integrations/engagement-plans";
@@ -333,51 +335,55 @@ export async function requestEngagementForPositionCore(
   }
 
   // 업무연락 메일 — 동의 링크 전달. 일정·조건은 문자와 같은 정식 문구를 쓴다
-  const schedule = formalSchedule;
   const channel = input.channel ?? "both";
   const useEmail = !input.suppressSend && (channel === "email" || channel === "both");
   const useSms = !input.suppressSend && (channel === "sms" || channel === "both");
   const legacyFee = position.expected_fee ?? slot.fee_amount;
   const termsHaveFee = Boolean(feeTermsFeeLine(feeTerms));
 
-  if (useEmail)
-  await sendEngagementEmail({
-    tenantId,
-    senderUserId: user.id,
-    expertId: input.expertId,
-    subject: `[섭외 요청] ${input.programName?.trim() || position.code}`,
-    body:
-      `섭외를 요청드립니다.\n\n` +
-      [
-        input.programName?.trim() ? `· 사업명: ${input.programName.trim()}` : null,
-        slot.session_name ? `· 세션: ${slot.session_name}` : null,
-        roleLabel ? `· 역할: ${roleLabel}` : null,
-        schedule ? `· 일정: ${schedule}` : null,
-        terms ? `· 조건: ${terms}` : null,
-        slot.location_name
-          ? `· 장소: ${slot.location_name}${
-              slot.location_address ? ` (${slot.location_address})` : ""
-            }`
-          : null,
-        // 조건 줄에 비용이 있으면 중복해서 적지 않는다. 둘 다 없으면 '미정'을 밝힌다
-        termsHaveFee
-          ? null
-          : legacyFee
-            ? `· 의뢰비용: ${legacyFee.toLocaleString("ko-KR")}원`
-            : `· ${FEE_UNDECIDED_LINE}`,
-        `· 회신 마감: ${formatKstDateTimeFull(expiresAtIso)}까지`,
-      ]
-        .filter(Boolean)
-        .join("\n") +
-      `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n` +
-      `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,
-  });
-
-  // 문자 — 이메일을 등록하지 않은 전문가에게는 이게 유일한 실질 연락 수단이다.
   const [{ data: tenant }, { data: expertRow }] = await Promise.all([
     supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
     createAdminClient().from("experts").select("name").eq("id", input.expertId).maybeSingle(),
   ]);
+
+  if (useEmail) {
+    // 미리보기(mail-preview-actions)와 같은 작성기 — 본 것이 그대로 나간다 (2026-11-08)
+    const mail = composeEngagementRequestMail({
+      tenantName: tenant?.name ?? "기업",
+      expertName: expertRow?.name ?? null,
+      programName: input.programName?.trim() || null,
+      sessionName: slot.session_name,
+      roleLabel,
+      schedule: formalSchedule,
+      termLines: terms ? feeTermsLines(feeTerms) : [],
+      // 조건 줄에 비용이 있으면 중복해서 적지 않는다. 둘 다 없으면 '미정'을 밝힌다
+      feeFallbackLine: termsHaveFee
+        ? null
+        : legacyFee
+          ? `의뢰비용: ${legacyFee.toLocaleString("ko-KR")}원`
+          : FEE_UNDECIDED_LINE,
+      locationLine: slot.location_name
+        ? `${slot.location_name}${slot.location_address ? ` (${slot.location_address})` : ""}`
+        : null,
+      eventSummary: input.eventSummary,
+      specialNotes: input.specialNotes,
+      deadlineText: formatKstDateTimeFull(expiresAtIso),
+      url,
+    });
+    await sendEngagementEmail({
+      tenantId,
+      senderUserId: user.id,
+      expertId: input.expertId,
+      subject: mail.subject,
+      body: mail.text,
+      html: mail.html,
+      projectId: slot.project_id,
+      engagementIds: [engagement.id],
+      purpose: "engagement_request",
+    });
+  }
+
+  // 문자 — 이메일을 등록하지 않은 전문가에게는 이게 유일한 실질 연락 수단이다.
   if (useSms)
   await sendEngagementSms({
     tenantId,

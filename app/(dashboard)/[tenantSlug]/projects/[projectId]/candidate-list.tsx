@@ -211,6 +211,12 @@ export function CandidateList({
               >
                 {p.expertName ?? p.assignedExpertName ?? "미배정"}
               </span>
+              {/* 소속 · 직위 · 출생연도 (기획 지시 2026-11-08) — 이름만으로는 동명이인·배경을 알 수 없다 */}
+              {p.expertMetaLabel && (
+                <span className="text-xs text-muted-foreground" title="전문가 공개 프로필의 소속 · 직위 · 출생연도">
+                  {p.expertMetaLabel}
+                </span>
+              )}
               {/* 이력서 · AI 이력 요약 · 자격메모 이력 (기획 승인 2026-11-07 — 1단계) */}
               {(p.expertId ?? p.assignedExpertId) && (
                 <ExpertInsightButtons
