@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
-import { gradeFromUser } from "@/lib/auth/tenant";
+import { gradeFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { GRADE_LABELS, isUserGrade } from "@/lib/auth/grades";
 import { isStepOpenFor, loadTurnContext } from "@/lib/approvals/turn";
 import { getTenantModules, requireModule } from "@/lib/modules/server";
@@ -51,6 +51,7 @@ type ApprovalRow = {
   status: string;
   created_at: string;
   requester_user_id: string;
+  project_id: string | null;
   users: { name: string } | null;
   approval_steps: {
     step_order: number;
@@ -59,6 +60,94 @@ type ApprovalRow = {
     step_grade: string | null;
   }[];
 };
+
+/**
+ * 목록 보기 방식 (기획 지시 2026-11-08) — 프로젝트별 / 단계별 / 기간별. 기본값은 프로젝트별.
+ * URL 쿼리(?view=)로 정한다 — 새로고침·링크 공유에 그대로 남는다.
+ */
+const APPROVAL_VIEWS = ["project", "stage", "period"] as const;
+type ApprovalView = (typeof APPROVAL_VIEWS)[number];
+const APPROVAL_VIEW_LABELS: Record<ApprovalView, string> = {
+  project: "프로젝트별",
+  stage: "단계별",
+  period: "기간별",
+};
+function resolveView(raw: string | undefined): ApprovalView {
+  return (APPROVAL_VIEWS as readonly string[]).includes(raw ?? "") ? (raw as ApprovalView) : "project";
+}
+
+type ApprovalGroup = { key: string; title: string; hint?: string; rows: ApprovalRow[] };
+
+function monthKey(iso: string): string {
+  // 한국 시간 기준 연·월 — 서버가 UTC라 월말 밤 상신이 전달로 밀리면 안 된다
+  const d = new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // YYYY-MM-DD
+  return d.slice(0, 7);
+}
+
+/** 단계 = 결재 진행 단계 — 몇 차 결재 대기인지 / 승인·반려·취소 / 사후보고 */
+function stageKey(a: ApprovalRow): { key: string; title: string; order: number } {
+  if (a.approval_kind === "report") {
+    return { key: `report:${a.status}`, title: `사후보고 — ${approvalStatusLabel(a.status, a.approval_kind)}`, order: 900 + (a.status === "in_progress" ? 0 : 1) };
+  }
+  if (a.status === "in_progress") {
+    const pending = a.approval_steps.filter((s) => s.status === "pending");
+    const current = pending.length ? Math.min(...pending.map((s) => s.step_order)) : 0;
+    const total = a.approval_steps.length;
+    return current > 0
+      ? { key: `wait:${current}`, title: `결재 진행 중 — ${current}차 결재 대기${total ? ` (전체 ${total}단계)` : ""}`, order: current }
+      : { key: "wait:0", title: "결재 진행 중", order: 99 };
+  }
+  const ORDER: Record<string, number> = { approved: 100, rejected: 200, canceled: 300 };
+  return { key: `done:${a.status}`, title: approvalStatusLabel(a.status, a.approval_kind), order: ORDER[a.status] ?? 400 };
+}
+
+function groupRows(
+  rows: ApprovalRow[],
+  view: ApprovalView,
+  projectNameById: Map<string, string>
+): ApprovalGroup[] {
+  if (view === "period") {
+    const map = new Map<string, ApprovalRow[]>();
+    for (const r of rows) {
+      const k = monthKey(r.created_at);
+      map.set(k, [...(map.get(k) ?? []), r]);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([k, list]) => {
+        const [y, m] = k.split("-");
+        return { key: k, title: `${y}년 ${Number(m)}월`, rows: list };
+      });
+  }
+  if (view === "stage") {
+    const map = new Map<string, { title: string; order: number; rows: ApprovalRow[] }>();
+    for (const r of rows) {
+      const s = stageKey(r);
+      const cur = map.get(s.key) ?? { title: s.title, order: s.order, rows: [] };
+      cur.rows.push(r);
+      map.set(s.key, cur);
+    }
+    return Array.from(map.entries())
+      .sort(([, a], [, b]) => a.order - b.order)
+      .map(([key, g]) => ({ key, title: g.title, rows: g.rows }));
+  }
+  // 프로젝트별 — 최근 상신이 있는 프로젝트부터, 프로젝트 미연결 건은 맨 뒤
+  const map = new Map<string, ApprovalRow[]>();
+  for (const r of rows) {
+    const k = r.project_id ?? "";
+    map.set(k, [...(map.get(k) ?? []), r]);
+  }
+  const groups = Array.from(map.entries()).map(([k, list]) => ({
+    key: k || "none",
+    title: k ? (projectNameById.get(k) ?? "프로젝트 (열람 범위 밖)") : "프로젝트 미연결 문서",
+    hint: k ? undefined : "일반·지출 품의 등 프로젝트를 고르지 않고 올린 문서",
+    rows: list,
+    latest: list[0]?.created_at ?? "",
+    none: !k,
+  }));
+  groups.sort((a, b) => (a.none === b.none ? b.latest.localeCompare(a.latest) : a.none ? 1 : -1));
+  return groups.map(({ key, title, hint, rows: list }) => ({ key, title, hint, rows: list }));
+}
 
 /** 현재 차례 그룹 (진행중 건의 최저 pending 차수) */
 function currentPendingGroup(approval: ApprovalRow) {
@@ -73,9 +162,12 @@ function currentPendingGroup(approval: ApprovalRow) {
  */
 export default async function ApprovalsPage({
   params,
+  searchParams,
 }: {
   params: { tenantSlug: string };
+  searchParams?: { view?: string };
 }) {
+  const view = resolveView(searchParams?.view);
   await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("approvals");
 
@@ -101,20 +193,21 @@ export default async function ApprovalsPage({
   const canManageRelay = adminScopes.approvals;
   const relayEnabled = await isPlanRelayEnabled();
 
+  const tenantId = user ? tenantIdFromUser(user) : null;
   const [{ data: approvals }, { data: users }, turnCtx] =
     await Promise.all([
       supabase
         .from("approvals")
         .select(
-          "id, title, approval_type, approval_kind, amount, status, created_at, requester_user_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
+          "id, title, approval_type, approval_kind, amount, status, created_at, requester_user_id, project_id, users!approvals_requester_user_id_fkey (name), approval_steps (step_order, status, approver_user_id, step_grade)"
         )
         .order("created_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("users")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name"),
+        .limit(300),
+      // 이 회사 직원만 — 플랫폼관리자 세션은 RLS가 전 회사를 열어 준다 (2026-11-08)
+      (() => {
+        const q = supabase.from("users").select("id, name").eq("is_active", true);
+        return (tenantId ? q.eq("tenant_id", tenantId) : q).order("name");
+      })(),
       // 본인·대결(위임자 직급 포함)·릴레이 판정 — 배지·처리 액션과 같은 규칙
       user
         ? loadTurnContext(supabase, user.id, gradeFromUser(user))
@@ -131,6 +224,13 @@ export default async function ApprovalsPage({
     : { data: null };
 
   const rows = (approvals ?? []) as ApprovalRow[];
+  // 프로젝트별 보기의 제목 — 종료된 프로젝트도 이름이 있어야 한다 (위 projects는 진행 중만)
+  const projectIds = Array.from(new Set(rows.map((r) => r.project_id).filter((v): v is string => Boolean(v))));
+  const { data: namedProjects } = projectIds.length
+    ? await supabase.from("projects").select("id, name").in("id", projectIds)
+    : { data: [] as { id: string; name: string }[] };
+  const projectNameById = new Map((namedProjects ?? []).map((p) => [p.id, p.name]));
+  const groups = groupRows(rows, view, projectNameById);
   const myTurn = rows.filter((a) => {
     if (!user || !turnCtx) return false;
     return currentPendingGroup(a).some((s) =>
@@ -298,12 +398,32 @@ export default async function ApprovalsPage({
                 )}
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">전체 문서 ({rows.length})</CardTitle>
-              </CardHeader>
-              <CardContent>{renderTable(rows)}</CardContent>
-            </Card>
+            {/* 보기 방식 (기획 지시 2026-11-08) — 프로젝트별(기본) / 단계별 / 기간별 */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-brand-navy">
+                전체 문서 ({rows.length}) · {APPROVAL_VIEW_LABELS[view]}
+              </p>
+              <nav className="flex gap-1" aria-label="보기 방식">
+                {APPROVAL_VIEWS.map((v) => (
+                  <Button key={v} asChild size="sm" variant={v === view ? "default" : "outline"}>
+                    <Link href={`/${params.tenantSlug}/approvals?view=${v}`} aria-current={v === view ? "page" : undefined}>
+                      {APPROVAL_VIEW_LABELS[v]}
+                    </Link>
+                  </Button>
+                ))}
+              </nav>
+            </div>
+            {groups.map((g) => (
+              <Card key={g.key}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">
+                    {g.title} <span className="font-normal text-muted-foreground">({g.rows.length})</span>
+                  </CardTitle>
+                  {g.hint && <p className="text-xs text-muted-foreground">{g.hint}</p>}
+                </CardHeader>
+                <CardContent>{renderTable(g.rows)}</CardContent>
+              </Card>
+            ))}
           </>
         )}
 

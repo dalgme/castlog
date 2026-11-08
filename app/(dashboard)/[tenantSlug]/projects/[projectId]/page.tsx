@@ -108,6 +108,8 @@ import { AdjustTab } from "./adjust-tab";
 import { loadAdjustTab } from "@/lib/integrations/adjust-tab";
 import { MailLedgerTab } from "./mail-ledger-tab";
 import { loadProjectMailLedger } from "@/lib/integrations/mail-ledger";
+import { EngagementHistoryBoardView } from "./engagement-history-board";
+import { loadEngagementHistoryBoard } from "@/lib/integrations/engagement-history";
 import { EngagementConfirmed } from "./engagement-confirmed";
 import type { SmsSummary } from "./sms-resend";
 import {
@@ -279,11 +281,14 @@ export default async function ProjectDetailPage({
             .select("expert_id, status, experts (id, name)")
             .eq("status", "active")
         : Promise.resolve({ data: null }),
-      // 단계 23: 종료 기여도 대상 직원 + 기존 기여도
-      supabase
-        .from("users")
-        .select("id, name, role, grade, department, is_active")
-        .order("name", { ascending: true }),
+      // 단계 23: 종료 기여도 대상 직원 + 기존 기여도.
+      // **이 회사 직원만** — 플랫폼관리자 세션은 RLS가 전 회사 users를 열어 주므로, 필터가 없으면
+      // 참여율 배분의 '대표이사·상무이사' 기본 사람이 다른 회사 사람으로 잡힌다 (렛츠 보고 2026-11-08)
+      (() => {
+        const q = supabase.from("users").select("id, name, role, grade, department, is_active");
+        const tid = tenantIdFromUser(user);
+        return (tid ? q.eq("tenant_id", tid) : q).order("name", { ascending: true });
+      })(),
       supabase
         .from("project_contributions")
         .select("user_id, percentage, slot_key, role_label")
@@ -1135,6 +1140,28 @@ export default async function ProjectDetailPage({
   // 이메일 대장 (2026-11-08) — 그 탭에서만 읽는다
   const mailLedgerData =
     tab === "mail" && modules.experts ? await loadProjectMailLedger(project.id) : null;
+  // 섭외 현황판 (2026-11-08, 17번) — 승인 목록 및 섭외 진행 탭에서만. 세션 표기는 그 탭과 같다
+  const historyBoard =
+    tab === "engage" && modules.experts
+      ? await loadEngagementHistoryBoard(
+          project.id,
+          slotRows.map((s) => ({
+            id: s.id,
+            label: `${s.slotDate}${s.periodEndDate && s.periodEndDate !== s.slotDate ? `~${s.periodEndDate}` : ""}${
+              s.sessionName ? ` ${s.sessionName}` : ""
+            }`,
+            requiredCount: s.requiredCount,
+            positions: s.positions.map((p) => ({
+              id: p.id,
+              code: p.code,
+              rank: p.rank,
+              status: p.status,
+              expertName: p.expertName,
+              assignedExpertName: p.assignedExpertName,
+            })),
+          }))
+        )
+      : null;
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -2399,6 +2426,11 @@ export default async function ProjectDetailPage({
               />
             }
           />
+        )}
+
+        {/* 섭외 현황판 (기획 지시 2026-11-08, 17번) — 순위별로 누가 안 되어서 누가 섭외되었나 */}
+        {tab === "engage" && modules.experts && historyBoard && (
+          <EngagementHistoryBoardView board={historyBoard} />
         )}
 
         {/* 섭외 확정 (기획 지시 2026-09-21) — 계약 성립 명단 · 목표 달성 · 긴급 취소 · 세션별/전문가별 종료 */}
