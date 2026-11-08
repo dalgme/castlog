@@ -21,6 +21,7 @@ import {
   MAIL_DELIVERY_LABELS,
   MAIL_PURPOSE_LABELS,
   MAIL_SEND_STATUS_LABELS,
+  mailProviderLabel,
   type MailLedgerData,
   type MailLedgerRow,
 } from "@/lib/integrations/mail-ledger-shared";
@@ -72,6 +73,7 @@ export function MailLedgerTab({ projectName, data }: { projectName: string; data
       종류: MAIL_PURPOSE_LABELS[r.purpose] ?? r.purpose,
       제목: r.subject,
       발송상태: MAIL_SEND_STATUS_LABELS[r.sendStatus] ?? r.sendStatus,
+      발송경로: mailProviderLabel(r.provider) ?? "",
       수신상태: deliveryLabel(r),
       전달시각: r.deliveredAt ? fmt(r.deliveredAt) : "",
       열람시각: r.openedAt ? fmt(r.openedAt) : "",
@@ -167,7 +169,12 @@ export function MailLedgerTab({ projectName, data }: { projectName: string; data
                     return (
                       <tr key={r.id} className={cn(r.sendStatus === "failed" && "bg-red-50")}>
                         <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums">{fmt(r.createdAt)}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-xs">{r.senderName ?? "-"}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-xs">
+                          {r.senderName ?? "-"}
+                          {mailProviderLabel(r.provider) && (
+                            <span className="block text-[10px] text-muted-foreground" title={r.deliveryDetail ?? undefined}>{mailProviderLabel(r.provider)}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-xs">
                           <span className="font-medium">{r.recipientName ?? "-"}</span>
                           <span className="block text-muted-foreground">{r.recipientEmail}</span>
@@ -188,8 +195,8 @@ export function MailLedgerTab({ projectName, data }: { projectName: string; data
                               {d.label}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground" title={r.trackable ? "공급자 웹훅 수신 전" : "공급자 메시지 id가 없어 추적 불가"}>
-                              {r.trackable ? "확인 전" : "추적 불가"}
+                            <span className="text-muted-foreground" title={r.trackable ? "공급자 웹훅 수신 전" : r.provider?.startsWith("personal:") ? "개인 메일 계정 발송은 전달·열람 추적이 되지 않습니다" : "공급자 메시지 id가 없어 추적 불가"}>
+                              {r.trackable ? "확인 전" : r.provider?.startsWith("personal:") ? "개인 계정 — 추적 없음" : "추적 불가"}
                             </span>
                           )}
                           {(r.openedAt || r.deliveredAt || r.bouncedAt) && (

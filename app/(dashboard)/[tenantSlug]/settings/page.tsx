@@ -3,9 +3,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth/session";
-import { roleFromUser, gradeFromUser } from "@/lib/auth/tenant";
+import { roleFromUser, gradeFromUser, tenantIdFromUser } from "@/lib/auth/tenant";
 import { getAdminScopes } from "@/lib/auth/admin-scopes";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { isMissingColumnError } from "@/lib/supabase/db-errors";
 import { isSmsTestMode } from "@/lib/sms/providers";
@@ -22,6 +23,7 @@ import { SmsConnectionPanel } from "./sms-connection-panel";
 import { SmsModePanel, type SmsMode } from "./sms-mode-panel";
 import { SmsSendersPanel, type SmsSenderRow } from "./sms-senders-panel";
 import { InviteTemplatePanel } from "./invite-template-panel";
+import { PersonalMailPanel } from "./personal-mail-panel";
 import {
   EXPERT_INVITE_SMS_DEFAULT,
   EXPERT_INVITE_SMS_KEY,
@@ -145,6 +147,25 @@ export default async function SettingsPage({
   // 계약 정보가 있을 이유가 없었다. 여기서는 탭 노출 판단에만 쓴다.
   const modules = await getTenantModules();
 
+  // 직원 개인 메일 계정 발송 (기획 지시 2026-11-08) — 표 부재(0018 전)는 미개방
+  let personalMail: { ready: boolean; allowed: boolean; connectedCount: number } = { ready: false, allowed: false, connectedCount: 0 };
+  {
+    const { data: emailSettings, error: emailSettingsError } = await supabase
+      .from("tenant_email_settings")
+      .select("personal_mail_allowed")
+      .maybeSingle();
+    if (!emailSettingsError) {
+      // 연결 인원은 service_role로 센다 — 계정 행은 본인만 읽을 수 있고, 여기서는 수만 필요하다
+      const { count } = await createAdminClient()
+        .from("user_mail_accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantIdFromUser(gateUser) ?? "")
+        .eq("is_active", true)
+        .not("verified_at", "is", null);
+      personalMail = { ready: true, allowed: Boolean(emailSettings?.personal_mail_allowed), connectedCount: count ?? 0 };
+    }
+  }
+
   // 프로젝트 보관 탭 — 대표·이사(전사 열람)만 (기획 2026-08-30)
   const archiveGrade = gradeFromUser(gateUser);
   const showArchiveTab = isUserGrade(archiveGrade) && canViewAllProjects(archiveGrade);
@@ -223,6 +244,17 @@ export default async function SettingsPage({
               있습니다. 전문가 로그인 인증번호는 플랫폼이 발송하므로 별도 설정이
               필요 없습니다.
             </p>
+          </CardContent>
+        </Card>
+        )}
+
+        {canManageSending && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">이메일 발송 — 직원 개인 계정</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PersonalMailPanel ready={personalMail.ready} allowed={personalMail.allowed} connectedCount={personalMail.connectedCount} />
           </CardContent>
         </Card>
         )}

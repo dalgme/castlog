@@ -30,7 +30,7 @@ const nextConfig = {
     },
     // AI 이력 요약(기획 2026-11-07): HWP 파서(rhwp, Rust+WASM)와 DOCX 추출(mammoth)은 번들하지 않고
     // Node가 node_modules에서 그대로 읽는다 — WASM 11MB를 웹팩에 넣지 않기 위해서다.
-    serverComponentsExternalPackages: ["@rhwp/core", "mammoth"],
+    serverComponentsExternalPackages: ["@rhwp/core", "mammoth", "nodemailer"],
     // 서버리스 번들에 WASM 파일이 따라가도록 명시 (import.meta.url 참조만으로는 누락될 수 있다)
     outputFileTracingIncludes: {
       "/[tenantSlug]/experts": ["./node_modules/@rhwp/core/rhwp_bg.wasm"],

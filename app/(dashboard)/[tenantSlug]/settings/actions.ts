@@ -26,6 +26,36 @@ import { requireAdminScope } from "@/lib/auth/admin-scopes";
 export type SaveSmsConfigResult = { ok: true } | { ok: false; error: string };
 
 /**
+ * 직원 개인 메일 계정 발송 허용 스위치 (기획 지시 2026-11-08) — sending 스코프.
+ * 발송 경로를 바꾸는 결정이라 SMS 자격증명과 같은 권한자가 켠다.
+ */
+export async function setPersonalMailAllowed(allowed: boolean): Promise<SaveSmsConfigResult> {
+  if (!hasSupabaseEnv()) return { ok: false, error: "서버 설정이 완료되지 않았습니다." };
+  const auth = await requireAdminScope("sending");
+  if (!auth.ok) return auth;
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("tenant_email_settings")
+    .upsert({ tenant_id: auth.tenantId, personal_mail_allowed: allowed, updated_by: auth.userId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" });
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      return { ok: false, error: "이 기능은 데이터베이스 마이그레이션 0018 적용 뒤 열립니다 (상태 미충족)." };
+    }
+    return { ok: false, error: await explainActionError(error.message, "설정을 저장하지 못했습니다.") };
+  }
+  await supabase.from("audit_logs").insert({
+    tenant_id: auth.tenantId,
+    actor_auth_user_id: auth.userId,
+    actor_role: auth.isCeo ? "org_admin" : "manager",
+    action: allowed ? "email_settings.personal_mail_allowed" : "email_settings.personal_mail_disallowed",
+    resource_type: "tenant_email_settings",
+  });
+  revalidatePath("/[tenantSlug]/settings", "page");
+  revalidatePath("/[tenantSlug]/settings/me", "page");
+  return { ok: true };
+}
+
+/**
  * SMS 공급자 설정 저장 (BYO — CLAUDE.md 5-2)
  * API 키·시크릿은 AES-256-GCM으로 암호화해 저장하고 화면에는 다시 보여주지 않는다.
  */
