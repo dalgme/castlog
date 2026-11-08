@@ -25,10 +25,16 @@ export function EngagementRespondForm({
   token,
   guide,
   tenantName,
+  initialIntent = null,
 }: {
   token: string;
   guide: ExpertPortalGuide | null;
   tenantName: string | null;
+  /**
+   * 메일의 수락/거절 버튼으로 들어온 경우 (기획 지시 2026-11-08) — 확인 단계를 바로 연다.
+   * 링크를 여는 것만으로는 아무것도 확정되지 않는다 (메일 스캐너의 자동 열기 대비).
+   */
+  initialIntent?: "accepted" | "declined" | null;
 }) {
   const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
@@ -38,7 +44,7 @@ export function EngagementRespondForm({
   // 확인 단계 — 수락·거절 모두 되돌릴 수 없는 응답이다. 모바일에서 버튼 두 개가
   // 나란한데 거절만 원터치로 확정되면 오터치를 되돌릴 수 없다 (검수 C1)
   const [confirming, setConfirming] = useState<"accepted" | "declined" | null>(
-    null
+    initialIntent
   );
 
   function submit(decision: "accepted" | "declined") {
@@ -109,6 +115,11 @@ export function EngagementRespondForm({
               : "border-amber-300 bg-amber-50"
           }`}
         >
+          {initialIntent === confirming && (
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              메일에서 ‘{accepting ? "수락" : "거절"}’을 누르셨습니다 — 아래에서 한 번 더 확인해 주세요
+            </p>
+          )}
           {accepting ? (
             <>
               <p className="font-semibold">섭외를 수락하시겠습니까?</p>

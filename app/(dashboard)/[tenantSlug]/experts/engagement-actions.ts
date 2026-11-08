@@ -232,6 +232,8 @@ export async function createEngagement(
     specialNotes: data.specialNotes,
     deadlineText: formatKstDateTimeFull(requestExpiresAtIso),
     url,
+    acceptUrl: `${url}?intent=accept`,
+    declineUrl: `${url}?intent=decline`,
   });
   await sendEngagementEmail({
     tenantId,

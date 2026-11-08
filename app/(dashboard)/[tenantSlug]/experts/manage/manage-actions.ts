@@ -43,7 +43,8 @@ async function gate(): Promise<Gate> {
 
 const profileSchema = z.object({
   expertId: z.string().uuid(),
-  rating: z.number().int().min(1).max(10).nullable(),
+  // 5점 만점 (기획 지시 2026-11-08 — 종전 1~10)
+  rating: z.number().int().min(1).max(5, "자사 평점은 5점 만점입니다.").nullable(),
   memo: z.string().trim().max(2000),
 });
 

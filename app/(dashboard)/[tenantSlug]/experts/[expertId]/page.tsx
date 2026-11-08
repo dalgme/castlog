@@ -314,8 +314,9 @@ export default async function ExpertDetailPage({
           <Tile label="진행 중(미회신)" value={`${pending}건`} />
           <Tile label="취소·거절" value={`${canceled}건`} />
           <Tile
-            label="평균 평가"
-            value={avgScore === null ? "—" : avgScore.toFixed(1)}
+            label="평균 평가 (5점)"
+            // 저장은 10점, 표기는 5점 (2026-11-08)
+            value={avgScore === null ? "—" : `${(avgScore / 2).toFixed(1)}/5`}
           />
         </div>
 

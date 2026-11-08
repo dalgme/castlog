@@ -29,9 +29,9 @@ export type ExpertExportRow = {
   recruitFields: string[];
   region: string | null;
   careerYears: number | null;
-  /** 자사 평점 (1~10, 직접 지정) */
+  /** 자사 평점 (1~5, 직접 지정 — 2026-11-08 5점 만점) */
   myRating: number | null;
-  /** 프로젝트 평가 평균 (소수 1자리 문자열) */
+  /** 프로젝트 평가 평균 (5점 환산, 소수 1자리 문자열) */
   avgScore: string | null;
   /** 자사 태그 (favorite/vip/caution/null) */
   tag: string | null;
@@ -62,8 +62,8 @@ export const EXPERT_EXPORT_COLUMNS: {
   { header: "섭외분야", value: (r) => r.recruitFields.join(", ") },
   { header: "지역", value: (r) => r.region ?? "" },
   { header: "경력(년)", value: (r) => r.careerYears ?? "" },
-  { header: "자사 평점", value: (r) => r.myRating ?? "" },
-  { header: "프로젝트 평가 평균", value: (r) => r.avgScore ?? "" },
+  { header: "자사 평점(5점)", value: (r) => r.myRating ?? "" },
+  { header: "프로젝트 평가 평균(5점)", value: (r) => r.avgScore ?? "" },
   { header: "즐겨찾기", value: (r) => (r.tag === "favorite" ? "O" : "") },
   { header: "VIP", value: (r) => (r.tag === "vip" ? "O" : "") },
   { header: "주의", value: (r) => (r.tag === "caution" ? "O" : "") },
@@ -209,7 +209,8 @@ export async function loadExpertExportRows(): Promise<ExpertExportRow[]> {
       region: e.region,
       careerYears: e.career_years,
       myRating: ratingByExpert.get(e.id) ?? null,
-      avgScore: acc && acc.count > 0 ? (acc.sum / acc.count).toFixed(1) : null,
+      // 평가 점수는 10점으로 저장되고 5점으로 보인다 (2026-11-08)
+      avgScore: acc && acc.count > 0 ? (acc.sum / acc.count / 2).toFixed(1) : null,
       tag: tagInfo?.tag ?? null,
       tagNote: tagInfo?.note ?? null,
       noteCount: noteCountByExpert.get(e.id) ?? 0,

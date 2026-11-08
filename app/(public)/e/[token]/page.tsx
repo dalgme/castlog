@@ -58,9 +58,14 @@ const EMPTY_BRAND: TenantBrandData = { name: null, logoSrc: null };
 
 export default async function EngagementConsentPage({
   params,
+  searchParams,
 }: {
   params: { token: string };
+  /** intent=accept|decline — 메일의 수락/거절 버튼에서 온 경우 확인 화면으로 바로 (기획 지시 2026-11-08) */
+  searchParams?: { intent?: string };
 }) {
+  const initialIntent =
+    searchParams?.intent === "accept" ? ("accepted" as const) : searchParams?.intent === "decline" ? ("declined" as const) : null;
   const shell = (
     body: React.ReactNode,
     brand: TenantBrandData = EMPTY_BRAND
@@ -317,6 +322,7 @@ export default async function EngagementConsentPage({
           token={params.token}
           guide={portalGuide}
           tenantName={tenantName}
+          initialIntent={initialIntent}
         />
       </CardContent>
     </Card>,

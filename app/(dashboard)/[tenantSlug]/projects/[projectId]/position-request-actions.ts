@@ -332,9 +332,10 @@ export async function loadSlotPickerData(
       expertise: expertiseByExpert.get(e.id) ?? [],
       recruit: recruitByExpert.get(e.id) ?? [],
       rating: ratingByExpert.get(e.id) ?? null,
+      // 평가 점수는 10점으로 저장되고 5점으로 보인다 (2026-11-08)
       avgScore: (() => {
         const acc = scoreByExpert.get(e.id);
-        return acc && acc.count > 0 ? (acc.sum / acc.count).toFixed(1) : null;
+        return acc && acc.count > 0 ? (acc.sum / acc.count / 2).toFixed(1) : null;
       })(),
       tag: tagByExpert.get(e.id) ?? null,
       noteCount: noteCountByExpert.get(e.id) ?? 0,

@@ -447,8 +447,8 @@ export function PositionRequestDialog({
                         {e.careerYears !== null ? `${e.careerYears}년` : "-"}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {e.rating !== null ? `${e.rating}점` : "-"}
-                        {e.avgScore ? ` · 평가 ${e.avgScore}` : ""}
+                        {e.rating !== null ? `${e.rating}점/5` : "-"}
+                        {e.avgScore ? ` · 평가 ${e.avgScore}/5` : ""}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
                         {e.tag ? (

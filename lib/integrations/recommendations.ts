@@ -68,7 +68,8 @@ export async function rankExpertCandidates(opts: {
     // 1) 평판 (자사 평가) — 없으면 중립 5.0 (불이익 없음)
     const reputation = avgScore ?? 5.0;
     if (avgScore !== null) {
-      reasons.push(`자사 평가 평균 ${avgScore.toFixed(1)}/10 (${evalCount}건)`);
+      // 저장은 10점, 표기는 5점 (2026-11-08)
+      reasons.push(`자사 평가 평균 ${(avgScore / 2).toFixed(1)}/5 (${evalCount}건)`);
     } else {
       reasons.push("자사 평가 이력 없음 (중립 반영)");
     }

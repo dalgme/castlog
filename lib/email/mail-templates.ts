@@ -36,10 +36,20 @@ export type MailSpec = {
   rows: MailRow[];
   /** 표 아래 단락들 (평문 그대로, 줄바꿈 유지) */
   paragraphs?: string[];
-  /** 행동 버튼 */
+  /** 행동 버튼 (하나) */
   cta?: { label: string; url: string; note?: string | null } | null;
+  /** 행동 버튼 여러 개 — 수락/거절처럼 나란히 (기획 지시 2026-11-08). cta보다 우선 */
+  actions?: { label: string; url: string; tone: "accept" | "decline" | "neutral" }[];
+  /** actions 아래 작은 안내 */
+  actionsNote?: string | null;
   /** 꼬리 안내 (작은 글씨) */
   footnotes?: string[];
+};
+
+const ACTION_STYLE: Record<"accept" | "decline" | "neutral", string> = {
+  accept: "background:#15803d;color:#ffffff;",
+  decline: "background:#ffffff;color:#b91c1c;border:2px solid #b91c1c;",
+  neutral: "background:#1d4ed8;color:#ffffff;",
 };
 
 export function escapeHtml(s: string): string {
@@ -77,7 +87,21 @@ export function renderMailHtml(spec: MailSpec): string {
     .filter((p) => p.trim().length > 0)
     .map((p) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#111827;">${nl2br(p)}</p>`)
     .join("");
-  const ctaHtml = spec.cta
+  const actionsHtml =
+    spec.actions && spec.actions.length > 0
+      ? `<div style="margin:22px 0 8px;text-align:center;">` +
+        `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr>` +
+        spec.actions
+          .map(
+            (a) =>
+              `<td style="padding:0 6px;"><a href="${escapeHtml(a.url)}" style="display:inline-block;${ACTION_STYLE[a.tone]}text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px;min-width:96px;">${escapeHtml(a.label)}</a></td>`
+          )
+          .join("") +
+        `</tr></table>` +
+        (spec.actionsNote ? `<p style="margin:10px 0 0;font-size:12px;color:#6b7280;">${nl2br(spec.actionsNote)}</p>` : "") +
+        `</div>`
+      : "";
+  const ctaHtml = spec.cta && !(spec.actions && spec.actions.length > 0)
     ? `<div style="margin:22px 0 8px;text-align:center;">` +
       `<a href="${escapeHtml(spec.cta.url)}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px;">${escapeHtml(spec.cta.label)}</a>` +
       (spec.cta.note ? `<p style="margin:10px 0 0;font-size:12px;color:#6b7280;">${nl2br(spec.cta.note)}</p>` : "") +
@@ -100,7 +124,7 @@ export function renderMailHtml(spec: MailSpec): string {
     (rowsHtml
       ? `<tr><td style="padding:0 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;border-collapse:separate;overflow:hidden;">${rowsHtml}</table></td></tr>`
       : "") +
-    `<tr><td style="padding:16px 20px 4px;">${paragraphsHtml}${ctaHtml}</td></tr>` +
+    `<tr><td style="padding:16px 20px 4px;">${paragraphsHtml}${actionsHtml}${ctaHtml}</td></tr>` +
     `<tr><td style="padding:10px 20px 20px;border-top:1px solid #eef0f3;">${footHtml}</td></tr>` +
     `</table>` +
     `<p style="margin:12px 0 0;font-size:11px;color:#9ca3af;">이 메일은 ${escapeHtml(spec.tenantName)}의 업무연락입니다. 발송 시스템: CASTLOG</p>` +
@@ -117,7 +141,11 @@ function textFromSpec(spec: MailSpecWithSubject): string {
     "",
     ...rows,
     ...(spec.paragraphs && spec.paragraphs.length > 0 ? ["", ...spec.paragraphs] : []),
-    ...(spec.cta ? ["", `${spec.cta.label}: ${spec.cta.url}`, spec.cta.note ?? null] : []),
+    ...(spec.actions && spec.actions.length > 0
+      ? ["", ...spec.actions.map((a) => `${a.label}: ${a.url}`), spec.actionsNote ?? null]
+      : spec.cta
+        ? ["", `${spec.cta.label}: ${spec.cta.url}`, spec.cta.note ?? null]
+        : []),
     ...(spec.footnotes && spec.footnotes.length > 0 ? ["", ...spec.footnotes] : []),
   ]
     .filter((v): v is string => v !== null && v !== undefined)
@@ -145,6 +173,12 @@ export function composeEngagementRequestMail(params: {
   /** 회신 마감 표기 ("2026년 11월 21일(토) 18:00") */
   deadlineText: string | null;
   url: string;
+  /**
+   * 메일 안 수락/거절 버튼 (기획 지시 2026-11-08) — 같은 /e 링크에 intent를 붙인 주소.
+   * 한 번 더 확인하는 화면으로 열린다(메일 스캐너의 자동 클릭이 계약을 성립시키면 안 된다).
+   */
+  acceptUrl?: string | null;
+  declineUrl?: string | null;
 }): MailDoc {
   const subject = `[섭외 요청] ${params.programName?.trim() || params.sessionName || "섭외"}`;
   const rows: MailRow[] = [];
@@ -177,7 +211,15 @@ export function composeEngagementRequestMail(params: {
     greeting: `${params.expertName ? `${params.expertName} 전문가님, ` : ""}${params.roleLabel ? `${params.roleLabel} ` : ""}섭외를 요청드립니다. 아래 내용을 확인하시고 회신 마감 전에 수락 또는 거절해 주세요.`,
     rows,
     paragraphs: [],
-    cta: { label: "수락 / 거절하기", url: params.url, note: "링크에서 상세 내용을 확인한 뒤 수락 또는 거절을 선택할 수 있습니다." },
+    ...(params.acceptUrl && params.declineUrl
+      ? {
+          actions: [
+            { label: "수락", url: params.acceptUrl, tone: "accept" as const },
+            { label: "거절", url: params.declineUrl, tone: "decline" as const },
+          ],
+          actionsNote: `버튼을 누르면 확인 화면이 열리고, 거기서 한 번 더 확인하면 확정됩니다.\n상세 내용 보기: ${params.url}`,
+        }
+      : { cta: { label: "수락 / 거절하기", url: params.url, note: "링크에서 상세 내용을 확인한 뒤 수락 또는 거절을 선택할 수 있습니다." } }),
     footnotes: ["문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.", "회신 마감이 지나면 링크가 만료되고 요청이 자동 종료됩니다."],
   };
   return { subject, text: textFromSpec(spec), html: renderMailHtml(spec) };

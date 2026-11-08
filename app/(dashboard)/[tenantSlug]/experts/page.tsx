@@ -764,7 +764,7 @@ export default async function TenantExpertsPage({
                       </TableHead>
                       <TableHead
                         className="cursor-help"
-                        title="우리 회사의 평가 — 자사 평점(1~10, 직접 지정)과 프로젝트 평가 평균. 클릭해 점수를 매기면 변경이 평가 로그로 남습니다. 전문가에게 보이지 않습니다"
+                        title="우리 회사의 평가 — 자사 평점(5점 만점, 직접 지정)과 프로젝트 평가 평균(5점 환산). 클릭해 점수를 매기면 변경이 평가 로그로 남습니다. 전문가에게 보이지 않습니다"
                       >
                         자사 평가
                       </TableHead>
@@ -869,10 +869,11 @@ export default async function TenantExpertsPage({
                           <TableCell className="whitespace-nowrap text-sm">
                             {(() => {
                               // 자사 평가 = 프로젝트 평가 평균(읽기) + 자사 평점(직접 지정, §4 테넌트 격리)
+                              // 평가 점수는 10점으로 저장되고 5점으로 보인다 (2026-11-08)
                               const acc = scoreByExpert.get(expert.id);
                               const avg =
                                 acc && acc.count > 0
-                                  ? (acc.sum / acc.count).toFixed(1)
+                                  ? (acc.sum / acc.count / 2).toFixed(1)
                                   : null;
                               return (
                                 <ExpertRatingCell
