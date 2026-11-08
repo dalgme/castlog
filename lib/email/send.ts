@@ -9,6 +9,7 @@ import { buildPublicLink } from "@/lib/routing/links";
 import { isPracticeMode } from "@/lib/practice/server";
 import { isMissingColumnError } from "@/lib/supabase/errors";
 import { resolveEmailProvider } from "./provider";
+import { getActivePersonalMailAccount, recordPersonalAccountOutcome, sendViaPersonalAccount } from "./mail-accounts";
 
 /**
  * 이메일 발송 — 발송 정책(광고 필터·수신거부·로그·계측)은 여기, 실제 전송 수단은
@@ -127,8 +128,13 @@ export async function sendTenantEmail(
   const safeDisplay = displayName.replace(/["<>\r\n]/g, " ").replace(/\s+/g, " ").trim();
   const fromAddress = `"${safeDisplay}" ${fromAddressOnly}`;
   const replyTo = params.replyTo ?? senderRow?.email ?? undefined;
+  // 직원 개인 메일 계정 (기획 지시 2026-11-08): 회사가 허용하고 본인이 연결·테스트를 마쳤으면 그 계정에서
+  // 나간다(보낸 사람 = 직원 본인 주소, 보낸편지함에도 남는다). 실패하면 플랫폼 발송으로 폴백한다.
+  const practice = await isPracticeMode();
+  const personal = practice || params.messageType === "advertising" ? null : await getActivePersonalMailAccount(params.tenantId, params.senderUserId);
+  const personalFromName = [senderRow?.name ?? null, tenantRow?.name ?? null].filter(Boolean).join(" · ") || "담당자";
   // 연습모드에서는 공급자 호출을 건너뛴다 (이력은 그대로 남는다).
-  const testMode = !provider || (await isPracticeMode());
+  const testMode = (!provider && !personal) || practice;
 
   let targets = params.recipients;
   let excludedCount = 0;
@@ -174,8 +180,47 @@ export async function sendTenantEmail(
     let ok = true;
     let errorMessage: string | null = null;
     let providerMessageId: string | null = null;
+    let providerUsed: string | null = provider?.id ?? null;
+    let fallbackNote: string | null = null;
 
-    if (provider) {
+    if (personal && !practice) {
+      const result = await sendViaPersonalAccount(personal, {
+        to: recipient.email,
+        subject,
+        text: body,
+        ...(params.html ? { html: params.html } : {}),
+        fromName: personalFromName,
+      });
+      if (result.ok) {
+        providerUsed = `personal:${personal.provider}`;
+        providerMessageId = result.id ?? null;
+        await recordPersonalAccountOutcome(personal.id, null);
+      } else {
+        await recordPersonalAccountOutcome(personal.id, result.error);
+        if (provider) {
+          // 개인 계정 실패 → 플랫폼 발송으로 폴백. 대장에 사유를 남긴다
+          fallbackNote = `개인 계정 발송 실패(${result.error}) → 플랫폼 계정으로 발송`;
+          const fb = await provider.send({
+            from: fromAddress,
+            to: recipient.email,
+            subject,
+            text: body,
+            ...(params.html ? { html: params.html } : {}),
+            ...(replyTo ? { replyTo } : {}),
+          });
+          if (!fb.ok) {
+            ok = false;
+            errorMessage = `${fallbackNote} — 플랫폼 발송도 실패: ${fb.error}`;
+          } else {
+            providerUsed = `${provider.id}:fallback`;
+            providerMessageId = fb.id ?? null;
+          }
+        } else {
+          ok = false;
+          errorMessage = `개인 계정 발송 실패: ${result.error}`;
+        }
+      }
+    } else if (provider) {
       const result = await provider.send({
         from: fromAddress,
         to: recipient.email,
@@ -208,30 +253,25 @@ export async function sendTenantEmail(
       sent_by: params.senderUserId,
     };
     // 이메일 대장 컬럼(0016) — 미적용 DB(PGRST204)에서는 종전 행으로 다시 기록한다 (§14-10)
-    const { error: insertError } = await supabase.from("email_logs").insert({
+    // 개인 계정(SMTP)은 웹훅이 없다 — 수신 상태 추적 대상은 플랫폼 공급자로 나간 건만
+    const trackable = ok && !testMode && providerMessageId && providerUsed !== null && !providerUsed.startsWith("personal:");
+    const extendedRow = {
       ...baseRow,
       project_id: params.projectId ?? null,
       engagement_ids: params.engagementIds ?? null,
       purpose: params.purpose ?? null,
       body_html: params.html ?? null,
-      provider: provider?.id ?? null,
-      provider_message_id: providerMessageId,
-      delivery_status: ok && !testMode && providerMessageId ? "queued" : null,
-    });
+      provider: providerUsed,
+      provider_message_id: trackable ? providerMessageId : null,
+      delivery_status: trackable ? "queued" : null,
+      delivery_detail: fallbackNote,
+    };
+    const { error: insertError } = await supabase.from("email_logs").insert(extendedRow);
     if (insertError && isMissingColumnError(insertError)) {
       await supabase.from("email_logs").insert(baseRow);
     } else if (insertError) {
       // 자사 기록이 막히면(권한 등) service_role로 남긴다 — 발송 기록은 법적·운영 근거다
-      await admin.from("email_logs").insert({
-        ...baseRow,
-        project_id: params.projectId ?? null,
-        engagement_ids: params.engagementIds ?? null,
-        purpose: params.purpose ?? null,
-        body_html: params.html ?? null,
-        provider: provider?.id ?? null,
-        provider_message_id: providerMessageId,
-        delivery_status: ok && !testMode && providerMessageId ? "queued" : null,
-      });
+      await admin.from("email_logs").insert(extendedRow);
     }
   }
 

@@ -51,7 +51,17 @@ export type MailLedgerRow = {
   engagementIds: string[];
   /** 수신 상태 추적 가능 여부 — 공급자 메시지 id가 있어야 웹훅이 매칭된다 */
   trackable: boolean;
+  /** 발송 경로 — resend / personal:naverworks / resend:fallback … (2026-11-08) */
+  provider: string | null;
 };
+
+/** 발송 경로 라벨 */
+export function mailProviderLabel(provider: string | null): string | null {
+  if (!provider) return null;
+  if (provider.startsWith("personal:")) return "담당자 개인 계정";
+  if (provider.endsWith(":fallback")) return "플랫폼 계정 (개인 계정 실패 → 대체)";
+  return "플랫폼 계정";
+}
 
 export type MailLedgerData = {
   /** 0016 적용 여부 — 컬럼이 없으면 대장을 만들 수 없다 */

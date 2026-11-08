@@ -28,6 +28,8 @@ import { ProfileForm } from "./profile-form";
 import { SessionFieldsPanel } from "./fields-panel";
 import { TenantLogoForm } from "./logo-form";
 import { CompanyAddressCard } from "./company-address-card";
+import { MailAccountPanel } from "./mail-account-panel";
+import { getMyMailAccountStatus } from "./mail-account-actions";
 
 export const metadata = { title: "내 설정" };
 
@@ -94,6 +96,8 @@ export default async function MySettingsPage({
     ? []
     : (sessionFieldsResult.data ?? []);
   const logoSrc = await tenantLogoSrc();
+  // 내 메일 계정 발송 상태 (기획 지시 2026-11-08) — 비밀번호는 내려오지 않는다
+  const mailAccount = await getMyMailAccountStatus();
   // 넥스트랩 운영자에게만 — 전환이 안 될 때 원인을 볼 수 있는 자리
   const canSwitchPlatform = canEnterPlatformMode(user);
 
@@ -168,6 +172,16 @@ export default async function MySettingsPage({
               <Button asChild variant="outline" size="sm">
                 <Link href="/account/password">비밀번호 변경</Link>
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* 내 메일 계정으로 발송 (기획 지시 2026-11-08) — 섭외·수락서 메일이 내 계정에서 나간다 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">내 메일 계정으로 발송</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MailAccountPanel status={mailAccount} />
             </CardContent>
           </Card>
 

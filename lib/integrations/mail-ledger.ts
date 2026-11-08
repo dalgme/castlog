@@ -17,7 +17,7 @@ export async function loadProjectMailLedger(projectId: string): Promise<MailLedg
   const { data, error } = await supabase
     .from("email_logs")
     .select(
-      "id, created_at, sent_by, recipient_email, recipient_expert_id, purpose, subject, body, body_html, status, error_message, delivery_status, delivered_at, opened_at, bounced_at, delivery_detail, engagement_ids, provider_message_id"
+      "id, created_at, sent_by, recipient_email, recipient_expert_id, purpose, subject, body, body_html, status, error_message, delivery_status, delivered_at, opened_at, bounced_at, delivery_detail, engagement_ids, provider_message_id, provider"
     )
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
@@ -54,6 +54,7 @@ export async function loadProjectMailLedger(projectId: string): Promise<MailLedg
     deliveryDetail: r.delivery_detail,
     engagementIds: r.engagement_ids ?? [],
     trackable: Boolean(r.provider_message_id),
+    provider: r.provider,
   }));
   return { ready: true, rows: mapped, webhookConfigured, providerConfigured };
 }

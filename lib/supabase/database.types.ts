@@ -2206,6 +2206,84 @@ export type Database = {
         }
         Relationships: []
       }
+      user_mail_accounts: {
+        Row: {
+          id: string
+          tenant_id: string
+          user_id: string
+          provider: string
+          smtp_host: string
+          smtp_port: number
+          smtp_secure: boolean
+          username: string
+          from_email: string
+          password_encrypted: string
+          is_active: boolean
+          verified_at: string | null
+          last_used_at: string | null
+          last_error: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          user_id: string
+          provider: string
+          smtp_host: string
+          smtp_port: number
+          smtp_secure?: boolean
+          username: string
+          from_email: string
+          password_encrypted: string
+          is_active?: boolean
+          verified_at?: string | null
+          last_used_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          user_id?: string
+          provider?: string
+          smtp_host?: string
+          smtp_port?: number
+          smtp_secure?: boolean
+          username?: string
+          from_email?: string
+          password_encrypted?: string
+          is_active?: boolean
+          verified_at?: string | null
+          last_used_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tenant_email_settings: {
+        Row: {
+          tenant_id: string
+          personal_mail_allowed: boolean
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          tenant_id: string
+          personal_mail_allowed?: boolean
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          tenant_id?: string
+          personal_mail_allowed?: boolean
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       approval_attachments: {
         Row: {
           id: string
