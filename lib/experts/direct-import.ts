@@ -19,6 +19,7 @@ export const DIRECT_IMPORT_HEADERS = [
   "이름",
   "소속",
   "직위",
+  "출생연도",
   "이메일",
   "핸드폰번호",
   "은행명",
@@ -37,6 +38,13 @@ export const directImportRowSchema = z.object({
   name: z.string().trim().min(1, "이름이 없습니다").max(50, "이름은 50자 이내"),
   organization: z.string().trim().max(100).optional().default(""),
   jobTitle: z.string().trim().max(100).optional().default(""),
+  /** 출생연도 — 비우거나 4자리 (기획 지시 2026-11-08). 종전 템플릿(열 없음)도 그대로 받는다 */
+  birthYear: z
+    .string()
+    .trim()
+    .optional()
+    .default("")
+    .refine((v) => v === "" || /^(19|20)\d{2}$/.test(v), "출생연도는 4자리 숫자(예: 1975)"),
   email: z
     .string()
     .trim()
@@ -126,6 +134,8 @@ export function classifyDirectImportRows(
       name: (raw.name ?? "").trim(),
       organization: (raw.organization ?? "").trim(),
       jobTitle: (raw.jobTitle ?? "").trim(),
+      // 엑셀이 1975.0 처럼 읽히는 경우를 정수 4자리로 정리
+      birthYear: (raw.birthYear ?? "").trim().replace(/\.0+$/, ""),
       email: (raw.email ?? "").trim(),
       phone: restoreLeadingZero((raw.phone ?? "").trim()),
       bankName: (raw.bankName ?? "").trim(),

@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileCheck2, MonitorSmartphone } from "lucide-react";
+import { Eye, FileCheck2, MonitorSmartphone } from "lucide-react";
+
+import { MessagePreview } from "@/components/integrations/message-preview";
+import { previewAcceptanceMessages, type MessagePreviewResult } from "./mail-preview-actions";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -67,6 +70,16 @@ export function AcceptanceSendDialog({
 
   const [channel, setChannel] = useState<DispatchChannel>("both");
   const [memo, setMemo] = useState("");
+  // 발송 전 미리보기 (기획 지시 2026-11-08)
+  const [preview, setPreview] = useState<MessagePreviewResult | null>(null);
+  const [previewPending, startPreview] = useTransition();
+
+  function loadPreview() {
+    setPreview(null);
+    startPreview(async () => {
+      setPreview(await previewAcceptanceMessages(projectId, memo));
+    });
+  }
 
   const label = alreadySent ? "수락서 재송부" : "수락서 송부";
 
@@ -111,6 +124,7 @@ export function AcceptanceSendDialog({
         if (!next) {
           setError(null);
           setResult(null);
+          setPreview(null);
         }
       }}
     >
@@ -120,7 +134,7 @@ export function AcceptanceSendDialog({
           {label}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className={preview?.ok ? "max-h-[90vh] overflow-y-auto sm:max-w-3xl" : "max-h-[85vh] overflow-y-auto sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>
             이 프로젝트에 귀속된 전문가 전원에게 수락서 및 안내문 등을 송부할까요?
@@ -206,6 +220,20 @@ export function AcceptanceSendDialog({
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="확인 기한, 준비물, 제출 서류 안내 등 — 전원에게 같은 내용으로 나갑니다."
               />
+            </div>
+
+            {/* 발송 전 미리보기 (기획 지시 2026-11-08) — 실제 나갈 안내 메일(강조 표시)·문자 */}
+            <div className="space-y-2">
+              <Button type="button" variant="outline" size="sm" onClick={loadPreview} disabled={previewPending}>
+                <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                {previewPending ? "미리보기 만드는 중…" : preview ? "입력값으로 다시 미리보기" : "메일·문자 미리보기"}
+              </Button>
+              {preview && !preview.ok && (
+                <Alert variant="destructive">
+                  <AlertDescription className="text-xs">{preview.error}</AlertDescription>
+                </Alert>
+              )}
+              {preview?.ok && <MessagePreview samples={preview.samples} total={preview.total} note={preview.note} channel={channel} />}
             </div>
 
             {/* 이 안내가 이 화면의 핵심이다 — 눈에 띄지 않으면 오해가 남는다 */}

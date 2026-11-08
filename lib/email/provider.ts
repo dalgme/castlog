@@ -26,13 +26,16 @@ export type EmailMessage = {
   to: string;
   subject: string;
   text: string;
+  /** HTML 본문 (강조 표시) — 없으면 평문만 (2026-11-08) */
+  html?: string;
   /** 답장 주소 — 발신 도메인은 인증된 도메인이어야 하므로, 전문가 회신은 여기로 받는다. */
   replyTo?: string;
   /** 실제 첨부파일(만료 없음, 수신자 메일 정책 영향). */
   attachments?: EmailAttachment[];
 };
 
-export type EmailProviderResult = { ok: true } | { ok: false; error: string };
+/** id = 공급자 메시지 식별자 — 수신 상태 웹훅(전달·반송·열람)을 이 값으로 매칭한다 (2026-11-08) */
+export type EmailProviderResult = { ok: true; id?: string | null } | { ok: false; error: string };
 
 export interface EmailProvider {
   readonly id: string;
@@ -61,6 +64,7 @@ class ResendProvider implements EmailProvider {
           to: [message.to],
           subject: message.subject,
           text: message.text,
+          ...(message.html ? { html: message.html } : {}),
           ...(message.replyTo ? { reply_to: message.replyTo } : {}),
           ...(message.attachments && message.attachments.length
             ? {
@@ -78,7 +82,15 @@ class ResendProvider implements EmailProvider {
           error: `resend ${response.status}: ${(await response.text()).slice(0, 200)}`,
         };
       }
-      return { ok: true };
+      // 응답 { id } — 웹훅(email.delivered 등)의 email_id와 같은 값
+      let id: string | null = null;
+      try {
+        const json = (await response.json()) as { id?: unknown };
+        id = typeof json.id === "string" ? json.id : null;
+      } catch {
+        id = null;
+      }
+      return { ok: true, id };
     } catch (error) {
       return {
         ok: false,

@@ -12,15 +12,31 @@ import { sendTenantEmail } from "@/lib/email/send";
  * 발송 정책(로그·계측·테스트 모드)은 sendTenantEmail에 위임한다. 이메일 제공자가
  * 미설정이면 테스트 모드로 기록만 되므로, 호출부는 성공/실패에 의존하지 않는다.
  * 전문가 이메일이 없으면 조용히 건너뛴다(앱 내 알림은 별도로 이미 발송됨).
+ *
+ * 2026-11-08: html(강조 본문)과 이메일 대장 연결(projectId·engagementIds·purpose)을 함께 넘긴다.
+ * 본문은 lib/email/mail-templates.ts 작성기로 만들어 미리보기와 같은 것이 나가게 한다.
  */
+export type EngagementMailPurpose =
+  | "engagement_request"
+  | "engagement_bundle"
+  | "acceptance_letter"
+  | "acceptance_reminder"
+  | "direct_engagement"
+  | "general";
+
 export async function sendEngagementEmail(params: {
   tenantId: string;
   senderUserId: string;
   expertId: string;
   subject: string;
   body: string;
+  html?: string;
   /** 답장 주소 — 미지정이면 발송 담당자(users.email)로 (E2E 검수 전문가 P2-5) */
   replyTo?: string;
+  /** 이메일 대장 — 어느 프로젝트·섭외 건의 메일인가 */
+  projectId?: string | null;
+  engagementIds?: string[] | null;
+  purpose?: EngagementMailPurpose;
 }): Promise<void> {
   if (!hasSupabaseEnv()) return;
   // 라이트 모드 — 전문가 발송 전면 차단 (engagement-sms.ts와 같은 이유)
@@ -54,10 +70,14 @@ export async function sendEngagementEmail(params: {
       messageType: "transactional",
       subject: params.subject,
       body: params.body,
+      html: params.html,
       recipients: [
         { email: expert.email, expertId: params.expertId, name: expert.name },
       ],
       replyTo,
+      projectId: params.projectId ?? null,
+      engagementIds: params.engagementIds ?? null,
+      purpose: params.purpose ?? "general",
     });
   } catch {
     // 메일 실패가 섭외·수락서 처리 자체를 막지 않는다.

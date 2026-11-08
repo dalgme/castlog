@@ -71,6 +71,11 @@ export const expertProfileSchema = z.object({
   specialty: z.string().max(100, "100자 이내로 입력하세요.").optional(),
   organization: z.string().max(100, "소속은 100자 이내로 입력하세요.").optional(),
   jobTitle: z.string().max(100, "직위는 100자 이내로 입력하세요.").optional(),
+  /** 출생연도 4자리 (기획 지시 2026-11-08 — 섭외 후보 검색·등록 표기) */
+  birthYear: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^(19|20)\d{2}$/.test(v.trim()), "출생연도는 4자리 숫자로 입력하세요 (예: 1975)."),
   region: z.string().max(150, "150자 이내로 입력하세요.").optional(),
   /** 거주지 — 광역 선택 + 세부 주소 (서버가 region으로 합쳐 저장) */
   regionSido: z

@@ -77,7 +77,7 @@ import {
 } from "./action-request-panel";
 import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
-import type { SlotRow } from "./slot-table";
+import { expertMetaLabel, type SlotRow } from "./slot-table";
 import { ProjectCalendar } from "./project-calendar";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { BudgetPanel } from "./budget-panel";
@@ -106,6 +106,8 @@ import { ClientReviewTab } from "./client-review-tab";
 import { loadClientReviewTab } from "@/lib/integrations/client-review";
 import { AdjustTab } from "./adjust-tab";
 import { loadAdjustTab } from "@/lib/integrations/adjust-tab";
+import { MailLedgerTab } from "./mail-ledger-tab";
+import { loadProjectMailLedger } from "@/lib/integrations/mail-ledger";
 import { EngagementConfirmed } from "./engagement-confirmed";
 import type { SmsSummary } from "./sms-resend";
 import {
@@ -654,12 +656,19 @@ export default async function ProjectDetailPage({
         .filter(Boolean)
     )
   ) as string[];
-  const { data: positionExperts } = positionExpertIds.length
-    ? await supabase.from("experts").select("id, name").in("id", positionExpertIds)
-    : { data: [] };
-  const expertNameById = new Map(
-    (positionExperts ?? []).map((e) => [e.id, e.name])
-  );
+  // 이름 + 소속·직위·출생연도(2026-11-08). 출생연도 컬럼(0016) 미적용 DB는 없이 다시 읽는다 (§14-10)
+  type PositionExpert = { id: string; name: string; organization?: string | null; job_title?: string | null; birth_year?: number | null };
+  let positionExperts: PositionExpert[] = [];
+  if (positionExpertIds.length) {
+    const full = await supabase.from("experts").select("id, name, organization, job_title, birth_year").in("id", positionExpertIds);
+    if (!full.error) positionExperts = full.data ?? [];
+    else {
+      const basic = await supabase.from("experts").select("id, name, organization, job_title").in("id", positionExpertIds);
+      positionExperts = basic.data ?? [];
+    }
+  }
+  const expertNameById = new Map(positionExperts.map((e) => [e.id, e.name]));
+  const expertMetaById = new Map(positionExperts.map((e) => [e.id, expertMetaLabel(e)]));
   // 세션 안내문자 — 템플릿(테넌트 공용) + 세션별 발송 내역
   const [{ data: noticeTemplateRows }, { data: noticeRows }] = modules.experts
     ? await Promise.all([
@@ -872,6 +881,7 @@ export default async function ProjectDetailPage({
           ? (expertNameById.get(p.assigned_expert_id) ?? null)
           : null,
         assignedExpertId: p.assigned_expert_id ?? null,
+        expertMetaLabel: expertMetaById.get((p.expert_id ?? p.assigned_expert_id) ?? "") ?? null,
       })),
     notice: {
       // 안내문자 대상 = 이 세션에 섭외가 확정된 전문가 (요청중·미섭외 제외)
@@ -1122,6 +1132,9 @@ export default async function ProjectDetailPage({
   // 섭외후보 조정 탭 (4단계) — 그 탭에서만 읽는다
   const adjustData =
     tab === "adjust" && modules.experts ? await loadAdjustTab(project.id) : null;
+  // 이메일 대장 (2026-11-08) — 그 탭에서만 읽는다
+  const mailLedgerData =
+    tab === "mail" && modules.experts ? await loadProjectMailLedger(project.id) : null;
 
   // 승인 목록 및 섭외 진행 탭 (37번) — 계획 리비전 목록 + 코드별 진행 현황.
   // 그 탭에서만 쓰므로 그때만 읽는다.
@@ -2312,6 +2325,11 @@ export default async function ProjectDetailPage({
             relayOn={planRelayOn}
             flow={planFlow}
           />
+        )}
+
+        {/* 이메일 대장 (기획 지시 2026-11-08) — 이 프로젝트에서 보낸 모든 메일의 내용·수신 상태 */}
+        {tab === "mail" && modules.experts && mailLedgerData && (
+          <MailLedgerTab projectName={project.name} data={mailLedgerData} />
         )}
 
         {/* 승인 목록 및 섭외 진행 (37번) — 결재가 난 뒤의 실행 자리:

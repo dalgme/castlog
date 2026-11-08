@@ -29,8 +29,9 @@ import {
 } from "@/lib/integrations/schemas";
 import { ENGAGEMENT_EXPIRES_DAYS } from "@/lib/integrations/engagements";
 import { notifyExpert } from "@/lib/experts/notifications";
-import { formatEventSchedule } from "@/lib/integrations/engagement-roles";
+import { formatEventSchedule, formatKstDateTimeFull } from "@/lib/integrations/engagement-roles";
 import { portalUrl, sendEngagementEmail } from "@/lib/integrations/engagement-email";
+import { composeEngagementRequestMail } from "@/lib/email/mail-templates";
 import {
   buildEngagementRequestSms,
   sendEngagementSms,
@@ -210,37 +211,41 @@ export async function createEngagement(
     data.startsTime || null,
     data.endsTime || null
   );
+  const [{ data: tenantRow }, { data: directExpert }] = await Promise.all([
+    supabase.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+    createAdminClient().from("experts").select("name").eq("id", data.expertId).maybeSingle(),
+  ]);
+  // 코드넘버 경로와 같은 작성기 — 강조 본문 + 이메일 대장 연결 (2026-11-08)
+  const directMail = composeEngagementRequestMail({
+    tenantName: tenantRow?.name ?? "기업",
+    expertName: directExpert?.name ?? null,
+    programName: data.programName?.trim() || null,
+    sessionName: null,
+    roleLabel: data.roleDescription,
+    schedule,
+    termLines: [],
+    feeFallbackLine: data.feeAmount ? `의뢰비용: ${Number(data.feeAmount).toLocaleString("ko-KR")}원` : null,
+    locationLine: data.locationName?.trim()
+      ? `${data.locationName.trim()}${data.locationAddress?.trim() ? ` (${data.locationAddress.trim()})` : ""}`
+      : null,
+    eventSummary: data.eventSummary,
+    specialNotes: data.specialNotes,
+    deadlineText: formatKstDateTimeFull(requestExpiresAtIso),
+    url,
+  });
   await sendEngagementEmail({
     tenantId,
     senderUserId: user.id,
     expertId: data.expertId,
-    subject: `[섭외 요청] ${data.programName?.trim() || data.roleDescription}`,
-    body:
-      `섭외를 요청드립니다.\n\n` +
-      [
-        data.programName?.trim() ? `· 사업명: ${data.programName.trim()}` : null,
-        `· 역할: ${data.roleDescription}`,
-        schedule ? `· 일정: ${schedule}` : null,
-        data.locationName?.trim()
-          ? `· 장소: ${data.locationName.trim()}${
-              data.locationAddress?.trim() ? ` (${data.locationAddress.trim()})` : ""
-            }`
-          : null,
-        data.feeAmount ? `· 의뢰비용: ${Number(data.feeAmount).toLocaleString("ko-KR")}원` : null,
-        `· 회신 마감: ${new Date(requestExpiresAtIso).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}까지`,
-      ]
-        .filter(Boolean)
-        .join("\n") +
-      `\n\n아래 링크에서 수락 또는 거절해 주세요.\n${url}\n` +
-      `문의는 이 메일에 회신하시거나 요청 기업 담당자에게 연락해 주세요.\n`,
+    subject: directMail.subject,
+    body: directMail.text,
+    html: directMail.html,
+    projectId,
+    engagementIds: [engagement.id],
+    purpose: "direct_engagement",
   });
 
   // 문자 — 이메일은 선택 항목이라 미등록 전문가에게는 이게 유일한 연락 수단이다.
-  const { data: tenantRow } = await supabase
-    .from("tenants")
-    .select("name")
-    .eq("id", tenantId)
-    .maybeSingle();
   await sendEngagementSms({
     tenantId,
     senderUserId: user.id,
