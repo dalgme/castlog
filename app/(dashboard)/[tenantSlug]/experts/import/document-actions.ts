@@ -320,6 +320,8 @@ export async function uploadBulkExpertDocument(
   if (docType === "resume") scheduleResumeSummary(inserted.id, null);
 
   revalidatePath("/[tenantSlug]/experts/import", "page");
+  // 전문가 서류 화면의 '이력서 대리 등록'(2026-11-11)도 이 액션을 쓴다
+  revalidatePath("/[tenantSlug]/experts/[expertId]/documents", "page");
   return { ok: true, replaced };
 }
 

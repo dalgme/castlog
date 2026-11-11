@@ -2,7 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
+import { tenantIdFromUser } from "@/lib/auth/tenant";
+import { canExecTenant } from "@/lib/auth/exec-policy";
 import { requireModule } from "@/lib/modules/server";
+import { TenantResumeUpload } from "./resume-upload";
 import { createClient } from "@/lib/supabase/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -37,8 +40,10 @@ export default async function TenantExpertDocumentsPage({
 }: {
   params: { tenantSlug: string; expertId: string };
 }) {
-  await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
+  const user = await requireRole(["platform_admin", "org_admin", "manager", "staff"]);
   await requireModule("experts");
+  // 이력서 대리 등록 — 파일 일괄 등록과 같은 실행 권한(bulkImport, 회사 조정 반영). 서버 액션이 다시 검증한다
+  const canUploadResume = await canExecTenant("bulkImport", user);
 
   if (!hasSupabaseEnv()) {
     return (
@@ -64,10 +69,11 @@ export default async function TenantExpertDocumentsPage({
 
   if (!expert) notFound();
 
+  const tenantId = tenantIdFromUser(user);
   const [{ data: documents }, { data: requests }] = await Promise.all([
     supabase
       .from("expert_documents")
-      .select("id, document_type, file_name, created_at")
+      .select("id, document_type, file_name, created_at, uploaded_by_tenant_id")
       .eq("expert_id", expert.id)
       .eq("status", "active"),
     supabase
@@ -80,6 +86,9 @@ export default async function TenantExpertDocumentsPage({
 
   const docs = documents ?? [];
   const requestRows = requests ?? [];
+  // 이력서 대리 등록 패널의 상태 — 이력서는 자사 임직원 누구나 조회되므로(§4 개정) 있으면 여기 보인다
+  const activeResume = docs.find((d) => d.document_type === "resume") ?? null;
+  const resumeByUs = Boolean(activeResume && tenantId && activeResume.uploaded_by_tenant_id === tenantId);
 
   // 자격증 사본에는 전문가가 작성한 정보(자격증명·발급일·발급기관)가 붙는다.
   // 마이그레이션 미적용 DB에서는 조용히 빈 맵 — 화면이 죽으면 안 된다.
@@ -126,6 +135,19 @@ export default async function TenantExpertDocumentsPage({
         }
       />
       <main className="space-y-5 p-5">
+        {/* 이력서 대리 등록 (렛츠 요청 2026-11-11) — 권한자에게만 패널, 아니면 한 줄 안내 */}
+        {canUploadResume ? (
+          <TenantResumeUpload
+            expertId={expert.id}
+            expertName={expert.name}
+            hasResume={activeResume !== null}
+            resumeByUs={resumeByUs}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            이력서 대리 등록은 ‘일괄 등록’ 실행 권한이 있는 직원이 이 화면에서 할 수 있습니다 (회사 권한 조정에 따름).
+          </p>
+        )}
         {requestRows.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -182,7 +204,7 @@ export default async function TenantExpertDocumentsPage({
         {docs.length === 0 ? (
           <EmptyState
             title="열람 가능한 서류가 없습니다"
-            description="전문가가 서류를 등록하고 우리 회사에 열람을 허용하면 여기에 표시됩니다."
+            description="전문가가 서류를 등록하고 우리 회사에 열람을 허용하면 여기에 표시됩니다. 이력서는 위 '이력서 대리 등록'으로 회사가 직접 넣을 수도 있습니다."
           />
         ) : (
           <Card>
