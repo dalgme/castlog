@@ -80,12 +80,8 @@ export type SlotPositionRow = {
   expertMetaLabel?: string | null;
 };
 
-/** "OO대학교 · 교수 · 1975년생" — 후보 목록·진행 표가 같은 표기를 쓴다 */
-export function expertMetaLabel(e: { organization?: string | null; job_title?: string | null; birth_year?: number | null } | null | undefined): string | null {
-  if (!e) return null;
-  const parts = [e.organization, e.job_title, e.birth_year != null ? `${e.birth_year}년생` : null].filter((v): v is string => Boolean(v));
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
+// expertMetaLabel은 lib/experts/meta-label.ts로 옮겼다 — 서버 컴포넌트(page.tsx)가 이 'use client'
+// 모듈에서 함수를 가져오면 클라이언트 참조가 되어 호출이 죽는다 (핫픽스 2026-11-11)
 
 export type SlotNoticeData = {
   targets: { name: string; code: string }[];
