@@ -77,7 +77,8 @@ import {
 } from "./action-request-panel";
 import { CreateStepsButton } from "./create-steps-button";
 import { AttachEngagementsDialog } from "./attach-engagements-dialog";
-import { expertMetaLabel, type SlotRow } from "./slot-table";
+import type { SlotRow } from "./slot-table";
+import { expertMetaLabel } from "@/lib/experts/meta-label";
 import { ProjectCalendar } from "./project-calendar";
 import { loadSlotDates, scheduleFromRow } from "@/lib/integrations/slot-schedule";
 import { BudgetPanel } from "./budget-panel";
